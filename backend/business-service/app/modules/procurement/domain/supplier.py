@@ -1,0 +1,241 @@
+"""
+Supplier aggregate root and associated domain entities/value objects for Steps 1-4.
+Enforces business rules across Company Profile, Address & Contacts, Banking & Tax, and Documents.
+Zero framework dependencies.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import List, Optional
+from app.common.domain.exceptions import DomainRuleViolationException
+from app.modules.procurement.domain.value_objects import SupplierId
+
+
+@dataclass(frozen=True)
+class SupplierAddress:
+    registered_address: str
+    city: str
+    country: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.registered_address or not str(self.registered_address).strip():
+            raise DomainRuleViolationException("Registered Address is mandatory and cannot be empty")
+        if not self.city or not str(self.city).strip():
+            raise DomainRuleViolationException("City is mandatory and cannot be empty")
+
+
+@dataclass(frozen=True)
+class SupplierContact:
+    primary_contact_name: str
+    email: str
+    designation: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.primary_contact_name or not str(self.primary_contact_name).strip():
+            raise DomainRuleViolationException("Primary Contact Name is mandatory and cannot be empty")
+        if not self.email or not str(self.email).strip():
+            raise DomainRuleViolationException("Email is mandatory and cannot be empty")
+
+
+@dataclass(frozen=True)
+class SupplierBankInfo:
+    bank_name: str
+    account_number: str
+    account_holder_name: Optional[str] = None
+    ifsc: Optional[str] = None
+    branch: Optional[str] = None
+    swift_bic: Optional[str] = None
+    tds_section: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.bank_name or not str(self.bank_name).strip():
+            raise DomainRuleViolationException("Bank Name is mandatory and cannot be empty")
+        if not self.account_number or not str(self.account_number).strip():
+            raise DomainRuleViolationException("Account Number is mandatory and cannot be empty")
+
+
+ALLOWED_DOCUMENT_TYPES = {
+    "GST_CERTIFICATE",
+    "CANCELLED_CHEQUE",
+    "MSME_CERTIFICATE",
+    "ISO_CERTIFICATE",
+    "VENDOR_CODE_OF_CONDUCT",
+}
+
+
+@dataclass(frozen=True)
+class SupplierDocument:
+    document_type: str
+    file_name: str
+    file_type: str
+    file_size: int
+    storage_path: str
+    upload_id: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if not self.document_type or not str(self.document_type).strip():
+            raise DomainRuleViolationException("Document Type is mandatory")
+        if not self.file_name or not str(self.file_name).strip():
+            raise DomainRuleViolationException("File Name is mandatory")
+        # Validate format
+        allowed_exts = (".pdf", ".jpg", ".jpeg")
+        lower_name = self.file_name.lower()
+        if not any(lower_name.endswith(ext) for ext in allowed_exts):
+            raise DomainRuleViolationException("Invalid document format. Only PDF and JPG files are allowed.")
+        # Validate size (max 10MB)
+        max_size_bytes = 10 * 1024 * 1024
+        if self.file_size > max_size_bytes:
+            raise DomainRuleViolationException("Document size exceeds maximum limit of 10 MB.")
+
+
+from app.common.domain.aggregate_root import AggregateRoot
+from app.common.domain.events import DomainEvent
+from app.modules.procurement.domain.events import SupplierCreatedEvent
+
+
+class Supplier(AggregateRoot):
+    def __init__(
+        self,
+        id: SupplierId,
+        supplier_name: str,
+        registered_company_name: str,
+        vendor_type: str,
+        category: str,
+        industry: str,
+        gstin: str,
+        supplier_code: Optional[str] = None,
+        main_material: Optional[str] = None,
+        rating: float = 0.0,
+        performance_score: float = 0.0,
+        address: Optional[SupplierAddress] = None,
+        contact: Optional[SupplierContact] = None,
+        bank_info: Optional[SupplierBankInfo] = None,
+        documents: Optional[List[SupplierDocument]] = None,
+        remarks: Optional[str] = None,
+        status: str = "Active",
+    ) -> None:
+        super().__init__()
+        self.id = id
+        self.supplier_name = supplier_name
+        self.registered_company_name = registered_company_name
+        self.vendor_type = vendor_type
+        self.category = category
+        self.industry = industry
+        self.gstin = gstin
+        self.supplier_code = supplier_code
+        self.main_material = main_material
+        self.rating = rating
+        self.performance_score = performance_score
+        self.address = address
+        self.contact = contact
+        self.bank_info = bank_info
+        self.documents = documents or []
+        self.remarks = remarks
+        self.status = status
+
+    @staticmethod
+    def create(
+        supplier_name: str,
+        registered_company_name: str,
+        vendor_type: str,
+        category: str,
+        industry: str,
+        gstin: str,
+        supplier_code: Optional[str] = None,
+        main_material: Optional[str] = None,
+        address: Optional[SupplierAddress] = None,
+        contact: Optional[SupplierContact] = None,
+        bank_info: Optional[SupplierBankInfo] = None,
+        documents: Optional[List[SupplierDocument]] = None,
+        remarks: Optional[str] = None,
+    ) -> "Supplier":
+        """Factory method to create a new Supplier aggregate after validating Step 1-4 mandatory fields."""
+        fields = {
+            "Supplier Name": supplier_name,
+            "Registered Company Name": registered_company_name,
+            "Vendor Type": vendor_type,
+            "Category": category,
+            "Industry": industry,
+            "GSTIN": gstin,
+        }
+        for name, value in fields.items():
+            if value is None or not str(value).strip():
+                raise DomainRuleViolationException(f"{name} is mandatory and cannot be empty")
+
+        supplier = Supplier(
+            id=SupplierId.new_id(),
+            supplier_name=supplier_name.strip(),
+            registered_company_name=registered_company_name.strip(),
+            vendor_type=vendor_type.strip(),
+            category=category.strip(),
+            industry=industry.strip(),
+            gstin=gstin.strip(),
+            supplier_code=supplier_code,
+            main_material=main_material,
+            rating=0.0,
+            performance_score=0.0,
+            address=address,
+            contact=contact,
+            bank_info=bank_info,
+            documents=documents or [],
+            remarks=remarks.strip() if remarks else None,
+            status="Active",
+        )
+
+        event = SupplierCreatedEvent(
+            supplier_id=str(supplier.id),
+            supplier_name=supplier.supplier_name,
+            registered_company_name=supplier.registered_company_name,
+            vendor_type=supplier.vendor_type,
+            category=supplier.category,
+            industry=supplier.industry,
+            gstin=supplier.gstin,
+            occurred_at=DomainEvent.now(),
+        )
+        supplier._register_event(event)
+        return supplier
+
+    @staticmethod
+    def rehydrate(
+        id: SupplierId,
+        supplier_name: str,
+        registered_company_name: str,
+        vendor_type: str,
+        category: str,
+        industry: str,
+        gstin: str,
+        supplier_code: Optional[str] = None,
+        main_material: Optional[str] = None,
+        rating: float = 0.0,
+        performance_score: float = 0.0,
+        address: Optional[SupplierAddress] = None,
+        contact: Optional[SupplierContact] = None,
+        bank_info: Optional[SupplierBankInfo] = None,
+        documents: Optional[List[SupplierDocument]] = None,
+        remarks: Optional[str] = None,
+        status: str = "Active",
+    ) -> "Supplier":
+        """Reconstruct Supplier aggregate from stored database rows."""
+        return Supplier(
+            id=id,
+            supplier_name=supplier_name,
+            registered_company_name=registered_company_name,
+            vendor_type=vendor_type,
+            category=category,
+            industry=industry,
+            gstin=gstin,
+            supplier_code=supplier_code,
+            main_material=main_material,
+            rating=rating,
+            performance_score=performance_score,
+            address=address,
+            contact=contact,
+            bank_info=bank_info,
+            documents=documents or [],
+            remarks=remarks,
+            status=status,
+        )

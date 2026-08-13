@@ -1,0 +1,183 @@
+# Full local stack for the post-migration architecture:
+#   React frontend -> auth-service (Java) for login
+#                  -> business-service (Python/FastAPI) for everything else,
+#                     validating JWTs locally against auth-service's JWKS.
+# business-service publishes domain events to Kafka via its outbox relay;
+# its own notification consumer subscribes back to those topics.
+#
+# Usage:
+#   docker compose up --build
+#   docker compose exec auth-service-migrate true      # (migrations run automatically, see below)
+#   docker compose exec business-service alembic upgrade head   # if not auto-applied
+
+x-business-env: &business-env
+  ENVIRONMENT: docker
+  LOG_LEVEL: INFO
+  LOG_JSON: "true"
+  DATABASE_URL: postgresql+asyncpg://ams_business:ams_business@postgres-business:5432/ams_business
+  AUTH_SERVICE_BASE_URL: http://auth-service:8080
+  JWT_JWKS_URL: http://auth-service:8080/.well-known/jwks.json
+  JWT_ISSUER: ams-auth-service
+  JWT_AUDIENCE: ams-business-service
+  KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  KAFKA_CLIENT_ID: business-service
+  KAFKA_TOPIC_PREFIX: ams
+  KAFKA_CONSUMER_GROUP: business-service-notification
+  REDIS_URL: redis://redis:6379/0
+  CORS_ALLOW_ORIGINS: '["http://localhost:5173"]'
+
+services:
+  # --------------------------------------------------------------------
+  # Databases — one per deployable unit, matching the original Phase 1
+  # "each service owns its own database" rule.
+  # --------------------------------------------------------------------
+  postgres-auth:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ams_auth
+      POSTGRES_USER: ams_auth
+      POSTGRES_PASSWORD: ams_auth
+    ports: ["5432:5432"]
+    volumes: [postgres-auth-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ams_auth"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-business:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ams_business
+      POSTGRES_USER: ams_business
+      POSTGRES_PASSWORD: ams_business
+    ports: ["5433:5432"]
+    volumes: [postgres-business-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ams_business"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --------------------------------------------------------------------
+  # Kafka (KRaft mode — no Zookeeper needed)
+  # --------------------------------------------------------------------
+  kafka:
+    image: bitnami/kafka:3.8
+    environment:
+      KAFKA_CFG_NODE_ID: 0
+      KAFKA_CFG_PROCESS_ROLES: controller,broker
+      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 0@kafka:9093
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    ports: ["9092:9092"]
+    volumes: [kafka-data:/bitnami/kafka]
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+
+  # --------------------------------------------------------------------
+  # auth-service (Java) — the only Java deployable unit
+  # --------------------------------------------------------------------
+  auth-service:
+    build:
+      context: .
+      dockerfile: backend/auth-service/Dockerfile
+    environment:
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_NAME: ams_auth
+      DB_USER: ams_auth
+      DB_PASSWORD: ams_auth
+    ports: ["8080:8080"]
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --------------------------------------------------------------------
+  # business-service (Python/FastAPI) — every business module
+  # --------------------------------------------------------------------
+  business-service-migrate:
+    build:
+      context: ./backend/business-service
+    environment: *business-env
+    depends_on:
+      postgres-business:
+        condition: service_healthy
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  business-service:
+    build:
+      context: ./backend/business-service
+    environment: *business-env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres-business:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      business-service-migrate:
+        condition: service_completed_successfully
+
+  # --------------------------------------------------------------------
+  # frontend (React/Vite)
+  # --------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_AUTH_SERVICE_URL: http://localhost:8080
+      VITE_BUSINESS_SERVICE_URL: http://localhost:8000
+    ports: ["5173:5173"]
+    depends_on: [auth-service, business-service]
+
+  # --------------------------------------------------------------------
+  # Observability
+  # --------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./deploy/docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports: ["4317:4317", "4318:4318"]
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    volumes:
+      - ./deploy/docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports: ["3000:3000"]
+    volumes: [grafana-data:/var/lib/grafana]
+
+volumes:
+  postgres-auth-data:
+  postgres-business-data:
+  kafka-data:
+  grafana-data:

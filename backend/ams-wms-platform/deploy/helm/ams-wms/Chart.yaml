@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ams-wms
+description: AMS/WMS platform — auth-service (Java) + business-service (Python/FastAPI)
+type: application
+version: 1.0.0
+appVersion: "2.0.0"

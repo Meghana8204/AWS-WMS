@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: business-service
+spec:
+  replicas: {{ .Values.businessService.replicas }}
+  selector:
+    matchLabels: { app: business-service }
+  template:
+    metadata:
+      labels: { app: business-service }
+    spec:
+      containers:
+        - name: business-service
+          image: "{{ .Values.businessService.image.repository }}:{{ .Values.businessService.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.businessService.port }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ .Values.kafka.bootstrapServers }}"
+            - name: REDIS_URL
+              value: "{{ .Values.redis.url }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: business-service
+spec:
+  selector: { app: business-service }
+  ports:
+    - port: {{ .Values.businessService.port }}
+      targetPort: {{ .Values.businessService.port }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: business-service-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: business-service
+  minReplicas: {{ .Values.businessService.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.businessService.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: {{ .Values.businessService.autoscaling.targetCpuUtilization }} }

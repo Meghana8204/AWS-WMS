@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.ams</groupId>
+    <artifactId>ams-wms-platform</artifactId>
+    <version>2.0.0</version>
+    <packaging>pom</packaging>
+
+    <!--
+        Post-migration parent POM. Business modules (warehouse-core,
+        logistics-returns, platform) have been retired from Java entirely -
+        their functionality now lives in backend/business-service (Python,
+        FastAPI). Java is kept ONLY for auth-service: authentication,
+        authorization, RBAC, JWT issuance, refresh tokens, user management,
+        and audit logging. See /docs/ARCHITECTURE.md and
+        /docs/MIGRATION_NOTES.md for the full rationale and history.
+    -->
+    <modules>
+        <module>common</module>
+        <module>auth-service</module>
+    </modules>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <spring-boot.version>3.4.1</spring-boot.version>
+        <jjwt.version>0.12.6</jjwt.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>
