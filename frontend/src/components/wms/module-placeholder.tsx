@@ -21,7 +21,7 @@ export function ModulePlaceholder({
       <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Button variant="outline" className="rounded-xl" asChild>
-          <Link to="/dashboard">Back to dashboard</Link>
+          <Link to="/warehouse-dashboard">Back to dashboard</Link>
         </Button>
         <Button className="rounded-xl shadow-glow" asChild>
           <Link to="/notifications">Go to arrivals</Link>

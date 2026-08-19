@@ -12,10 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AcceptArrivalRouteImport } from './routes/accept-arrival'
 import { Route as ArrivalSuccessRouteImport } from './routes/arrival-success'
-import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
-import { Route as FinanceApprovalRouteImport } from './routes/finance-approval'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
 import { Route as GateEntryRouteImport } from './routes/gate-entry'
 import { Route as GrnRouteImport } from './routes/grn'
@@ -33,15 +31,22 @@ import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
 import { Route as SupplierDashboardRouteImport } from './routes/supplier-dashboard'
 import { Route as VehicleQueueRouteImport } from './routes/vehicle-queue'
 import { Route as VehicleVerificationRouteImport } from './routes/vehicle-verification'
+import { Route as WarehouseDashboardRouteImport } from './routes/warehouse-dashboard'
+import { Route as FinanceApprovalsRouteImport } from './routes/finance.approvals'
 import { Route as ProcurementAsnsRouteImport } from './routes/procurement.asns'
-import { Route as ProcurementNewPoRouteImport } from './routes/procurement.new-po'
+import { Route as ProcurementMaterialRequestsRouteImport } from './routes/procurement.material-requests'
 import { Route as ProcurementNewRfqRouteImport } from './routes/procurement.new-rfq'
-import { Route as ProcurementPoDetailRouteImport } from './routes/procurement.po-detail'
 import { Route as ProcurementPurchaseOrdersRouteImport } from './routes/procurement.purchase-orders'
 import { Route as ProcurementQuotationsRouteImport } from './routes/procurement.quotations'
 import { Route as ProcurementRfqsRouteImport } from './routes/procurement.rfqs'
 import { Route as SupplierSupplierIdRouteImport } from './routes/supplier.$supplierId'
+import { Route as WarehouseMaterialRequestsRouteImport } from './routes/warehouse.material-requests'
+import { Route as FinanceApprovalsIndexRouteImport } from './routes/finance.approvals.index'
+import { Route as FinanceApprovalsApprovalIdRouteImport } from './routes/finance.approvals.$approvalId'
+import { Route as ProcurementAsnsIndexRouteImport } from './routes/procurement.asns.index'
+import { Route as ProcurementAsnsAsnIdRouteImport } from './routes/procurement.asns.$asnId'
 import { Route as SupplierAsnsNewRouteImport } from './routes/supplier.asns.new'
+import { Route as FinanceApprovalsCompareRfqIdRouteImport } from './routes/finance.approvals.compare.$rfqId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -58,11 +63,6 @@ const ArrivalSuccessRoute = ArrivalSuccessRouteImport.update({
   path: '/arrival-success',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DashboardRoute = DashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DockAssignmentRoute = DockAssignmentRouteImport.update({
   id: '/dock-assignment',
   path: '/dock-assignment',
@@ -71,11 +71,6 @@ const DockAssignmentRoute = DockAssignmentRouteImport.update({
 const DriverVerificationRoute = DriverVerificationRouteImport.update({
   id: '/driver-verification',
   path: '/driver-verification',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const FinanceApprovalRoute = FinanceApprovalRouteImport.update({
-  id: '/finance-approval',
-  path: '/finance-approval',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FinanceDashboardRoute = FinanceDashboardRouteImport.update({
@@ -163,24 +158,30 @@ const VehicleVerificationRoute = VehicleVerificationRouteImport.update({
   path: '/vehicle-verification',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WarehouseDashboardRoute = WarehouseDashboardRouteImport.update({
+  id: '/warehouse-dashboard',
+  path: '/warehouse-dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceApprovalsRoute = FinanceApprovalsRouteImport.update({
+  id: '/finance/approvals',
+  path: '/finance/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProcurementAsnsRoute = ProcurementAsnsRouteImport.update({
   id: '/procurement/asns',
   path: '/procurement/asns',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProcurementNewPoRoute = ProcurementNewPoRouteImport.update({
-  id: '/procurement/new-po',
-  path: '/procurement/new-po',
-  getParentRoute: () => rootRouteImport,
-} as any)
+const ProcurementMaterialRequestsRoute =
+  ProcurementMaterialRequestsRouteImport.update({
+    id: '/procurement/material-requests',
+    path: '/procurement/material-requests',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ProcurementNewRfqRoute = ProcurementNewRfqRouteImport.update({
   id: '/procurement/new-rfq',
   path: '/procurement/new-rfq',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProcurementPoDetailRoute = ProcurementPoDetailRouteImport.update({
-  id: '/procurement/po-detail',
-  path: '/procurement/po-detail',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ProcurementPurchaseOrdersRoute =
@@ -204,20 +205,51 @@ const SupplierSupplierIdRoute = SupplierSupplierIdRouteImport.update({
   path: '/supplier/$supplierId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WarehouseMaterialRequestsRoute =
+  WarehouseMaterialRequestsRouteImport.update({
+    id: '/warehouse/material-requests',
+    path: '/warehouse/material-requests',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const FinanceApprovalsIndexRoute = FinanceApprovalsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => FinanceApprovalsRoute,
+} as any)
+const FinanceApprovalsApprovalIdRoute =
+  FinanceApprovalsApprovalIdRouteImport.update({
+    id: '/$approvalId',
+    path: '/$approvalId',
+    getParentRoute: () => FinanceApprovalsRoute,
+  } as any)
+const ProcurementAsnsIndexRoute = ProcurementAsnsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProcurementAsnsRoute,
+} as any)
+const ProcurementAsnsAsnIdRoute = ProcurementAsnsAsnIdRouteImport.update({
+  id: '/$asnId',
+  path: '/$asnId',
+  getParentRoute: () => ProcurementAsnsRoute,
+} as any)
 const SupplierAsnsNewRoute = SupplierAsnsNewRouteImport.update({
   id: '/supplier/asns/new',
   path: '/supplier/asns/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FinanceApprovalsCompareRfqIdRoute =
+  FinanceApprovalsCompareRfqIdRouteImport.update({
+    id: '/compare/$rfqId',
+    path: '/compare/$rfqId',
+    getParentRoute: () => FinanceApprovalsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/accept-arrival': typeof AcceptArrivalRoute
   '/arrival-success': typeof ArrivalSuccessRoute
-  '/dashboard': typeof DashboardRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/driver-verification': typeof DriverVerificationRoute
-  '/finance-approval': typeof FinanceApprovalRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
@@ -235,24 +267,29 @@ export interface FileRoutesByFullPath {
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
-  '/procurement/asns': typeof ProcurementAsnsRoute
-  '/procurement/new-po': typeof ProcurementNewPoRoute
+  '/warehouse-dashboard': typeof WarehouseDashboardRoute
+  '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
+  '/procurement/asns': typeof ProcurementAsnsRouteWithChildren
+  '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
-  '/procurement/po-detail': typeof ProcurementPoDetailRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
+  '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
+  '/finance/approvals/': typeof FinanceApprovalsIndexRoute
+  '/procurement/asns/': typeof ProcurementAsnsIndexRoute
+  '/finance/approvals/compare/$rfqId': typeof FinanceApprovalsCompareRfqIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/accept-arrival': typeof AcceptArrivalRoute
   '/arrival-success': typeof ArrivalSuccessRoute
-  '/dashboard': typeof DashboardRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/driver-verification': typeof DriverVerificationRoute
-  '/finance-approval': typeof FinanceApprovalRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
@@ -270,25 +307,28 @@ export interface FileRoutesByTo {
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
-  '/procurement/asns': typeof ProcurementAsnsRoute
-  '/procurement/new-po': typeof ProcurementNewPoRoute
+  '/warehouse-dashboard': typeof WarehouseDashboardRoute
+  '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
-  '/procurement/po-detail': typeof ProcurementPoDetailRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
+  '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
+  '/finance/approvals': typeof FinanceApprovalsIndexRoute
+  '/procurement/asns': typeof ProcurementAsnsIndexRoute
+  '/finance/approvals/compare/$rfqId': typeof FinanceApprovalsCompareRfqIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/accept-arrival': typeof AcceptArrivalRoute
   '/arrival-success': typeof ArrivalSuccessRoute
-  '/dashboard': typeof DashboardRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/driver-verification': typeof DriverVerificationRoute
-  '/finance-approval': typeof FinanceApprovalRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
@@ -306,15 +346,22 @@ export interface FileRoutesById {
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
-  '/procurement/asns': typeof ProcurementAsnsRoute
-  '/procurement/new-po': typeof ProcurementNewPoRoute
+  '/warehouse-dashboard': typeof WarehouseDashboardRoute
+  '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
+  '/procurement/asns': typeof ProcurementAsnsRouteWithChildren
+  '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
-  '/procurement/po-detail': typeof ProcurementPoDetailRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
+  '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
+  '/finance/approvals/': typeof FinanceApprovalsIndexRoute
+  '/procurement/asns/': typeof ProcurementAsnsIndexRoute
+  '/finance/approvals/compare/$rfqId': typeof FinanceApprovalsCompareRfqIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -322,10 +369,8 @@ export interface FileRouteTypes {
     | '/'
     | '/accept-arrival'
     | '/arrival-success'
-    | '/dashboard'
     | '/dock-assignment'
     | '/driver-verification'
-    | '/finance-approval'
     | '/finance-dashboard'
     | '/gate-entry'
     | '/grn'
@@ -343,24 +388,29 @@ export interface FileRouteTypes {
     | '/supplier-dashboard'
     | '/vehicle-queue'
     | '/vehicle-verification'
+    | '/warehouse-dashboard'
+    | '/finance/approvals'
     | '/procurement/asns'
-    | '/procurement/new-po'
+    | '/procurement/material-requests'
     | '/procurement/new-rfq'
-    | '/procurement/po-detail'
     | '/procurement/purchase-orders'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/warehouse/material-requests'
+    | '/finance/approvals/$approvalId'
+    | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
+    | '/finance/approvals/'
+    | '/procurement/asns/'
+    | '/finance/approvals/compare/$rfqId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/accept-arrival'
     | '/arrival-success'
-    | '/dashboard'
     | '/dock-assignment'
     | '/driver-verification'
-    | '/finance-approval'
     | '/finance-dashboard'
     | '/gate-entry'
     | '/grn'
@@ -378,24 +428,27 @@ export interface FileRouteTypes {
     | '/supplier-dashboard'
     | '/vehicle-queue'
     | '/vehicle-verification'
-    | '/procurement/asns'
-    | '/procurement/new-po'
+    | '/warehouse-dashboard'
+    | '/procurement/material-requests'
     | '/procurement/new-rfq'
-    | '/procurement/po-detail'
     | '/procurement/purchase-orders'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/warehouse/material-requests'
+    | '/finance/approvals/$approvalId'
+    | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
+    | '/finance/approvals'
+    | '/procurement/asns'
+    | '/finance/approvals/compare/$rfqId'
   id:
     | '__root__'
     | '/'
     | '/accept-arrival'
     | '/arrival-success'
-    | '/dashboard'
     | '/dock-assignment'
     | '/driver-verification'
-    | '/finance-approval'
     | '/finance-dashboard'
     | '/gate-entry'
     | '/grn'
@@ -413,25 +466,30 @@ export interface FileRouteTypes {
     | '/supplier-dashboard'
     | '/vehicle-queue'
     | '/vehicle-verification'
+    | '/warehouse-dashboard'
+    | '/finance/approvals'
     | '/procurement/asns'
-    | '/procurement/new-po'
+    | '/procurement/material-requests'
     | '/procurement/new-rfq'
-    | '/procurement/po-detail'
     | '/procurement/purchase-orders'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/warehouse/material-requests'
+    | '/finance/approvals/$approvalId'
+    | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
+    | '/finance/approvals/'
+    | '/procurement/asns/'
+    | '/finance/approvals/compare/$rfqId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AcceptArrivalRoute: typeof AcceptArrivalRoute
   ArrivalSuccessRoute: typeof ArrivalSuccessRoute
-  DashboardRoute: typeof DashboardRoute
   DockAssignmentRoute: typeof DockAssignmentRoute
   DriverVerificationRoute: typeof DriverVerificationRoute
-  FinanceApprovalRoute: typeof FinanceApprovalRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   GateEntryRoute: typeof GateEntryRoute
   GrnRoute: typeof GrnRoute
@@ -449,14 +507,16 @@ export interface RootRouteChildren {
   SupplierDashboardRoute: typeof SupplierDashboardRoute
   VehicleQueueRoute: typeof VehicleQueueRoute
   VehicleVerificationRoute: typeof VehicleVerificationRoute
-  ProcurementAsnsRoute: typeof ProcurementAsnsRoute
-  ProcurementNewPoRoute: typeof ProcurementNewPoRoute
+  WarehouseDashboardRoute: typeof WarehouseDashboardRoute
+  FinanceApprovalsRoute: typeof FinanceApprovalsRouteWithChildren
+  ProcurementAsnsRoute: typeof ProcurementAsnsRouteWithChildren
+  ProcurementMaterialRequestsRoute: typeof ProcurementMaterialRequestsRoute
   ProcurementNewRfqRoute: typeof ProcurementNewRfqRoute
-  ProcurementPoDetailRoute: typeof ProcurementPoDetailRoute
   ProcurementPurchaseOrdersRoute: typeof ProcurementPurchaseOrdersRoute
   ProcurementQuotationsRoute: typeof ProcurementQuotationsRoute
   ProcurementRfqsRoute: typeof ProcurementRfqsRoute
   SupplierSupplierIdRoute: typeof SupplierSupplierIdRoute
+  WarehouseMaterialRequestsRoute: typeof WarehouseMaterialRequestsRoute
   SupplierAsnsNewRoute: typeof SupplierAsnsNewRoute
 }
 
@@ -483,13 +543,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArrivalSuccessRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dashboard': {
-      id: '/dashboard'
-      path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dock-assignment': {
       id: '/dock-assignment'
       path: '/dock-assignment'
@@ -502,13 +555,6 @@ declare module '@tanstack/react-router' {
       path: '/driver-verification'
       fullPath: '/driver-verification'
       preLoaderRoute: typeof DriverVerificationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/finance-approval': {
-      id: '/finance-approval'
-      path: '/finance-approval'
-      fullPath: '/finance-approval'
-      preLoaderRoute: typeof FinanceApprovalRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/finance-dashboard': {
@@ -630,6 +676,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof VehicleVerificationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/warehouse-dashboard': {
+      id: '/warehouse-dashboard'
+      path: '/warehouse-dashboard'
+      fullPath: '/warehouse-dashboard'
+      preLoaderRoute: typeof WarehouseDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/approvals': {
+      id: '/finance/approvals'
+      path: '/finance/approvals'
+      fullPath: '/finance/approvals'
+      preLoaderRoute: typeof FinanceApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/procurement/asns': {
       id: '/procurement/asns'
       path: '/procurement/asns'
@@ -637,11 +697,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProcurementAsnsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/procurement/new-po': {
-      id: '/procurement/new-po'
-      path: '/procurement/new-po'
-      fullPath: '/procurement/new-po'
-      preLoaderRoute: typeof ProcurementNewPoRouteImport
+    '/procurement/material-requests': {
+      id: '/procurement/material-requests'
+      path: '/procurement/material-requests'
+      fullPath: '/procurement/material-requests'
+      preLoaderRoute: typeof ProcurementMaterialRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/procurement/new-rfq': {
@@ -649,13 +709,6 @@ declare module '@tanstack/react-router' {
       path: '/procurement/new-rfq'
       fullPath: '/procurement/new-rfq'
       preLoaderRoute: typeof ProcurementNewRfqRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/procurement/po-detail': {
-      id: '/procurement/po-detail'
-      path: '/procurement/po-detail'
-      fullPath: '/procurement/po-detail'
-      preLoaderRoute: typeof ProcurementPoDetailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/procurement/purchase-orders': {
@@ -686,6 +739,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SupplierSupplierIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/warehouse/material-requests': {
+      id: '/warehouse/material-requests'
+      path: '/warehouse/material-requests'
+      fullPath: '/warehouse/material-requests'
+      preLoaderRoute: typeof WarehouseMaterialRequestsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance/approvals/': {
+      id: '/finance/approvals/'
+      path: '/'
+      fullPath: '/finance/approvals/'
+      preLoaderRoute: typeof FinanceApprovalsIndexRouteImport
+      parentRoute: typeof FinanceApprovalsRoute
+    }
+    '/finance/approvals/$approvalId': {
+      id: '/finance/approvals/$approvalId'
+      path: '/$approvalId'
+      fullPath: '/finance/approvals/$approvalId'
+      preLoaderRoute: typeof FinanceApprovalsApprovalIdRouteImport
+      parentRoute: typeof FinanceApprovalsRoute
+    }
+    '/procurement/asns/': {
+      id: '/procurement/asns/'
+      path: '/'
+      fullPath: '/procurement/asns/'
+      preLoaderRoute: typeof ProcurementAsnsIndexRouteImport
+      parentRoute: typeof ProcurementAsnsRoute
+    }
+    '/procurement/asns/$asnId': {
+      id: '/procurement/asns/$asnId'
+      path: '/$asnId'
+      fullPath: '/procurement/asns/$asnId'
+      preLoaderRoute: typeof ProcurementAsnsAsnIdRouteImport
+      parentRoute: typeof ProcurementAsnsRoute
+    }
     '/supplier/asns/new': {
       id: '/supplier/asns/new'
       path: '/supplier/asns/new'
@@ -693,17 +781,51 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SupplierAsnsNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/finance/approvals/compare/$rfqId': {
+      id: '/finance/approvals/compare/$rfqId'
+      path: '/compare/$rfqId'
+      fullPath: '/finance/approvals/compare/$rfqId'
+      preLoaderRoute: typeof FinanceApprovalsCompareRfqIdRouteImport
+      parentRoute: typeof FinanceApprovalsRoute
+    }
   }
 }
+
+interface FinanceApprovalsRouteChildren {
+  FinanceApprovalsApprovalIdRoute: typeof FinanceApprovalsApprovalIdRoute
+  FinanceApprovalsIndexRoute: typeof FinanceApprovalsIndexRoute
+  FinanceApprovalsCompareRfqIdRoute: typeof FinanceApprovalsCompareRfqIdRoute
+}
+
+const FinanceApprovalsRouteChildren: FinanceApprovalsRouteChildren = {
+  FinanceApprovalsApprovalIdRoute: FinanceApprovalsApprovalIdRoute,
+  FinanceApprovalsIndexRoute: FinanceApprovalsIndexRoute,
+  FinanceApprovalsCompareRfqIdRoute: FinanceApprovalsCompareRfqIdRoute,
+}
+
+const FinanceApprovalsRouteWithChildren =
+  FinanceApprovalsRoute._addFileChildren(FinanceApprovalsRouteChildren)
+
+interface ProcurementAsnsRouteChildren {
+  ProcurementAsnsAsnIdRoute: typeof ProcurementAsnsAsnIdRoute
+  ProcurementAsnsIndexRoute: typeof ProcurementAsnsIndexRoute
+}
+
+const ProcurementAsnsRouteChildren: ProcurementAsnsRouteChildren = {
+  ProcurementAsnsAsnIdRoute: ProcurementAsnsAsnIdRoute,
+  ProcurementAsnsIndexRoute: ProcurementAsnsIndexRoute,
+}
+
+const ProcurementAsnsRouteWithChildren = ProcurementAsnsRoute._addFileChildren(
+  ProcurementAsnsRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AcceptArrivalRoute: AcceptArrivalRoute,
   ArrivalSuccessRoute: ArrivalSuccessRoute,
-  DashboardRoute: DashboardRoute,
   DockAssignmentRoute: DockAssignmentRoute,
   DriverVerificationRoute: DriverVerificationRoute,
-  FinanceApprovalRoute: FinanceApprovalRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   GateEntryRoute: GateEntryRoute,
   GrnRoute: GrnRoute,
@@ -721,14 +843,16 @@ const rootRouteChildren: RootRouteChildren = {
   SupplierDashboardRoute: SupplierDashboardRoute,
   VehicleQueueRoute: VehicleQueueRoute,
   VehicleVerificationRoute: VehicleVerificationRoute,
-  ProcurementAsnsRoute: ProcurementAsnsRoute,
-  ProcurementNewPoRoute: ProcurementNewPoRoute,
+  WarehouseDashboardRoute: WarehouseDashboardRoute,
+  FinanceApprovalsRoute: FinanceApprovalsRouteWithChildren,
+  ProcurementAsnsRoute: ProcurementAsnsRouteWithChildren,
+  ProcurementMaterialRequestsRoute: ProcurementMaterialRequestsRoute,
   ProcurementNewRfqRoute: ProcurementNewRfqRoute,
-  ProcurementPoDetailRoute: ProcurementPoDetailRoute,
   ProcurementPurchaseOrdersRoute: ProcurementPurchaseOrdersRoute,
   ProcurementQuotationsRoute: ProcurementQuotationsRoute,
   ProcurementRfqsRoute: ProcurementRfqsRoute,
   SupplierSupplierIdRoute: SupplierSupplierIdRoute,
+  WarehouseMaterialRequestsRoute: WarehouseMaterialRequestsRoute,
   SupplierAsnsNewRoute: SupplierAsnsNewRoute,
 }
 export const routeTree = rootRouteImport

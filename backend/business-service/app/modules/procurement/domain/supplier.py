@@ -29,7 +29,8 @@ class SupplierAddress:
 @dataclass(frozen=True)
 class SupplierContact:
     primary_contact_name: str
-    email: str
+    primary_email: str
+    secondary_email: Optional[str] = None
     designation: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
@@ -37,8 +38,8 @@ class SupplierContact:
     def __post_init__(self) -> None:
         if not self.primary_contact_name or not str(self.primary_contact_name).strip():
             raise DomainRuleViolationException("Primary Contact Name is mandatory and cannot be empty")
-        if not self.email or not str(self.email).strip():
-            raise DomainRuleViolationException("Email is mandatory and cannot be empty")
+        if not self.primary_email or not str(self.primary_email).strip():
+            raise DomainRuleViolationException("Primary Email is mandatory and cannot be empty")
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,7 @@ class Supplier(AggregateRoot):
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
-        main_material: Optional[str] = None,
+        main_materials: Optional[List[str]] = None,
         rating: float = 0.0,
         performance_score: float = 0.0,
         address: Optional[SupplierAddress] = None,
@@ -127,7 +128,7 @@ class Supplier(AggregateRoot):
         self.industry = industry
         self.gstin = gstin
         self.supplier_code = supplier_code
-        self.main_material = main_material
+        self.main_materials = main_materials or []
         self.rating = rating
         self.performance_score = performance_score
         self.address = address
@@ -136,6 +137,49 @@ class Supplier(AggregateRoot):
         self.documents = documents or []
         self.remarks = remarks
         self.status = status
+
+    def update(
+        self,
+        supplier_name: Optional[str] = None,
+        registered_company_name: Optional[str] = None,
+        vendor_type: Optional[str] = None,
+        category: Optional[str] = None,
+        industry: Optional[str] = None,
+        gstin: Optional[str] = None,
+        main_materials: Optional[List[str]] = None,
+        address: Optional[SupplierAddress] = None,
+        contact: Optional[SupplierContact] = None,
+        bank_info: Optional[SupplierBankInfo] = None,
+        remarks: Optional[str] = None,
+    ) -> None:
+        if supplier_name is not None:
+            self.supplier_name = supplier_name.strip()
+        if registered_company_name is not None:
+            self.registered_company_name = registered_company_name.strip()
+        if vendor_type is not None:
+            self.vendor_type = vendor_type.strip()
+        if category is not None:
+            self.category = category.strip()
+        if industry is not None:
+            self.industry = industry.strip()
+        if gstin is not None:
+            self.gstin = gstin.strip()
+        if main_materials is not None:
+            self.main_materials = main_materials
+        if address is not None:
+            self.address = address
+        if contact is not None:
+            self.contact = contact
+        if bank_info is not None:
+            self.bank_info = bank_info
+        if remarks is not None:
+            self.remarks = remarks.strip() if remarks else None
+
+    def block(self) -> None:
+        self.status = "Blocked"
+
+    def unblock(self) -> None:
+        self.status = "Active"
 
     @staticmethod
     def create(
@@ -146,7 +190,7 @@ class Supplier(AggregateRoot):
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
-        main_material: Optional[str] = None,
+        main_materials: Optional[List[str]] = None,
         address: Optional[SupplierAddress] = None,
         contact: Optional[SupplierContact] = None,
         bank_info: Optional[SupplierBankInfo] = None,
@@ -175,7 +219,7 @@ class Supplier(AggregateRoot):
             industry=industry.strip(),
             gstin=gstin.strip(),
             supplier_code=supplier_code,
-            main_material=main_material,
+            main_materials=main_materials or [],
             rating=0.0,
             performance_score=0.0,
             address=address,
@@ -209,7 +253,7 @@ class Supplier(AggregateRoot):
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
-        main_material: Optional[str] = None,
+        main_materials: Optional[List[str]] = None,
         rating: float = 0.0,
         performance_score: float = 0.0,
         address: Optional[SupplierAddress] = None,
@@ -229,7 +273,7 @@ class Supplier(AggregateRoot):
             industry=industry,
             gstin=gstin,
             supplier_code=supplier_code,
-            main_material=main_material,
+            main_materials=main_materials or [],
             rating=rating,
             performance_score=performance_score,
             address=address,

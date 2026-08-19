@@ -31,11 +31,6 @@ function LoginPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [rememberMe, setRememberMe] = React.useState(false);
 
-  // Password reset flow
-  const [mustReset, setMustReset] = React.useState(false);
-  const [newPassword, setNewPassword] = React.useState("");
-  const [confirmNewPassword, setConfirmNewPassword] = React.useState("");
-
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId || !password) {
@@ -46,50 +41,9 @@ function LoginPage() {
     setIsLoading(true);
     try {
       const data = await api.login(employeeId, password);
-
-      if (data.mustChangePassword) {
-        setMustReset(true);
-        toast.info("First login detected. Please change your password for security.");
-        return;
-      }
-
       completeAuthentication(data);
     } catch (error: any) {
       toast.error(error.message || "Login failed. Please check your credentials.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword || !confirmNewPassword) {
-      toast.error("Please fill in both password fields");
-      return;
-    }
-    if (newPassword !== confirmNewPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast.error("Password must be at least 6 characters long");
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      await api.changePassword({
-        username: employeeId,
-        old_password: password,
-        new_password: newPassword,
-      });
-
-      toast.success("Password changed successfully! Logging in...");
-      // Re-login with new password
-      const data = await api.login(employeeId, newPassword);
-      completeAuthentication(data);
-    } catch (error: any) {
-      toast.error("Failed to update password: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -100,23 +54,33 @@ function LoginPage() {
     const isSupplier = data.roles?.includes("SUPPLIER");
     const isProcurement = data.roles?.includes("PROCUREMENT");
     const isFinance = data.roles?.includes("FINANCE");
+    const isGate = data.roles?.includes("GATE_SECURITY");
 
-    let targetPath = "/dashboard";
+    let targetPath = "/warehouse-dashboard";
     if (isSupplier) {
       targetPath = redirect || "/submit-quotation";
     } else if (isProcurement) {
       targetPath = redirect || "/procurement-dashboard";
     } else if (isFinance) {
       targetPath = redirect || "/finance-dashboard";
+    } else if (isGate) {
+      targetPath = redirect || "/gate-entry";
     } else {
-      targetPath = redirect || "/dashboard";
+      targetPath = redirect || "/warehouse-dashboard";
     }
 
     setTimeout(() => {
       if (targetPath.startsWith("http")) {
         window.location.href = targetPath;
       } else {
-        navigate({ to: targetPath });
+        // Robustly handle redirects with query strings
+        const [path, queryString] = targetPath.split("?");
+        if (queryString) {
+          const searchParams = Object.fromEntries(new URLSearchParams(queryString));
+          navigate({ to: path as any, search: searchParams });
+        } else {
+          navigate({ to: path as any });
+        }
       }
     }, 500);
   };
@@ -186,125 +150,78 @@ function LoginPage() {
               </div>
             </div>
             <h2 className="text-3xl font-bold tracking-tight">
-              {mustReset ? "Reset Password" : "Staff Login"}
+              Staff Login
             </h2>
             <p className="text-sm text-muted-foreground">
-              {mustReset
-                ? "Configure a secure permanent password to proceed."
-                : "Enter your credentials to access the management console."}
+              Enter your credentials to access the management console.
             </p>
           </div>
 
-          {mustReset ? (
-            <form onSubmit={handleResetPassword} className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="space-y-2">
-                <Label htmlFor="newPassword">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground size-4" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmNewPassword">Confirm New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="confirmNewPassword"
-                    type="password"
-                    placeholder="••••••••"
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    required
-                  />
-                  <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground size-4" />
-                </div>
-              </div>
-
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Change Password & Login"
-                )}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="employeeId">Employee ID / Username</Label>
-                <Input
-                  id="employeeId"
-                  placeholder="EMP-001 or supplier_acme"
-                  value={employeeId}
-                  onChange={(e) => setEmployeeId(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">Password</Label>
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    className="text-sm font-medium text-primary hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="remember"
-                  checked={rememberMe}
-                  onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                />
-                <Label
-                  htmlFor="remember"
-                  className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="employeeId">Employee ID / Username</Label>
+              <Input
+                id="employeeId"
+                placeholder="EMP-001 or supplier_acme"
+                value={employeeId}
+                onChange={(e) => setEmployeeId(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-sm font-medium text-primary hover:underline"
                 >
-                  Remember me on this device
-                </Label>
+                  Forgot password?
+                </button>
               </div>
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  "Sign In"
-                )}
-              </Button>
-            </form>
-          )}
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="remember"
+                checked={rememberMe}
+                onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+              />
+              <Label
+                htmlFor="remember"
+                className="text-sm font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Remember me on this device
+              </Label>
+            </div>
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                "Sign In"
+              )}
+            </Button>
+          </form>
 
           <div className="mt-8 pt-8 border-t border-border text-center">
             <p className="text-xs text-muted-foreground">

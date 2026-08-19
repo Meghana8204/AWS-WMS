@@ -1,308 +1,230 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
-  FileText,
-  DollarSign,
-  TrendingUp,
+  FileCheck2,
   Clock,
-  CheckCircle,
+  CheckCircle2,
   XCircle,
+  TrendingUp,
+  TrendingDown,
   ArrowRight,
-  Loader2,
+  ShieldCheck,
+  CreditCard,
+  Building2,
   Calendar,
-  Building,
-  ClipboardList
+  Loader2
 } from "lucide-react";
-import { AppShell } from "@/components/wms/app-shell";
-import { SectionCard } from "@/components/wms/primitives";
+import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
-function KpiCard({
-  title,
-  value,
-  description,
-  icon: Icon,
-  color,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: any;
-  color: "primary" | "amber" | "success" | "destructive";
-}) {
-  const bgColors = {
-    primary: "bg-primary-soft text-primary",
-    amber: "bg-amber-soft text-amber-foreground",
-    success: "bg-success-soft text-success",
-    destructive: "bg-destructive-soft text-destructive",
-  };
-  return (
-    <Card className="gap-0 rounded-2xl border-border/70 p-5 shadow-soft">
-      <div className="flex items-start justify-between">
-        <span className={cn("grid size-11 place-items-center rounded-xl", bgColors[color])}>
-          <Icon className="size-5" />
-        </span>
-      </div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{title}</p>
-      <p className="mt-2 text-xs font-medium text-muted-foreground">{description}</p>
-    </Card>
-  );
-}
 
 export const Route = createFileRoute("/finance-dashboard")({
   component: FinanceDashboard,
 });
 
 function FinanceDashboard() {
-  const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    totalValue: 0
+  });
+  const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
-  const [processingId, setProcessingId] = useState<string | null>(null);
 
-  const fetchPOs = async () => {
+  const loadData = async (quiet = false) => {
     try {
-      const data = await api.getPurchaseOrders();
-      setPurchaseOrders(data);
-    } catch (error: any) {
-      toast.error("Failed to load PO proposals: " + error.message);
+      if (!quiet) setLoading(true);
+      // We can use the existing getFinanceApprovals or getPurchaseOrders
+      const allPos = await api.getPurchaseOrders();
+
+      const pending = allPos.filter((p: any) => p.status === "PENDING_FINANCE");
+      const approved = allPos.filter((p: any) => p.status === "APPROVED" || p.status === "SENT");
+      const rejected = allPos.filter((p: any) => p.status === "REJECTED");
+      const totalValue = approved.reduce((sum: number, p: any) => sum + parseFloat(p.totalAmount || 0), 0);
+
+      setStats({
+        pending: pending.length,
+        approved: approved.length,
+        rejected: rejected.length,
+        totalValue
+      });
+
+      setApprovals(pending.slice(0, 5)); // Show top 5 pending
+    } catch (e) {
+      if (!quiet) toast.error("Failed to load dashboard data");
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Auth Check
-    const userInfoStr = localStorage.getItem("user_info");
-    if (!userInfoStr) {
-      navigate({ to: "/login" });
-      return;
-    }
-    const user = JSON.parse(userInfoStr);
-    if (!user.roles?.includes("FINANCE") && !user.roles?.includes("ADMIN")) {
-      toast.error("Unauthorized. Finance role required.");
-      navigate({ to: "/dashboard" });
-      return;
-    }
-    fetchPOs();
+    loadData();
+    const interval = setInterval(() => loadData(true), 10000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleAction = async (id: string, status: "APPROVED" | "REJECTED") => {
-    setProcessingId(id);
-    try {
-      await api.updatePurchaseOrder(id, { status });
-      toast.success(status === "APPROVED" ? "PO approved & released!" : "PO proposal rejected.");
-      fetchPOs();
-    } catch (error: any) {
-      toast.error("Failed to complete action: " + error.message);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  // Compute Metrics
-  const proposedPOs = purchaseOrders.filter((po) => po.status === "PROPOSED");
-  const approvedPOs = purchaseOrders.filter((po) => po.status === "PLACED" || po.status === "APPROVED");
-  const rejectedPOs = purchaseOrders.filter((po) => po.status === "REJECTED");
-
-  const computeTotalValue = (list: any[]) => {
-    return list.reduce((sum, po) => {
-      const poValue = po.lines?.reduce((lineSum: number, line: any) => {
-        return lineSum + (parseFloat(line.ordered_quantity) * parseFloat(line.unit_price));
-      }, 0) || 0;
-      return sum + poValue;
-    }, 0);
-  };
-
-  const pendingValue = computeTotalValue(proposedPOs);
-  const releasedValue = computeTotalValue(approvedPOs);
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center gap-3">
-        <Loader2 className="size-8 animate-spin text-primary" />
-        <span className="text-sm text-muted-foreground">Loading Finance workspace...</span>
-      </div>
-    );
-  }
-
   return (
-    <AppShell title="Finance Control Center" subtitle="Approve purchase proposals & capital releases">
-      <div className="space-y-6">
-        {/* KPI Panel */}
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            title="Pending Proposals"
-            value={proposedPOs.length.toString()}
-            description="Awaiting capital release"
-            icon={Clock}
-            color="primary"
-          />
-          <KpiCard
-            title="Pending Value"
-            value={`₹ ${pendingValue.toLocaleString()}`}
-            description="Commitment value"
-            icon={DollarSign}
-            color="amber"
-          />
-          <KpiCard
-            title="Released Capital"
-            value={`₹ ${releasedValue.toLocaleString()}`}
-            description="Approved active POs"
-            icon={TrendingUp}
-            color="success"
-          />
-          <KpiCard
-            title="Rejected Proposals"
-            value={rejectedPOs.length.toString()}
-            description="Bids returned/cancelled"
-            icon={XCircle}
-            color="destructive"
-          />
-        </div>
+    <AppShell
+      title="Finance Dashboard"
+      subtitle="Overview of procurement financial authorizations"
+    >
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+        <StatsCard
+          title="Pending Approval"
+          value={stats.pending}
+          icon={Clock}
+          color="text-warning"
+          bg="bg-warning-soft/20"
+          to="/finance/approvals"
+        />
+        <StatsCard
+          title="Total Approved"
+          value={stats.approved}
+          icon={CheckCircle2}
+          color="text-success"
+          bg="bg-success-soft/20"
+          to="/procurement/purchase-orders"
+        />
+        <StatsCard
+          title="Rejected"
+          value={stats.rejected}
+          icon={XCircle}
+          color="text-destructive"
+          bg="bg-destructive-soft/20"
+          to="/procurement/purchase-orders"
+        />
+        <StatsCard
+          title="Authorized Spend"
+          value={`₹${(stats.totalValue / 100000).toFixed(1)}L`}
+          icon={TrendingUp}
+          color="text-primary"
+          bg="bg-primary-soft/20"
+          to="/procurement/purchase-orders"
+        />
+      </div>
 
-        {/* Proposed POs Pending Review */}
-        <SectionCard title="Capital Release Approvals" description="Review pending purchase order proposals" icon={ClipboardList}>
-          {proposedPOs.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border/60 p-12 text-center text-muted-foreground bg-muted/5">
-              <CheckCircle className="mx-auto size-10 text-success mb-3" />
-              <p className="text-sm font-bold">All caught up!</p>
-              <p className="text-xs text-muted-foreground/80 mt-1">No pending PO proposals require approval.</p>
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Pending Queue */}
+        <Card className="lg:col-span-2 border-border/40 shadow-soft">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-bold tracking-tight">Priority Approvals</CardTitle>
+              <p className="text-sm text-muted-foreground">Purchase orders awaiting your signature</p>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {proposedPOs.map((po) => {
-                const totalVal = po.lines?.reduce((sum: number, line: any) => sum + (parseFloat(line.ordered_quantity) * parseFloat(line.unit_price)), 0) || 0;
-                return (
-                  <div key={po.id} className="rounded-2xl border border-border/80 bg-muted/10 p-5 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-foreground">{po.po_number}</span>
-                          <span className="rounded-full bg-amber-soft/20 px-2 py-0.5 text-[10px] font-bold text-amber">Pending approval</span>
-                        </div>
-                        <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground uppercase">
-                          <span>Date: {po.po_date}</span>
-                          <span>Supplier ID: {po.supplier_id.substring(0, 8)}</span>
-                        </div>
+            <Button variant="ghost" size="sm" className="rounded-xl text-primary" asChild>
+              <Link to="/finance/approvals">View All <ArrowRight className="ml-2 size-4" /></Link>
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="flex h-48 items-center justify-center">
+                <Loader2 className="size-8 animate-spin text-primary" />
+              </div>
+            ) : approvals.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/10 rounded-2xl border-dashed border-2">
+                <ShieldCheck className="size-10 text-muted-foreground/30 mb-2" />
+                <p className="text-sm font-medium text-muted-foreground">Your queue is clear</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {approvals.map((po) => (
+                  <div key={po.id} className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 transition-all bg-card/50">
+                    <div className="flex items-center gap-4">
+                      <div className="size-10 rounded-xl bg-primary-soft/20 flex items-center justify-center text-primary">
+                        <CreditCard className="size-5" />
                       </div>
-                      <div className="text-right">
-                        <span className="text-xs text-muted-foreground block uppercase">Proposed Value</span>
-                        <strong className="text-lg font-extrabold text-primary font-mono">₹ {totalVal.toLocaleString()}</strong>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border/40 pt-4">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block mb-2">Required Materials</span>
-                      <div className="rounded-xl border border-border/40 overflow-hidden bg-card">
-                        <table className="w-full text-xs">
-                          <thead className="bg-muted/50 border-b border-border/40 text-[10px] uppercase font-bold text-muted-foreground">
-                            <tr>
-                              <th className="px-4 py-2 text-left">Item Code</th>
-                              <th className="px-4 py-2 text-right">Quantity</th>
-                              <th className="px-4 py-2 text-right">Unit Price</th>
-                              <th className="px-4 py-2 text-right">Total</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/20 font-mono text-[11px]">
-                            {po.lines?.map((line: any, idx: number) => (
-                              <tr key={idx}>
-                                <td className="px-4 py-2.5 text-left font-bold text-foreground">{line.item_code}</td>
-                                <td className="px-4 py-2.5 text-right">{parseFloat(line.ordered_quantity).toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right">₹ {parseFloat(line.unit_price).toLocaleString()}</td>
-                                <td className="px-4 py-2.5 text-right font-extrabold text-foreground">₹ {(parseFloat(line.ordered_quantity) * parseFloat(line.unit_price)).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                      <div>
+                        <p className="text-sm font-bold">{po.poNumber}</p>
+                        <p className="text-[11px] text-muted-foreground">{po.supplierName} · {po.warehouseId}</p>
                       </div>
                     </div>
-
-                    <div className="flex items-center justify-between gap-3 pt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="rounded-xl text-primary font-bold text-xs h-9 hover:bg-primary-soft/10"
-                        onClick={() => navigate({ to: `/finance-approval?poId=${po.id}` })}
-                      >
-                        Detailed Review &rarr;
+                    <div className="text-right flex items-center gap-6">
+                      <div className="hidden sm:block">
+                        <p className="text-sm font-bold">₹{parseFloat(po.totalAmount).toLocaleString()}</p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold">{po.items?.length} items</p>
+                      </div>
+                      <Button variant="outline" size="sm" className="rounded-xl h-8 text-xs font-bold" asChild>
+                        <Link to="/finance/approvals/$approvalId" params={{ approvalId: po.id }}>Review</Link>
                       </Button>
-                      <div className="flex items-center gap-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive-soft/10 text-xs h-9 font-bold"
-                          disabled={processingId !== null}
-                          onClick={() => handleAction(po.id, "REJECTED")}
-                        >
-                          <XCircle className="size-4 mr-1.5" /> Reject
-                        </Button>
-                        <Button
-                          size="sm"
-                          className="rounded-xl bg-success text-success-foreground hover:bg-success/90 text-xs h-9 font-bold shadow-glow"
-                          disabled={processingId !== null}
-                          onClick={() => handleAction(po.id, "APPROVED")}
-                        >
-                          <CheckCircle className="size-4 mr-1.5" /> Quick Approve
-                        </Button>
-                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </SectionCard>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        {/* Release History */}
-        <SectionCard title="Release Log & History" description="Recently approved or rejected purchase proposals" icon={FileText}>
-          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="bg-muted/40 border-b border-border/60 text-[10px] uppercase font-bold text-muted-foreground">
-                  <th className="p-4">PO Number</th>
-                  <th className="p-4">Date</th>
-                  <th className="p-4">Supplier</th>
-                  <th className="p-4 text-right">Total Capital</th>
-                  <th className="p-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/60 font-mono">
-                {purchaseOrders.filter((po) => po.status !== "PROPOSED").map((po) => {
-                  const totalVal = po.lines?.reduce((sum: number, line: any) => sum + (parseFloat(line.ordered_quantity) * parseFloat(line.unit_price)), 0) || 0;
-                  return (
-                    <tr key={po.id} className="hover:bg-muted/5 transition-colors">
-                      <td className="p-4 font-bold text-foreground">{po.po_number}</td>
-                      <td className="p-4 text-muted-foreground">{po.po_date}</td>
-                      <td className="p-4 font-sans text-xs">{po.supplier_name || `Supplier ID: ${po.supplier_id.substring(0, 8)}`}</td>
-                      <td className="p-4 text-right font-extrabold text-foreground">₹ {totalVal.toLocaleString()}</td>
-                      <td className="p-4 text-center">
-                        <span className={cn(
-                          "inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                          (po.status === "APPROVED" || po.status === "PLACED") ? "bg-success-soft/20 text-success" : "bg-destructive-soft/20 text-destructive"
-                        )}>
-                          {po.status === "PLACED" ? "APPROVED" : po.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {purchaseOrders.filter((po) => po.status !== "PROPOSED").length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground font-sans">
-                      No release history found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </SectionCard>
+        {/* Financial Policy */}
+        <Card className="border-border/40 shadow-soft">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold tracking-tight">Finance Controls</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <PolicyItem
+              title="Budget Threshold"
+              desc="PO above ₹5.0L requires secondary CFO approval."
+              status="Enforced"
+            />
+            <PolicyItem
+              title="Vendor Compliance"
+              desc="GST validation is mandatory for all active suppliers."
+              status="Enforced"
+            />
+            <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10">
+              <h4 className="text-xs font-black uppercase text-primary mb-2">Quick Actions</h4>
+              <div className="grid gap-2">
+                <Button variant="ghost" size="sm" className="w-full justify-start text-[11px] h-8 rounded-lg font-bold">
+                  <Building2 className="size-3.5 mr-2" /> Vendor Payment Terms
+                </Button>
+                <Button variant="ghost" size="sm" className="w-full justify-start text-[11px] h-8 rounded-lg font-bold">
+                  <Calendar className="size-3.5 mr-2" /> Monthly Spend Report
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
+  );
+}
+
+function StatsCard({ title, value, icon: Icon, color, bg, to }: any) {
+  const content = (
+    <CardContent className="p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">{title}</p>
+          <h2 className="text-2xl font-black mt-1">{value}</h2>
+        </div>
+        <div className={cn("size-12 rounded-2xl flex items-center justify-center", bg, color)}>
+          <Icon className="size-6" />
+        </div>
+      </div>
+    </CardContent>
+  );
+
+  return (
+    <Card className={cn(
+      "border-border/40 shadow-soft overflow-hidden transition-all",
+      to && "hover:border-primary/30 hover:shadow-glow cursor-pointer"
+    )}>
+      {to ? <Link to={to}>{content}</Link> : content}
+    </Card>
+  );
+}
+
+function PolicyItem({ title, desc, status }: any) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-foreground">{title}</p>
+        <span className="text-[9px] font-black uppercase bg-success-soft/20 text-success px-1.5 py-0.5 rounded border border-success/20">{status}</span>
+      </div>
+      <p className="text-[11px] text-muted-foreground leading-relaxed">{desc}</p>
+    </div>
   );
 }

@@ -40,7 +40,7 @@ from app.modules.procurement.application.repository import (
     RFQRepositoryProtocol,
 )
 from app.modules.procurement.domain.arrival_notification import ArrivalNotification
-from app.modules.procurement.domain.attachment import PurchaseOrderAttachment
+from app.modules.procurement.domain.attachment import PurchaseOrderAttachment as ASNAttachment
 from app.modules.procurement.domain.delivery_details import DeliveryDetails
 from app.modules.procurement.domain.events import (
     ArrivalNotificationDispatchedEvent,
@@ -699,6 +699,19 @@ class SubmitASNUseCase:
             for it in command.items
         ]
 
+        attachments = [
+            ASNAttachment.create(
+                filename=att.filename,
+                file_type=att.file_type,
+                file_path=f"attachments/asns/{att.attachment_id}_{att.filename}",
+                file_size_bytes=att.file_size_bytes,
+                category=att.category,
+                attachment_id=uuid.UUID(att.attachment_id) if att.attachment_id else None,
+                created_at=att.created_at,
+            )
+            for att in (command.attachments or [])
+        ]
+
         asn = SupplierASN.create(
             po_id=command.po_id,
             po_number=command.po_number,
@@ -710,6 +723,7 @@ class SubmitASNUseCase:
             tracking_number=command.tracking_number,
             vehicle_number=command.vehicle_number,
             items=items,
+            attachments=attachments,
             shipped_date=command.shipped_date,
             driver_name=command.driver_name,
             driver_phone=command.driver_phone,

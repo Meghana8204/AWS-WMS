@@ -31,6 +31,10 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
   // Tracking # (LR #)
   const [trackingNumber, setTrackingNumber] = useState<string>('LR-2026-9921')
 
+  // Attachments
+  const [attachments, setAttachments] = useState<any[]>([])
+  const [uploading, setUploading] = useState(false)
+
   // Line items
   const [items, setItems] = useState<any[]>([
     {
@@ -84,11 +88,27 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
     }
   }
 
-  function handleQuantityChange(index: number, val: number) {
-    const next = [...items]
-    next[index].shipped_quantity = val
-    setItems(next)
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    setError(null)
+    try {
+      // @ts-ignore - Assuming procurementApi has uploadASNAttachment from my update to api-client.ts
+      const uploaded = await procurementApi.uploadASNAttachment(file)
+      setAttachments((prev) => [...prev, uploaded])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload attachment')
+    } finally {
+      setUploading(false)
+    }
   }
+
+  function removeAttachment(id: string) {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }
+
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -120,6 +140,7 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
         package_type: packageType,
         shipping_method: shippingMethod,
         tracking_number: trackingNumber,
+        attachments,
         items,
       }
 
@@ -253,6 +274,7 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
                 <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>1. Shipment Date *</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={shipmentDate}
                   onChange={(e) => setShipmentDate(e.target.value)}
                   style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
@@ -265,6 +287,7 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
                 <label style={{ fontSize: '12px', fontWeight: 700, color: '#0f172a', display: 'block', marginBottom: '4px' }}>2. Expected Arrival Date *</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={expectedArrivalDate}
                   onChange={(e) => setExpectedArrivalDate(e.target.value)}
                   style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px' }}
@@ -372,11 +395,85 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
             </div>
           </div>
 
+          {/* SECTION: ATTACHMENTS (Real-time Upload) */}
+          <div>
+            <div style={{ borderBottom: '2px solid #10b981', paddingBottom: '6px', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                3. Shipping Documents & Attachments
+              </h3>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '10px', padding: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+                <label
+                  style={{
+                    background: '#0ea5e9',
+                    color: 'white',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    display: 'inline-block',
+                    opacity: uploading ? 0.6 : 1,
+                  }}
+                >
+                  {uploading ? '⌛ Uploading...' : '📎 Upload Document (Real-time)'}
+                  <input
+                    type="file"
+                    onChange={handleFileUpload}
+                    disabled={uploading}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Upload Lorry Receipt (LR), Packing List, or Quality Reports. Files are saved to backend immediately.
+                </span>
+              </div>
+
+              {attachments.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {attachments.map((att) => (
+                    <div
+                      key={att.id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: 'white',
+                        border: '1px solid #e2e8f0',
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '16px' }}>📄</span>
+                        <div>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b' }}>{att.filename}</div>
+                          <div style={{ fontSize: '11px', color: '#64748b' }}>
+                            {(att.file_size_bytes / 1024).toFixed(1)} KB • {att.category}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(att.id)}
+                        style={{ background: 'transparent', border: 'none', color: '#ef4444', fontSize: '18px', cursor: 'pointer' }}
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* SECTION 3: SHIPPED LINE ITEMS */}
           <div>
             <div style={{ borderBottom: '2px solid #10b981', paddingBottom: '6px', marginBottom: '14px' }}>
               <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                3. Shipped Line Items
+                4. Shipped Line Items
               </h3>
             </div>
 
@@ -403,26 +500,20 @@ export default function CreateASNModal({ initialPoNumber, onClose, onSuccess }: 
                         </span>
                       </td>
                       <td style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 600, color: '#475569' }}>
-                        {item.ordered_quantity}
+                        {Math.floor(item.ordered_quantity)}
                       </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <input
-                          type="number"
-                          min="1"
-                          max={item.ordered_quantity}
-                          value={item.shipped_quantity}
-                          onChange={(e) => handleQuantityChange(idx, Number(e.target.value))}
-                          style={{
-                            width: '100%',
-                            padding: '6px 10px',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                            textAlign: 'right',
-                            fontWeight: 800,
-                            color: '#059669',
-                          }}
-                          required
-                        />
+                      <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                        <div style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          fontWeight: 800,
+                          color: '#059669',
+                          fontSize: '13px'
+                        }}>
+                          {item.shipped_quantity}
+                        </div>
                       </td>
                     </tr>
                   ))}

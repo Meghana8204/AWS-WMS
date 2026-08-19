@@ -19,7 +19,7 @@ from app.logging.logger import get_logger
 from app.modules.procurement.domain.arrival_notification import ArrivalNotification, ArrivalNotificationStatus
 from app.modules.procurement.domain.events import ArrivalNotificationDispatchedEvent
 from app.modules.procurement.domain.supplier_asn import ASNStatus
-from app.modules.procurement.infrastructure.persistence.models import ArrivalNotificationModel, SupplierASNModel
+from app.modules.procurement.infrastructure.persistence.models import ArrivalNotificationModel, AsnModel, SupplierModel
 
 logger = get_logger(__name__)
 
@@ -34,35 +34,44 @@ async def check_arrival_notifications_once() -> int:
 
 async def process_arrival_alerts(session: AsyncSession) -> int:
     today = date.today()
-    stmt = select(SupplierASNModel).where(
-        SupplierASNModel.status.in_([ASNStatus.SUBMITTED.value, ASNStatus.IN_TRANSIT.value])
+    # Join with Supplier to get names, po_number is directly on AsnModel
+    stmt = (
+        select(AsnModel, AsnModel.po_number, SupplierModel.supplier_name)
+        .outerjoin(SupplierModel, AsnModel.supplier_id == SupplierModel.id)
+        .where(AsnModel.status.in_(["SUBMITTED", "IN_TRANSIT"]))
     )
     result = await session.execute(stmt)
-    asns: Sequence[SupplierASNModel] = result.scalars().all()
+    rows = result.all()
 
     alerts_generated = 0
 
-    for asn in asns:
-        days_until_arrival = (asn.expected_arrival_date - today).days
+    for asn, po_number, supplier_name in rows:
+        if not asn.expected_arrival_at:
+            continue
+
+        days_until_arrival = (asn.expected_arrival_at.date() - today).days
 
         recipients = []
         alert_type = None
+        message = ""
 
         if days_until_arrival == 5:
             alert_type = "5_DAYS_NOTICE"
             recipients = ["Warehouse Manager"]
-        elif days_until_arrival == 3:
-            alert_type = "3_DAYS_NOTICE"
-            recipients = ["Warehouse Manager", "Gate Security"]
-        elif 0 <= days_until_arrival <= 2:
-            alert_type = "DAILY_ARRIVAL_REMINDER"
-            recipients = ["Warehouse Manager", "Gate Security", "Receiving Dock Supervisor"]
+            message = f"Shipment {po_number or 'N/A'} / {asn.asn_number} is arriving in 5 days. Please prepare the warehouse for receiving."
+        elif 0 <= days_until_arrival <= 3:
+            alert_type = f"{days_until_arrival}_DAYS_NOTICE" if days_until_arrival > 0 else "ARRIVAL_DAY_NOTICE"
+            recipients = ["Warehouse Manager", "Security Team"]
+            day_str = f"in {days_until_arrival} days" if days_until_arrival > 0 else "today"
+            message = f"Shipment {po_number or 'N/A'} / {asn.asn_number} is arriving {day_str}. Please prepare warehouse receiving and gate entry."
 
         if alert_type:
-            # Check if alert for this ASN and alert_type was already dispatched today
+            # Check if alert for this ASN on this specific date was already dispatched
+            # We filter by asn_id and message (or we could just use a daily flag)
+            # Using created_at check is better to allow different alert types on same day if needed,
+            # but for daily reminders, one per day is enough.
             existing_stmt = select(ArrivalNotificationModel).where(
-                ArrivalNotificationModel.asn_id == asn.id,
-                ArrivalNotificationModel.warehouse_id == asn.warehouse_id,
+                ArrivalNotificationModel.asn_id == str(asn.id),
             )
             existing_res = await session.execute(existing_stmt)
             existing_notes = existing_res.scalars().all()
@@ -74,16 +83,18 @@ async def process_arrival_alerts(session: AsyncSession) -> int:
 
             if not already_notified_today:
                 notif = ArrivalNotificationModel(
-                    id=f"AN-ALERT-{asn.id[-8:]}-{alert_type}-{today.strftime('%Y%m%d')}",
-                    asn_id=asn.id,
+                    id=f"AN-ALERT-{str(asn.id)[-8:]}-{alert_type}-{today.strftime('%Y%m%d')}",
+                    asn_id=str(asn.id),
                     asn_number=asn.asn_number,
-                    po_id=asn.po_id,
-                    po_number=asn.po_number,
+                    po_id=str(asn.po_id) if asn.po_id else None,
+                    po_number=po_number or "N/A",
                     warehouse_id=asn.warehouse_id,
-                    supplier_name=asn.supplier_name,
+                    supplier_name=supplier_name or "Independent Supplier",
                     vehicle_number=asn.vehicle_number,
-                    expected_arrival_time=datetime.combine(asn.expected_arrival_date, datetime.min.time(), tzinfo=timezone.utc),
-                    driver_phone=asn.driver_phone,
+                    expected_arrival_time=asn.expected_arrival_at.replace(tzinfo=timezone.utc),
+                    driver_phone=asn.driver_contact,
+                    message=message,
+                    recipients=",".join(recipients),
                     status=ArrivalNotificationStatus.DISPATCHED.value,
                 )
                 session.add(notif)
@@ -91,8 +102,8 @@ async def process_arrival_alerts(session: AsyncSession) -> int:
                 # Add outbox event for Kafka dispatching to notification service
                 event = ArrivalNotificationDispatchedEvent(
                     notification_id=notif.id,
-                    asn_id=asn.id,
-                    po_id=asn.po_id,
+                    asn_id=str(asn.id),
+                    po_id=str(asn.po_id),
                     vehicle_number=asn.vehicle_number,
                     warehouse_id=asn.warehouse_id,
                 )

@@ -107,7 +107,7 @@ export default function ViewRequestModal({ request, onClose, onCreateRFQ }: Prop
                       {item.notes && <div className="item-note">Note: {item.notes}</div>}
                     </td>
                     <td>{item.category || 'Raw Material'}</td>
-                    <td className="num font-bold text-slate-800">{item.requested_qty.toLocaleString()}</td>
+                    <td className="num font-bold text-slate-800">{Math.floor(item.requested_qty).toLocaleString()}</td>
                     <td><span className="uom-tag">{item.unit_of_measure || 'PCS'}</span></td>
                     <td><span className="date-tag">{request.target_delivery_date}</span></td>
                   </tr>

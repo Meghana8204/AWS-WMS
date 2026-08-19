@@ -266,6 +266,9 @@ class SupplierASNModel(Base):
     items: Mapped[list["ASNItemModel"]] = relationship(
         back_populates="asn", cascade="all, delete-orphan", lazy="selectin"
     )
+    attachments: Mapped[list["SupplierASNAttachmentModel"]] = relationship(
+        back_populates="asn", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class ASNItemModel(Base):
@@ -283,6 +286,21 @@ class ASNItemModel(Base):
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     asn: Mapped["SupplierASNModel"] = relationship(back_populates="items")
+
+
+class SupplierASNAttachmentModel(Base):
+    __tablename__ = "supplier_asn_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asn_id: Mapped[str] = mapped_column(ForeignKey("supplier_asns.id"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    asn: Mapped["SupplierASNModel"] = relationship(back_populates="attachments")
 
 
 class ArrivalNotificationModel(Base):

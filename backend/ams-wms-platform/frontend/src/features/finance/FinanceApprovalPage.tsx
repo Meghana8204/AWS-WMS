@@ -111,7 +111,7 @@ export default function FinanceApprovalPage() {
 
       setToastMessage({
         type: 'success',
-        text: `❌ Purchase Order ${selectedPo.po_number} REJECTED with reason: "${rejectionReason.trim()}". Returned to Procurement Team for review.`,
+        text: `❌ Purchase Order ${selectedPo.po_number} PERMANENTLY REJECTED with reason: "${rejectionReason.trim()}". This order is now closed and cannot be resubmitted.`,
       })
       setTimeout(() => setToastMessage(null), 6000)
       setShowRejectModal(false)
@@ -224,7 +224,7 @@ export default function FinanceApprovalPage() {
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '16px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Rejected POs</div>
           <div style={{ fontSize: '24px', fontWeight: 800, color: '#dc2626', marginTop: '4px' }}>{rejectedCount} POs</div>
-          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Returned to Procurement</div>
+          <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>Permanently Closed</div>
         </div>
       </div>
 
@@ -359,14 +359,18 @@ export default function FinanceApprovalPage() {
                             background:
                               po.status === 'APPROVED'
                                 ? '#dcfce7'
-                                : po.status === 'REJECTED'
+                                : (po.status === 'REJECTED' || po.status === 'FINANCE_REJECTED')
                                 ? '#fee2e2'
+                                : (po.status === 'SHIPPED' || po.status === 'IN_TRANSIT')
+                                ? '#ccfbf1'
                                 : '#fef3c7',
                             color:
                               po.status === 'APPROVED'
                                 ? '#166534'
-                                : po.status === 'REJECTED'
+                                : (po.status === 'REJECTED' || po.status === 'FINANCE_REJECTED')
                                 ? '#991b1b'
+                                : (po.status === 'SHIPPED' || po.status === 'IN_TRANSIT')
+                                ? '#0d9488'
                                 : '#92400e',
                           }}
                         >
@@ -895,7 +899,7 @@ export default function FinanceApprovalPage() {
               )}
 
               <p style={{ fontSize: '13px', color: '#475569', marginTop: 0, marginBottom: '16px' }}>
-                Please enter the rejection reason. A valid rejection reason is <strong>mandatory</strong> to route this PO back to the Procurement Team.
+                Please enter the rejection reason. A valid rejection reason is <strong>mandatory</strong> to permanently reject this PO. This action is final and the PO cannot be modified or resubmitted.
               </p>
 
               <div className="form-group" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

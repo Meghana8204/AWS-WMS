@@ -42,6 +42,17 @@ async def get_current_user(
 
     token = credentials.credentials
     if settings.environment == "local":
+        if token.startswith("supplier-mock-token-"):
+            token_payload = token.removeprefix("supplier-mock-token-")
+            user_id = token_payload[:36]
+            supplier_id = token_payload[37:] if len(token_payload) > 37 else None
+            return CurrentUser(
+                subject=user_id or "supplier",
+                username="supplier",
+                roles=["SUPPLIER"],
+                permissions=[],
+                raw_claims={"supplier_id": supplier_id} if supplier_id else {},
+            )
         if token == "mock-jwt-admin-token" or token == "local_dev_mock_token":
             return CurrentUser(
                 subject="admin",

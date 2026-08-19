@@ -1,11 +1,14 @@
 """
-CreateSupplierUseCase / GetSupplierUseCase.
-Orchestrates creation of Supplier aggregate and persistence via SupplierRepository.
+Procurement module use cases (Supplier, RFQ, Quotation, ASN).
+Purchase Order module has been removed.
 """
 from __future__ import annotations
 
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
 from typing import List, Optional
-from app.common.domain.exceptions import NotFoundException
+from app.common.domain.exceptions import NotFoundException, DomainRuleViolationException
 from app.modules.procurement.application.commands import (
     AddressCommand,
     BankInfoCommand,
@@ -14,15 +17,14 @@ from app.modules.procurement.application.commands import (
     DocumentCommand,
     CreateRfqCommand,
     SubmitQuotationCommand,
-    CreatePurchaseOrderCommand,
     CreateAsnCommand,
 )
 from app.modules.procurement.application.repository import (
     SupplierRepository,
     RfqRepository,
     QuotationRepository,
-    PurchaseOrderRepository,
     AsnRepository,
+    ArrivalNotificationRepository,
 )
 from app.modules.procurement.domain.supplier import (
     Supplier,
@@ -34,14 +36,13 @@ from app.modules.procurement.domain.supplier import (
 from app.modules.procurement.domain.rfq import RFQ
 from app.modules.procurement.domain.rfq_item import RFQItem
 from app.modules.procurement.domain.quotation import Quotation, QuotationLine
-from app.modules.procurement.domain.purchase_order import PurchaseOrder, PurchaseOrderLine
-from app.modules.procurement.domain.asn import ASN, AsnLine
+from app.modules.procurement.domain.asn import ASN, AsnLine, AsnDocument
 from app.modules.procurement.domain.value_objects import (
     SupplierId,
     RfqId,
     QuotationId,
-    PurchaseOrderId,
     AsnId,
+    PurchaseOrderId,
 )
 
 
@@ -64,7 +65,8 @@ class CreateSupplierUseCase:
         if command.contact is not None:
             contact = SupplierContact(
                 primary_contact_name=command.contact.primary_contact_name,
-                email=command.contact.email,
+                primary_email=command.contact.primary_email,
+                secondary_email=command.contact.secondary_email,
                 designation=command.contact.designation,
                 phone=command.contact.phone,
                 website=command.contact.website,
@@ -103,6 +105,7 @@ class CreateSupplierUseCase:
             category=command.category,
             industry=command.industry,
             gstin=command.gstin,
+            main_materials=command.main_materials,
             address=address,
             contact=contact,
             bank_info=bank_info,
@@ -132,6 +135,88 @@ class ListSuppliersUseCase:
         return await self._supplier_repository.list_all()
 
 
+class UpdateSupplierUseCase:
+    def __init__(self, supplier_repository: SupplierRepository) -> None:
+        self._supplier_repository = supplier_repository
+
+    async def handle(self, command: UpdateSupplierCommand) -> None:
+        supplier = await self._supplier_repository.find_by_id(SupplierId.of(command.supplier_id))
+        if not supplier:
+            raise NotFoundException(f"Supplier not found: {command.supplier_id}")
+
+        address = None
+        if command.address is not None:
+            address = SupplierAddress(
+                registered_address=command.address.registered_address,
+                city=command.address.city,
+                country=command.address.country,
+                state=command.address.state,
+                pincode=command.address.pincode,
+            )
+
+        contact = None
+        if command.contact is not None:
+            contact = SupplierContact(
+                primary_contact_name=command.contact.primary_contact_name,
+                primary_email=command.contact.primary_email,
+                secondary_email=command.contact.secondary_email,
+                designation=command.contact.designation,
+                phone=command.contact.phone,
+                website=command.contact.website,
+            )
+
+        bank_info = None
+        if command.bank_info is not None:
+            bank_info = SupplierBankInfo(
+                bank_name=command.bank_info.bank_name,
+                account_number=command.bank_info.account_number,
+                account_holder_name=command.bank_info.account_holder_name,
+                ifsc=command.bank_info.ifsc,
+                branch=command.bank_info.branch,
+                swift_bic=command.bank_info.swift_bic,
+                tds_section=command.bank_info.tds_section,
+            )
+
+        supplier.update(
+            supplier_name=command.supplier_name,
+            registered_company_name=command.registered_company_name,
+            vendor_type=command.vendor_type,
+            category=command.category,
+            industry=command.industry,
+            gstin=command.gstin,
+            main_materials=command.main_materials,
+            address=address,
+            contact=contact,
+            bank_info=bank_info,
+            remarks=command.remarks,
+        )
+        await self._supplier_repository.save(supplier)
+
+
+class BlockSupplierUseCase:
+    def __init__(self, supplier_repository: SupplierRepository) -> None:
+        self._supplier_repository = supplier_repository
+
+    async def handle(self, supplier_id: str) -> None:
+        supplier = await self._supplier_repository.find_by_id(SupplierId.of(supplier_id))
+        if not supplier:
+            raise NotFoundException(f"Supplier not found: {supplier_id}")
+        supplier.block()
+        await self._supplier_repository.save(supplier)
+
+
+class UnblockSupplierUseCase:
+    def __init__(self, supplier_repository: SupplierRepository) -> None:
+        self._supplier_repository = supplier_repository
+
+    async def handle(self, supplier_id: str) -> None:
+        supplier = await self._supplier_repository.find_by_id(SupplierId.of(supplier_id))
+        if not supplier:
+            raise NotFoundException(f"Supplier not found: {supplier_id}")
+        supplier.unblock()
+        await self._supplier_repository.save(supplier)
+
+
 # --- RFQ ---
 
 class CreateRfqUseCase:
@@ -151,8 +236,8 @@ class CreateRfqUseCase:
                 category=item.category,
                 quantity=item.quantity,
                 uom=item.uom,
-                required_delivery_date=item.required_delivery_date,
-                warehouse=item.warehouse,
+                required_delivery_date=item.required_delivery_date or command.required_delivery_date,
+                warehouse=item.warehouse or command.warehouse,
                 special_requirements=item.special_requirements,
             )
             for item in command.items
@@ -164,7 +249,6 @@ class CreateRfqUseCase:
             required_delivery_date=command.required_delivery_date,
             warehouse=command.warehouse,
             procurement_officer=command.procurement_officer,
-            valid_until=command.valid_until,
             remarks=command.remarks,
             supplier_ids=supplier_ids,
             items=items,
@@ -237,346 +321,82 @@ class SubmitQuotationUseCase:
         return q.id
 
 
-# --- Purchase Order ---
-
-class CreatePurchaseOrderUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self._repository = repository
-
-    async def handle(self, command: CreatePurchaseOrderCommand) -> PurchaseOrderId:
-        lines = [
-            PurchaseOrderLine(
-                item_code=l.item_code,
-                ordered_quantity=l.ordered_quantity,
-                unit_price=l.unit_price,
-                material_name=l.material_name,
-                category=l.category,
-                uom=l.uom,
-                discount=l.discount,
-                tax=l.tax,
-            )
-            for l in command.lines
-        ]
-        po_number = command.po_number or f"PROP-{datetime.now().strftime('%Y-%m%d%H%M%S')}"
-        quotation_id = QuotationId.of(command.quotation_id) if command.quotation_id else None
-
-        po = PurchaseOrder.create(
-            po_number=po_number,
-            supplier_id=SupplierId.of(command.supplier_id),
-            lines=lines,
-            quotation_id=quotation_id,
-            po_date=command.po_date,
-        )
-        po.additional_charges = command.additional_charges or Decimal("0.0")
-        po.department = command.department
-        po.procurement_officer = command.procurement_officer
-        po.delivery_warehouse = command.delivery_warehouse
-        po.delivery_address = command.delivery_address
-        po.expected_delivery_date = command.expected_delivery_date
-
-        await self._repository.save(po)
-
-
-class SendPOSupplierNotificationUseCase:
-    def __init__(self, po_repo: PurchaseOrderRepository):
-        self.po_repo = po_repo
-
-    async def execute(self, po_id_str: str, base_url: str = "http://localhost:3000") -> dict:
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.po_repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        po.status = "ISSUED"
-        await self.po_repo.save(po)
-
-        # Format Material Summary
-        materials_list = []
-        for item in po.lines:
-            materials_list.append(f"- {item.material_name or item.item_code} ({item.item_code}): {item.ordered_quantity:,} {item.uom or 'PCS'}")
-        material_summary = "\n".join(materials_list)
-
-        # Links
-        view_po_link = f"{base_url}/api/v1/procurement/purchase-orders/{po.id.value}/pdf"
-        asn_link = f"{base_url}/supplier/asns/new?po_id={po.id.value}&po_number={po.po_number}"
-
-        delivery_date_str = po.expected_delivery_date.strftime("%d-%b-%Y") if po.expected_delivery_date else "N/A"
-        formatted_total = f"₹{po.grand_total:,.2f}"
-
-        # Email Body
-        email_body = (
-            f"Your Purchase Order has been approved.\n\n"
-            f"PO Number: {po.po_number}\n"
-            f"Total Amount: {formatted_total}\n"
-            f"Expected Delivery: {delivery_date_str}\n\n"
-            f"Material Summary:\n"
-            f"{material_summary}\n\n"
-            f"Please click the links below to view the official document or submit an Advance Shipping Notice (ASN):\n\n"
-            f"[VIEW PURCHASE ORDER]: {view_po_link}\n\n"
-            f"[SUBMIT ASN]: {asn_link}\n\n"
-            f"Regards,\n"
-            f"Procurement Operations Team\n"
-            f"Warehouse Management System"
-        )
-
-        return {
-            "po_id": str(po.id.value),
-            "po_number": po.po_number,
-            "supplier_id": str(po.supplier_id.value),
-            "po_status": po.status,
-            "grand_total": formatted_total,
-            "expected_delivery": delivery_date_str,
-            "view_po_link": view_po_link,
-            "asn_link": asn_link,
-            "subject": f"Purchase Order {po.po_number}",
-            "email_body": email_body,
-            "status": "SENT",
-        }
-
-
-class GeneratePurchaseOrderPdfUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self.repo = repository
-
-    async def handle(self, po_id_str: str) -> bytes:
-        from app.modules.procurement.application.pdf_service import PurchaseOrderPdfGenerator
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        pdf_generator = PurchaseOrderPdfGenerator()
-        return pdf_generator.generate_pdf(po)
-        return po.id
-
-
-class UpdatePurchaseOrderUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self._repository = repository
-
-    async def handle(self, po_id_str: str, command: UpdatePurchaseOrderCommand) -> None:
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self._repository.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"PO not found: {po_id}")
-
-        if command.status:
-            po.status = command.status
-
-        if command.rejection_reason:
-            po.rejection_reason = command.rejection_reason
-
-        if command.finance_comments:
-            po.finance_comments = command.finance_comments
-
-        if command.lines is not None:
-            po.lines = [
-                PurchaseOrderLine(
-                    item_code=l.item_code,
-                    ordered_quantity=l.ordered_quantity,
-                    unit_price=l.unit_price,
-                    material_name=l.material_name,
-                    category=l.category,
-                    uom=l.uom,
-                    discount=l.discount,
-                    tax=l.tax,
-                )
-                for l in command.lines
-            ]
-
-        if command.additional_charges is not None:
-            po.additional_charges = command.additional_charges
-
-        await self._repository.save(po)
-
-
-class SendPOSupplierNotificationUseCase:
-    def __init__(self, po_repo: PurchaseOrderRepository):
-        self.po_repo = po_repo
-
-    async def execute(self, po_id_str: str, base_url: str = "http://localhost:3000") -> dict:
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.po_repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        po.status = "ISSUED"
-        await self.po_repo.save(po)
-
-        # Format Material Summary
-        materials_list = []
-        for item in po.lines:
-            materials_list.append(f"- {item.material_name or item.item_code} ({item.item_code}): {item.ordered_quantity:,} {item.uom or 'PCS'}")
-        material_summary = "\n".join(materials_list)
-
-        # Links
-        view_po_link = f"{base_url}/api/v1/procurement/purchase-orders/{po.id.value}/pdf"
-        asn_link = f"{base_url}/supplier/asns/new?po_id={po.id.value}&po_number={po.po_number}"
-
-        delivery_date_str = po.expected_delivery_date.strftime("%d-%b-%Y") if po.expected_delivery_date else "N/A"
-        formatted_total = f"₹{po.grand_total:,.2f}"
-
-        # Email Body
-        email_body = (
-            f"Your Purchase Order has been approved.\n\n"
-            f"PO Number: {po.po_number}\n"
-            f"Total Amount: {formatted_total}\n"
-            f"Expected Delivery: {delivery_date_str}\n\n"
-            f"Material Summary:\n"
-            f"{material_summary}\n\n"
-            f"Please click the links below to view the official document or submit an Advance Shipping Notice (ASN):\n\n"
-            f"[VIEW PURCHASE ORDER]: {view_po_link}\n\n"
-            f"[SUBMIT ASN]: {asn_link}\n\n"
-            f"Regards,\n"
-            f"Procurement Operations Team\n"
-            f"Warehouse Management System"
-        )
-
-        return {
-            "po_id": str(po.id.value),
-            "po_number": po.po_number,
-            "supplier_id": str(po.supplier_id.value),
-            "po_status": po.status,
-            "grand_total": formatted_total,
-            "expected_delivery": delivery_date_str,
-            "view_po_link": view_po_link,
-            "asn_link": asn_link,
-            "subject": f"Purchase Order {po.po_number}",
-            "email_body": email_body,
-            "status": "SENT",
-        }
-
-
-class GeneratePurchaseOrderPdfUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self.repo = repository
-
-    async def handle(self, po_id_str: str) -> bytes:
-        from app.modules.procurement.application.pdf_service import PurchaseOrderPdfGenerator
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        pdf_generator = PurchaseOrderPdfGenerator()
-        return pdf_generator.generate_pdf(po)
-
-
-class ApprovePurchaseOrderUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self._repository = repository
-
-    async def handle(self, po_id: PurchaseOrderId) -> None:
-        po = await self._repository.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"PO not found: {po_id}")
-        po.status = "APPROVED"
-        await self._repository.save(po)
-
-
-class SendPOSupplierNotificationUseCase:
-    def __init__(self, po_repo: PurchaseOrderRepository):
-        self.po_repo = po_repo
-
-    async def execute(self, po_id_str: str, base_url: str = "http://localhost:3000") -> dict:
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.po_repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        po.status = "ISSUED"
-        await self.po_repo.save(po)
-
-        # Format Material Summary
-        materials_list = []
-        for item in po.lines:
-            materials_list.append(f"- {item.material_name or item.item_code} ({item.item_code}): {item.ordered_quantity:,} {item.uom or 'PCS'}")
-        material_summary = "\n".join(materials_list)
-
-        # Links
-        view_po_link = f"{base_url}/api/v1/procurement/purchase-orders/{po.id.value}/pdf"
-        asn_link = f"{base_url}/supplier/asns/new?po_id={po.id.value}&po_number={po.po_number}"
-
-        delivery_date_str = po.expected_delivery_date.strftime("%d-%b-%Y") if po.expected_delivery_date else "N/A"
-        formatted_total = f"₹{po.grand_total:,.2f}"
-
-        # Email Body
-        email_body = (
-            f"Your Purchase Order has been approved.\n\n"
-            f"PO Number: {po.po_number}\n"
-            f"Total Amount: {formatted_total}\n"
-            f"Expected Delivery: {delivery_date_str}\n\n"
-            f"Material Summary:\n"
-            f"{material_summary}\n\n"
-            f"Please click the links below to view the official document or submit an Advance Shipping Notice (ASN):\n\n"
-            f"[VIEW PURCHASE ORDER]: {view_po_link}\n\n"
-            f"[SUBMIT ASN]: {asn_link}\n\n"
-            f"Regards,\n"
-            f"Procurement Operations Team\n"
-            f"Warehouse Management System"
-        )
-
-        return {
-            "po_id": str(po.id.value),
-            "po_number": po.po_number,
-            "supplier_id": str(po.supplier_id.value),
-            "po_status": po.status,
-            "grand_total": formatted_total,
-            "expected_delivery": delivery_date_str,
-            "view_po_link": view_po_link,
-            "asn_link": asn_link,
-            "subject": f"Purchase Order {po.po_number}",
-            "email_body": email_body,
-            "status": "SENT",
-        }
-
-
-class GeneratePurchaseOrderPdfUseCase:
-    def __init__(self, repository: PurchaseOrderRepository) -> None:
-        self.repo = repository
-
-    async def handle(self, po_id_str: str) -> bytes:
-        from app.modules.procurement.application.pdf_service import PurchaseOrderPdfGenerator
-        po_id = PurchaseOrderId.of(po_id_str)
-        po = await self.repo.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"Purchase Order {po_id_str} not found")
-
-        pdf_generator = PurchaseOrderPdfGenerator()
-        return pdf_generator.generate_pdf(po)
-
-
 # --- ASN ---
 
 class CreateAsnUseCase:
-    def __init__(self, repository: AsnRepository, po_repository: PurchaseOrderRepository) -> None:
+    def __init__(
+        self,
+        repository: AsnRepository,
+        supplier_repository: SupplierRepository | None = None,
+        notification_repository: ArrivalNotificationRepository | None = None
+    ) -> None:
         self._repository = repository
-        self._po_repository = po_repository
+        self._supplier_repository = supplier_repository
+        self._notification_repository = notification_repository
 
     async def handle(self, command: CreateAsnCommand) -> AsnId:
-        po_id = PurchaseOrderId.of(command.po_id)
-        po = await self._po_repository.get_by_id(po_id)
-        if not po:
-            raise NotFoundException(f"PO not found: {command.po_id}")
+        # ASNs are now independent of Purchase Orders.
+        # po_id is optional, po_number is for reference.
 
         lines = [
             AsnLine(
                 item_code=l.item_code,
                 shipped_quantity=l.shipped_quantity,
+                material_name=getattr(l, "material_name", None),
+                uom=getattr(l, "uom", "PCS"),
             )
             for l in command.lines
         ]
+
+        documents = [
+            AsnDocument(
+                document_type=d.document_type,
+                file_name=d.file_name,
+                file_url=d.file_url,
+                uploaded_by=d.uploaded_by
+            )
+            for d in command.documents
+        ]
+
         asn = ASN.create(
-            po_id=po_id,
             asn_number=command.asn_number,
             lines=lines,
+            po_id=PurchaseOrderId.of(command.po_id) if command.po_id else None,
+            po_number=command.po_number,
+            warehouse_id=getattr(command, "warehouse_id", "MAIN"),
             vehicle_number=command.vehicle_number,
-            expected_arrival_at=command.expected_arrival_at,
-            shipment_date=command.shipment_date,
             driver_name=command.driver_name,
             driver_contact=command.driver_contact,
+            expected_arrival_at=command.expected_arrival_at,
+            shipment_date=command.shipment_date,
+            transporter=command.transporter,
+            number_of_packages=command.number_of_packages,
+            package_type=command.package_type,
+            shipping_method=command.shipping_method,
+            status=command.status if command.status else "DISPATCHED",
+            documents=documents,
+            supplier_id=command.supplier_id,
         )
+
         await self._repository.save(asn)
+
+        # Create Arrival Notification for Warehouse
+        if command.status == "SUBMITTED" and self._notification_repository:
+            from app.modules.procurement.domain.arrival_notification import ArrivalNotification
+
+            notif = ArrivalNotification.create(
+                asn_id=str(asn.id),
+                asn_number=asn.asn_number,
+                po_id=command.po_id,
+                po_number=asn.po_number or "N/A",
+                warehouse_id=asn.warehouse_id or "MAIN",
+                supplier_name="Supplier", # Simplified for now to avoid infra dependencies
+                vehicle_number=asn.vehicle_number or "Unknown",
+                expected_arrival_time=asn.expected_arrival_at or datetime.now(),
+                driver_phone=asn.driver_contact,
+            )
+            await self._notification_repository.save(notif)
+
         return asn.id
 
 
@@ -587,14 +407,25 @@ class GetNextAsnNumberUseCase:
     async def handle(self) -> str:
         from datetime import datetime
         year = datetime.now().year
-        # We need to add get_next_sequence to AsnRepository or implement here
-        # For now, let's look at how RFQ/PO does it.
-        # PO uses repository.get_next_sequence(year)
         try:
             seq = await self._repository.get_next_sequence(year)
-        except AttributeError:
-            # Fallback if not implemented
-            import random
-            seq = random.randint(1000, 9999)
+        except:
+            seq = 1
 
         return f"ASN-{year}-{seq:04d}"
+
+
+class GetNextMaterialRequestNumberUseCase:
+    def __init__(self, repository: MaterialRequestRepository) -> None:
+        self._repository = repository
+
+    async def handle(self) -> str:
+        from datetime import datetime
+        year_month = datetime.now().strftime("%Y%m")
+        try:
+            seq = await self._repository.get_next_sequence(year_month)
+        except:
+            seq = 1
+
+        return f"MR-{year_month}-{seq:04d}"
+

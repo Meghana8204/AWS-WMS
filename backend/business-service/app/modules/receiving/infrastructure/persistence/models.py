@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from typing import Optional
 
 from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,7 +17,8 @@ class GrnModel(Base):
     __tablename__ = "grn"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    po_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False)
+    po_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, nullable=True)
+    po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
 
     lines: Mapped[list["GrnLineModel"]] = relationship(

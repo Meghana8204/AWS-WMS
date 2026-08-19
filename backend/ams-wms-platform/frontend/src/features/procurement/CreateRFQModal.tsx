@@ -214,6 +214,7 @@ export default function CreateRFQModal({ request, onClose, onSuccess }: Props) {
                 <label>Required Delivery Date</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={requiredDeliveryDate}
                   onChange={(e) => setRequiredDeliveryDate(e.target.value)}
                   required
@@ -233,6 +234,7 @@ export default function CreateRFQModal({ request, onClose, onSuccess }: Props) {
                 <label>RFQ Valid Until</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={validUntil}
                   onChange={(e) => setValidUntil(e.target.value)}
                   required

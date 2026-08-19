@@ -1,14 +1,33 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Ban, Building2, FileText, Loader2, Mail, MapPin, Pencil, Phone, ReceiptText, Save, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, Ban, Building2, FileText, Loader2, Mail, MapPin, Pencil, Phone, ReceiptText, Save, ShieldCheck, X, AlertCircle } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Field, SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+import { INDIAN_STATES } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/supplier/$supplierId")({
   component: SupplierProfile,
@@ -21,7 +40,9 @@ function SupplierProfile() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [blocking, setBlocking] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [form, setForm] = useState<any>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     api.getSupplier(supplierId).then(setSupplier).catch((err) => setError(err instanceof Error ? err.message : "Unable to load supplier profile."));
@@ -32,13 +53,123 @@ function SupplierProfile() {
     setForm(JSON.parse(JSON.stringify(supplier)));
     setEditing(true);
   };
-  const updateForm = (section: string, field: string, value: string) => {
+  const updateForm = (section: string, field: string, value: any) => {
     setForm((current: any) => section === "root" ? { ...current, [field]: value } : { ...current, [section]: { ...current[section], [field]: value } });
+
+    // Clear inline error
+    const errorKey = section === "root" ? field : `${section}.${field}`;
+    if (errors[errorKey]) {
+      setErrors(prev => {
+        const next = { ...prev };
+        delete next[errorKey];
+        return next;
+      });
+    }
   };
+
+  const validate = () => {
+    const newErrors: Record<string, string> = {};
+    const name = (form.supplierName || "").trim();
+    const regName = (form.registeredCompanyName || "").trim();
+    const industry = (form.industry || "").trim();
+    const gstin = (form.gstin || "").trim();
+    const mainMaterials = form.mainMaterials || [];
+
+    if (!name) newErrors.supplierName = "Supplier name is required";
+    else if (name.length < 2 || name.length > 100) newErrors.supplierName = "Must be between 2 and 100 characters";
+
+    if (!regName) newErrors.registeredCompanyName = "Registered company name is required";
+    else if (regName.length < 2 || regName.length > 200) newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+
+    if (!form.vendorType) newErrors.vendorType = "Vendor type is required";
+    if (!form.category) newErrors.category = "Category is required";
+    if (mainMaterials.length === 0) newErrors.mainMaterials = "Select at least one material";
+
+    if (!industry) newErrors.industry = "Industry is required";
+    else if (industry.length < 2 || industry.length > 100) newErrors.industry = "Must be between 2 and 100 characters";
+
+    if (!gstin) newErrors.gstin = "GSTIN is required";
+    else if (gstin.length !== 15) newErrors.gstin = "Exactly 15 characters";
+    else if (!(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase()))) {
+      newErrors.gstin = "Invalid format (e.g. 29ABCDE1234F1Z5)";
+    }
+
+    // Address & Contact Validation
+    if (form.address) {
+      const addr = (form.address.registeredAddress || "").trim();
+      const city = (form.address.city || "").trim();
+      const pincode = (form.address.pincode || "").trim();
+      const state = (form.address.state || "").trim();
+
+      if (!addr) newErrors["address.registeredAddress"] = "Address is required";
+      else if (addr.length < 10 || addr.length > 300) newErrors["address.registeredAddress"] = "Must be between 10 and 300 characters";
+
+      if (!city) newErrors["address.city"] = "City is required";
+      else if (city.length < 2 || city.length > 100) newErrors["address.city"] = "Must be between 2 and 100 characters";
+      else if (!/^[a-zA-Z\s-]+$/.test(city)) newErrors["address.city"] = "Letters/spaces/hyphen only";
+
+      if (state && (state.length < 2 || state.length > 100)) newErrors["address.state"] = "Must be 2-100 characters";
+
+      if (!pincode) newErrors["address.pincode"] = "Pincode is required";
+      else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
+    }
+
+    if (form.contact) {
+      const contactName = (form.contact.primaryContactName || "").trim();
+      const phone = (form.contact.phone || "").trim();
+      const primaryEmail = (form.contact.primaryEmail || "").trim();
+      const secondaryEmail = (form.contact.secondaryEmail || "").trim();
+      const website = (form.contact.website || "").trim();
+      const designation = (form.contact.designation || "").trim();
+
+      if (!contactName) newErrors["contact.primaryContactName"] = "Name is required";
+      else if (contactName.length < 2 || contactName.length > 100) newErrors["contact.primaryContactName"] = "Must be 2-100 characters";
+      else if (!/^[a-zA-Z\s]+$/.test(contactName)) newErrors["contact.primaryContactName"] = "Letters and spaces only";
+
+      if (!phone) newErrors["contact.phone"] = "Phone is required";
+      else if (!/^[6-9]\d{9}$/.test(phone)) newErrors["contact.phone"] = "Must be 10-digit mobile number";
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!primaryEmail) newErrors["contact.primaryEmail"] = "Email is required";
+      else if (!emailRegex.test(primaryEmail)) newErrors["contact.primaryEmail"] = "Invalid email";
+
+      if (secondaryEmail && !emailRegex.test(secondaryEmail)) newErrors["contact.secondaryEmail"] = "Invalid email";
+
+      if (designation && (designation.length < 2 || designation.length > 100)) newErrors["contact.designation"] = "Must be 2-100 characters";
+
+      if (website) {
+        try {
+          new URL(website.startsWith('http') ? website : `https://${website}`);
+        } catch (_) {
+          newErrors["contact.website"] = "Invalid URL";
+        }
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const saveChanges = async () => {
+    if (!validate()) {
+      return;
+    }
+
+    const name = (form.supplierName || "").trim();
+    const regName = (form.registeredCompanyName || "").trim();
+    const industry = (form.industry || "").trim();
+    const gstin = (form.gstin || "").trim();
+
     setSaving(true);
     try {
-      const updated = await api.updateSupplier(supplierId, form);
+      const finalForm = {
+        ...form,
+        supplierName: name,
+        registeredCompanyName: regName,
+        industry: industry,
+        gstin: gstin.toUpperCase(),
+      };
+      const updated = await api.updateSupplier(supplierId, finalForm);
       setSupplier(updated);
       setEditing(false);
       toast.success("Supplier profile updated");
@@ -47,21 +178,33 @@ function SupplierProfile() {
     } finally { setSaving(false); }
   };
   const blockSupplier = async () => {
-    if (!window.confirm(`Block ${supplier.supplierName}? It will no longer be available for operational use.`)) return;
+    const previousSupplier = supplier;
+    setSupplier((prev: any) => ({ ...prev, status: "Blocked" }));
     setBlocking(true);
+
     try {
-      setSupplier(await api.blockSupplier(supplierId));
+      const updated = await api.blockSupplier(supplierId);
+      setSupplier(updated);
       toast.success("Supplier blocked");
     } catch (err) {
+      setSupplier(previousSupplier);
       toast.error("Unable to block supplier", { description: err instanceof Error ? err.message : undefined });
-    } finally { setBlocking(false); }
+    } finally {
+      setBlocking(false);
+      setShowBlockConfirm(false);
+    }
   };
   const unblockSupplier = async () => {
+    const previousSupplier = supplier;
+    setSupplier((prev: any) => ({ ...prev, status: "Active" }));
     setBlocking(true);
+
     try {
-      setSupplier(await api.unblockSupplier(supplierId));
+      const updated = await api.unblockSupplier(supplierId);
+      setSupplier(updated);
       toast.success("Supplier unblocked and active");
     } catch (err) {
+      setSupplier(previousSupplier);
       toast.error("Unable to unblock supplier", { description: err instanceof Error ? err.message : undefined });
     } finally { setBlocking(false); }
   };
@@ -70,8 +213,24 @@ function SupplierProfile() {
     <AppShell
       title={title}
       subtitle={supplier ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierId}` : "Loading supplier master record"}
-      actions={supplier && <><Button variant="outline" className="rounded-xl" onClick={openEditor}><Pencil /> Edit</Button>{supplier.status === "Blocked" ? <Button className="rounded-xl bg-success hover:bg-success/90" disabled={blocking} onClick={unblockSupplier}><ShieldCheck /> {blocking ? "Unblocking…" : "Unblock"}</Button> : <Button variant="destructive" className="rounded-xl" disabled={blocking} onClick={blockSupplier}><Ban /> {blocking ? "Blocking…" : "Block"}</Button>}</>}
+      actions={supplier && <><Button variant="outline" className="rounded-xl" onClick={openEditor}><Pencil /> Edit</Button>{supplier.status === "Blocked" ? <Button className="rounded-xl bg-success hover:bg-success/90" disabled={blocking} onClick={unblockSupplier}><ShieldCheck /> {blocking ? "Unblocking…" : "Unblock"}</Button> : <Button variant="destructive" className="rounded-xl" disabled={blocking} onClick={() => setShowBlockConfirm(true)}><Ban /> {blocking ? "Blocking…" : "Block"}</Button>}</>}
     >
+      <AlertDialog open={showBlockConfirm} onOpenChange={setShowBlockConfirm}>
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Block supplier?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to block <strong>{supplier?.supplierName}</strong>? This action will prevent the supplier from being used in any active operational processes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={blockSupplier} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Confirm block
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Button variant="ghost" className="mb-4 rounded-xl" asChild><Link to="/master-data"><ArrowLeft /> Back to master data</Link></Button>
       {!supplier && !error && <div className="flex h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-5 animate-spin text-primary" /> Loading supplier profile…</div>}
       {error && <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6"><p className="font-medium text-destructive">Supplier profile could not be loaded.</p><p className="mt-1 text-sm text-muted-foreground">{error}</p></div>}
@@ -79,14 +238,160 @@ function SupplierProfile() {
         <div className="space-y-4">
           {editing && form && <SectionCard title="Edit supplier" description="Changes are saved immediately to the supplier master" icon={Pencil} actions={<><Button variant="ghost" size="sm" onClick={() => setEditing(false)} disabled={saving}><X /> Cancel</Button><Button size="sm" onClick={saveChanges} disabled={saving}><Save /> {saving ? "Saving…" : "Save changes"}</Button></>}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <EditField label="Supplier name" value={form.supplierName} onChange={(value) => updateForm("root", "supplierName", value)} />
-              <EditField label="Registered company" value={form.registeredCompanyName} onChange={(value) => updateForm("root", "registeredCompanyName", value)} />
-              <EditField label="Vendor type" value={form.vendorType} onChange={(value) => updateForm("root", "vendorType", value)} />
-              <EditField label="Category" value={form.category} onChange={(value) => updateForm("root", "category", value)} />
-              <EditField label="Industry" value={form.industry} onChange={(value) => updateForm("root", "industry", value)} />
-              <EditField label="GSTIN" value={form.gstin} onChange={(value) => updateForm("root", "gstin", value)} />
-              {form.address && <><EditField label="Address" value={form.address.registeredAddress} onChange={(value) => updateForm("address", "registeredAddress", value)} /><EditField label="City" value={form.address.city} onChange={(value) => updateForm("address", "city", value)} /><EditField label="State" value={form.address.state} onChange={(value) => updateForm("address", "state", value)} /><EditField label="Country" value={form.address.country} onChange={(value) => updateForm("address", "country", value)} /><EditField label="Pincode" value={form.address.pincode} onChange={(value) => updateForm("address", "pincode", value)} /></>}
-              {form.contact && <><EditField label="Primary contact" value={form.contact.primaryContactName} onChange={(value) => updateForm("contact", "primaryContactName", value)} /><EditField label="Email" value={form.contact.email} onChange={(value) => updateForm("contact", "email", value)} /><EditField label="Phone" value={form.contact.phone} onChange={(value) => updateForm("contact", "phone", value)} /></>}
+              <ValidatedEditField
+                label="Supplier name"
+                value={form.supplierName}
+                error={errors.supplierName}
+                onChange={(value) => {
+                  const sanitized = value.replace(/[^a-zA-Z\s]/g, "");
+                  updateForm("root", "supplierName", sanitized);
+                }}
+              />
+              <ValidatedEditField
+                label="Registered company"
+                value={form.registeredCompanyName}
+                error={errors.registeredCompanyName}
+                onChange={(value) => {
+                  const sanitized = value.replace(/[^a-zA-Z\s]/g, "");
+                  updateForm("root", "registeredCompanyName", sanitized);
+                }}
+              />
+              <div className="space-y-1.5">
+                <Label>Vendor type</Label>
+                <Select
+                  onValueChange={(v) => updateForm("root", "vendorType", v)}
+                  value={form.vendorType}
+                >
+                  <SelectTrigger className={cn(errors.vendorType && "border-destructive focus:ring-destructive")}>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Manufacturer", "Distributor", "Service Provider"].map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.vendorType && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.vendorType}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Category</Label>
+                <Select
+                  onValueChange={(v) => updateForm("root", "category", v)}
+                  value={form.category}
+                >
+                  <SelectTrigger className={cn(errors.category && "border-destructive focus:ring-destructive")}>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["Raw Materials", "Packaging", "Finished Goods", "Consumables"].map((cat) => (
+                      <SelectItem key={cat} value={cat}>
+                        {cat}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.category && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.category}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Main materials</Label>
+                <Input
+                  value={Array.isArray(form.mainMaterials) ? form.mainMaterials.join(", ") : (form.mainMaterial || "")}
+                  onChange={(event) => updateForm("root", "mainMaterials", event.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                  placeholder="Comma separated list"
+                  className={cn(errors.mainMaterials && "border-destructive focus-visible:ring-destructive")}
+                />
+                {errors.mainMaterials && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.mainMaterials}</p>}
+              </div>
+              <ValidatedEditField
+                label="Industry"
+                value={form.industry}
+                error={errors.industry}
+                onChange={(value) => updateForm("root", "industry", value)}
+              />
+              <ValidatedEditField
+                label="GSTIN"
+                value={form.gstin}
+                error={errors.gstin}
+                onChange={(value) => updateForm("root", "gstin", value)}
+              />
+              {form.address && (
+                <>
+                  <ValidatedEditField
+                    label="Address"
+                    value={form.address.registeredAddress}
+                    error={errors["address.registeredAddress"]}
+                    onChange={(value) => updateForm("address", "registeredAddress", value)}
+                  />
+                  <ValidatedEditField
+                    label="City"
+                    value={form.address.city}
+                    error={errors["address.city"]}
+                    onChange={(value) => updateForm("address", "city", value)}
+                  />
+                  <div className="space-y-1.5">
+                    <Label>State</Label>
+                    <Select
+                      onValueChange={(v) => updateForm("address", "state", v)}
+                      value={form.address.state}
+                    >
+                      <SelectTrigger className={cn(errors["address.state"] && "border-destructive focus:ring-destructive")}>
+                        <SelectValue placeholder="Select state" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {INDIAN_STATES.map((state) => (
+                          <SelectItem key={state} value={state}>
+                            {state}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {errors["address.state"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.state"]}</p>}
+                  </div>
+                  <EditField
+                    label="Country"
+                    value={form.address.country}
+                    onChange={(value) => updateForm("address", "country", value)}
+                  />
+                  <ValidatedEditField
+                    label="Pincode"
+                    value={form.address.pincode}
+                    error={errors["address.pincode"]}
+                    onChange={(value) => updateForm("address", "pincode", value)}
+                  />
+                </>
+              )}
+              {form.contact && (
+                <>
+                  <ValidatedEditField
+                    label="Primary contact"
+                    value={form.contact.primaryContactName}
+                    error={errors["contact.primaryContactName"]}
+                    onChange={(value) => updateForm("contact", "primaryContactName", value)}
+                  />
+                  <ValidatedEditField
+                    label="Primary Email"
+                    value={form.contact.primaryEmail}
+                    error={errors["contact.primaryEmail"]}
+                    onChange={(value) => updateForm("contact", "primaryEmail", value)}
+                  />
+                  <ValidatedEditField
+                    label="Secondary Email"
+                    value={form.contact.secondaryEmail}
+                    error={errors["contact.secondaryEmail"]}
+                    onChange={(value) => updateForm("contact", "secondaryEmail", value)}
+                  />
+                  <ValidatedEditField
+                    label="Phone"
+                    value={form.contact.phone}
+                    error={errors["contact.phone"]}
+                    onChange={(value) => updateForm("contact", "phone", value)}
+                  />
+                </>
+              )}
               {form.bankInfo && <><EditField label="Bank" value={form.bankInfo.bankName} onChange={(value) => updateForm("bankInfo", "bankName", value)} /><EditField label="Account number" value={form.bankInfo.accountNumber} onChange={(value) => updateForm("bankInfo", "accountNumber", value)} /><EditField label="IFSC" value={form.bankInfo.ifsc} onChange={(value) => updateForm("bankInfo", "ifsc", value)} /></>}
             </div>
             <div className="mt-4"><Label htmlFor="remarks">Remarks</Label><Textarea id="remarks" value={form.remarks || ""} onChange={(event) => updateForm("root", "remarks", event.target.value)} className="mt-2" /></div>
@@ -96,6 +401,7 @@ function SupplierProfile() {
               <Field label="Supplier name" value={supplier.supplierName} />
               <Field label="Vendor type" value={supplier.vendorType || "—"} />
               <Field label="Category" value={supplier.category || "—"} />
+              <Field label="Main materials" value={Array.isArray(supplier.mainMaterials) ? supplier.mainMaterials.join(", ") : (supplier.mainMaterial || "—")} />
               <Field label="GSTIN" value={supplier.gstin || "—"} mono />
             </div>
           </SectionCard>
@@ -105,7 +411,7 @@ function SupplierProfile() {
               {supplier.address ? <div className="grid gap-5 sm:grid-cols-2"><Field label="Registered address" value={supplier.address.registeredAddress || "—"} /><Field label="City / State" value={[supplier.address.city, supplier.address.state].filter(Boolean).join(", ") || "—"} /><Field label="Country" value={supplier.address.country || "—"} /><Field label="Pincode" value={supplier.address.pincode || "—"} /></div> : <EmptySection text="No address has been recorded." />}
             </SectionCard>
             <SectionCard title="Primary contact" description="Supplier contact details" icon={Phone}>
-              {supplier.contact ? <div className="grid gap-5 sm:grid-cols-2"><Field label="Contact" value={supplier.contact.primaryContactName || "—"} /><Field label="Phone" value={supplier.contact.phone || "—"} /><Field label="Email" value={supplier.contact.email || "—"} /></div> : <EmptySection text="No contact has been recorded." />}
+              {supplier.contact ? <div className="grid gap-5 sm:grid-cols-2"><Field label="Contact" value={supplier.contact.primaryContactName || "—"} /><Field label="Phone" value={supplier.contact.phone || "—"} /><Field label="Primary Email" value={supplier.contact.primaryEmail || "—"} /><Field label="Secondary Email" value={supplier.contact.secondaryEmail || "—"} /></div> : <EmptySection text="No contact has been recorded." />}
             </SectionCard>
           </div>
 
@@ -130,4 +436,32 @@ function EmptySection({ text }: { text: string }) {
 
 function EditField({ label, value, onChange }: { label: string; value?: string; onChange: (value: string) => void }) {
   return <div className="space-y-1.5"><Label>{label}</Label><Input value={value || ""} onChange={(event) => onChange(event.target.value)} /></div>;
+}
+
+function ValidatedEditField({
+  label,
+  value,
+  error,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  error?: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label>{label}</Label>
+      <Input
+        value={value || ""}
+        onChange={(event) => onChange(event.target.value)}
+        className={cn(error && "border-destructive focus-visible:ring-destructive")}
+      />
+      {error && (
+        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+          <AlertCircle className="size-3" /> {error}
+        </p>
+      )}
+    </div>
+  );
 }

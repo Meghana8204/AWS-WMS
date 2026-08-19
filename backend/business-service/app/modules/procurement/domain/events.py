@@ -47,4 +47,7 @@ class PurchaseOrderPlacedEvent(DomainEvent):
 class AsnCreatedEvent(DomainEvent):
     asn_id: str
     asn_number: str
-    po_id: str
+    po_id: str | None = None
+    warehouse_id: str | None = None
+    vehicle_number: str | None = None
+    expected_arrival_at: str | None = None

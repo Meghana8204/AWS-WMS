@@ -1,0 +1,168 @@
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [Errno 11001] getaddrinfo failed
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: vardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardhandevang@gmail.com
+SMTP Start: harsha@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harsha@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harsha@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: vardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions; port 465: [WinError 10013] An attempt was made to access a socket in a way forbidden by its access permissions
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: supplier@example.test via mailer@nexus.test
+SMTP Success: supplier@example.test via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: [Errno 11001] getaddrinfo failed; port 465: Connection unexpectedly closed: The read operation timed out
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587

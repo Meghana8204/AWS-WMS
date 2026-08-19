@@ -1,0 +1,7 @@
+Traceback (most recent call last):
+  File "D:\ams-wms-platform\backend\business-service\app\modules\procurement\infrastructure\api\router.py", line 498, in create_supplier
+    main_material=request.main_material,
+                  ^^^^^^^^^^^^^^^^^^^^^
+  File "D:\ams-wms-platform\backend\business-service\.venv313\Lib\site-packages\pydantic\main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'CreateSupplierRequest' object has no attribute 'main_material'. Did you mean: 'main_materials'?

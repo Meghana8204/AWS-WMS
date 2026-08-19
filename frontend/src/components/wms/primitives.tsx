@@ -28,16 +28,16 @@ export function StatCard({
   };
   return (
     <Link to={to} className="group block">
-      <Card className="gap-0 rounded-2xl border-border/70 p-5 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
-        <div className="flex items-start justify-between">
-          <span className={cn("grid size-11 place-items-center rounded-xl", tones[tone])}>
-            <Icon className="size-5" />
+      <Card className="gap-0 rounded-2xl border-border/70 p-4 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
+        <div className="flex items-center justify-between">
+          <span className={cn("grid size-9 place-items-center rounded-xl", tones[tone])}>
+            <Icon className="size-4" />
           </span>
-          <ArrowRight className="size-4 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+          <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
         </div>
-        <p className="mt-4 text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{label}</p>
-        {delta && <p className="mt-2 text-xs font-medium text-muted-foreground">{delta}</p>}
+        <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+        <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
+        {delta && <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">{delta}</p>}
       </Card>
     </Link>
   );

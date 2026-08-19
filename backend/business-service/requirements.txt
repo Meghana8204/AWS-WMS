@@ -31,6 +31,12 @@ opentelemetry-exporter-otlp==1.29.0
 # --- AI / Vision -----------------------------------------------------------
 google-genai>=1.0.0,<2.0.0
 Pillow==11.0.0
+reportlab==4.2.5
+opencv-contrib-python==4.10.0.84
+pytesseract==0.3.13
+paddleocr==3.7.0
+paddlex[ocr-core]==3.7.2
+paddlepaddle==3.3.1
 
 # --- Dev / test ----------------------------------------------------------------------
 pytest==8.3.4

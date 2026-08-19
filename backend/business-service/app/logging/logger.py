@@ -42,10 +42,18 @@ def configure_logging() -> None:
         )
     root.handlers = [handler]
 
-    # Quiet noisy libraries down to WARNING unless the whole app is in DEBUG.
+    # Quiet noisy libraries down unless the whole app is in DEBUG.
     if settings.log_level.upper() != "DEBUG":
-        for noisy in ("sqlalchemy.engine", "aiokafka", "httpx"):
-            logging.getLogger(noisy).setLevel(logging.WARNING)
+        for noisy in ("sqlalchemy.engine", "aiokafka", "httpx", "apscheduler", "uvicorn.access"):
+            logging.getLogger(noisy).setLevel(logging.ERROR)
+
+        # Also silence specific noisy loggers that don't follow the prefix rule
+        logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
+        logging.getLogger("apscheduler.scheduler").setLevel(logging.ERROR)
+        logging.getLogger("aiokafka").setLevel(logging.CRITICAL)
+        logging.getLogger("app.kafka.consumer").setLevel(logging.CRITICAL)
+        logging.getLogger("asyncio").setLevel(logging.CRITICAL)
+        logging.getLogger("uvicorn.access").setLevel(logging.ERROR)
 
 
 def get_logger(name: str) -> logging.Logger:

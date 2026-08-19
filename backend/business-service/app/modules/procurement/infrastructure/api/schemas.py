@@ -1,94 +1,133 @@
-"""
-Pydantic v2 request/response schemas for procurement supplier module.
-Inherits from ApiModel to automatically handle camelCase on the wire.
-"""
-from __future__ import annotations
-
 from datetime import date, datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Optional, Union
+
 from pydantic import Field
+
 from app.common.api_model import ApiModel
 
 
-class AddressSchema(ApiModel):
-    registered_address: str = Field(min_length=1, description="Mandatory registered address")
-    city: str = Field(min_length=1, description="Mandatory city")
-    country: Optional[str] = Field(default=None, description="Optional country")
-    state: Optional[str] = Field(default=None, description="Optional state/province")
-    pincode: Optional[str] = Field(default=None, description="Optional pincode/zip")
+class MasterDataCreate(ApiModel):
+    name: str
 
 
-class ContactSchema(ApiModel):
-    primary_contact_name: str = Field(min_length=1, description="Mandatory primary contact name")
-    email: str = Field(min_length=1, description="Mandatory email address")
-    designation: Optional[str] = Field(default=None, description="Optional designation")
-    phone: Optional[str] = Field(default=None, description="Optional phone number")
-    website: Optional[str] = Field(default=None, description="Optional website URL")
+class SupplierAddressResponse(ApiModel):
+    registered_address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
 
-class BankInfoSchema(ApiModel):
-    bank_name: str = Field(min_length=1, description="Mandatory bank name")
-    account_number: str = Field(min_length=1, description="Mandatory account number")
-    account_holder_name: Optional[str] = Field(default=None, description="Optional account holder name")
-    ifsc: Optional[str] = Field(default=None, description="Optional IFSC code")
-    branch: Optional[str] = Field(default=None, description="Optional branch name")
-    swift_bic: Optional[str] = Field(default=None, description="Optional SWIFT/BIC code")
-    tds_section: Optional[str] = Field(default=None, description="Optional TDS section")
+class SupplierContactResponse(ApiModel):
+    primary_contact_name: Optional[str] = None
+    primary_email: Optional[str] = None
+    secondary_email: Optional[str] = None
+    designation: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
 
 
-class DocumentSchema(ApiModel):
-    upload_id: Optional[str] = Field(default=None, description="Staged upload UUID from POST /documents")
-    document_type: str = Field(min_length=1, description="Mandatory document type")
-    file_name: str = Field(min_length=1, description="Mandatory file name")
-    file_type: str = Field(min_length=1, description="Mandatory file MIME/type")
-    file_size: int = Field(gt=0, description="File size in bytes")
+class SupplierBankInfoResponse(ApiModel):
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    account_holder_name: Optional[str] = None
+    ifsc: Optional[str] = None
+    branch: Optional[str] = None
+    swift_bic: Optional[str] = None
+    tds_section: Optional[str] = None
 
 
-
-class CreateSupplierRequest(ApiModel):
-    supplier_name: str = Field(min_length=1, description="Mandatory supplier name")
-    registered_company_name: str = Field(min_length=1, description="Mandatory registered company name")
-    vendor_type: str = Field(min_length=1, description="Mandatory vendor type")
-    category: str = Field(min_length=1, description="Mandatory category (Vendor, Raw Materials, Products)")
-    industry: str = Field(min_length=1, description="Mandatory industry")
-    gstin: str = Field(min_length=1, description="Mandatory GSTIN number")
-    supplier_code: Optional[str] = Field(default=None, description="Internal unique code")
-    main_material: Optional[str] = Field(default=None, description="Primary material supplied")
-    address: Optional[AddressSchema] = Field(default=None, description="Step 2 Address")
-    contact: Optional[ContactSchema] = Field(default=None, description="Step 2 Contact")
-    bank_info: Optional[BankInfoSchema] = Field(default=None, description="Step 3 Banking & Tax")
-    documents: Optional[List[DocumentSchema]] = Field(default=None, description="Step 4 Uploaded Documents")
-    remarks: Optional[str] = Field(default=None, description="Step 4 Remarks for Approver")
-
-
-class DocumentUploadResponse(ApiModel):
-    upload_id: str
-    document_type: str
-    file_name: str
-    file_type: str
-    file_size: int
+class SupplierDocumentResponse(ApiModel):
+    document_type: Optional[str] = None
+    file_name: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    storage_path: Optional[str] = None
+    upload_id: Optional[str] = None
 
 
 class SupplierResponse(ApiModel):
     supplier_id: str
     supplier_name: str
-    registered_company_name: str
-    vendor_type: str
-    category: str
-    industry: str
-    gstin: str
-    supplier_code: Optional[str] = None
-    main_material: Optional[str] = None
-    rating: float = 0.0
-    performance_score: float = 0.0
-    city: Optional[str] = None
-    address: Optional[AddressSchema] = None
-    contact: Optional[ContactSchema] = None
-    bank_info: Optional[BankInfoSchema] = None
-    documents: Optional[List[DocumentSchema]] = None
+    registered_company_name: Optional[str] = None
+    vendor_type: Optional[str] = None
+    category: Optional[str] = None
+    industry: Optional[str] = None
+    gstin: Optional[str] = None
+    main_materials: List[str] = []
+    address: Optional[SupplierAddressResponse] = None
+    contact: Optional[SupplierContactResponse] = None
+    bank_info: Optional[SupplierBankInfoResponse] = None
+    documents: List[SupplierDocumentResponse] = []
     remarks: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[str] = "Active"
+    created_at: Optional[datetime] = None
+
+
+class AddressRequest(ApiModel):
+    registered_address: str
+    city: str
+    country: str
+    state: str
+    pincode: str
+
+
+class ContactRequest(ApiModel):
+    primary_contact_name: str
+    primary_email: str
+    secondary_email: Optional[str] = None
+    designation: Optional[str] = None
+    phone: Optional[str] = None
+    website: Optional[str] = None
+
+
+class BankInfoRequest(ApiModel):
+    bank_name: str
+    account_number: str
+    account_holder_name: str
+    ifsc: str
+    branch: Optional[str] = None
+    swift_bic: Optional[str] = None
+    tds_section: Optional[str] = None
+
+
+class DocumentRequest(ApiModel):
+    document_type: str
+    file_name: str
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    storage_path: str
+    upload_id: str
+
+
+class CreateSupplierRequest(ApiModel):
+    supplier_name: str
+    registered_company_name: Optional[str] = None
+    vendor_type: Optional[str] = None
+    category: Optional[str] = None
+    industry: Optional[str] = None
+    gstin: Optional[str] = None
+    main_materials: List[str] = []
+    address: Optional[AddressRequest] = None
+    contact: Optional[ContactRequest] = None
+    bank_info: Optional[BankInfoRequest] = None
+    documents: List[DocumentRequest] = []
+    remarks: Optional[str] = None
+
+
+class UpdateSupplierRequest(ApiModel):
+    supplier_name: Optional[str] = None
+    registered_company_name: Optional[str] = None
+    vendor_type: Optional[str] = None
+    category: Optional[str] = None
+    industry: Optional[str] = None
+    gstin: Optional[str] = None
+    main_materials: Optional[List[str]] = None
+    address: Optional[AddressRequest] = None
+    contact: Optional[ContactRequest] = None
+    bank_info: Optional[BankInfoRequest] = None
+    remarks: Optional[str] = None
 
 
 # --- RFQ ---
@@ -96,51 +135,39 @@ class SupplierResponse(ApiModel):
 class RfqItemSchema(ApiModel):
     material_code: str
     material_name: str
-    category: str
+    category: Optional[str] = None
     quantity: Decimal
     uom: str
-    required_delivery_date: date
-    warehouse: str
+    required_delivery_date: Optional[date] = None
+    warehouse: Optional[str] = None
     special_requirements: Optional[str] = None
 
 
 class CreateRfqRequest(ApiModel):
     rfq_date: date
-    warehouse: str
-    procurement_officer: str
-    supplier_ids: List[str]
-    items: List[RfqItemSchema]
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
-    valid_until: Optional[date] = None
+    warehouse: Optional[str] = None
+    procurement_officer: Optional[str] = None
     remarks: Optional[str] = None
+    supplier_ids: List[str]
+    items: List[RfqItemSchema]
 
 
 class RfqResponse(ApiModel):
     id: str
-    rfq_number: str
-    rfq_date: date
-    warehouse: str
-    procurement_officer: str
-    status: str
-    supplier_ids: List[str]
-    items: List[RfqItemSchema]
+    rfq_number: Optional[str] = None
+    rfq_date: Optional[date] = None
+    status: Optional[str] = None
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
-    valid_until: Optional[date] = None
+    warehouse: Optional[str] = None
+    procurement_officer: Optional[str] = None
     remarks: Optional[str] = None
-    created_at: datetime
-    selected_supplier_id: Optional[str] = None
-    selection_date: Optional[date] = None
-    selected_by: Optional[str] = None
-    selection_reason: Optional[str] = None
-    selection_comments: Optional[str] = None
-
-
-class SelectSupplierRequest(ApiModel):
-    supplier_id: str
-    selection_reason: str
-    selection_comments: Optional[str] = None
+    items: List[RfqItemSchema] = []
+    suppliers: List[SupplierResponse] = []
+    supplier_emails: List[str] = []
+    created_at: Optional[datetime] = None
 
 
 # --- Quotation ---
@@ -161,103 +188,36 @@ class SubmitQuotationRequest(ApiModel):
     rfq_id: str
     supplier_id: str
     lines: List[QuotationLineSchema]
-    status: Optional[str] = "SUBMITTED"
-    discount: Optional[Decimal] = None
-    tax: Optional[Decimal] = None
-    freight_charges: Optional[Decimal] = None
+    status: str = "SUBMITTED"
+    discount: Decimal = Decimal("0.0")
+    tax: Decimal = Decimal("0.0")
+    freight_charges: Decimal = Decimal("0.0")
     delivery_time: Optional[str] = None
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = None
     quotation_validity: Optional[date] = None
     remarks: Optional[str] = None
-    documents: Optional[List[QuotationDocumentSchema]] = None
+    documents: List[QuotationDocumentSchema] = []
 
 
 class QuotationResponse(ApiModel):
     id: str
-    rfq_id: str
-    supplier_id: str
-    status: str
-    lines: List[QuotationLineSchema]
-    total_amount: Decimal
-    created_at: datetime
+    rfq_id: Optional[str] = None
+    supplier_id: Optional[str] = None
+    status: Optional[str] = None
+    lines: List[QuotationLineSchema] = []
     discount: Optional[Decimal] = None
     tax: Optional[Decimal] = None
     freight_charges: Optional[Decimal] = None
+    total_amount: Optional[Decimal] = None
     delivery_time: Optional[str] = None
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = None
     quotation_validity: Optional[date] = None
     remarks: Optional[str] = None
-    documents: Optional[List[QuotationDocumentSchema]] = None
-
-
-# --- Purchase Order ---
-
-class PurchaseOrderLineSchema(ApiModel):
-    item_code: str
-    ordered_quantity: Decimal
-    unit_price: Decimal
-    material_name: Optional[str] = None
-    category: Optional[str] = None
-    uom: Optional[str] = None
-    discount: Optional[Decimal] = None
-    tax: Optional[Decimal] = None
-    line_total: Optional[Decimal] = None
-
-
-class CreatePurchaseOrderRequest(ApiModel):
-    quotation_id: Optional[str] = None
-    supplier_id: str
-    lines: List[PurchaseOrderLineSchema] = Field(alias="items")
-    po_number: Optional[str] = None
-    po_date: Optional[date] = None
-    expected_delivery_date: Optional[date] = None
-    department: Optional[str] = None
-    procurement_officer: Optional[str] = None
-    delivery_warehouse: Optional[str] = None
-    delivery_address: Optional[str] = None
-    additional_charges: Decimal = Decimal("0.0")
-
-
-class PurchaseOrderApprovalLogSchema(ApiModel):
-    id: str
-    status: str
-    actor: str
-    action_date: datetime
-    reason: Optional[str] = None
-    comments: Optional[str] = None
-
-
-class PurchaseOrderSummarySchema(ApiModel):
-    subtotal: Decimal
-    total_discount: Decimal
-    tax_amount: Decimal
-    additional_charges: Decimal
-    grand_total: Decimal
-
-
-class PurchaseOrderResponse(ApiModel):
-    id: str
-    po_number: str
-    quotation_id: Optional[str] = None
-    supplier_id: str
-    status: str
-    lines: List[PurchaseOrderLineSchema] = Field(alias="items")
-    po_date: date
-    expected_delivery_date: Optional[date] = None
-    created_at: datetime
-    rejection_reason: Optional[str] = None
-    finance_comments: Optional[str] = None
-    logs: List[PurchaseOrderApprovalLogSchema] = []
+    documents: List[QuotationDocumentSchema] = []
     supplier_info: Optional[SupplierResponse] = None
-    quotation_info: Optional[QuotationResponse] = None
-    department: Optional[str] = "Procurement"
-    procurement_officer: Optional[str] = "Procurement Officer"
-    delivery_warehouse: Optional[str] = "Pune DC · Plant 1200"
-    delivery_address: Optional[str] = "Sector 18, Industrial Area, Pune, MH, 411018"
-    additional_charges: Decimal = Decimal("0.0")
-    summary: PurchaseOrderSummarySchema
+    created_at: Optional[datetime] = None
 
 
 # --- ASN ---
@@ -265,31 +225,222 @@ class PurchaseOrderResponse(ApiModel):
 class AsnLineSchema(ApiModel):
     item_code: str
     shipped_quantity: Decimal
+    material_name: Optional[str] = None
+    uom: Optional[str] = None
+
+
+class AsnDocumentSchema(ApiModel):
+    document_type: str
+    file_name: str
+    file_url: str
+    uploaded_by: str
+    uploaded_at: Optional[datetime] = None
 
 
 class CreateAsnRequest(ApiModel):
-    po_id: str
     asn_number: str
     lines: List[AsnLineSchema]
+    po_id: Optional[str] = None
+    po_number: Optional[str] = None
     vehicle_number: Optional[str] = None
-    expected_arrival_at: Optional[datetime] = None
-    shipment_date: Optional[date] = None
+    expected_arrival_at: Optional[str] = None
+    shipment_date: Optional[str] = None
     driver_name: Optional[str] = None
     driver_contact: Optional[str] = None
+    transporter: Optional[str] = None
+    number_of_packages: Optional[int] = None
+    package_type: Optional[str] = None
+    shipping_method: Optional[str] = None
+    status: Optional[str] = "SUBMITTED"
+    documents: List[AsnDocumentSchema] = []
 
 
 class AsnResponse(ApiModel):
     id: str
-    po_id: str
     asn_number: str
     status: str
     lines: List[AsnLineSchema]
+    po_id: Optional[str] = None
+    po_number: Optional[str] = None
+    supplier_id: Optional[str] = None
+    supplier_name: Optional[str] = None
     vehicle_number: Optional[str] = None
     expected_arrival_at: Optional[datetime] = None
     shipment_date: Optional[date] = None
     driver_name: Optional[str] = None
     driver_contact: Optional[str] = None
+    transporter: Optional[str] = None
+    number_of_packages: Optional[int] = None
+    package_type: Optional[str] = None
+    shipping_method: Optional[str] = None
+    documents: List[AsnDocumentSchema] = []
     created_at: datetime
+
+
+# --- Purchase Order ---
+
+class POApprovalHistorySchema(ApiModel):
+    status: str
+    actor_name: str
+    comments: Optional[str] = None
+    created_at: datetime
+
+
+class PurchaseOrderItemSchema(ApiModel):
+    material_code: str
+    material_name: Optional[str] = None
+    category: Optional[str] = None
+    quantity: Decimal
+    unit_price: Decimal
+    discount: Decimal = Decimal("0.0")
+    tax: Decimal = Decimal("0.0")
+    uom: str
+
+
+class PurchaseOrderResponse(ApiModel):
+    id: str
+    po_number: str
+    po_date: date
+    status: str
+    rfq_id: Optional[str] = None
+    rfq_number: Optional[str] = None
+    supplier_id: str
+    supplier_name: Optional[str] = None
+    supplier_code: Optional[str] = None
+    supplier_contact_person: Optional[str] = None
+    supplier_phone: Optional[str] = None
+    supplier_email: Optional[str] = None
+    supplier_gstin: Optional[str] = None
+    supplier_address: Optional[str] = None
+
+    warehouse_id: Optional[str] = None
+    delivery_warehouse_name: Optional[str] = None
+    delivery_address: Optional[str] = None
+    department: Optional[str] = None
+
+    total_amount: Decimal
+    subtotal: Decimal = Decimal("0.0")
+    discount_amount: Decimal = Decimal("0.0")
+    tax_amount: Decimal = Decimal("0.0")
+    freight_charges: Decimal = Decimal("0.0")
+    additional_charges: Decimal = Decimal("0.0")
+
+    expected_delivery_date: Optional[date] = None
+    payment_terms: Optional[str] = None
+    procurement_officer: Optional[str] = None
+    selection_reason: Optional[str] = None
+    procurement_comments: Optional[str] = None
+    selected_by: Optional[str] = None
+    rejection_reason: Optional[str] = None
+    items: List[PurchaseOrderItemSchema] = []
+    history: List[POApprovalHistorySchema] = []
+    created_at: datetime
+
+
+class FinanceApprovalResponse(ApiModel):
+    id: str
+    po_id: str
+    status: str
+    requested_at: datetime
+    approved_at: Optional[datetime] = None
+    approver_name: Optional[str] = None
+    comments: Optional[str] = None
+    po_details: Optional[PurchaseOrderResponse] = None
+
+
+# --- Material Request ---
+
+class MaterialRequestItemSchema(ApiModel):
+    material_code: Optional[str] = None
+    material_name: Optional[str] = None
+    quantity: Decimal
+    uom: str
+
+
+class CreateMaterialRequest(ApiModel):
+    request_number: Optional[str] = None
+    warehouse_id: str
+    department: str
+    requested_by: str
+    required_date: date
+    remarks: Optional[str] = None
+    items: List[MaterialRequestItemSchema]
+
+
+class SupplierSelectionRequest(ApiModel):
+    supplier_id: str
+    selection_reason: str
+    selection_comments: Optional[str] = None
+
+
+class MaterialRequestResponse(ApiModel):
+    id: str
+    request_number: str
+    warehouse_id: str
+    department: str
+    requested_by: str
+    status: str
+    required_date: date
+    remarks: Optional[str] = None
+    items: List[MaterialRequestItemSchema] = []
+    created_at: datetime
+
+
+class MaterialStockResponse(ApiModel):
+    id: str
+    material_code: str
+    material_name: str
+    category: str
+    on_hand: Decimal
+    allocated: Decimal
+    available: Decimal
+    uom: str
+    warehouse_id: str
+    reorder_point: Decimal
+    updated_at: datetime
+
+
+class ArrivalNotificationResponse(ApiModel):
+    id: str
+    asn_id: str
+    asn_number: str
+    po_id: Optional[str] = None
+    po_number: str
+    warehouse_id: str
+    supplier_name: str
+    vehicle_number: str
+    expected_arrival_time: datetime
+    driver_phone: Optional[str] = None
+    message: Optional[str] = None
+    status: str
+    created_at: datetime
+
+
+# --- Global Search ---
+
+class ProcurementTrendItem(ApiModel):
+    month: str
+    pos: int
+
+
+class ProcurementStatsResponse(ApiModel):
+    active_suppliers: int
+    open_pos: int
+    compliance_rate: float
+    total_po_value: Decimal
+    trend: List[ProcurementTrendItem] = []
+
+
+class GlobalSearchItem(ApiModel):
+    id: str
+    type: str  # SUPPLIER, PO, ASN, GATE_ENTRY, RFQ, MATERIAL_REQUEST
+    title: str
+    subtitle: str
+    link: str
+
+
+class GlobalSearchResponse(ApiModel):
+    results: List[GlobalSearchItem]
 
 
 # --- Supplier Auth ---
@@ -312,28 +463,7 @@ class ChangePasswordRequest(ApiModel):
     new_password: str
 
 
-class UpdateQuotationRequest(ApiModel):
-    status: Optional[str] = None
-    remarks: Optional[str] = None
-
-
-class UpdatePurchaseOrderRequest(ApiModel):
-    status: str
-    rejection_reason: Optional[str] = None
-    finance_comments: Optional[str] = None
-    lines: Optional[List[PurchaseOrderLineSchema]] = None
-    additional_charges: Optional[Decimal] = None
-
-
 class DevLoginRequest(ApiModel):
     username: str
     password: str
-
-
-class NotificationDispatchResponse(ApiModel):
-    total_notifications_sent: int = 1
-    status: str = "SENT"
-    details: dict | List[dict]
-
-
 

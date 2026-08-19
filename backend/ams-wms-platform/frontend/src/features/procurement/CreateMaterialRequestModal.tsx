@@ -157,6 +157,7 @@ export default function CreateMaterialRequestModal({ onClose, onSuccess }: Props
                 <label>Required By Date</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={targetDeliveryDate}
                   onChange={(e) => setTargetDeliveryDate(e.target.value)}
                   required

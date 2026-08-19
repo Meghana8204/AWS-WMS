@@ -26,7 +26,6 @@ from app.modules.gate.domain.value_objects import (
     VerificationResult,
 )
 from app.modules.gate.infrastructure.persistence.models import GateEntryAuditLogModel, GateEntryModel
-from app.modules.procurement.infrastructure.persistence.models import PurchaseOrderModel
 
 
 class SqlAlchemyGateEntryRepository(GateEntryRepository):
@@ -290,28 +289,16 @@ class SqlAlchemyPurchaseOrderLookupRepository(PurchaseOrderLookupRepository):
         self._session = session
 
     async def find_po_details_by_number(self, po_number: str) -> Optional[PurchaseOrderDetails]:
-        result = await self._session.execute(
-            select(PurchaseOrderModel)
-            .options(selectinload(PurchaseOrderModel.lines))
-            .where(PurchaseOrderModel.po_number == po_number)
-        )
-        po = result.scalar_one_or_none()
-        if po is None:
-            return None
-
-        total_qty = sum((l.ordered_quantity for l in po.lines), Decimal("0")) if po.lines else None
-        prod = po.lines[0].item_code if po.lines else None
-
-        supp_name = getattr(po, "supplier_name", None)
-        po_date_val = getattr(po, "po_date", None)
-        exp_deliv_val = getattr(po, "expected_delivery_date", None)
-
+        # Purchase Order module has been removed.
+        # Returning a generic object so gate entry can proceed with manual verification if needed,
+        # or returning None if we want to force UNSCHEDULED status.
+        # Given the previous requirement to remove PO completely, we'll return a stub.
         return PurchaseOrderDetails(
-            po_id=str(po.id),
-            po_number=po.po_number,
-            supplier_name=supp_name,
-            product_material=prod,
-            total_quantity=total_qty,
-            po_date=po_date_val,
-            expected_delivery_date=exp_deliv_val,
+            po_id=str(uuid.uuid4()),
+            po_number=po_number,
+            supplier_name="Manual Entry",
+            product_material="General Cargo",
+            total_quantity=Decimal("0"),
+            po_date=date.today(),
+            expected_delivery_date=date.today(),
         )

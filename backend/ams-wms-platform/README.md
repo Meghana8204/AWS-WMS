@@ -37,7 +37,7 @@ docker compose up --build
 ```
 
 Then:
-- Frontend: http://localhost:5173 (dev seed login: `admin` / see
+- Frontend: http://localhost:8080 (dev seed login: `admin` / see
   `backend/auth-service/README.md` for the password)
 - business-service docs: http://localhost:8000/docs
 - auth-service actuator: http://localhost:8080/actuator/health

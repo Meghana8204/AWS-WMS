@@ -23,6 +23,7 @@ import {
   ClipboardList,
   FileQuestion,
   FileBadge,
+  Loader2,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -31,22 +32,17 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 
 const warehouseNav = [
-  { label: "Dashboard", to: "/dashboard", icon: LayoutDashboard },
-  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
-  { label: "Arrival Management", to: "/notifications", icon: Truck, badge: "2" },
-  { label: "Vehicle Queue", to: "/vehicle-queue", icon: ListOrdered },
-  { label: "Dock Assignment", to: "/dock-assignment", icon: Warehouse },
-  { label: "Receiving", to: "/receiving", icon: PackageCheck },
-  { label: "GRN", to: "/grn", icon: FileCheck2 },
+  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Inventory", to: "/inventory", icon: Boxes },
+  { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
+  { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
-  { label: "Master Data", to: "/master-data", icon: Database },
-  { label: "Settings", to: "/settings", icon: Settings },
 ];
 
 const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
+  { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
   { label: "RFQs", to: "/procurement/rfqs", icon: FileQuestion },
   { label: "Quotations", to: "/procurement/quotations", icon: FileBadge },
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
@@ -56,12 +52,20 @@ const procurementNav = [
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
-  { label: "Prepare Shipment", to: "/gate-entry", icon: Truck },
+  { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
 
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
+  { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
+];
+
+const gateSecurityNav = [
+  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
+  { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
+  { label: "Vehicle Queue", to: "/vehicle-queue", icon: ListOrdered },
 ];
 
 export function AppShell({
@@ -81,6 +85,35 @@ export function AppShell({
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  // Global Search State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchTerm.length >= 2) {
+        setIsSearching(true);
+        try {
+          const data = await api.globalSearch(searchTerm);
+          setSearchResults(data.results);
+          setShowSearch(true);
+        } catch (e) {
+          console.error("Search failed", e);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+        setShowSearch(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
 
   useEffect(() => {
     setMounted(true);
@@ -89,7 +122,38 @@ export function AppShell({
     // Load user only on client side to prevent hydration mismatch
     try {
       const savedUser = localStorage.getItem("user_info");
-      if (savedUser) setUser(JSON.parse(savedUser));
+      if (savedUser) {
+        const u = JSON.parse(savedUser);
+        setUser(u);
+
+        // Fetch notifications for the user's role
+        const role = u.roles?.includes("SUPPLIER") ? "SUPPLIER"
+          : u.roles?.includes("FINANCE") ? "FINANCE"
+          : u.roles?.includes("PROCUREMENT") ? "PROCUREMENT"
+          : "WAREHOUSE";
+        const fetchNotifications = async () => {
+          try {
+            if (role === "WAREHOUSE") {
+              const data = await api.getArrivalNotifications();
+              setUnreadNotifications(data.filter(n => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length);
+            } else {
+              const data = await api.getNotifications(role);
+              setUnreadNotifications(data.filter(n => !(n.is_read ?? n.isRead)).length);
+            }
+          } catch (e) {
+            console.error("Failed to fetch notifications", e);
+          }
+        };
+        void fetchNotifications();
+        const interval = window.setInterval(fetchNotifications, 2000);
+        window.addEventListener("notifications:refresh", fetchNotifications);
+        window.addEventListener("focus", fetchNotifications);
+        return () => {
+          window.clearInterval(interval);
+          window.removeEventListener("notifications:refresh", fetchNotifications);
+          window.removeEventListener("focus", fetchNotifications);
+        };
+      }
     } catch (e) {
       console.error("Failed to parse user info", e);
     }
@@ -101,14 +165,19 @@ export function AppShell({
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isWarehouseRoute = path === "/warehouse-dashboard" || [
+    "/inventory", "/warehouse/material-requests", "/gate-entry", "/notifications", "/vehicle-queue", "/receiving", "/reports"
+  ].some(p => path.startsWith(p));
 
   const nav = isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
     ? supplierNav
     : (isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
-        ? financeNav
-        : (isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
-            ? procurementNav
-            : warehouseNav));
+      ? financeNav
+      : (isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
+          ? procurementNav
+          : (mounted && user?.roles?.includes("GATE_SECURITY")
+              ? gateSecurityNav
+              : warehouseNav)));
 
   const handleLogout = () => {
     api.logout();
@@ -186,16 +255,62 @@ export function AppShell({
             <Link to={nav[0].to} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden">
               <Warehouse className="size-4" />
             </Link>
-            <label className="relative hidden max-w-md flex-1 items-center sm:flex">
+            <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
                 placeholder="Search truck no, PO, vendor, gate entry…"
                 className="h-10 w-full rounded-xl border border-border bg-muted/60 pl-9 pr-16 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:bg-card focus:ring-2 focus:ring-ring/40"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => searchTerm.length >= 2 && setShowSearch(true)}
               />
               <kbd className="absolute right-3 hidden rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground lg:block">
-                ⌘K
+                {isSearching ? <Loader2 className="size-3 animate-spin" /> : "⌘K"}
               </kbd>
-            </label>
+
+              {/* Search Results Dropdown */}
+              {showSearch && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowSearch(false)}
+                  />
+                  <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] max-h-[480px] overflow-y-auto z-50 rounded-2xl border border-border bg-card shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="p-2">
+                      {searchResults.length > 0 ? (
+                        <div className="space-y-1">
+                          {searchResults.map((result) => (
+                            <Link
+                              key={`${result.type}-${result.id}`}
+                              to={result.link}
+                              onClick={() => {
+                                setShowSearch(false);
+                                setSearchTerm("");
+                              }}
+                              className="flex flex-col gap-0.5 rounded-xl px-4 py-2.5 transition-colors hover:bg-accent"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm font-bold tracking-tight">{result.title}</span>
+                                <Badge variant="outline" className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30">
+                                  {result.type.replace("_", " ")}
+                                </Badge>
+                              </div>
+                              <span className="text-[11px] text-muted-foreground line-clamp-1">{result.subtitle}</span>
+                            </Link>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                          <Search className="mb-2 size-8 opacity-20" />
+                          <p className="text-sm font-medium">No results found for "{searchTerm}"</p>
+                          <p className="text-xs">Try searching for a different PO, ASN or Vendor</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             <div className="ml-auto flex items-center gap-1.5">
               <button
@@ -211,7 +326,11 @@ export function AppShell({
                 className="relative grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <Bell className="size-[18px]" />
-                <span className="absolute right-2 top-2 size-2 rounded-full bg-destructive animate-pulse-ring" />
+                {unreadNotifications > 0 && (
+                  <span className="absolute right-2 top-2 grid size-4 place-items-center rounded-full bg-destructive text-[9px] font-bold text-white animate-pulse-ring">
+                    {unreadNotifications}
+                  </span>
+                )}
               </Link>
               <div className="group relative ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3 transition-colors hover:bg-accent/50">
                 <span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
@@ -220,7 +339,9 @@ export function AppShell({
                 <div className="hidden leading-tight lg:block">
                   <p className="text-xs font-semibold">{user?.username || "Rohit Sharma"}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" : "Warehouse Manager"}
+                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
+                     user?.roles?.includes("FINANCE") ? "Finance Manager" :
+                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Warehouse Manager"}
                   </p>
                 </div>
                 <button
@@ -276,20 +397,51 @@ export function StatusBadge({ status }: { status: string }) {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
     Active: "bg-success-soft text-success border-success/30",
     Blocked: "bg-danger-soft text-destructive border-destructive/25",
-    Approved: "bg-primary-soft text-primary border-primary/25",
+    Approved: "bg-success-soft text-success border-success/30",
+    APPROVED: "bg-success-soft text-success border-success/30",
     "Dock Assigned": "bg-teal-soft text-teal border-teal/30",
     Receiving: "bg-primary-soft text-primary border-primary/25",
     Completed: "bg-success-soft text-success border-success/30",
     Rejected: "bg-danger-soft text-destructive border-destructive/25",
+    REJECTED: "bg-danger-soft text-destructive border-destructive/25",
+    FINANCE_REJECTED: "bg-danger-soft text-destructive border-destructive/25",
+    PO_VERIFIED: "bg-success-soft text-success border-success/30",
+    UNSCHEDULED_ARRIVAL: "bg-warning-soft text-warning-foreground border-warning/30",
+    FIELD_MISMATCH_DETECTED: "bg-danger-soft text-destructive border-destructive/25",
     Hold: "bg-muted text-muted-foreground border-border",
     Available: "bg-success-soft text-success border-success/30",
     Occupied: "bg-danger-soft text-destructive border-destructive/25",
     Reserved: "bg-warning-soft text-warning-foreground border-warning/30",
     Cleaning: "bg-muted text-muted-foreground border-border",
+    SUBMITTED: "bg-primary-soft text-primary border-primary/25",
+    DRAFT: "bg-muted text-muted-foreground border-border",
+    ASN_SUBMITTED: "bg-primary-soft text-primary border-primary/25",
+    IN_TRANSIT: "bg-teal-soft text-teal border-teal/30",
+    PLACED: "bg-teal-soft text-teal border-teal/30",
+    PENDING_FINANCE: "bg-warning-soft text-warning-foreground border-warning/30",
+    SENT: "bg-primary-soft text-primary border-primary/25",
+    SHIPPED: "bg-teal-soft text-teal border-teal/30",
+    DISPATCHED: "bg-teal-soft text-teal border-teal/30",
   };
+
+  const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
+
   return (
-    <Badge variant="outline" className={cn("rounded-full border px-2.5 py-0.5 text-[11px] font-semibold", map[status] ?? map["Hold"])}>
-      {status}
+    <Badge
+      variant="outline"
+      className={cn(
+        "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+        map[status] ?? map["Hold"],
+        isLive && "pl-5"
+      )}
+    >
+      {isLive && (
+        <span className="absolute left-2 top-1/2 flex size-1.5 -translate-y-1/2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-75"></span>
+          <span className="relative inline-flex size-1.5 rounded-full bg-current"></span>
+        </span>
+      )}
+      {status.replace(/_/g, " ")}
     </Badge>
   );
 }

@@ -1,0 +1,36 @@
+Subject: Request for Quotation - RFQ-2026-0002
+To: harshavardhandevang@gmail.com
+
+Dear ABC Industrial Supplies,
+
+We request you to submit a quotation for the following materials:
+
+Material: Mild Steel Pipe 2-inch
+Quantity: 1.0000 PCS
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse – Bengaluru
+
+Material: Stainless Steel Sheet 2mm
+Quantity: 1.0000 KG
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse – Bengaluru
+
+Material: Industrial Lubricant 20W-40
+Quantity: 1.0000 LTR
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse – Bengaluru
+
+Material: Hex Bolt M10 × 50mm
+Quantity: 1.0000 PCS
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse – Bengaluru
+
+Please use the following link to login and submit your quotation:
+
+http://localhost:8080/login?redirect=/submit-quotation?rfqId=89935f58-ac00-4e56-8309-c2d633c748a3
+
+Your Credentials:
+Username: supplier_abcindustr
+Temporary Password: ZUFq9XHr
+
+Note: If this is your first login, you will be required to change your password.

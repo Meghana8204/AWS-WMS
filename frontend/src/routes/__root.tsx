@@ -24,7 +24,7 @@ function NotFoundComponent() {
         </p>
         <div className="mt-6">
           <Link
-            to="/dashboard"
+            to="/warehouse-dashboard"
             className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to dashboard
@@ -114,6 +114,18 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Protected Route Guard - Client Side Only
+    const userInfo = localStorage.getItem("user_info");
+    const path = router.state.location.pathname;
+    const isPublicRoute = path === "/login";
+
+    if (!userInfo && !isPublicRoute) {
+      router.navigate({ to: "/login" });
+    }
+  }, [router.state.location.pathname, router]);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -37,45 +37,102 @@ export const Route = createFileRoute("/procurement-dashboard")({
   component: ProcurementDashboard,
 });
 
-const poData = [
-  { month: "Jan", pos: 45 },
-  { month: "Feb", pos: 52 },
-  { month: "Mar", pos: 48 },
-  { month: "Apr", pos: 61 },
-  { month: "May", pos: 55 },
-  { month: "Jun", pos: 67 },
-];
-
-const recentActivities = [
-  { time: "10:30 AM", title: "New PO Created", detail: "PO-2026-8821 for Tech Components Corp.", tone: "primary" },
-  { time: "09:15 AM", title: "Supplier Added", detail: "High-Tech Alloys was added to the supplier master.", tone: "success" },
-  { time: "Yesterday", title: "Document Update", detail: "Quality certificates uploaded for Swift Logistics.", tone: "warning" },
-];
-
 function ProcurementDashboard() {
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [pos, setPos] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>({
+    activeSuppliers: 0,
+    openPos: 0,
+    complianceRate: 100,
+    totalPoValue: 0,
+    trend: []
+  });
 
-  async function fetchSuppliers() {
+  // Search states
+  const [supplierQuery, setSupplierQuery] = useState("");
+  const [poQuery, setPoQuery] = useState("");
+  const [supplierResults, setSupplierResults] = useState<any[]>([]);
+  const [poResults, setPoResults] = useState<any[]>([]);
+  const [isSearchingSuppliers, setIsSearchingSuppliers] = useState(false);
+  const [isSearchingPOs, setIsSearchingPOs] = useState(false);
+
+  const loadData = async () => {
     try {
-      const data = await api.getSuppliers();
-      setSuppliers(data);
+      setLoading(true);
+      const [sData, nData, poData, statsData] = await Promise.all([
+        api.getSuppliers(),
+        api.getNotifications("PROCUREMENT"),
+        api.getPurchaseOrders(),
+        api.getProcurementStats()
+      ]);
+      setSuppliers(sData);
+      setNotifications(nData);
+      setPos(poData);
+      setStats(statsData);
     } catch (err) {
-      console.error("Failed to load suppliers", err);
+      console.error("Failed to load dashboard data", err);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchSuppliers();
+    loadData();
   }, []);
 
-  const stats = {
-    activeSuppliers: suppliers.length,
-    openPOs: 42, // Still mock for now as PO module is partially implemented
-    complianceRate: "98.2%"
-  };
+  // Real-time Supplier Search
+  useEffect(() => {
+    if (!supplierQuery.trim()) {
+      setSupplierResults([]);
+      return;
+    }
+
+    const handler = setTimeout(async () => {
+      setIsSearchingSuppliers(true);
+      try {
+        const results = await api.getSuppliers({ search: supplierQuery });
+        setSupplierResults(results);
+      } catch (err) {
+        console.error("Supplier search failed", err);
+      } finally {
+        setIsSearchingSuppliers(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [supplierQuery]);
+
+  // Real-time PO Search
+  useEffect(() => {
+    if (!poQuery.trim()) {
+      setPoResults([]);
+      return;
+    }
+
+    const handler = setTimeout(async () => {
+      setIsSearchingPOs(true);
+      try {
+        const results = await api.getPurchaseOrders(poQuery);
+        setPoResults(results);
+      } catch (err) {
+        console.error("PO search failed", err);
+      } finally {
+        setIsSearchingPOs(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(handler);
+  }, [poQuery]);
+
+  const activityItems = notifications.map(n => ({
+    time: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    title: n.title,
+    detail: n.message,
+    tone: n.title.includes("Approved") ? "success" : (n.title.includes("Rejected") ? "danger" : "primary"),
+    link: n.link
+  }));
 
   return (
     <AppShell
@@ -97,8 +154,8 @@ function ProcurementDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Active suppliers" value={loading ? "..." : String(stats.activeSuppliers)} delta="+3 this month" icon={Building2} tone="primary" to="/master-data" />
         <StatCard label="Supplier master" value={loading ? "..." : String(stats.activeSuppliers)} delta="Available for procurement" icon={Building2} tone="success" to="/master-data" />
-        <StatCard label="Open POs" value={loading ? "..." : String(stats.openPOs)} delta="Value: $1.2M" icon={FileText} tone="teal" to="/procurement/purchase-orders" />
-        <StatCard label="Compliance rate" value={loading ? "..." : stats.complianceRate} delta="Target: 99%" icon={ShieldCheck} tone="success" />
+        <StatCard label="Open POs" value={loading ? "..." : String(stats.openPos)} delta={`Value: ₹${parseFloat(stats.totalPoValue || 0).toLocaleString()}`} icon={FileText} tone="teal" to="/procurement/purchase-orders" />
+        <StatCard label="Compliance rate" value={loading ? "..." : `${stats.complianceRate}%`} delta="Target: 99%" icon={ShieldCheck} tone="success" />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -110,7 +167,7 @@ function ProcurementDashboard() {
         >
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={poData} margin={{ left: -20, right: 10, top: 10 }}>
+              <BarChart data={stats.trend} margin={{ left: -20, right: 10, top: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--color-muted-foreground)" />
                 <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--color-muted-foreground)" />
@@ -131,15 +188,71 @@ function ProcurementDashboard() {
 
         <SectionCard title="Quick Search" description="Find vendor or order" icon={Search}>
           <div className="space-y-4">
-            <div className="space-y-2">
+            <div className="relative space-y-2">
               <label className="text-xs font-medium uppercase text-muted-foreground">Search Suppliers</label>
-              <Input placeholder="Enter vendor name or ID..." className="rounded-xl" />
+              <div className="relative">
+                <Input
+                  placeholder="Enter vendor name or ID..."
+                  className="rounded-xl pr-8"
+                  value={supplierQuery}
+                  onChange={(e) => setSupplierQuery(e.target.value)}
+                />
+                {isSearchingSuppliers && <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />}
+              </div>
+
+              {supplierResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
+                  {supplierResults.slice(0, 5).map(s => (
+                    <Link
+                      key={s.supplierId}
+                      to="/supplier/$supplierId"
+                      params={{ supplierId: s.supplierId }}
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
+                    >
+                      <Building2 className="size-4 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{s.supplierName}</p>
+                        <p className="text-[10px] text-muted-foreground">{s.supplierId.substring(0, 8)}...</p>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
+
+            <div className="relative space-y-2">
               <label className="text-xs font-medium uppercase text-muted-foreground">Search Purchase Orders</label>
-              <Input placeholder="Enter PO number..." className="rounded-xl" />
+              <div className="relative">
+                <Input
+                  placeholder="Enter PO number..."
+                  className="rounded-xl pr-8"
+                  value={poQuery}
+                  onChange={(e) => setPoQuery(e.target.value)}
+                />
+                {isSearchingPOs && <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />}
+              </div>
+
+              {poResults.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
+                  {poResults.slice(0, 5).map(po => (
+                    <Link
+                      key={po.id}
+                      to="/purchase-order"
+                      search={{ poId: po.id }}
+                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
+                    >
+                      <FileText className="size-4 text-teal" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{po.po_number}</p>
+                        <p className="text-[10px] text-muted-foreground">{po.supplier_name}</p>
+                      </div>
+                      <StatusBadge status={po.status} className="h-4 px-1.5 text-[9px]" />
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
-            <Button className="w-full rounded-xl">Search</Button>
+            <p className="text-[10px] text-muted-foreground italic text-center">Results appear automatically as you type</p>
           </div>
         </SectionCard>
       </div>
@@ -198,8 +311,14 @@ function ProcurementDashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Recent Activity" description="Updates from procurement team" icon={CheckCircle2}>
-          <Timeline items={recentActivities} />
+        <SectionCard title="Recent Activity" description="Updates from finance and team" icon={CheckCircle2}>
+          {activityItems.length > 0 ? (
+            <Timeline items={activityItems} />
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground italic">
+               No recent notifications.
+            </div>
+          )}
         </SectionCard>
       </div>
     </AppShell>

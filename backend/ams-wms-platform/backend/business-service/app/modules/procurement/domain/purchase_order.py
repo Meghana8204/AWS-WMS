@@ -224,8 +224,8 @@ class PurchaseOrder:
         items: list[PurchaseOrderItem] | None = None,
         tax_rate: Decimal | None = None,
     ) -> None:
-        if self.status not in (PurchaseOrderStatus.FINANCE_REJECTED, PurchaseOrderStatus.DRAFT):
-            raise PurchaseOrderValidationError(f"Cannot resubmit purchase order in status {self.status.value}")
+        if self.status != PurchaseOrderStatus.DRAFT:
+            raise PurchaseOrderValidationError(f"Cannot resubmit purchase order in status {self.status.value}. Rejected POs are permanently closed and cannot be resubmitted.")
         if items is not None:
             self.items = items
         if tax_rate is not None:
@@ -257,6 +257,8 @@ class PurchaseOrder:
     ) -> None:
         if self.status == PurchaseOrderStatus.CANCELLED:
             raise PurchaseOrderValidationError("Cannot update a cancelled Purchase Order")
+        if self.status == PurchaseOrderStatus.FINANCE_REJECTED:
+            raise PurchaseOrderValidationError("Cannot update a permanently rejected Purchase Order")
 
         if supplier_id is not None:
             self.supplier_id = supplier_id

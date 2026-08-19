@@ -4,7 +4,6 @@ import ViewRequestModal from './ViewRequestModal'
 import CreateRFQModal from './CreateRFQModal'
 import CreateMaterialRequestModal from './CreateMaterialRequestModal'
 import QuotationComparisonModal from './QuotationComparisonModal'
-import ResubmitPOModal from './ResubmitPOModal'
 
 export default function RawMaterialRequestsPage() {
   const [requests, setRequests] = useState<MaterialRequest[]>([])
@@ -22,7 +21,6 @@ export default function RawMaterialRequestsPage() {
   const [rfqTargetRequest, setRfqTargetRequest] = useState<MaterialRequest | null>(null)
   const [comparisonTargetRfq, setComparisonTargetRfq] = useState<any | null>(null)
   const [showCreateRequestModal, setShowCreateRequestModal] = useState(false)
-  const [resubmitTargetPo, setResubmitTargetPo] = useState<any | null>(null)
 
   // Toast / Alert banner
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -47,16 +45,6 @@ export default function RawMaterialRequestsPage() {
   }, [statusFilter])
 
   function handleRfqSuccess(rfqNumber: string) {
-    setToastMessage(`🎉 RFQ ${rfqNumber} successfully created & email invitations dispatched!`)
-    setTimeout(() => setToastMessage(null), 6000)
-    loadData()
-  }
-
-  function handleResubmitSuccess(poNumber: string) {
-    setToastMessage(`🚀 PO ${poNumber} modified & successfully resubmitted to Finance for re-approval!`)
-    setTimeout(() => setToastMessage(null), 6000)
-    loadData()
-  }
 
   const filteredRequests = requests.filter((req) => {
     if (priorityFilter !== 'ALL' && req.priority !== priorityFilter) return false
@@ -100,73 +88,6 @@ export default function RawMaterialRequestsPage() {
       {toastMessage && (
         <div className="toast-banner">
           {toastMessage}
-        </div>
-      )}
-
-      {/* Finance Rejection Alert Banner for Procurement Officers */}
-      {rejectedPOs.length > 0 && (
-        <div
-          style={{
-            background: '#fff1f2',
-            border: '1px solid #fecdd3',
-            borderRadius: '12px',
-            padding: '16px 20px',
-            marginBottom: '24px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#be123c', fontWeight: 800, fontSize: '14px' }}>
-              <span>⚠️</span> REJECTED PURCHASE ORDERS REQUIRE PROCUREMENT ACTION ({rejectedPOs.length})
-            </div>
-            <span style={{ fontSize: '12px', color: '#9f1239' }}>Workflow: Review Feedback ➔ Modify Supplier / Price / Qty ➔ Resubmit to Finance</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {rejectedPOs.map((po) => (
-              <div
-                key={po.id}
-                style={{
-                  background: 'white',
-                  border: '1px solid #ffe4e6',
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '12px',
-                }}
-              >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span className="req-number-badge">{po.po_number}</span>
-                    <strong style={{ fontSize: '13px', color: '#0f172a' }}>{po.supplier_info?.supplier_name || 'Supplier'}</strong>
-                    <span className="wh-badge">{po.warehouse_id}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#9f1239', marginTop: '4px', fontWeight: 600 }}>
-                    Rejection Feedback: "{po.rejection_reason || 'Budget threshold exceeded.'}"
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setResubmitTargetPo(po)}
-                  style={{
-                    background: '#0284c7',
-                    color: 'white',
-                    border: '1px solid #0369a1',
-                    padding: '8px 16px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
-                >
-                  🔄 Review Rejection & Resubmit ➔
-                </button>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -350,14 +271,6 @@ export default function RawMaterialRequestsPage() {
             setTimeout(() => setToastMessage(null), 6000)
             loadData()
           }}
-        />
-      )}
-
-      {resubmitTargetPo && (
-        <ResubmitPOModal
-          po={resubmitTargetPo}
-          onClose={() => setResubmitTargetPo(null)}
-          onSuccess={handleResubmitSuccess}
         />
       )}
     </div>

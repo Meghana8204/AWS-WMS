@@ -292,6 +292,7 @@ export default function SupplierRFQResponseModal({ rfq, supplier, onClose, onSuc
                 <label>Expected Delivery Date *</label>
                 <input
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   value={expectedDeliveryDate}
                   onChange={(e) => setExpectedDeliveryDate(e.target.value)}
                   required

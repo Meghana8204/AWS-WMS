@@ -38,8 +38,15 @@ async def start_producer() -> None:
         enable_idempotence=True,
         acks="all",
     )
-    await _producer.start()
-    logger.info("Kafka producer started")
+    try:
+        await _producer.start()
+        logger.info("Kafka producer started")
+    except Exception:
+        # Avoid unclosed producer warning if start fails
+        try: await _producer.stop()
+        except: pass
+        _producer = None
+        raise
 
 
 async def stop_producer() -> None:
@@ -50,8 +57,12 @@ async def stop_producer() -> None:
         logger.info("Kafka producer stopped")
 
 
+def is_producer_available() -> bool:
+    return _producer is not None
+
+
 async def publish(event_type: str, key: str, payload: bytes) -> None:
     if _producer is None:
-        raise RuntimeError("Kafka producer not started - call start_producer() during app startup")
+        raise RuntimeError("Kafka producer is not available")
     topic = _topic_for(event_type)
     await _producer.send_and_wait(topic, value=payload, key=key.encode("utf-8"))

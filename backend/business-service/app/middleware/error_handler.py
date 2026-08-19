@@ -45,6 +45,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_domain_rule_violation(request: Request, exc: DomainRuleViolationException):
         return JSONResponse(status_code=400, content=_error_body(str(exc)), headers=_cors_headers(request))
 
+    @app.exception_handler(ValueError)
+    async def handle_value_error(request: Request, exc: ValueError):
+        # Many domain rules use ValueError; treat them as 400 Bad Request
+        return JSONResponse(status_code=400, content=_error_body(str(exc)), headers=_cors_headers(request))
+
     @app.exception_handler(NotFoundException)
     async def handle_not_found(request: Request, exc: NotFoundException):
         return JSONResponse(status_code=404, content=_error_body(str(exc)), headers=_cors_headers(request))

@@ -1,179 +1,184 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Bell, Truck, CheckCircle2, XCircle, Eye, Filter, Inbox } from "lucide-react";
+import { Bell, Truck, CheckCircle2, XCircle, Eye, Filter, Inbox, Loader2, Calendar, FileText, ArrowRight } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { arrivals } from "@/lib/wms-data";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { api } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/notifications")({
-  head: () => ({
-    meta: [
-      { title: "Arrival Notifications · NexusWMS" },
-      { name: "description", content: "Notification centre for new truck arrivals approved by security, awaiting warehouse manager acceptance." },
-      { property: "og:title", content: "Arrival Notifications · NexusWMS" },
-      { property: "og:description", content: "Accept, reject or review incoming truck arrivals cleared by gate security." },
-    ],
-  }),
   component: Notifications,
 });
 
 function Notifications() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("new");
-  const [reject, setReject] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [userRole, setUserRole] = useState("WAREHOUSE");
 
-  const filtered = arrivals.filter((a) =>
-    tab === "new" ? a.status === "Waiting" : tab === "hold" ? a.status === "Hold" : true,
-  );
+  useEffect(() => {
+    const info = localStorage.getItem("user_info");
+    const roles = info ? JSON.parse(info).roles || [] : [];
+    const role = roles.includes("SUPPLIER") ? "SUPPLIER"
+      : roles.includes("FINANCE") ? "FINANCE"
+      : roles.includes("PROCUREMENT") ? "PROCUREMENT"
+      : "WAREHOUSE";
+    setUserRole(role);
+    void fetchData(role, false);
+    const timer = window.setInterval(() => void fetchData(role, true), 2000);
+    const refresh = () => void fetchData(role, true);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("notifications:refresh", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("notifications:refresh", refresh);
+    };
+  }, []);
+
+  const fetchData = async (role: string, quiet = false) => {
+    try {
+      if (!quiet) setLoading(true);
+      if (role === "WAREHOUSE") {
+          const data = await api.getArrivalNotifications();
+          setNotifications(data.map((n: any) => ({
+              id: n.id,
+              title: "Arrival Notification",
+              message: n.message || `Truck ${n.vehicleNumber || n.vehicle_number || "not assigned"} from ${n.supplierName || n.supplier_name || "supplier not available"} is arriving.`,
+              created_at: n.createdAt || n.created_at || n.expectedArrivalTime || n.expected_arrival_time,
+              link: n.asnId || n.asn_id ? `/procurement/asns/${n.asnId || n.asn_id}` : "/notifications",
+              type: "arrival",
+              is_read: (n.status || "").toUpperCase() === "ACKNOWLEDGED",
+              po_number: n.poNumber || n.po_number,
+              supplier_name: n.supplierName || n.supplier_name
+          })));
+      } else {
+          const data = await api.getNotifications(role);
+          setNotifications(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch notifications", error);
+      if (!quiet) toast.error("Failed to load notifications");
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  };
+
+  const handleMarkRead = async (id: string) => {
+      try {
+          if (userRole === "WAREHOUSE") await api.markArrivalNotificationRead(id);
+          else await api.markNotificationRead(id);
+          setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+          window.dispatchEvent(new Event("notifications:refresh"));
+      } catch (e) {
+        toast.error("Unable to mark notification as read");
+      }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      if (userRole === "WAREHOUSE") await api.markAllArrivalNotificationsRead();
+      else await api.markAllNotificationsRead(userRole);
+      setNotifications(prev => prev.map(notification => ({ ...notification, is_read: true })));
+      window.dispatchEvent(new Event("notifications:refresh"));
+      toast.success("All notifications marked as read");
+    } catch (error) {
+      toast.error("Unable to mark all notifications as read");
+    }
+  };
 
   return (
     <AppShell
       title="Notification centre"
-      subtitle="Security-cleared vehicles awaiting warehouse manager action"
+      subtitle="Stay updated with procurement and supply chain alerts"
       actions={
-        <>
-          <Button variant="outline" className="rounded-xl">
-            <Filter className="size-4" /> Filters
-          </Button>
-          <Button variant="outline" className="rounded-xl" onClick={() => toast.success("All notifications marked as read")}>
-            Mark all read
-          </Button>
-        </>
+        <Button variant="outline" className="rounded-xl" onClick={handleMarkAllRead} disabled={!notifications.some(notification => !notification.is_read)}>
+          Mark all read
+        </Button>
       }
     >
-      <Tabs value={tab} onValueChange={setTab} className="mb-5">
-        <TabsList className="rounded-xl">
-          <TabsTrigger value="new" className="rounded-lg">
-            New arrivals <span className="ml-2 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">2</span>
-          </TabsTrigger>
-          <TabsTrigger value="hold" className="rounded-lg">On hold</TabsTrigger>
-          <TabsTrigger value="all" className="rounded-lg">All</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
-      {filtered.length === 0 ? (
+      {loading ? (
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="size-8 animate-spin text-primary" />
+        </div>
+      ) : notifications.length === 0 ? (
         <Card className="items-center gap-2 rounded-2xl border-dashed p-14 text-center shadow-none">
           <span className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
             <Inbox className="size-6" />
           </span>
           <p className="mt-2 text-sm font-semibold">Nothing in this queue</p>
           <p className="max-w-xs text-xs text-muted-foreground">
-            New gate entries approved by security will appear here instantly.
+            Your notification history is empty.
           </p>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((a, i) => (
+        <div className="grid gap-4">
+          {notifications.map((n, i) => (
             <Card
-              key={a.id}
-              className="animate-fade-up gap-0 rounded-2xl border-border/70 p-0 shadow-soft transition-shadow hover:shadow-lift"
-              style={{ animationDelay: `${i * 60}ms` }}
+              key={n.id}
+              className={cn(
+                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
+                !n.is_read && "bg-primary-soft/5 border-primary/20"
+              )}
             >
-              <div className="flex flex-wrap items-start gap-4 p-5">
-                <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft text-primary">
-                  <Truck className="size-5" />
-                </span>
+              {!n.is_read && (
+                  <div className="absolute left-0 top-0 h-full w-1 bg-primary" />
+              )}
 
-                <div className="min-w-[220px] flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-mono text-sm font-semibold">{a.truckNo}</p>
-                    <StatusBadge status={a.status} />
-                    {a.priority === "High" && (
-                      <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[10px] font-semibold text-destructive">
-                        High priority
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {a.vendor} · {a.material}
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-xs sm:grid-cols-4">
-                    <div>
-                      <p className="text-muted-foreground">PO number</p>
-                      <p className="font-mono font-medium">{a.po}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Arrival time</p>
-                      <p className="font-medium tabular-nums">{a.arrivalTime} · waiting {a.waitMins}m</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Load</p>
-                      <p className="font-medium">{a.pallets} pallets · {a.weight}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Cleared by</p>
-                      <p className="font-medium">{a.securityGuard}</p>
-                    </div>
-                  </div>
+              <div className="flex items-start gap-4">
+                <div className={cn(
+                  "grid size-12 shrink-0 place-items-center rounded-2xl",
+                  n.title?.includes("Approved") ? "bg-success-soft text-success" :
+                  (n.title?.includes("Rejected") ? "bg-destructive-soft text-destructive" : "bg-primary-soft text-primary")
+                )}>
+                  {n.type === "arrival" ? <Truck className="size-6" /> : <FileText className="size-6" />}
                 </div>
 
-                <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-                  <Button variant="outline" className="rounded-xl" asChild>
-                    <Link to="/gate-entry">
-                      <Eye className="size-4" /> View
-                    </Link>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="rounded-xl border-destructive/30 text-destructive hover:bg-danger-soft hover:text-destructive"
-                    onClick={() => setReject(a.truckNo)}
-                  >
-                    <XCircle className="size-4" /> Reject
-                  </Button>
-                  <Button
-                    className="rounded-xl shadow-glow"
-                    onClick={() => {
-                      toast.success(`Arrival accepted · ${a.truckNo}`, { description: "Proceed to vehicle verification." });
-                      navigate({ to: "/gate-entry" });
-                    }}
-                  >
-                    <CheckCircle2 className="size-4" /> Accept
-                  </Button>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-bold text-foreground">{n.title}</h3>
+                    <span className="text-[10px] text-muted-foreground font-medium">
+                      {n.created_at && !Number.isNaN(new Date(n.created_at).getTime())
+                        ? new Date(n.created_at).toLocaleString()
+                        : "Date unavailable"}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {n.message}
+                  </p>
+
+                  {n.link && (
+                    <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
+                        <div className="flex gap-2">
+                             {n.po_number && (
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">PO: {n.po_number}</span>
+                             )}
+                             {n.supplier_name && (
+                                <span className="text-[10px] px-2 py-0.5 rounded bg-muted">{n.supplier_name}</span>
+                             )}
+                        </div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-lg text-xs font-bold text-primary hover:bg-primary-soft"
+                            asChild
+                            onClick={() => handleMarkRead(n.id)}
+                        >
+                            <Link to={n.link as any}>
+                                View Details <ArrowRight className="ml-1.5 size-3.5" />
+                            </Link>
+                        </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
           ))}
         </div>
       )}
-
-      <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border/70 bg-card p-4 text-xs text-muted-foreground shadow-soft">
-        <Bell className="size-4 text-primary" />
-        Notifications are pushed from Gate Security in real time. Escalation triggers automatically if a vehicle waits over 45 minutes.
-      </div>
-
-      <AlertDialog open={!!reject} onOpenChange={(o) => !o && setReject(null)}>
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reject arrival {reject}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The vehicle will be turned away at the gate and the vendor plus procurement buyer will be notified. This action is
-              logged against your employee ID.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => toast.error(`Arrival rejected · ${reject}`, { description: "Vendor and buyer notified." })}
-            >
-              Confirm rejection
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </AppShell>
   );
 }

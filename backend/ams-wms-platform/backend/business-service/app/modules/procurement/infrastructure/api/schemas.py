@@ -334,6 +334,7 @@ class ASNSubmitSchema(BaseModel):
     tracking_number: str
     vehicle_number: str
     items: list[ASNItemSchema]
+    attachments: list[AttachmentResponseSchema] = Field(default_factory=list)
     shipped_date: Optional[date] = None
     driver_name: Optional[str] = None
     driver_phone: Optional[str] = None
@@ -356,6 +357,7 @@ class ASNResponseSchema(BaseModel):
     driver_phone: Optional[str] = None
     status: str
     items: list[ASNItemSchema]
+    attachments: list[AttachmentResponseSchema] = Field(default_factory=list)
     total_shipped_qty: Decimal
     created_at: datetime
     updated_at: datetime

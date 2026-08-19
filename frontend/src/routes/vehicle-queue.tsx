@@ -128,19 +128,34 @@ function VehicleQueue() {
                       onDragStart={() => setDragId(c.id)}
                       className="cursor-grab gap-0 rounded-xl border-border/70 p-3 shadow-soft transition-shadow active:cursor-grabbing hover:shadow-lift"
                     >
-                      <div className="flex items-start gap-2">
-                        <GripVertical className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
-                          <Link to="/gate-entry" className="font-mono text-[13px] font-semibold text-primary hover:underline">
-                            {c.vehicle_number || c.truckNo || "MH 12 QT 4489"}
-                          </Link>
-                          <p className="truncate text-xs text-muted-foreground">{c.driver_name || "Unknown Driver"}</p>
-                          <p className="mt-2 font-mono text-[10px] text-muted-foreground">{c.po_number || "PO-2026"}</p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <Link to="/gate-entry" className="font-mono text-[13px] font-semibold text-primary hover:underline">
+                              {c.vehiclePlate || c.vehicle_number || c.truckNo || "MH 12 QT 4489"}
+                            </Link>
                             <StatusBadge status={c.status} />
-                            {c.dock_number && <span className="text-[10px] font-semibold text-muted-foreground">Dock {c.dock_number}</span>}
                           </div>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">{c.driverName || c.driver_name || "Unknown Driver"}</p>
+                          <p className="mt-1 font-mono text-[10px] text-muted-foreground uppercase tracking-tight">PO: {c.poNumber || c.po_number || "PO-2026"}</p>
                         </div>
+                        {c.truckPhotoBase64 ? (
+                          <div className="size-12 shrink-0 overflow-hidden rounded-lg border border-border/40">
+                            <img
+                              src={`data:image/jpeg;base64,${c.truckPhotoBase64}`}
+                              alt="Vehicle"
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="grid size-12 shrink-0 place-items-center rounded-lg bg-muted border border-border/40 text-muted-foreground">
+                            <GripVertical className="size-4" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-2.5 flex items-center gap-2 border-t border-border/40 pt-2">
+                        {c.dock_number && <span className="text-[10px] font-bold text-muted-foreground">DOCK {c.dock_number}</span>}
+                        <span className="text-[10px] text-muted-foreground ml-auto">{new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </Card>
                   ))}

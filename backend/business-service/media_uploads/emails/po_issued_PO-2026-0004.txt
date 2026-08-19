@@ -1,0 +1,31 @@
+Subject: Purchase Order PO-2026-0004
+To: harshavardhandevang@gmail.com
+
+Dear NTR,
+
+Your Purchase Order has been approved and issued.
+
+PO Number: PO-2026-0004
+Total Amount: ₹ 588,050.00
+Expected Delivery: 2026-08-31
+
+Material Summary:
+- steel (500.0000 PCS)
+- pipe (100.0000 PCS)
+
+Portal Access Credentials:
+URL: http://localhost:8080/login
+Username: supplier_ntr
+Temporary Password: vNIQW8D1mc
+
+Note: For security, you will be required to change this password upon your first login.
+
+You can view the full PO details here:
+http://localhost:8080/purchase-order?poId=c85538dd-a99b-4323-83a2-ffce462fb0e3
+
+Once the shipment is ready, please login and submit the Advance Shipping Notice (ASN) here:
+http://localhost:8080/login?redirect=/supplier/asns/new?poId=c85538dd-a99b-4323-83a2-ffce462fb0e3
+
+Regards,
+procurement
+NexusWMS

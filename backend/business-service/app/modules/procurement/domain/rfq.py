@@ -24,7 +24,6 @@ class RFQ(AggregateRoot):
         items: List[RFQItem] = None,
         material_request_number: str | None = None,
         required_delivery_date: date | None = None,
-        valid_until: date | None = None,
         remarks: str | None = None,
         created_at: datetime | None = None,
         closing_date: datetime | None = None,
@@ -42,10 +41,10 @@ class RFQ(AggregateRoot):
         self.required_delivery_date = required_delivery_date
         self.warehouse = warehouse
         self.procurement_officer = procurement_officer
-        self.valid_until = valid_until
         self.remarks = remarks
         self.status = status
-        self.supplier_ids = supplier_ids
+        # Deduplicate supplier IDs
+        self.supplier_ids = list(dict.fromkeys(supplier_ids))
         self.items = items or []
         self.created_at = created_at or datetime.now()
         self.closing_date = closing_date
@@ -92,7 +91,6 @@ class RFQ(AggregateRoot):
         items: List[RFQItem],
         material_request_number: str | None = None,
         required_delivery_date: date | None = None,
-        valid_until: date | None = None,
         remarks: str | None = None,
     ) -> RFQ:
         rfq = RFQ(
@@ -103,7 +101,6 @@ class RFQ(AggregateRoot):
             required_delivery_date=required_delivery_date,
             warehouse=warehouse,
             procurement_officer=procurement_officer,
-            valid_until=valid_until,
             remarks=remarks,
             status="DRAFT",
             supplier_ids=supplier_ids,

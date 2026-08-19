@@ -1,0 +1,26 @@
+Subject: Request for Quotation - RFQ-2026-0004
+To: harshavardhandevang@gmail.com
+
+Dear NTR,
+
+We request you to submit a quotation for the following materials:
+
+Material: steel
+Quantity: 500.0000 PCS
+Required Delivery: 2026-08-17
+Warehouse: Main Warehouse
+
+Material: pipe
+Quantity: 100.0000 PCS
+Required Delivery: 2026-08-31
+Warehouse: Main Warehouse
+
+Please use the following link to login and submit your quotation:
+
+http://localhost:8080/login?redirect=/submit-quotation?rfqId=b3edf4e8-fa35-4db9-9e47-253b8017b5b4
+
+Your Credentials:
+Username: supplier_ntr
+Temporary Password: rrHkTQBB
+
+Note: If this is your first login, you will be required to change your password.

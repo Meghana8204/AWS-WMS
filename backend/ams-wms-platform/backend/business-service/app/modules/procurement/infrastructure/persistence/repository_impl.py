@@ -50,6 +50,7 @@ from app.modules.procurement.infrastructure.persistence.models import (
     RFQItemModel,
     RFQModel,
     RFQSupplierModel,
+    SupplierASNAttachmentModel,
     SupplierASNModel,
     SupplierQuotationModel,
 )
@@ -716,6 +717,22 @@ class SqlAlchemyASNRepository(ASNRepositoryProtocol):
                 )
             )
 
+        # Sync attachments
+        model.attachments.clear()
+        for att in asn.attachments:
+            model.attachments.append(
+                SupplierASNAttachmentModel(
+                    id=att.id,
+                    asn_id=asn.id,
+                    filename=att.filename,
+                    file_type=att.file_type,
+                    file_path=att.file_path,
+                    file_size_bytes=att.file_size_bytes,
+                    category=att.category.value,
+                    created_at=att.created_at,
+                )
+            )
+
         for event in asn.recorded_events:
             self._session.add(to_outbox_row("SupplierASN", asn.id, event))
         asn.recorded_events.clear()
@@ -724,16 +741,27 @@ class SqlAlchemyASNRepository(ASNRepositoryProtocol):
         return self._to_domain(model)
 
     async def get_by_id(self, asn_id: str) -> Optional[SupplierASN]:
-        model = await self._session.get(SupplierASNModel, asn_id)
+        stmt = select(SupplierASNModel).options(
+            selectinload(SupplierASNModel.items),
+            selectinload(SupplierASNModel.attachments),
+        ).where(SupplierASNModel.id == asn_id)
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
         return self._to_domain(model) if model else None
 
     async def get_by_vehicle(self, vehicle_number: str) -> Optional[SupplierASN]:
-        stmt = select(SupplierASNModel).where(SupplierASNModel.vehicle_number == vehicle_number.strip().upper()).order_by(SupplierASNModel.created_at.desc())
+        stmt = select(SupplierASNModel).options(
+            selectinload(SupplierASNModel.items),
+            selectinload(SupplierASNModel.attachments),
+        ).where(SupplierASNModel.vehicle_number == vehicle_number.strip().upper()).order_by(SupplierASNModel.created_at.desc())
         model = (await self._session.execute(stmt)).scalars().first()
         return self._to_domain(model) if model else None
 
     async def get_by_po_id(self, po_id: str) -> Optional[SupplierASN]:
-        stmt = select(SupplierASNModel).where(SupplierASNModel.po_id == po_id).order_by(SupplierASNModel.created_at.desc())
+        stmt = select(SupplierASNModel).options(
+            selectinload(SupplierASNModel.items),
+            selectinload(SupplierASNModel.attachments),
+        ).where(SupplierASNModel.po_id == po_id).order_by(SupplierASNModel.created_at.desc())
         model = (await self._session.execute(stmt)).scalars().first()
         return self._to_domain(model) if model else None
 
@@ -744,7 +772,10 @@ class SqlAlchemyASNRepository(ASNRepositoryProtocol):
         skip: int = 0,
         limit: int = 50,
     ) -> tuple[list[SupplierASN], int]:
-        stmt = select(SupplierASNModel)
+        stmt = select(SupplierASNModel).options(
+            selectinload(SupplierASNModel.items),
+            selectinload(SupplierASNModel.attachments),
+        )
         count_stmt = select(func.count(SupplierASNModel.id))
 
         if status:
@@ -774,6 +805,20 @@ class SqlAlchemyASNRepository(ASNRepositoryProtocol):
             )
             for it in (m.items or [])
         ]
+
+        attachments = [
+            PurchaseOrderAttachment(
+                id=att.id,
+                filename=att.filename,
+                file_type=att.file_type,
+                file_path=att.file_path,
+                file_size_bytes=att.file_size_bytes,
+                category=AttachmentCategory(att.category),
+                created_at=att.created_at,
+            )
+            for att in (m.attachments or [])
+        ]
+
         return SupplierASN(
             id=m.id,
             asn_number=m.asn_number,
@@ -791,6 +836,7 @@ class SqlAlchemyASNRepository(ASNRepositoryProtocol):
             driver_phone=m.driver_phone,
             status=ASNStatus(m.status),
             items=items,
+            attachments=attachments,
             created_at=m.created_at,
             updated_at=m.updated_at,
         )

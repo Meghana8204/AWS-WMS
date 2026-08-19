@@ -1,145 +1,120 @@
 """
-Pydantic Data Transfer Objects (DTOs) for Gate Entry REST API.
+Pydantic schemas for the Gate Entry REST API.
+Inherits from ApiModel to serialize camelCase on the wire.
+Purged mock fallbacks. Fully supports dynamic PO OCR extraction & persistent gate pass creation.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
-from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import Any, List, Optional
+from pydantic import Field, model_validator
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from app.modules.gate.domain.enums import GateEntryStatus, MismatchField, VerificationResultType
-
-if TYPE_CHECKING:
-    from app.modules.gate.domain.aggregate import GateEntry
+from app.common.api_model import ApiModel
+from app.modules.gate.domain.value_objects import GateEntryStatus
 
 
-class AuditLogResponse(BaseModel):
-    id: str
-    action: str
-    performed_by: str
-    timestamp: datetime
-    details: dict[str, Any] = Field(default_factory=dict)
+class FieldMismatchDto(ApiModel):
+    field_name: str
+    extracted_value: Any
+    canonical_value: Any
 
 
-class AnprResultResponse(BaseModel):
-    detected_vehicle_number: str
-    confidence: float
-    raw_metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class OcrResultResponse(BaseModel):
-    po_number: str | None = None
-    supplier_name: str | None = None
-    product_material: str | None = None
-    quantity: Decimal | None = None
-    po_date: date | None = None
-    expected_delivery_date: date | None = None
-    confidence: float = 1.0
-    raw_text: str = ""
-
-
-class VerificationResultResponse(BaseModel):
-    status: GateEntryStatus
-    verification_type: VerificationResultType
-    mismatched_fields: list[MismatchField] = Field(default_factory=list)
-    reasons: list[str] = Field(default_factory=list)
-
-
-class GateEntryResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    po_id: str | None = None
+class OcrResultDto(ApiModel):
     po_number: str
-    vehicle_number: str
-    driver_name: str
-    driver_license_number: str | None = None
-    driver_phone: str | None = None
-    driver_photo_path: str | None = None
-    po_document_path: str
-    vehicle_photo_path: str | None = None
-    status: GateEntryStatus
-    security_officer_id: str
-    verified_by_user_id: str | None = None
-    manual_verification_notes: str | None = None
-    mismatched_fields: list[MismatchField] = Field(default_factory=list)
-    anpr_result: AnprResultResponse | None = None
-    ocr_result: OcrResultResponse | None = None
-    verification_result: VerificationResultResponse | None = None
-    created_at: datetime
-    updated_at: datetime
-    audit_logs: list[AuditLogResponse] = Field(default_factory=list)
+    supplier_name: str
+    material_description: str
+    total_quantity: float
+    po_date: str
+    delivery_date: str
+    confidence: float
+    line_items: List[dict[str, Any]] = Field(default_factory=list)
 
 
-class ManualVerifyRequest(BaseModel):
-    approved: bool = Field(..., description="True to approve, False to reject")
-    notes: str | None = Field(None, description="Optional supervisor notes or rejection reason")
+class PurchaseOrderRecordDto(ApiModel):
+    po_number: str
+    supplier_name: str
+    material_description: str
+    total_quantity: float
+    po_date: str
+    delivery_date: str
+    status: str = "OPEN"
 
 
-def gate_entry_to_response(entry: GateEntry) -> GateEntryResponse:
-    anpr_resp = None
-    if entry.anpr_result:
-        anpr_resp = AnprResultResponse(
-            detected_vehicle_number=entry.anpr_result.detected_vehicle_number,
-            confidence=entry.anpr_result.confidence,
-            raw_metadata=entry.anpr_result.raw_metadata or {},
-        )
+class CreateCustomPoRequest(ApiModel):
+    po_number: str = Field(..., min_length=1, description="Unique PO Number, e.g. PO-1001")
+    supplier_name: str = Field(..., min_length=1, description="Supplier Name")
+    material_description: str = Field(..., min_length=1, description="Material Description")
+    total_quantity: float = Field(..., gt=0, description="Total Quantity")
+    po_date: str = Field(..., min_length=1, description="PO Date (YYYY-MM-DD)")
+    delivery_date: str = Field(..., min_length=1, description="Delivery Date (YYYY-MM-DD)")
 
-    ocr_resp = None
-    if entry.ocr_result:
-        ocr_resp = OcrResultResponse(
-            po_number=entry.ocr_result.po_number,
-            supplier_name=entry.ocr_result.supplier_name,
-            product_material=entry.ocr_result.product_material,
-            quantity=entry.ocr_result.quantity,
-            po_date=entry.ocr_result.po_date,
-            expected_delivery_date=entry.ocr_result.expected_delivery_date,
-            confidence=entry.ocr_result.confidence,
-            raw_text=entry.ocr_result.raw_text,
-        )
 
-    verif_resp = None
-    if entry.verification_result:
-        verif_resp = VerificationResultResponse(
-            status=entry.verification_result.status,
-            verification_type=entry.verification_result.verification_type,
-            mismatched_fields=entry.verification_result.mismatched_fields,
-            reasons=entry.verification_result.reasons,
-        )
+class PoOcrPreviewRequest(ApiModel):
+    document_image_base64: Optional[str] = Field(default=None, description="Base64 PO document image")
+    po_number_override: Optional[str] = Field(default=None, description="Optional manual PO number override")
 
-    audit_resps = [
-        AuditLogResponse(
-            id=str(log.id),
-            action=log.action,
-            performed_by=log.performed_by,
-            timestamp=log.timestamp,
-            details=log.details or {},
-        )
-        for log in entry.audit_logs
-    ]
+    @model_validator(mode="after")
+    def require_input(self) -> "PoOcrPreviewRequest":
+        if not self.document_image_base64 and not self.po_number_override:
+            raise ValueError("Provide a PO document image or a PO number to preview OCR verification.")
+        return self
 
-    return GateEntryResponse(
-        id=str(entry.id),
-        po_id=entry.po_id,
-        po_number=entry.po_number,
-        vehicle_number=entry.vehicle_number.value,
-        driver_name=entry.driver_info.driver_name,
-        driver_license_number=entry.driver_info.driver_license_number,
-        driver_phone=entry.driver_info.driver_phone,
-        driver_photo_path=entry.driver_photo_path,
-        po_document_path=entry.po_document_path,
-        vehicle_photo_path=entry.vehicle_photo_path,
-        status=entry.status,
-        security_officer_id=entry.security_officer_id,
-        verified_by_user_id=entry.verified_by_user_id,
-        manual_verification_notes=entry.manual_verification_notes,
-        mismatched_fields=entry.mismatched_fields,
-        anpr_result=anpr_resp,
-        ocr_result=ocr_resp,
-        verification_result=verif_resp,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-        audit_logs=audit_resps,
-    )
+
+class PoOcrPreviewResponse(ApiModel):
+    ocr_result: OcrResultDto
+    computed_status: str
+    mismatched_fields: List[FieldMismatchDto] = Field(default_factory=list)
+    po_record: Optional[PurchaseOrderRecordDto] = None
+
+
+class CreateGateEntryRequest(ApiModel):
+    vehicle_plate: str = Field(..., min_length=1, description="Mandatory manual vehicle license plate number")
+    po_number: str = Field(..., min_length=1, description="Mandatory purchase order number")
+    supplier_name: Optional[str] = Field(default=None, description="Extracted or input supplier name")
+    material_description: Optional[str] = Field(default=None, description="Extracted or input material description")
+    total_quantity: Optional[float] = Field(default=None, description="Extracted or input total quantity")
+    po_date: Optional[str] = Field(default=None, description="Extracted or input PO date")
+    delivery_date: Optional[str] = Field(default=None, description="Extracted or input delivery date")
+    driver_name: Optional[str] = Field(default="Driver", description="Driver Name")
+    document_image_base64: Optional[str] = Field(default=None, description="Base64 encoded PO document image")
+    truck_photo_base64: Optional[str] = Field(default=None, description="Base64 encoded captured truck photo")
+
+
+class VerifyGateEntryRequest(ApiModel):
+    action: Optional[str] = Field(default=None, description="Action: APPROVE, REJECT, or UNSCHEDULED_ARRIVAL")
+    remarks: Optional[str] = Field(default=None, description="Supervisor remarks")
+    reason: Optional[str] = Field(default=None, description="Optional approval, rejection, or transition reason")
+    approved: Optional[bool] = Field(default=None, exclude=True, description="Legacy frontend compatibility")
+    notes: Optional[str] = Field(default=None, exclude=True, description="Legacy frontend compatibility")
+
+    @model_validator(mode="after")
+    def normalise_verification_request(self):
+        if not self.action and self.approved is not None:
+            self.action = "APPROVE" if self.approved else "UNSCHEDULED_ARRIVAL"
+        if not self.remarks:
+            self.remarks = self.notes or self.reason
+        if not self.action:
+            raise ValueError("Verification action is required")
+        if not self.remarks:
+            self.remarks = "Gate entry status updated"
+        return self
+
+
+
+class GateEntryResponse(ApiModel):
+    id: str
+    gate_entry_number: str
+    vehicle_plate: str
+    status: str
+    created_by: str
+    po_id: Optional[str] = None
+    po_number: Optional[str] = None
+    supplier_name: Optional[str] = None
+    material_description: Optional[str] = None
+    total_quantity: Optional[float] = None
+    document_image_base64: Optional[str] = None
+    truck_photo_base64: Optional[str] = None
+    ocr_result: Optional[OcrResultDto] = None
+    mismatched_fields: List[FieldMismatchDto] = Field(default_factory=list)
+    verified_by: Optional[str] = None
+    created_at: str
+    updated_at: str

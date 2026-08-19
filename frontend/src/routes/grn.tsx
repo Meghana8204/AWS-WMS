@@ -80,7 +80,7 @@ function Grn() {
             <Skeleton className="h-3 w-3/5 rounded-full" />
           </div>
           <Button variant="outline" className="mt-6 w-full rounded-xl" asChild>
-            <Link to="/dashboard">
+            <Link to="/warehouse-dashboard">
               Back to dashboard <ArrowRight className="size-4" />
             </Link>
           </Button>

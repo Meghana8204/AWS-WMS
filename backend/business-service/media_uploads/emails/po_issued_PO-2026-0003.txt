@@ -1,0 +1,31 @@
+Subject: Purchase Order PO-2026-0003
+To: harshavardhandevang@gmail.com
+
+Dear Kaizentrix,
+
+Your Purchase Order has been approved and issued.
+
+PO Number: PO-2026-0003
+Total Amount: ₹ 495,302.00
+Expected Delivery: 2026-08-25
+
+Material Summary:
+- iron  (1000.0000 PCS)
+- pipe (500.0000 PCS)
+
+Portal Access Credentials:
+URL: http://localhost:8080/login
+Username: supplier_kaizentrix
+Temporary Password: 65zLYtcysg
+
+Note: For security, you will be required to change this password upon your first login.
+
+You can view the full PO details here:
+http://localhost:8080/purchase-order?poId=9c0acb43-6d72-4803-9481-4746f3e4e155
+
+Once the shipment is ready, please login and submit the Advance Shipping Notice (ASN) here:
+http://localhost:8080/login?redirect=/supplier/asns/new?poId=9c0acb43-6d72-4803-9481-4746f3e4e155
+
+Regards,
+procurement
+NexusWMS

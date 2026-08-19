@@ -4,6 +4,7 @@ FastAPI application entrypoint - business-service.
 from __future__ import annotations
 
 import asyncio
+# Force reload - updated 2026-08-14
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -15,7 +16,10 @@ from app.kafka.producer import start_producer, stop_producer
 from app.logging.logger import configure_logging, get_logger
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_context import RequestContextMiddleware
-from app.modules.gate.infrastructure.api.router import router as gate_router
+from app.modules.gate.infrastructure.api.router import (
+    preview_router as gate_preview_router,
+    router as gate_router,
+)
 from app.modules.gate.infrastructure.api.dashboard import router as dashboard_router
 from app.modules.notification.infrastructure.api.router import router as notification_router
 from app.modules.procurement.infrastructure.api.router import router as procurement_router
@@ -36,58 +40,329 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     global _consumer_task
 
-    # --- Auto-Migration for missing Purchase Order columns ---
+    # --- Development schema compatibility guard ---
+    #
+    # Older local databases can predate some of the fields now mapped by the
+    # procurement ORM.  Use PostgreSQL's idempotent form rather than catching
+    # duplicate-column errors: after a PostgreSQL statement fails, the whole
+    # transaction is aborted and every later migration statement would fail.
     try:
         from sqlalchemy import text
-        from app.database.session import get_uow
-        async with get_uow() as uow:
-            # Add columns to purchase_order
-            for col in [
-                ("department", "VARCHAR(128)"),
-                ("procurement_officer", "VARCHAR(128)"),
-                ("delivery_warehouse", "VARCHAR(128)"),
-                ("delivery_address", "TEXT"),
-                ("additional_charges", "NUMERIC(18, 2) DEFAULT 0.0"),
-            ]:
-                try:
-                    await uow.session.execute(text(f"ALTER TABLE purchase_order ADD COLUMN {col[0]} {col[1]}"))
-                    logger.info(f"Added column {col[0]} to purchase_order")
-                except Exception:
-                    pass # Column likely already exists
+        from app.database.session import session_scope
 
-            # Add columns to purchase_order_line
-            for col in [
-                ("material_name", "VARCHAR(256)"),
-                ("category", "VARCHAR(128)"),
-                ("uom", "VARCHAR(64)"),
-                ("discount", "NUMERIC(18, 4) DEFAULT 0.0"),
-                ("tax", "NUMERIC(18, 4) DEFAULT 0.0"),
-            ]:
-                try:
-                    await uow.session.execute(text(f"ALTER TABLE purchase_order_line ADD COLUMN {col[0]} {col[1]}"))
-                    logger.info(f"Added column {col[0]} to purchase_order_line")
-                except Exception:
-                    pass # Column likely already exists
+        # Helper to run DDL in its own transaction
+        async def run_ddl(ddl_query: str):
+            async with session_scope() as session:
+                await session.execute(text(ddl_query))
+                await session.commit()
 
-            # Add columns to asn
-            for col in [
-                ("shipment_date", "DATE DEFAULT CURRENT_DATE"),
-                ("driver_name", "VARCHAR(128)"),
-                ("driver_contact", "VARCHAR(32)"),
-            ]:
-                try:
-                    await uow.session.execute(text(f"ALTER TABLE asn ADD COLUMN {col[0]} {col[1]}"))
-                    logger.info(f"Added column {col[0]} to asn")
-                except Exception:
-                    pass
-            await uow.commit()
+        # Add columns to asn
+        for col in [
+            ("shipment_date", "DATE DEFAULT CURRENT_DATE"),
+            ("driver_name", "VARCHAR(128)"),
+            ("driver_contact", "VARCHAR(32)"),
+            ("warehouse_id", "VARCHAR(64)"),
+            ("transporter", "VARCHAR(128)"),
+            ("number_of_packages", "INTEGER"),
+            ("package_type", "VARCHAR(64)"),
+            ("shipping_method", "VARCHAR(64)"),
+            ("asn_number", "VARCHAR(64)"),
+            ("supplier_id", "UUID"),
+            ("po_id", "VARCHAR(64)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE asn ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+                logger.debug(f"Ensured column {col[0]} exists on asn")
+            except Exception: pass
+
+        # Ensure supplier_contact has primary_email and secondary_email
+        try:
+            await run_ddl("ALTER TABLE supplier_contact RENAME COLUMN email TO primary_email")
+            logger.debug("Renamed 'email' to 'primary_email' on supplier_contact")
+        except Exception: pass
+
+        try:
+            await run_ddl("ALTER TABLE supplier_contact ADD COLUMN IF NOT EXISTS primary_email VARCHAR(128)")
+        except Exception: pass
+
+        try:
+            await run_ddl("ALTER TABLE supplier_contact ADD COLUMN IF NOT EXISTS secondary_email VARCHAR(128)")
+            logger.debug("Ensured primary/secondary email columns exist on supplier_contact")
+        except Exception: pass
+
+        # Ensure supplier has missing columns
+        for col in [
+            ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("supplier_code", "VARCHAR(64)"),
+            ("rating", "NUMERIC(3,2) DEFAULT 0"),
+            ("performance_score", "NUMERIC(5,2) DEFAULT 0"),
+            ("remarks", "VARCHAR(1000)"),
+            ("status", "VARCHAR(32) DEFAULT 'Active'"),
+            ("main_materials", "JSON"),
+            ("industry", "VARCHAR(64)"),
+            ("gstin", "VARCHAR(32)"),
+            ("registered_company_name", "VARCHAR(256)"),
+            ("vendor_type", "VARCHAR(64)"),
+            ("category", "VARCHAR(64)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE supplier ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+        logger.debug("Ensured columns exist on supplier")
+
+        # Ensure rfq has missing columns
+        for col in [
+            ("rfq_number", "VARCHAR(64)"),
+            ("rfq_date", "DATE DEFAULT CURRENT_DATE"),
+            ("material_request_number", "VARCHAR(64)"),
+            ("required_delivery_date", "DATE"),
+            ("warehouse", "VARCHAR(128)"),
+            ("procurement_officer", "VARCHAR(128)"),
+            ("remarks", "TEXT"),
+            ("closing_date", "TIMESTAMP WITH TIME ZONE"),
+            ("selected_supplier_id", "UUID"),
+            ("selection_date", "DATE"),
+            ("selected_by", "VARCHAR(128)"),
+            ("selection_reason", "VARCHAR(500)"),
+            ("selection_comments", "VARCHAR(500)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE rfq ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+        logger.debug("Ensured columns exist on rfq")
+
+        # Ensure quotation has missing columns
+        for col in [
+            ("discount", "NUMERIC(18,4) DEFAULT 0"),
+            ("tax", "NUMERIC(18,4) DEFAULT 0"),
+            ("freight_charges", "NUMERIC(18,4) DEFAULT 0"),
+            ("delivery_time", "VARCHAR(128)"),
+            ("expected_delivery_date", "DATE"),
+            ("payment_terms", "VARCHAR(128)"),
+            ("quotation_validity", "DATE"),
+            ("remarks", "VARCHAR(500)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE quotation ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+        logger.debug("Ensured columns exist on quotation")
+
+        # Create purchase_order table if not exists
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS purchase_order (
+                    id UUID PRIMARY KEY,
+                    po_number VARCHAR(64) UNIQUE NOT NULL,
+                    po_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                    status VARCHAR(32) NOT NULL,
+                    rfq_id UUID REFERENCES rfq(id),
+                    supplier_id UUID REFERENCES supplier(id),
+                    supplier_name VARCHAR(255),
+                    warehouse_id VARCHAR(64),
+                    total_amount NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    expected_delivery_date DATE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured purchase_order table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create purchase_order table: {e}")
+
+        # Create purchase_order_item table if not exists
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS purchase_order_item (
+                    id UUID PRIMARY KEY,
+                    purchase_order_id UUID REFERENCES purchase_order(id) ON DELETE CASCADE,
+                    material_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(255),
+                    quantity NUMERIC(18, 4) NOT NULL,
+                    unit_price NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32) NOT NULL DEFAULT 'PCS'
+                )
+            """)
+            logger.debug("Ensured purchase_order_item table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create purchase_order_item table: {e}")
+
+        # Ensure purchase_order_item has missing columns
+        for col in [
+            ("category", "VARCHAR(128)"),
+            ("discount", "NUMERIC(18, 4) DEFAULT 0"),
+            ("tax", "NUMERIC(18, 4) DEFAULT 0"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
+        # Ensure purchase_order has missing columns
+        for col in [
+            ("subtotal", "NUMERIC(18, 4) DEFAULT 0"),
+            ("discount_amount", "NUMERIC(18, 4) DEFAULT 0"),
+            ("tax_amount", "NUMERIC(18, 4) DEFAULT 0"),
+            ("freight_charges", "NUMERIC(18, 4) DEFAULT 0"),
+            ("selection_reason", "VARCHAR(500)"),
+            ("procurement_comments", "TEXT"),
+            ("selection_date", "TIMESTAMP WITH TIME ZONE"),
+            ("selected_by", "VARCHAR(128)"),
+            ("procurement_officer", "VARCHAR(128)"),
+            ("payment_terms", "VARCHAR(128)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
+        # Additional PO Columns for full data snapshot
+        for col in [
+            ("department", "VARCHAR(128)"),
+            ("supplier_code", "VARCHAR(64)"),
+            ("supplier_contact_person", "VARCHAR(128)"),
+            ("supplier_phone", "VARCHAR(32)"),
+            ("supplier_email", "VARCHAR(128)"),
+            ("supplier_gstin", "VARCHAR(32)"),
+            ("supplier_address", "TEXT"),
+            ("delivery_warehouse_name", "VARCHAR(128)"),
+            ("delivery_address", "TEXT"),
+            ("additional_charges", "NUMERIC(18, 4) DEFAULT 0"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
+        try:
+            await run_ddl("ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
+        except Exception: pass
+
+        # Create po_approval_history table
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS po_approval_history (
+                    id UUID PRIMARY KEY,
+                    purchase_order_id UUID REFERENCES purchase_order(id) ON DELETE CASCADE,
+                    status VARCHAR(32) NOT NULL,
+                    actor_name VARCHAR(128) NOT NULL,
+                    comments TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured po_approval_history table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create po_approval_history table: {e}")
+
+        # Create notification table
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS notification (
+                    id UUID PRIMARY KEY,
+                    user_role VARCHAR(32) NOT NULL,
+                    title VARCHAR(256) NOT NULL,
+                    message TEXT NOT NULL,
+                    link VARCHAR(512),
+                    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured notification table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create notification table: {e}")
+
+        # Create material_request table if not exists
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS material_request (
+                    id UUID PRIMARY KEY,
+                    request_number VARCHAR(64) UNIQUE NOT NULL,
+                    warehouse_id VARCHAR(64) NOT NULL,
+                    department VARCHAR(64) NOT NULL,
+                    requested_by VARCHAR(128) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                    required_date DATE NOT NULL,
+                    remarks TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured material_request table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create material_request table: {e}")
+
+        # Create material_request_item table if not exists
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS material_request_item (
+                    id UUID PRIMARY KEY,
+                    request_id UUID REFERENCES material_request(id) ON DELETE CASCADE,
+                    material_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(255),
+                    quantity NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32) NOT NULL DEFAULT 'PCS'
+                )
+            """)
+            logger.debug("Ensured material_request_item table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create material_request_item table: {e}")
+
+        # Create material_stock table
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS material_stock (
+                    id UUID PRIMARY KEY,
+                    material_code VARCHAR(64) UNIQUE NOT NULL,
+                    material_name VARCHAR(255) NOT NULL,
+                    category VARCHAR(128) NOT NULL,
+                    on_hand NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    allocated NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    available NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    uom VARCHAR(32) NOT NULL DEFAULT 'PCS',
+                    warehouse_id VARCHAR(64) NOT NULL,
+                    reorder_point NUMERIC(18, 4) NOT NULL DEFAULT 10,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured material_stock table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create material_stock table: {e}")
+
+        # Create arrival_notification table
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS arrival_notification (
+                    id VARCHAR(128) PRIMARY KEY,
+                    asn_id UUID NOT NULL REFERENCES asn(id) ON DELETE CASCADE,
+                    asn_number VARCHAR(64) NOT NULL,
+                    po_id VARCHAR(64),
+                    po_number VARCHAR(64) NOT NULL,
+                    warehouse_id VARCHAR(64) NOT NULL,
+                    supplier_name VARCHAR(128) NOT NULL,
+                    vehicle_number VARCHAR(64) NOT NULL,
+                    expected_arrival_time TIMESTAMP WITH TIME ZONE NOT NULL,
+                    driver_phone VARCHAR(32),
+                    message TEXT,
+                    recipients VARCHAR(256),
+                    status VARCHAR(32) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured arrival_notification table exists")
+        except Exception as e:
+            logger.warning(f"Failed to create arrival_notification table: {e}")
+
+        # Ensure supplier_document has file_type, file_size and upload_id
+        try:
+            await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_type VARCHAR(64)")
+            await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_size BIGINT")
+            await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS upload_id VARCHAR(128)")
+            logger.debug("Ensured extended columns exist on supplier_document")
+        except Exception: pass
     except Exception as e:
-        logger.warning(f"Auto-migration failed: {e}")
+        logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 
     try:
         await start_producer()
     except Exception as exc:
-        logger.warning(f"Kafka producer start skipped (Kafka offline or unavailable): {exc}")
+        logger.debug(f"Kafka producer start skipped (Kafka offline or unavailable): {exc}")
 
     scheduler.add_job(
         relay_once,
@@ -97,12 +372,24 @@ async def lifespan(app: FastAPI):
         max_instances=1,
         coalesce=True,
     )
+
+    # Add arrival notification check (every hour in prod, more frequent for dev demo)
+    from app.modules.procurement.infrastructure.api.router import check_upcoming_arrivals
+    scheduler.add_job(
+        check_upcoming_arrivals,
+        "interval",
+        minutes=1, # Check every minute for real-time demo feel
+        id="arrival-notification-check",
+        max_instances=1,
+        coalesce=True
+    )
+
     scheduler.start()
 
     try:
         _consumer_task = asyncio.create_task(start_notification_consumer())
     except Exception as exc:
-        logger.warning(f"Notification consumer task failed to start: {exc}")
+        logger.debug(f"Notification consumer task failed to start: {exc}")
 
     logger.info("business-service started", extra={"extra_fields": {"environment": settings.environment}})
 
@@ -141,7 +428,7 @@ def create_app() -> FastAPI:
         origins = list(raw_origins)
 
     # Always ensure common local dev origins are present for ease of use
-    for o in ["http://localhost:8080", "http://127.0.0.1:8080", "http://localhost:5173", "http://127.0.0.1:5173"]:
+    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
         if o not in origins:
             origins.append(o)
 
@@ -177,6 +464,7 @@ def create_app() -> FastAPI:
     app.include_router(returns_router)
     app.include_router(notification_router)
     app.include_router(gate_router)
+    app.include_router(gate_preview_router)
     app.include_router(dashboard_router)
     app.include_router(procurement_router)
 

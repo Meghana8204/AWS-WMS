@@ -9,6 +9,8 @@ import random
 import string
 import uuid
 
+from app.modules.procurement.domain.attachment import PurchaseOrderAttachment as ASNAttachment
+
 
 class ASNStatus(str, Enum):
     DRAFT = "DRAFT"
@@ -85,6 +87,7 @@ class SupplierASN:
     driver_phone: str | None = None
     status: ASNStatus = ASNStatus.SUBMITTED
     items: list[ASNItem] = field(default_factory=list)
+    attachments: list[ASNAttachment] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     recorded_events: list[object] = field(default_factory=list, repr=False)
@@ -102,6 +105,7 @@ class SupplierASN:
         tracking_number: str,
         vehicle_number: str,
         items: list[ASNItem],
+        attachments: list[ASNAttachment] | None = None,
         shipped_date: date | None = None,
         driver_name: str | None = None,
         driver_phone: str | None = None,
@@ -130,6 +134,7 @@ class SupplierASN:
             driver_phone=driver_phone,
             status=ASNStatus.SUBMITTED,
             items=items,
+            attachments=attachments or [],
         )
 
     def mark_in_transit(self) -> None:
@@ -142,6 +147,10 @@ class SupplierASN:
 
     def mark_received(self) -> None:
         self.status = ASNStatus.RECEIVED
+        self.updated_at = datetime.now(timezone.utc)
+
+    def add_attachment(self, attachment: ASNAttachment) -> None:
+        self.attachments.append(attachment)
         self.updated_at = datetime.now(timezone.utc)
 
     @property

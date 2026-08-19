@@ -43,7 +43,7 @@ class Quotation(AggregateRoot):
         payment_terms: str | None = None,
         quotation_validity: date | None = None,
         remarks: str | None = None,
-        documents: List[QuotationDocument] = field(default_factory=list),
+        documents: List[QuotationDocument] | None = None,
     ) -> None:
         super().__init__()
         self.id = id
@@ -61,7 +61,7 @@ class Quotation(AggregateRoot):
         self.payment_terms = payment_terms
         self.quotation_validity = quotation_validity
         self.remarks = remarks
-        self.documents = documents
+        self.documents = documents or []
 
     @staticmethod
     def create(

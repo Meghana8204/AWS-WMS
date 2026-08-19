@@ -212,6 +212,16 @@ class ASNItemDTO:
 
 
 @dataclass(frozen=True)
+class ASNAttachmentDTO:
+    filename: str
+    file_type: str
+    file_size_bytes: int
+    category: str
+    attachment_id: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
 class SubmitASNCommand:
     po_id: str
     po_number: str
@@ -223,6 +233,7 @@ class SubmitASNCommand:
     tracking_number: str
     vehicle_number: str
     items: list[ASNItemDTO]
+    attachments: list[ASNAttachmentDTO] = None
     shipped_date: Optional[date] = None
     driver_name: Optional[str] = None
     driver_phone: Optional[str] = None

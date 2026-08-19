@@ -262,6 +262,19 @@ export const procurementApi = {
     }
   },
 
+  async uploadASNAttachment(file: File, category: string = 'SUPPORTING_DOC'): Promise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('category', category)
+    const url = `${BUSINESS_SERVICE_URL}/api/v1/procurement/asns/attachments/upload`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: formData,
+    })
+    return handleResponse<any>(res)
+  },
+
   async createASN(payload: any): Promise<any> {
     const url = `${BUSINESS_SERVICE_URL}/api/v1/gate/asns`
     try {

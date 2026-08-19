@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     gemini_model: str = Field(default="gemini-3.1-flash-lite-preview")
 
     # --- CORS ------------------------------------------------------------------
-    cors_allow_origins: List[str] = Field(default_factory=lambda: ["http://localhost:5173", "http://localhost:8080"])
+    cors_allow_origins: List[str] = Field(default_factory=lambda: ["http://localhost:8080", "http://127.0.0.1:8080"])
 
     # --- Observability -----------------------------------------------------------
     otel_exporter_otlp_endpoint: str = Field(default="http://otel-collector:4317")
@@ -74,6 +74,21 @@ class Settings(BaseSettings):
     procurement_password: str = Field(default="procurement")
     finance_username: str = Field(default="finance")
     finance_password: str = Field(default="finance")
+    warehouse_username: str = Field(default="warehouse")
+    warehouse_password: str = Field(default="warehouse")
+    gate_security_username: str = Field(default="gate_entry")
+    gate_security_password: str = Field(default="gate123")
+    gate_entry_username: str = Field(default="gate_entry")
+    gate_entry_password: str = Field(default="gate123")
+    supplier_username: str = Field(default="supplier")
+    supplier_password: str = Field(default="supplier123")
+
+    # --- Email SMTP Settings ----------------------------------------------------
+    email_host: str = Field(default="smtp.gmail.com")
+    email_port: int = Field(default=587)
+    email_host_user: str = Field(default="")
+    email_host_password: str = Field(default="")
+    email_from_name: str = Field(default="NexusWMS Procurement")
 
 
 @lru_cache

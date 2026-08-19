@@ -160,6 +160,58 @@ export default function ViewASNModal({ asn, onClose }: ViewASNModalProps) {
             </div>
           </div>
 
+          {/* SECTION: ATTACHMENTS */}
+          {asn.attachments && asn.attachments.length > 0 && (
+            <div>
+              <div style={{ borderBottom: '2px solid #10b981', paddingBottom: '6px', marginBottom: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Shipping Documents & Attachments
+                </h3>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                {asn.attachments.map((att: any) => (
+                  <div
+                    key={att.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      padding: '10px 16px',
+                      borderRadius: '8px',
+                      minWidth: '240px',
+                    }}
+                  >
+                    <span style={{ fontSize: '20px' }}>📄</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: '#1e293b' }}>{att.filename}</div>
+                      <div style={{ fontSize: '11px', color: '#64748b' }}>
+                        {(att.file_size_bytes / 1024).toFixed(1)} KB • {att.category}
+                      </div>
+                    </div>
+                    <a
+                      href={att.download_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        background: '#e0f2fe',
+                        color: '#0369a1',
+                        padding: '6px',
+                        borderRadius: '6px',
+                        textDecoration: 'none',
+                        fontSize: '14px',
+                      }}
+                      title="Download File"
+                    >
+                      ⬇️
+                    </a>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* SECTION 3: SHIPPED LINE ITEMS */}
           <div>
             <div style={{ borderBottom: '2px solid #10b981', paddingBottom: '6px', marginBottom: '14px' }}>

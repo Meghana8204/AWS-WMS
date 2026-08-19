@@ -4,7 +4,7 @@ Plain, immutable dataclasses for Steps 1-4 supplier onboarding data.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional
@@ -22,7 +22,8 @@ class AddressCommand:
 @dataclass(frozen=True)
 class ContactCommand:
     primary_contact_name: str
-    email: str
+    primary_email: str
+    secondary_email: Optional[str] = None
     designation: Optional[str] = None
     phone: Optional[str] = None
     website: Optional[str] = None
@@ -57,10 +58,27 @@ class CreateSupplierCommand:
     category: str
     industry: str
     gstin: str
+    main_materials: Optional[List[str]] = None
     address: Optional[AddressCommand] = None
     contact: Optional[ContactCommand] = None
     bank_info: Optional[BankInfoCommand] = None
     documents: Optional[List[DocumentCommand]] = None
+    remarks: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class UpdateSupplierCommand:
+    supplier_id: str
+    supplier_name: Optional[str] = None
+    registered_company_name: Optional[str] = None
+    vendor_type: Optional[str] = None
+    category: Optional[str] = None
+    industry: Optional[str] = None
+    gstin: Optional[str] = None
+    main_materials: Optional[List[str]] = None
+    address: Optional[AddressCommand] = None
+    contact: Optional[ContactCommand] = None
+    bank_info: Optional[BankInfoCommand] = None
     remarks: Optional[str] = None
 
 
@@ -73,8 +91,8 @@ class RfqItemCommand:
     category: str
     quantity: Decimal
     uom: str
-    required_delivery_date: date
-    warehouse: str
+    required_delivery_date: Optional[date] = None
+    warehouse: Optional[str] = None
     special_requirements: Optional[str] = None
 
 
@@ -87,7 +105,6 @@ class CreateRfqCommand:
     items: List[RfqItemCommand]
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
-    valid_until: Optional[date] = None
     remarks: Optional[str] = None
 
 
@@ -126,57 +143,39 @@ class SubmitQuotationCommand:
 
 # --- Purchase Order ---
 
-@dataclass(frozen=True)
-class PurchaseOrderLineCommand:
-    item_code: str
-    ordered_quantity: Decimal
-    unit_price: Decimal
-    material_name: Optional[str] = None
-    category: Optional[str] = None
-    uom: Optional[str] = None
-    discount: Decimal = Decimal("0.0")
-    tax: Decimal = Decimal("0.0")
-
-
-@dataclass(frozen=True)
-class CreatePurchaseOrderCommand:
-    supplier_id: str
-    lines: List[PurchaseOrderLineCommand]
-    quotation_id: Optional[str] = None
-    po_number: Optional[str] = None
-    po_date: Optional[date] = None
-    expected_delivery_date: Optional[date] = None
-    department: Optional[str] = None
-    procurement_officer: Optional[str] = None
-    delivery_warehouse: Optional[str] = None
-    delivery_address: Optional[str] = None
-    additional_charges: Decimal = Decimal("0.0")
-
-
-@dataclass(frozen=True)
-class UpdatePurchaseOrderCommand:
-    status: Optional[str] = None
-    rejection_reason: Optional[str] = None
-    finance_comments: Optional[str] = None
-    lines: Optional[List[PurchaseOrderLineCommand]] = None
-    additional_charges: Optional[Decimal] = None
-
-
 # --- ASN ---
 
 @dataclass(frozen=True)
 class AsnLineCommand:
     item_code: str
     shipped_quantity: Decimal
+    material_name: Optional[str] = None
+    uom: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class AsnDocumentCommand:
+    document_type: str
+    file_name: str
+    file_url: str
+    uploaded_by: str
 
 
 @dataclass(frozen=True)
 class CreateAsnCommand:
-    po_id: str
     asn_number: str
     lines: List[AsnLineCommand]
+    po_id: Optional[str] = None
+    po_number: Optional[str] = None
     vehicle_number: Optional[str] = None
     expected_arrival_at: Optional[datetime] = None
     shipment_date: Optional[date] = None
     driver_name: Optional[str] = None
     driver_contact: Optional[str] = None
+    transporter: Optional[str] = None
+    number_of_packages: Optional[int] = None
+    package_type: Optional[str] = None
+    shipping_method: Optional[str] = None
+    status: str = "SUBMITTED"
+    documents: List[AsnDocumentCommand] = field(default_factory=list)
+    supplier_id: Optional[str] = None

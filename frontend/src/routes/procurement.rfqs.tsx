@@ -38,8 +38,8 @@ function Rfqs() {
   const handleSendRfq = async (rfqId: string) => {
     try {
       setSendingRfq(true);
-      await api.sendRfq(rfqId);
-      toast.success("RFQ published and sent to suppliers successfully!");
+      const result = await api.sendRfq(rfqId);
+      toast.success(result.message || "RFQ published and sent to suppliers successfully!");
       setSelectedRfq(null);
       await fetchData();
     } catch (error: any) {
@@ -102,7 +102,7 @@ function Rfqs() {
                         </span>
                       )}
                       <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/50">
-                        {rfq.supplierIds?.length || 0} Suppliers invited
+                        {rfq.suppliers?.length || 0} Suppliers invited
                       </span>
                       <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/50 font-mono">
                         {rfq.items?.length || 0} items
@@ -115,9 +115,9 @@ function Rfqs() {
                   <div className="mr-8 text-right hidden md:block">
                     <div className="flex flex-col items-end gap-1">
                       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <Calendar className="size-3" /> Valid Until
+                        <Package className="size-3" /> Items
                       </div>
-                      <p className="text-sm font-medium">{rfq.validUntil || "—"}</p>
+                      <p className="text-sm font-medium">{rfq.items?.length || 0}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -188,8 +188,10 @@ function Rfqs() {
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.requiredDeliveryDate || "—"}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Valid Until</p>
-                  <p className="mt-1 text-sm font-semibold">{selectedRfq.validUntil || "—"}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Supplier Email(s)</p>
+                  <p className="mt-1 text-sm font-semibold truncate" title={selectedRfq.supplierEmails?.join(", ")}>
+                    {selectedRfq.supplierEmails?.join(", ") || "—"}
+                  </p>
                 </div>
               </div>
 
@@ -220,7 +222,7 @@ function Rfqs() {
                               <span className="font-mono text-[10px] text-muted-foreground">{item.materialCode}</span>
                             </td>
                             <td className="py-3 text-muted-foreground">{item.category}</td>
-                            <td className="py-3 text-right font-mono font-bold pr-4">{item.quantity}</td>
+                            <td className="py-3 text-right font-mono font-bold pr-4">{Math.floor(item.quantity)}</td>
                             <td className="py-3 font-semibold text-muted-foreground">{item.uom}</td>
                             <td className="py-3 text-muted-foreground">{item.requiredDeliveryDate}</td>
                             <td className="py-3 text-muted-foreground">{item.warehouse}</td>
@@ -241,13 +243,30 @@ function Rfqs() {
                 </div>
               </div>
 
+              {/* Invited Suppliers List */}
+              {selectedRfq.suppliers && selectedRfq.suppliers.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
+                    <Building2 className="size-4 text-primary" /> Invited Suppliers
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedRfq.suppliers.map((sup: any) => (
+                      <Badge key={sup.supplierId} variant="outline" className="rounded-lg py-1 px-2.5 bg-muted/10 border-border/60">
+                        <Building2 className="mr-1.5 size-3.5 text-muted-foreground animate-pulse" />
+                        {sup.supplierName}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Suppliers count info */}
               <div className="flex items-start gap-3 rounded-xl border border-warning/20 bg-warning-soft/10 p-4">
                 <Info className="size-5 text-warning shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-semibold text-warning-foreground">Invitation Scope</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    This RFQ invitation will be sent to <strong>{selectedRfq.supplierIds?.length || 0}</strong> selected suppliers. Suppliers will be notified immediately to submit bids once published.
+                    This RFQ invitation will be sent to <strong>{selectedRfq.suppliers?.length || 0}</strong> selected suppliers. Suppliers will be notified immediately to submit bids once published.
                   </p>
                 </div>
               </div>
@@ -267,7 +286,7 @@ function Rfqs() {
               <Button variant="outline" className="rounded-xl" onClick={() => setSelectedRfq(null)}>
                 Close
               </Button>
-              {selectedRfq.status === "DRAFT" && (
+              {(selectedRfq.status === "DRAFT" || selectedRfq.status === "OPEN") && (
                 <Button
                   className="rounded-xl shadow-glow"
                   disabled={sendingRfq}
@@ -276,7 +295,7 @@ function Rfqs() {
                   {sendingRfq ? (
                     <><Loader2 className="mr-2 size-4 animate-spin" /> Sending...</>
                   ) : (
-                    <><Send className="mr-2 size-4" /> Approve & Send RFQ</>
+                    <><Send className="mr-2 size-4" /> {selectedRfq.status === "OPEN" ? "Resend RFQ Email" : "Approve & Send RFQ"}</>
                   )}
                 </Button>
               )}
@@ -287,4 +306,3 @@ function Rfqs() {
     </AppShell>
   );
 }
-

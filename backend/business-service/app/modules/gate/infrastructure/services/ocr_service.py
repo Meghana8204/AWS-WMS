@@ -14,6 +14,20 @@ class OcrUnavailableError(RuntimeError):
     """Raised when the configured OCR engine cannot be used."""
 
 
+def normalize_vehicle_registration(value: str) -> str:
+    """Validate and format common Indian vehicle registration numbers."""
+    compact = re.sub(r"[^A-Z0-9]", "", str(value).upper())
+    bharat = re.fullmatch(r"(\d{2})BH(\d{4})([A-Z]{2})", compact)
+    if bharat:
+        year, number, series = bharat.groups()
+        return f"{year}-BH-{number}-{series}"
+    standard = re.fullmatch(r"([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{4})", compact)
+    if standard:
+        state, district, series, number = standard.groups()
+        return f"{state}-{district.zfill(2)}-{series}-{number}"
+    raise ValueError("Vehicle number must match formats such as MH-12-AB-1234 or 22-BH-1234-AA.")
+
+
 class TesseractOcrService:
     """Runs the local Tesseract binary against the bytes captured by the camera."""
 
@@ -63,10 +77,8 @@ class TesseractAnprService:
 
     async def recognize_license_plate(self, image_data: bytes | str) -> AnprResult:
         if isinstance(image_data, str):
-            normalized = re.sub(r"[^A-Z0-9]", "", image_data.upper())
-            if normalized:
-                return AnprResult(detected_vehicle_number=normalized, confidence=1.0, raw_metadata={"source": "manual_entry"})
-            raise ValueError("Vehicle registration number is empty.")
+            normalized = normalize_vehicle_registration(image_data)
+            return AnprResult(detected_vehicle_number=normalized, confidence=1.0, raw_metadata={"source": "manual_entry"})
         if not image_data:
             raise ValueError("The captured vehicle image is empty.")
 
@@ -77,7 +89,7 @@ class TesseractAnprService:
         if not match:
             raise ValueError("No vehicle registration number could be read. Reposition the plate and scan again.")
 
-        plate = match.group(0)
+        plate = normalize_vehicle_registration(match.group(0))
         confidence = min(0.99, 0.65 + len(plate) / 40)
         return AnprResult(detected_vehicle_number=plate, confidence=round(confidence, 2), raw_metadata={"raw_text": raw_text})
 

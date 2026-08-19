@@ -50,11 +50,25 @@ def main():
         cmd = [sys.executable, "-m", "pytest"] + sys.argv[2:]
         subprocess.run(cmd, cwd=business_service_dir)
 
+    elif command == "flush":
+        print("!!! WARNING: THIS WILL PERMANENTLY DELETE ALL BUSINESS DATA !!!")
+        confirm = input("Are you sure you want to proceed? (yes/no): ")
+        if confirm.lower() == 'yes':
+            print("Wiping business data...")
+            cmd = [sys.executable, "scripts/wipe_business_data.py", "--force"]
+            subprocess.run(cmd, cwd=business_service_dir)
+            print("\nBusiness data wiped.")
+            print("\nNote: Auth data was NOT wiped. To wipe auth data, use:")
+            print("  psql -h localhost -p 5432 -U ams_auth -d ams_auth -f auth-service/wipe_auth_data.sql")
+        else:
+            print("Operation cancelled.")
+
     else:
         print(f"Unknown command: '{command}'")
         print("\nAvailable commands:")
         print("  python manage.py runserver  - Starts the FastAPI Uvicorn dev server")
         print("  python manage.py migrate    - Runs Alembic database migrations")
+        print("  python manage.py flush      - Wipes all data from the business database")
         print("  python manage.py test       - Runs Pytest test suite")
         sys.exit(1)
 

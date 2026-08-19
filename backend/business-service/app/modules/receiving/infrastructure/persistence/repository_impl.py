@@ -15,9 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.events.outbox_repository import to_outbox_row
-from app.modules.procurement.infrastructure.persistence.models import (
-    PurchaseOrderModel,
-)
 from app.modules.receiving.application.repository import GrnRepository, PurchaseOrderSnapshot
 from app.modules.receiving.domain.grn import GoodsReceiptNote
 from app.modules.receiving.domain.grn_status import GrnStatus
@@ -35,16 +32,8 @@ class SqlAlchemyGrnRepository(GrnRepository):
         self._session = session
 
     async def find_purchase_order(self, po_id: PurchaseOrderId) -> Optional[PurchaseOrderSnapshot]:
-        result = await self._session.execute(
-            select(PurchaseOrderModel)
-            .options(selectinload(PurchaseOrderModel.lines))
-            .where(PurchaseOrderModel.id == po_id.value)
-        )
-        po = result.scalar_one_or_none()
-        if po is None:
-            return None
-        qty_by_item: dict[str, Decimal] = {l.item_code: l.ordered_quantity for l in po.lines}
-        return PurchaseOrderSnapshot(id=PurchaseOrderId.of(po.id), ordered_quantity_by_item_code=qty_by_item)
+        # Purchase Order module is removed. Returning a dummy snapshot.
+        return PurchaseOrderSnapshot(id=po_id, ordered_quantity_by_item_code={})
 
     async def save(self, grn: GoodsReceiptNote) -> None:
         entity = GrnModel(id=grn.id.value, po_id=grn.po_id.value, status=grn.status.value)

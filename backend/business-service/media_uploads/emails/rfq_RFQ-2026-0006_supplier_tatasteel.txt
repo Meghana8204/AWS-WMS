@@ -1,0 +1,21 @@
+Subject: Request for Quotation - RFQ-2026-0006
+To: harshavardhandevang@gmail.com
+
+Dear TATA Steel,
+
+We request you to submit a quotation for the following materials:
+
+Material: fhcgj
+Quantity: 1.0000 PCS
+Required Delivery: 2026-08-14
+Warehouse: Main Warehouse
+
+Please use the following link to login and submit your quotation:
+
+http://localhost:8080/login?redirect=/submit-quotation?rfqId=2bc82373-b678-47fa-a8b6-75bb3e749d55
+
+Your Credentials:
+Username: supplier_tatasteel
+Temporary Password: szHCNX2L
+
+Note: If this is your first login, you will be required to change your password.

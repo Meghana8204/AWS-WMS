@@ -30,7 +30,10 @@ async def run_consumer(
     try:
         await consumer.start()
     except Exception as exc:
-        logger.warning(f"Kafka consumer skipped (Kafka offline or unavailable): {exc}")
+        logger.debug(f"Kafka consumer skipped (Kafka offline or unavailable): {exc}")
+        # Explicitly stop to avoid 'Unclosed AIOKafkaConsumer' warnings
+        try: await consumer.stop()
+        except Exception: pass
         return
 
     logger.info("Kafka consumer started", extra={"extra_fields": {"topics": topics, "group_id": group_id}})

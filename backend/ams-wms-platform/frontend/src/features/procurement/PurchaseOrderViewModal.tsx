@@ -110,8 +110,16 @@ export default function PurchaseOrderViewModal({ po, onClose }: PurchaseOrderVie
               </h3>
               <span
                 style={{
-                  background: po.status === 'APPROVED' ? '#dcfce7' : po.status === 'REJECTED' ? '#fee2e2' : '#fef3c7',
-                  color: po.status === 'APPROVED' ? '#166534' : po.status === 'REJECTED' ? '#991b1b' : '#92400e',
+                  background:
+                    po.status === 'APPROVED' ? '#dcfce7' :
+                    (po.status === 'REJECTED' || po.status === 'FINANCE_REJECTED' || po.status === 'CANCELLED') ? '#fee2e2' :
+                    (po.status === 'SHIPPED' || po.status === 'IN_TRANSIT' || po.status === 'ASN_SUBMITTED') ? '#ccfbf1' :
+                    '#fef3c7',
+                  color:
+                    po.status === 'APPROVED' ? '#166534' :
+                    (po.status === 'REJECTED' || po.status === 'FINANCE_REJECTED' || po.status === 'CANCELLED') ? '#991b1b' :
+                    (po.status === 'SHIPPED' || po.status === 'IN_TRANSIT' || po.status === 'ASN_SUBMITTED') ? '#0d9488' :
+                    '#92400e',
                   padding: '4px 10px',
                   borderRadius: '12px',
                   fontSize: '11px',

@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PackageCheck, Users, ListChecks, Clock3, ArrowRight } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
@@ -29,13 +29,34 @@ const timeline = [
   { time: "10:21", title: "14 of 24 pallets offloaded", detail: "No visible damage reported", tone: "success" },
 ];
 
+type VerifiedGatePo = {
+  gateEntryId: string;
+  poNumber: string;
+  supplierName: string;
+  materialDescription: string;
+  totalQuantity: string;
+  vehicleNumber: string;
+};
+
 function Receiving() {
   const a = activeArrival;
+  const [gatePo, setGatePo] = useState<VerifiedGatePo | null>(null);
   const [checks, setChecks] = useState(receivingChecklist.map((c) => c.done));
   const [postingGrn, setPostingGrn] = useState(false);
   const [postedGrn, setPostedGrn] = useState<{ grn_id: string; status: string } | null>(null);
   const done = checks.filter(Boolean).length;
   const pct = Math.round((done / checks.length) * 100);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("verified_gate_po");
+      if (stored) setGatePo(JSON.parse(stored) as VerifiedGatePo);
+    } catch {
+      localStorage.removeItem("verified_gate_po");
+    }
+  }, []);
+
+  const receivingPoNumber = gatePo?.poNumber || a.po;
 
   async function confirmGrn() {
     if (postedGrn) {
@@ -45,7 +66,7 @@ function Receiving() {
 
     setPostingGrn(true);
     try {
-      const response = await api.confirmGrn(a.po, [
+      const response = await api.confirmGrn(receivingPoNumber, [
         { itemCode: "ITEM-A", quantity: 14 },
         { itemCode: "ITEM-B", quantity: 10 },
       ]);
@@ -91,7 +112,7 @@ function Receiving() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Field label="GRN ID" value={postedGrn.grn_id} mono />
                 <Field label="Status" value={postedGrn.status} />
-                <Field label="PO number" value={a.po} mono />
+                <Field label="PO number" value={receivingPoNumber} mono />
               </div>
             </SectionCard>
           ) : null}
@@ -111,6 +132,17 @@ function Receiving() {
               <Field label="Damage reported" value="0 pallets" />
             </div>
           </SectionCard>
+
+          {gatePo ? (
+            <SectionCard title="Verified gate PO" description="Carried from the completed gate-entry scan" icon={PackageCheck}>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="PO number" value={gatePo.poNumber} mono />
+                <Field label="Supplier" value={gatePo.supplierName || "—"} />
+                <Field label="Material" value={gatePo.materialDescription || "—"} />
+                <Field label="Expected quantity" value={gatePo.totalQuantity || "—"} />
+              </div>
+            </SectionCard>
+          ) : null}
 
           <SectionCard title="Receiving checklist" description={`${done} of ${checks.length} steps complete · ${pct}%`} icon={ListChecks}>
             <div className="space-y-2.5">

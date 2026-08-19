@@ -13,7 +13,8 @@ import {
   Search,
   Plus,
   Trash2,
-  Package
+  Package,
+  Sparkles
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -36,6 +37,7 @@ function NewRfq() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [filters, setFilters] = useState({
     search: "",
     category: "",
@@ -49,19 +51,18 @@ function NewRfq() {
     required_delivery_date: "",
     warehouse: "Main Warehouse",
     procurement_officer: "",
-    valid_until: "",
     remarks: "",
   });
 
+  const generateRandomCode = () => `MAT-${Math.floor(100000 + Math.random() * 900000)}`;
+
   const [items, setItems] = useState<any[]>([
     {
-      material_code: "",
+      material_code: generateRandomCode(),
       material_name: "",
       category: "Raw Materials",
       quantity: 1,
       uom: "PCS",
-      required_delivery_date: new Date().toISOString().split("T")[0],
-      warehouse: "Main Warehouse",
       special_requirements: "",
     }
   ]);
@@ -70,13 +71,11 @@ function NewRfq() {
     setItems((prev) => [
       ...prev,
       {
-        material_code: "",
+        material_code: generateRandomCode(),
         material_name: "",
         category: "Raw Materials",
         quantity: 1,
         uom: "PCS",
-        required_delivery_date: formData.required_delivery_date || new Date().toISOString().split("T")[0],
-        warehouse: formData.warehouse || "Main Warehouse",
         special_requirements: "",
       },
     ]);
@@ -100,8 +99,12 @@ function NewRfq() {
     async function fetchSuppliers() {
       try {
         setLoadingSuppliers(true);
-        const data = await api.getSuppliers(filters);
-        setSuppliers(data);
+        const data = await api.getSuppliers({ ...filters, status: "Active" });
+        // Keep the RFQ invitation list safe even if an older backend ignores
+        // the status query parameter.
+        setSuppliers(data.filter((supplier: any) =>
+          String(supplier.status ?? "").trim().toLowerCase() === "active"
+        ));
       } catch (err) {
         toast.error("Failed to load suppliers");
       } finally {
@@ -116,13 +119,83 @@ function NewRfq() {
   }, [filters]);
 
   useEffect(() => {
+    // Fetch available supplier categories for the filter
+    const fetchCategories = async () => {
+      try {
+        const cats = await api.getSupplierCategories();
+        if (cats.length > 0) {
+          setAvailableCategories(cats.map((c: any) => c.name));
+        } else {
+          // Fallback if no categories in DB yet
+          setAvailableCategories(["Raw Materials", "Components", "Services", "Hardware"]);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch supplier categories", e);
+        setAvailableCategories(["Raw Materials", "Components", "Services", "Hardware"]);
+      }
+    };
+    fetchCategories();
+
     // Get current user for procurement officer field
     const userInfo = localStorage.getItem("user_info");
     if (userInfo) {
       const user = JSON.parse(userInfo);
       setFormData(prev => ({ ...prev, procurement_officer: user.username || "" }));
     }
+
+    // Handle auto-fill from Material Request
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromRequestId = urlParams.get('fromRequestId');
+
+    if (fromRequestId) {
+      const loadMR = async () => {
+        try {
+          const allMRs = await api.getMaterialRequests();
+          const mr = allMRs.find(r => r.id === fromRequestId);
+          if (mr) {
+            setFormData(prev => ({
+              ...prev,
+              material_request_number: mr.requestNumber,
+              warehouse: mr.warehouseId,
+              required_delivery_date: mr.requiredDate,
+            }));
+
+            setItems(mr.items.map((it: any) => ({
+              material_code: it.materialCode,
+              material_name: it.materialName || it.materialCode,
+              category: "Raw Materials",
+              quantity: it.quantity,
+              uom: it.uom,
+              special_requirements: ""
+            })));
+          }
+        } catch (e) {
+          console.error("Failed to load MR details", e);
+        }
+      };
+      loadMR();
+    } else {
+      void fetchNextMrNumber();
+    }
   }, []);
+
+  const fetchNextMrNumber = async () => {
+    try {
+      const { requestNumber } = await api.getNextMaterialRequestNumber();
+      setFormData(prev => ({
+        ...prev,
+        material_request_number: requestNumber
+      }));
+    } catch (e) {
+      console.error("Failed to fetch next MR number", e);
+      // Fallback if API fails
+      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, '');
+      setFormData(prev => ({
+        ...prev,
+        material_request_number: `MR-${yearMonth}-0001`
+      }));
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -158,7 +231,6 @@ function NewRfq() {
         })),
         // Convert empty strings to null for optional date fields to prevent Pydantic errors
         required_delivery_date: formData.required_delivery_date || null,
-        valid_until: formData.valid_until || null,
       };
 
       await api.createRfq(payload);
@@ -192,9 +264,10 @@ function NewRfq() {
                   id="rfq_date"
                   name="rfq_date"
                   type="date"
-                  className={cn(inputClass, "pl-10")}
+                  min={new Date().toISOString().split("T")[0]}
+                  className={cn(inputClass, "pl-10 bg-muted/50")}
                   value={formData.rfq_date}
-                  onChange={handleInputChange}
+                  readOnly
                   required
                 />
               </div>
@@ -207,10 +280,10 @@ function NewRfq() {
                 <Input
                   id="material_request_number"
                   name="material_request_number"
-                  placeholder="e.g. MR-2026-045"
-                  className={cn(inputClass, "pl-10")}
+                  placeholder="e.g. MR-202608-0001"
+                  className={cn(inputClass, "pl-10 bg-muted/50")}
                   value={formData.material_request_number}
-                  onChange={handleInputChange}
+                  readOnly
                 />
               </div>
             </div>
@@ -223,25 +296,10 @@ function NewRfq() {
                   id="required_delivery_date"
                   name="required_delivery_date"
                   type="date"
+                  min={new Date().toISOString().split("T")[0]}
                   className={cn(inputClass, "pl-10")}
                   value={formData.required_delivery_date}
                   onChange={handleInputChange}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="valid_until">RFQ Valid Until</Label>
-              <div className="relative">
-                <CalendarIcon className="absolute left-3 top-3 size-4 text-muted-foreground" />
-                <Input
-                  id="valid_until"
-                  name="valid_until"
-                  type="date"
-                  className={cn(inputClass, "pl-10")}
-                  value={formData.valid_until}
-                  onChange={handleInputChange}
-                  required
                 />
               </div>
             </div>
@@ -310,14 +368,14 @@ function NewRfq() {
 
                 <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">Item #{index + 1}</p>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Material Code</Label>
                     <Input
                       placeholder="e.g. MAT-001"
-                      className="h-10 rounded-xl"
+                      className="h-10 rounded-xl bg-muted/50"
                       value={item.material_code}
-                      onChange={(e) => handleItemChange(index, "material_code", e.target.value)}
+                      readOnly
                       required
                     />
                   </div>
@@ -347,28 +405,17 @@ function NewRfq() {
                       <option value="General">General</option>
                     </select>
                   </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Warehouse</Label>
-                    <Input
-                      placeholder="e.g. Pune Plant 1"
-                      className="h-10 rounded-xl"
-                      value={item.warehouse}
-                      onChange={(e) => handleItemChange(index, "warehouse", e.target.value)}
-                      required
-                    />
-                  </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Required Quantity</Label>
                     <Input
                       type="number"
-                      min="0.0001"
-                      step="any"
+                      min="1"
+                      step="1"
                       className="h-10 rounded-xl font-mono"
-                      value={item.quantity}
+                      value={Math.floor(item.quantity)}
                       onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
                       required
                     />
@@ -381,17 +428,6 @@ function NewRfq() {
                       className="h-10 rounded-xl"
                       value={item.uom}
                       onChange={(e) => handleItemChange(index, "uom", e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 col-span-2">
-                    <Label className="text-xs">Required Delivery Date</Label>
-                    <Input
-                      type="date"
-                      className="h-10 rounded-xl"
-                      value={item.required_delivery_date}
-                      onChange={(e) => handleItemChange(index, "required_delivery_date", e.target.value)}
                       required
                     />
                   </div>
@@ -420,7 +456,7 @@ function NewRfq() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Select Suppliers" description="Search and filter vendors from the master data" icon={Building2}>
+        <SectionCard title="Select Suppliers" description="Search and select active vendors from the master data" icon={Building2}>
           <div className="mb-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="relative">
@@ -450,10 +486,9 @@ function NewRfq() {
                 onChange={(e) => setFilters(f => ({ ...f, category: e.target.value }))}
               >
                 <option value="">All Categories</option>
-                <option value="Raw Materials">Raw Materials</option>
-                <option value="Components">Components</option>
-                <option value="Services">Services</option>
-                <option value="Hardware">Hardware</option>
+                {availableCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
               </select>
             </div>
           </div>
@@ -490,27 +525,10 @@ function NewRfq() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-bold">{s.supplierName}</p>
-                        <span className="shrink-0 rounded-lg bg-warning-soft px-1.5 py-0.5 text-[10px] font-bold text-warning-foreground">
-                          ★ {s.rating?.toFixed(1) || "0.0"}
-                        </span>
                       </div>
                       <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-medium">
-                        {s.supplierCode || "NO-CODE"} · {s.category}
+                        {s.category}
                       </p>
-                      <div className="mt-2 flex items-center justify-between">
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          <span className="font-semibold text-foreground/70">{s.city || "Global"}</span> · {s.mainMaterial || "General"}
-                        </p>
-                        <div className="flex items-center gap-1">
-                          <div className="h-1.5 w-12 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full bg-success"
-                              style={{ width: `${s.performanceScore || 0}%` }}
-                            />
-                          </div>
-                          <span className="text-[9px] font-mono text-muted-foreground">{Math.round(s.performanceScore || 0)}%</span>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>

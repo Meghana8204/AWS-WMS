@@ -9,10 +9,14 @@ import {
   CheckCircle,
   AlertTriangle,
   Loader2,
-  DollarSign,
   Truck,
   ShieldCheck,
-  FileCheck
+  FileCheck,
+  Percent,
+  Upload,
+  Lock,
+  ArrowLeft,
+  X
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -51,7 +55,6 @@ function SubmitQuotation() {
     deliveryTime: "",
     expectedDeliveryDate: "",
     paymentTerms: "Net 30",
-    quotationValidity: "",
     remarks: "",
   });
 
@@ -95,7 +98,7 @@ function SubmitQuotation() {
         setRfq(rfqData);
 
         // Check if there is an existing quotation (Draft or Submitted)
-        const existing = quotesList.find((q: any) => q.rfq_id === rfqId && q.supplier_id === sid);
+        const existing = quotesList.find((q: any) => q.rfqId === rfqId && q.supplierId === sid);
         if (existing) {
           setExistingQuote(existing);
           setIsLocked(existing.status === "SUBMITTED");
@@ -103,22 +106,23 @@ function SubmitQuotation() {
           // Map items data
           const mappedItems: any = {};
           existing.lines?.forEach((line: any) => {
-            mappedItems[line.item_code] = {
-              unitPrice: String(line.unit_price),
-              availableQty: String(line.quantity),
+            const price = parseFloat(line.unitPrice || line.unit_price || "0");
+            const qty = parseFloat(line.quantity || "0");
+            mappedItems[line.itemCode || line.item_code] = {
+              unitPrice: String(Math.floor(price)),
+              availableQty: String(Math.floor(qty)),
             };
           });
           setItemsData(mappedItems);
 
           // Map meta data
           setMetaData({
-            discount: String(existing.discount || "0"),
-            tax: String(existing.tax || "0"),
-            freightCharges: String(existing.freight_charges || "0"),
-            deliveryTime: existing.delivery_time || "",
-            expectedDeliveryDate: existing.expected_delivery_date || "",
-            paymentTerms: existing.payment_terms || "",
-            quotationValidity: existing.quotation_validity || "",
+            discount: String(Math.floor(parseFloat(existing.discount || "0"))),
+            tax: String(Math.floor(parseFloat(existing.tax || "0"))),
+            freightCharges: String(Math.floor(parseFloat(existing.freightCharges || existing.freight_charges || "0"))),
+            deliveryTime: existing.deliveryTime || existing.delivery_time || "",
+            expectedDeliveryDate: existing.expectedDeliveryDate || existing.expected_delivery_date || "",
+            paymentTerms: existing.paymentTerms || existing.payment_terms || "",
             remarks: existing.remarks || "",
           });
 
@@ -130,7 +134,7 @@ function SubmitQuotation() {
           rfqData.items?.forEach((item: any) => {
             initialItems[item.materialCode] = {
               unitPrice: "",
-              availableQty: String(item.quantity),
+              availableQty: String(Math.floor(item.quantity)),
             };
           });
           setItemsData(initialItems);
@@ -148,11 +152,28 @@ function SubmitQuotation() {
 
   const handleItemChange = (itemCode: string, field: "unitPrice" | "availableQty", value: string) => {
     if (isLocked) return;
+
+    let finalValue = value;
+
+    // Enforce that Quoted Quantity (availableQty) does not exceed Requested Qty
+    if (field === "availableQty" && rfq) {
+      const item = rfq.items.find((it: any) => it.materialCode === itemCode || it.material_code === itemCode);
+      if (item) {
+        const requestedQty = Math.floor(item.quantity);
+        const enteredQty = parseInt(value, 10);
+
+        // If the user tries to enter a value greater than requested, cap it at requested
+        if (!isNaN(enteredQty) && enteredQty > requestedQty) {
+          finalValue = String(requestedQty);
+        }
+      }
+    }
+
     setItemsData((prev) => ({
       ...prev,
       [itemCode]: {
         ...prev[itemCode],
-        [field]: value,
+        [field]: finalValue,
       },
     }));
   };
@@ -160,38 +181,116 @@ function SubmitQuotation() {
   const handleMetaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (isLocked) return;
     const { name, value } = e.target;
-    setMetaData((prev) => ({ ...prev, [name]: value }));
+
+    setMetaData((prev) => {
+      const newState = { ...prev, [name]: value };
+
+      // Auto-select Expected Delivery Date based on Delivery Time (days)
+      if (name === "deliveryTime") {
+        const daysMatch = value.match(/\d+/);
+        if (daysMatch) {
+          const days = parseInt(daysMatch[0], 10);
+          if (!isNaN(days)) {
+            const date = new Date();
+            date.setDate(date.getDate() + days);
+            newState.expectedDeliveryDate = date.toISOString().split("T")[0];
+          }
+        }
+      }
+
+      return newState;
+    });
   };
 
-  // Mock document upload
-  const handleFileUpload = (documentType: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  // Real-time document upload to backend
+  const handleFileUpload = async (documentType: string, e: React.ChangeEvent<HTMLInputElement>) => {
     if (isLocked) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Simulate file upload delay
-    toast.info(`Uploading ${file.name}...`);
-    setTimeout(() => {
+    const toastId = toast.loading(`Uploading ${file.name} to server...`);
+    try {
+      const response = await api.uploadQuotationDocument(file);
+
       setUploadedDocs((prev) => [
-        ...prev.filter((d) => d.document_type !== documentType), // replace existing document of same type
+        ...prev.filter((d) => d.document_type !== documentType),
         {
           document_type: documentType,
-          file_name: file.name,
-          file_url: `/media/documents/${file.name}`,
+          file_name: response.file_name,
+          file_url: response.file_url,
         }
       ]);
-      toast.success(`${file.name} uploaded successfully!`);
-    }, 800);
+      toast.success(`${file.name} uploaded successfully!`, { id: toastId });
+    } catch (error: any) {
+      toast.error(`Upload failed: ${error.message}`, { id: toastId });
+      console.error("Quotation file upload error:", error);
+    }
   };
 
-  const handleSave = async (status: "DRAFT" | "SUBMITTED") => {
+  // Auto-save logic
+  useEffect(() => {
+    if (!rfq || isLocked || loading || submitting) return;
+
+    // Don't auto-save if form is empty/initial
+    if (Object.keys(itemsData).length === 0) return;
+
+    const timer = setTimeout(() => {
+      autoSaveDraft();
+    }, 2000); // 2 second debounce
+
+    return () => clearTimeout(timer);
+  }, [itemsData, metaData, uploadedDocs]);
+
+  const autoSaveDraft = async () => {
+    try {
+      const payload = {
+        rfq_id: rfq.id,
+        supplier_id: supplierId,
+        status: "DRAFT",
+        lines: rfq.items.map((item: any) => ({
+          item_code: item.materialCode,
+          quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
+          unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
+        })),
+        discount: parseFloat(metaData.discount) || 0,
+        tax: parseFloat(metaData.tax) || 0,
+        freight_charges: parseFloat(metaData.freightCharges) || 0,
+        delivery_time: metaData.deliveryTime,
+        expected_delivery_date: metaData.expectedDeliveryDate || null,
+        payment_terms: metaData.paymentTerms,
+        remarks: metaData.remarks,
+        documents: uploadedDocs,
+      };
+
+      if (existingQuote) {
+        const updated = await api.updateQuotation(existingQuote.id, payload);
+        setExistingQuote(updated);
+      } else {
+        const result = await api.submitQuotation(payload);
+        setExistingQuote(result); // Set so future auto-saves use update
+      }
+      console.log("Draft auto-saved");
+    } catch (error) {
+      // Silent error for background auto-save
+    }
+  };
+
+  const handleSave = async (status: "SUBMITTED") => {
     if (!rfq || isLocked) return;
 
     // Validation for submission
-    if (status === "SUBMITTED") {
-      const lineCodes = Object.keys(itemsData);
-      if (lineCodes.some((code) => !itemsData[code].unitPrice || parseFloat(itemsData[code].unitPrice) <= 0)) {
-        toast.error("Please enter a valid unit price for all items before submitting");
+    const lineCodes = Object.keys(itemsData);
+    if (lineCodes.some((code) => !itemsData[code].unitPrice || parseFloat(itemsData[code].unitPrice) <= 0)) {
+      toast.error("Please enter a valid unit price for all items before submitting");
+      return;
+    }
+
+    // Ensure Quoted Quantity is at least the Requested Quantity
+    for (const item of rfq.items) {
+      const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
+      const requested = Math.floor(item.quantity);
+      if (quoted < requested) {
+        toast.error(`Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`);
         return;
       }
     }
@@ -213,7 +312,6 @@ function SubmitQuotation() {
         delivery_time: metaData.deliveryTime,
         expected_delivery_date: metaData.expectedDeliveryDate || null,
         payment_terms: metaData.paymentTerms,
-        quotation_validity: metaData.quotationValidity || null,
         remarks: metaData.remarks,
         documents: uploadedDocs,
       };
@@ -226,10 +324,8 @@ function SubmitQuotation() {
         await api.submitQuotation(payload);
       }
 
-      toast.success(status === "SUBMITTED" ? "Quotation submitted and locked!" : "Draft saved successfully!");
-      if (status === "SUBMITTED") {
-        setIsLocked(true);
-      }
+      toast.success("Quotation submitted and locked!");
+      setIsLocked(true);
       navigate({ to: "/supplier-dashboard" });
     } catch (error: any) {
       toast.error("Operation failed: " + error.message);
@@ -325,21 +421,20 @@ function SubmitQuotation() {
                     <span className="text-[10px] font-mono text-muted-foreground uppercase">{item.materialCode} · {item.category}</span>
                   </div>
                   <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
-                    Requested: {item.quantity} {item.uom}
+                    Requested: {Math.floor(item.quantity)} {item.uom}
                   </span>
                 </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="mt-5 grid gap-4 sm:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Unit Price (INR)*</Label>
                     <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                       <Input
                         type="number"
-                        min="0.01"
-                        step="any"
-                        placeholder="0.00"
-                        className="pl-9 rounded-xl h-10 font-mono"
+                        min="0"
+                        step="1"
+                        placeholder="0"
+                        className="rounded-xl h-10 font-mono"
                         disabled={isLocked}
                         value={itemsData[item.materialCode]?.unitPrice || ""}
                         onChange={(e) => handleItemChange(item.materialCode, "unitPrice", e.target.value)}
@@ -349,12 +444,24 @@ function SubmitQuotation() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Available Quantity</Label>
+                    <Label className="text-xs">Requested Qty</Label>
                     <Input
                       type="number"
-                      min="0.0001"
-                      step="any"
-                      placeholder="Available quantity"
+                      min="0"
+                      className="rounded-xl h-10 font-mono bg-muted/50"
+                      disabled
+                      value={Math.floor(item.quantity)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Quoted Quantity*</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max={Math.floor(item.quantity)}
+                      step="1"
+                      placeholder="Enter quantity"
                       className="rounded-xl h-10 font-mono"
                       disabled={isLocked}
                       value={itemsData[item.materialCode]?.availableQty || ""}
@@ -374,11 +481,12 @@ function SubmitQuotation() {
             <div className="space-y-1.5">
               <Label className="text-xs">Discount (INR)</Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   type="number"
+                  min="0"
                   name="discount"
-                  className="pl-9 rounded-xl h-10 font-mono"
+                  step="1"
+                  className="rounded-xl h-10 font-mono"
                   disabled={isLocked}
                   value={metaData.discount}
                   onChange={handleMetaChange}
@@ -392,7 +500,9 @@ function SubmitQuotation() {
                 <Percent className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   type="number"
+                  min="0"
                   name="tax"
+                  step="1"
                   className="pl-9 rounded-xl h-10 font-mono"
                   disabled={isLocked}
                   value={metaData.tax}
@@ -404,11 +514,12 @@ function SubmitQuotation() {
             <div className="space-y-1.5">
               <Label className="text-xs">Freight Charges (INR)</Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
                   type="number"
+                  min="0"
                   name="freightCharges"
-                  className="pl-9 rounded-xl h-10 font-mono"
+                  step="1"
+                  className="rounded-xl h-10 font-mono"
                   disabled={isLocked}
                   value={metaData.freightCharges}
                   onChange={handleMetaChange}
@@ -432,6 +543,7 @@ function SubmitQuotation() {
               <Label className="text-xs">Expected Delivery Date</Label>
               <Input
                 type="date"
+                min={new Date().toISOString().split("T")[0]}
                 name="expectedDeliveryDate"
                 className="rounded-xl h-10 font-mono"
                 disabled={isLocked}
@@ -451,18 +563,6 @@ function SubmitQuotation() {
                 onChange={handleMetaChange}
               />
             </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs">Quotation Validity</Label>
-              <Input
-                type="date"
-                name="quotationValidity"
-                className="rounded-xl h-10 font-mono"
-                disabled={isLocked}
-                value={metaData.quotationValidity}
-                onChange={handleMetaChange}
-              />
-            </div>
           </div>
 
           <div className="mt-4 space-y-1.5">
@@ -479,22 +579,32 @@ function SubmitQuotation() {
         </SectionCard>
 
         {/* Document Uploads section */}
-        <SectionCard title="Quotation Supporting Documents" description="Upload PDFs or compliance certifications" icon={Upload}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              { label: "Quotation PDF", key: "QUOTATION_PDF" },
-              { label: "Commercial Documents", key: "COMMERCIAL_DOC" },
-              { label: "Technical Documents", key: "TECHNICAL_DOC" },
-              { label: "Other Supporting Documents", key: "OTHER" },
-            ].map((docType) => {
+        <SectionCard title="Quotation Supporting Documents" description="Upload PDF or compliance certification" icon={Upload}>
+          <div className="grid gap-4 sm:grid-cols-1">
+            {(() => {
+              const docType = { label: "Upload Document", key: "QUOTATION_DOC" };
               const uploaded = uploadedDocs.find((d) => d.document_type === docType.key);
               return (
-                <div key={docType.key} className="flex flex-col gap-2 rounded-2xl border border-border p-4 bg-muted/5">
+                <div className="flex flex-col gap-2 rounded-2xl border border-border p-4 bg-muted/5">
                   <span className="text-xs font-bold">{docType.label}</span>
                   {uploaded ? (
                     <div className="flex items-center justify-between gap-2 rounded-xl bg-success-soft/20 px-3 py-2 text-xs text-success-foreground border border-success/20">
-                      <span className="truncate max-w-[180px] font-mono">{uploaded.file_name}</span>
-                      <span className="text-[10px] uppercase font-bold">Uploaded</span>
+                      <div className="flex items-center gap-2">
+                        <FileCheck className="size-4" />
+                        <span className="truncate max-w-[300px] font-mono">{uploaded.file_name}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase font-bold">Uploaded</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 rounded-full hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setUploadedDocs([])}
+                          disabled={isLocked}
+                        >
+                          <X className="size-3" />
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <div className="relative">
@@ -509,17 +619,19 @@ function SubmitQuotation() {
                       <Label
                         htmlFor={`file-${docType.key}`}
                         className={cn(
-                          "flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 hover:border-primary/80 py-3 text-xs font-medium cursor-pointer transition-colors",
+                          "flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 hover:border-primary/80 py-6 text-sm font-medium cursor-pointer transition-colors",
                           isLocked && "opacity-50 cursor-not-allowed hover:border-border/80"
                         )}
                       >
-                        <Upload className="size-4 text-muted-foreground" /> Choose file...
+                        <Upload className="size-5 text-muted-foreground" />
+                        <span>Click to browse or drag and drop your quotation file</span>
+                        <span className="text-xs text-muted-foreground font-normal">(PDF, JPG, PNG up to 10MB)</span>
                       </Label>
                     </div>
                   )}
                 </div>
               );
-            })}
+            })()}
           </div>
         </SectionCard>
 
@@ -530,15 +642,6 @@ function SubmitQuotation() {
               <ShieldCheck className="size-4 text-success" /> Click Submit to finalize and lock this bid proposal.
             </div>
             <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="lg"
-                className="rounded-xl h-12 text-xs"
-                disabled={submitting}
-                onClick={() => handleSave("DRAFT")}
-              >
-                Save Draft
-              </Button>
               <Button
                 size="lg"
                 className="rounded-xl h-12 text-xs bg-success text-success-foreground hover:bg-success/90 shadow-glow"

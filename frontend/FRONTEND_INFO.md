@@ -64,7 +64,7 @@ npm run dev
 ```
 
 Then open the local app URL shown in the terminal, usually:
-- http://localhost:5173
+- http://localhost:8080
 
 ## 6) Useful frontend scripts
 
@@ -101,7 +101,7 @@ The API client is likely configured in:
 
 - Main frontend folder: D:\ams-wms-platform\frontend
 - Start command: npm run dev
-- Local URL: http://localhost:5173
+- Local URL: http://localhost:8080
 - Stack: React + TypeScript + Vite + Tailwind + TanStack Router + React Query
 
 ## 10) Notes

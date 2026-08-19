@@ -529,6 +529,11 @@ button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
 .status-fulfilled { background: #f3e8ff; color: #6b21a8; }
 .status-rejected { background: #fee2e2; color: #991b1b; }
 .status-draft { background: #f1f5f9; color: #475569; }
+.status-shipped { background: #ccfbf1; color: #0d9488; }
+.status-finance_rejected { background: #fee2e2; color: #991b1b; }
+.status-pending_finance_approval { background: #fef3c7; color: #92400e; }
+.status-asn_submitted { background: #f3e8ff; color: #6b21a8; }
+.status-in_transit { background: #e0f2fe; color: #0369a1; }
 
 .action-buttons {
   display: flex;

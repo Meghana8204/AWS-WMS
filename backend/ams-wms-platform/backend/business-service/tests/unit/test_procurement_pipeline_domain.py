@@ -164,7 +164,7 @@ def test_asn_arrival_and_gate_entry_pipeline():
     assert gate_entry.exit_time is not None
 
 
-def test_finance_rejection_and_resubmission():
+def test_finance_rejection_is_permanent():
     po = PurchaseOrder.create(
         po_number="PO-REJECT-001",
         supplier_id="SUPP-99",
@@ -181,8 +181,11 @@ def test_finance_rejection_and_resubmission():
     po.finance_reject()
     assert po.status == PurchaseOrderStatus.FINANCE_REJECTED
 
-    # Resubmit with lower quantity
+    # Resubmit should now FAIL
     revised_items = [PurchaseOrderItem.create("M-1", "Material 1", "Cat", 50, Decimal("600.00"))]
-    po.resubmit_for_finance_approval("FA-101", items=revised_items)
-    assert po.status == PurchaseOrderStatus.PENDING_FINANCE_APPROVAL
-    assert po.subtotal == Decimal("30000.00")
+    with pytest.raises(PurchaseOrderValidationError, match="permanently closed"):
+        po.resubmit_for_finance_approval("FA-101", items=revised_items)
+
+    # Update should also FAIL
+    with pytest.raises(PurchaseOrderValidationError, match="permanently rejected"):
+        po.update(department="New Dept")

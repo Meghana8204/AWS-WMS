@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.modules.procurement.application.commands import (
     ApproveFinanceCommand,
+    ASNAttachmentDTO,
     ASNItemDTO,
     CreateMaterialRequestCommand,
     CreatePurchaseOrderCommand,
@@ -866,6 +867,17 @@ async def submit_asn(dto: ASNSubmitSchema, db: Annotated[AsyncSession, Depends(g
             )
             for it in dto.items
         ],
+        attachments=[
+            ASNAttachmentDTO(
+                filename=att.filename,
+                file_type=att.file_type,
+                file_size_bytes=att.file_size_bytes,
+                category=att.category,
+                attachment_id=att.id,
+                created_at=att.created_at,
+            )
+            for att in dto.attachments
+        ],
         shipped_date=dto.shipped_date,
         driver_name=dto.driver_name,
         driver_phone=dto.driver_phone,
@@ -900,6 +912,18 @@ async def submit_asn(dto: ASNSubmitSchema, db: Annotated[AsyncSession, Depends(g
                 expiry_date=it.expiry_date,
             )
             for it in asn.items
+        ],
+        attachments=[
+            AttachmentResponseSchema(
+                id=str(att.id),
+                filename=att.filename,
+                file_type=att.file_type,
+                file_size_bytes=att.file_size_bytes,
+                category=att.category.value,
+                created_at=att.created_at,
+                download_url=f"/api/v1/procurement/asns/{asn.id}/attachments/{att.id}",
+            )
+            for att in asn.attachments
         ],
         total_shipped_qty=asn.total_shipped_qty,
         created_at=asn.created_at,
@@ -947,12 +971,52 @@ async def list_asns(
                 )
                 for it in asn.items
             ],
+            attachments=[
+                AttachmentResponseSchema(
+                    id=str(att.id),
+                    filename=att.filename,
+                    file_type=att.file_type,
+                    file_size_bytes=att.file_size_bytes,
+                    category=att.category.value,
+                    created_at=att.created_at,
+                    download_url=f"/api/v1/procurement/asns/{asn.id}/attachments/{att.id}",
+                )
+                for att in asn.attachments
+            ],
             total_shipped_qty=asn.total_shipped_qty,
             created_at=asn.created_at,
             updated_at=asn.updated_at,
         )
         for asn in items
     ]
+
+
+@router.post("/asns/attachments/upload", response_model=AttachmentResponseSchema)
+async def upload_asn_attachment(
+    file: UploadFile = File(...),
+    category: str = Form("SUPPORTING_DOC"),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+):
+    storage_dir = "attachments/asns"
+    os.makedirs(storage_dir, exist_ok=True)
+
+    att_id = str(uuid.uuid4())
+    file_content = await file.read()
+    file_path = os.path.join(storage_dir, f"{att_id}_{file.filename}")
+
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+
+    # We return a schema that can be used to link to the ASN later
+    return AttachmentResponseSchema(
+        id=att_id,
+        filename=file.filename,
+        file_type=file.content_type or "application/octet-stream",
+        file_size_bytes=len(file_content),
+        category=category,
+        created_at=datetime.now(timezone.utc),
+        download_url=f"/api/v1/procurement/asns/attachments/temp/{att_id}",
+    )
 
 
 @router.get("/arrival-notifications", response_model=list[ArrivalNotificationResponseSchema])

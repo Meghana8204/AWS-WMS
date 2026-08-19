@@ -1,0 +1,5 @@
+- [x] Backend: Update `RfqItemCommand` in `commands.py`
+- [x] Backend: Update `RFQItem` domain in `rfq_item.py`
+- [x] Backend: Update `CreateRfqUseCase` in `use_cases.py`
+- [x] Backend: Update `RfqItemModel` in `models.py`
+- [x] Frontend: Update `procurement.new-rfq.tsx` state and UI

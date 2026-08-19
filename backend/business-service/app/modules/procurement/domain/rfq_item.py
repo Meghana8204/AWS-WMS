@@ -12,6 +12,6 @@ class RFQItem:
     category: str
     quantity: Decimal
     uom: str
-    required_delivery_date: date
-    warehouse: str
+    required_delivery_date: date | None = None
+    warehouse: str | None = None
     special_requirements: str | None = None

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, Numeric, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, JSON, LargeBinary, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,6 +21,7 @@ class GateEntryModel(Base):
     __tablename__ = "gate_entry"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    gate_entry_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     po_id: Mapped[uuid.UUID | None] = mapped_column(GUID, nullable=True)
     po_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     vehicle_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -32,6 +33,8 @@ class GateEntryModel(Base):
     driver_photo_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
     po_document_path: Mapped[str] = mapped_column(String(256), nullable=False)
     vehicle_photo_path: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    po_document_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    vehicle_photo_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     verification_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -52,6 +55,7 @@ class GateEntryModel(Base):
     ocr_expected_delivery_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ocr_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     ocr_raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ocr_line_items: Mapped[list | None] = mapped_column(JSONType, nullable=True)
 
     # User & audit fields
     security_officer_id: Mapped[str] = mapped_column(String(64), nullable=False)

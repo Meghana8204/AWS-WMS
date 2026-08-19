@@ -112,10 +112,12 @@ export const api = {
       console.warn("Dev server login failed, falling back to client-side mock:", e.message);
       const isProcurement = username.toLowerCase().includes("procurement");
       const isFinance = username.toLowerCase().includes("finance");
+      const isWarehouse = username.toLowerCase().includes("warehouse");
+      const isGate = username.toLowerCase().includes("gate");
       const mockUser = {
-        token: isFinance ? "mock-jwt-finance-token" : (isProcurement ? "mock-jwt-procurement-token" : "mock-jwt-admin-token"),
+        token: isFinance ? "mock-jwt-finance-token" : (isProcurement ? "mock-jwt-procurement-token" : (isWarehouse ? "mock-jwt-warehouse-token" : (isGate ? "mock-jwt-gate-entry-token" : "mock-jwt-admin-token"))),
         username,
-        roles: isFinance ? ["FINANCE"] : (isProcurement ? ["PROCUREMENT"] : ["ADMIN"])
+        roles: isFinance ? ["FINANCE"] : (isProcurement ? ["PROCUREMENT"] : (isWarehouse ? ["WAREHOUSE"] : (isGate ? ["GATE_SECURITY"] : ["ADMIN"])))
       };
       localStorage.setItem("auth_token", mockUser.token);
       localStorage.setItem("user_info", JSON.stringify(mockUser));
@@ -160,6 +162,12 @@ export const api = {
     });
   },
 
+  async resetGateEntries(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/reset-dev-entries`, {
+      method: "POST",
+    });
+  },
+
   async scanGateEntry(formData: FormData): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/scan`, {
       method: "POST",
@@ -173,7 +181,10 @@ export const api = {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ approved, notes }),
+      body: JSON.stringify({
+        action: approved ? "APPROVE" : "UNSCHEDULED_ARRIVAL",
+        remarks: notes || (approved ? "Gate entry approved" : "Moved to unscheduled arrivals"),
+      }),
     });
   },
 
@@ -181,14 +192,61 @@ export const api = {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${id}`);
   },
 
-  async geminiScan(file: File, kind = "general", instructions?: string): Promise<any> {
+  async downloadGatePass(id: string, gateEntryNumber?: string): Promise<void> {
+    const token = getAuthToken();
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      headers.set("Authorization", "Bearer local_dev_mock_token");
+    }
+
+    const response = await fetch(`${BUSINESS_API_URL}/api/gate-entries/${id}/pass`, {
+      headers,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to download gate pass");
+    }
+
+    let filename = gateEntryNumber ? `Pass-${gateEntryNumber}.pdf` : `GatePass-${id}.pdf`;
+    const disposition = response.headers.get('Content-Disposition');
+    if (disposition && disposition.includes('filename=')) {
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  async scanOcr(file: File, kind = "general"): Promise<any> {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("kind", kind);
-    if (instructions) formData.append("instructions", instructions);
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/scan-gemini`, {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/scan-ocr`, {
       method: "POST",
       body: formData,
+    });
+  },
+
+  async previewPoOcr(base64Image: string, poNumberOverride?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate/po-ocr-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        documentImageBase64: base64Image,
+        poNumberOverride: poNumberOverride
+      }),
     });
   },
 
@@ -219,7 +277,7 @@ export const api = {
   },
 
   // Procurement Use Cases
-  async getSuppliers(filters?: { search?: string; category?: string; material?: string; city?: string }): Promise<any[]> {
+  async getSuppliers(filters?: { search?: string; category?: string; material?: string; city?: string; vendor_type?: string; status?: string }): Promise<any[]> {
     let url = `${BUSINESS_API_URL}/api/v1/procurement/suppliers`;
     if (filters) {
       const params = new URLSearchParams();
@@ -227,6 +285,8 @@ export const api = {
       if (filters.category) params.append("category", filters.category);
       if (filters.material) params.append("material", filters.material);
       if (filters.city) params.append("city", filters.city);
+      if (filters.vendor_type) params.append("vendor_type", filters.vendor_type);
+      if (filters.status) params.append("status", filters.status);
       const query = params.toString();
       if (query) url += `?${query}`;
     }
@@ -263,11 +323,56 @@ export const api = {
     });
   },
 
+  async getMaterialRequests(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests`);
+  },
+
+  async createMaterialRequest(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async processMaterialRequest(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests/${id}/process`, {
+      method: "POST"
+    });
+  },
+
+  async getMaterialStock(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-stock`);
+  },
+
+  async getProcurementStats(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/stats`);
+  },
+
+  async uploadASNAttachment(file: File, category: string = "SUPPORTING_DOC"): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", category);
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns/attachments/upload`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
   async uploadSupplierDocument(documentType: string, file: File): Promise<any> {
     const formData = new FormData();
     formData.append("document_type", documentType);
     formData.append("file", file);
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/suppliers/documents`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  async uploadQuotationDocument(file: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/quotations/documents`, {
       method: "POST",
       body: formData,
     });
@@ -286,6 +391,42 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    });
+  },
+
+  async getVendorTypes(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/vendor-types`);
+  },
+
+  async createVendorType(name: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/vendor-types`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async getSupplierCategories(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/supplier-categories`);
+  },
+
+  async createSupplierCategory(name: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/supplier-categories`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async getRawMaterials(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/raw-materials`);
+  },
+
+  async createRawMaterial(name: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/raw-materials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
     });
   },
 
@@ -314,26 +455,19 @@ export const api = {
     });
   },
 
-  async getPurchaseOrders(supplierId?: string): Promise<any[]> {
-    const url = supplierId
-      ? `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders?supplier_id=${supplierId}`
-      : `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders`;
-    return request<any[]>(url);
-  },
-
-  async createPurchaseOrder(data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  },
-
   async getAsns(supplierId?: string): Promise<any[]> {
     const url = supplierId
       ? `${BUSINESS_API_URL}/api/v1/procurement/asns?supplier_id=${supplierId}`
       : `${BUSINESS_API_URL}/api/v1/procurement/asns`;
-    return request<any[]>(url);
+    return request<any[]>(url, { cache: "no-store" });
+  },
+
+  async getAsn(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns/${id}`, { cache: "no-store" });
+  },
+
+  async getArrivalNotifications(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications`);
   },
 
   async createAsn(data: any): Promise<any> {
@@ -344,8 +478,20 @@ export const api = {
     });
   },
 
+  async updateAsn(id: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
   async getNextAsnNumber(): Promise<{ asnNumber: string }> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns/next-number`);
+  },
+
+  async getNextMaterialRequestNumber(): Promise<{ requestNumber: string }> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests/next-number`);
   },
 
   async updateQuotation(id: string, data: any): Promise<any> {
@@ -353,6 +499,14 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
+    });
+  },
+
+  async rejectQuotation(id: string, reason: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/quotations/${id}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
     });
   },
 
@@ -364,25 +518,124 @@ export const api = {
     });
   },
 
-  async updatePurchaseOrder(id: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  },
-
   async getQuotation(id: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/quotations/${id}`);
+  },
+
+  async getPurchaseOrders(search?: string): Promise<any[]> {
+    const url = search
+      ? `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders?search=${encodeURIComponent(search)}`
+      : `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders`;
+    return request<any[]>(url);
   },
 
   async getPurchaseOrder(id: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`);
   },
 
-  async sendPoToSupplier(id: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/send-supplier-email`, {
-      method: "POST",
+  async getPurchaseOrderByNumber(poNumber: str): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`);
+  },
+
+  async downloadPoPdf(id: string, poNumber?: string): Promise<void> {
+    const token = getAuthToken();
+    const headers = new Headers();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      headers.set("Authorization", "Bearer local_dev_mock_token");
+    }
+
+    const response = await fetch(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/pdf`, {
+      headers,
     });
-  }
+
+    if (!response.ok) {
+      throw new Error("Failed to download PDF");
+    }
+
+    // Try to get filename from Content-Disposition header
+    let filename = poNumber ? `PO-${poNumber}.pdf` : `PO-${id}.pdf`;
+    const disposition = response.headers.get('Content-Disposition');
+    if (disposition && disposition.includes('filename=')) {
+      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  },
+
+  async getFinanceApprovals(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/finance-approvals`);
+  },
+
+  async approvePurchaseOrder(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/approve`, {
+      method: "POST"
+    });
+  },
+
+  async rejectPurchaseOrder(id: string, reason: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason })
+    });
+  },
+
+  async resubmitPurchaseOrder(id: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/resubmit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async sendPoToSupplier(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}/send-to-supplier`, {
+      method: "POST"
+    });
+  },
+
+  async getNotifications(role: string): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/notifications?role=${role}`);
+  },
+
+  async markNotificationRead(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/notifications/${id}/read`, {
+      method: "POST"
+    });
+  },
+
+  async markAllNotificationsRead(role: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/notifications/read-all?role=${encodeURIComponent(role)}`, {
+      method: "POST"
+    });
+  },
+
+  async markArrivalNotificationRead(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/${id}/read`, {
+      method: "POST"
+    });
+  },
+
+  async markAllArrivalNotificationsRead(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/read-all`, {
+      method: "POST"
+    });
+  },
+
+  async globalSearch(q: string): Promise<{ results: any[] }> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`);
+  },
 };
