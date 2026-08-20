@@ -23,3 +23,23 @@ class GoodsReceivedEvent(DomainEvent):
     grn_id: str
     po_id: str
     lines: list[ReceivedLine]
+
+
+@dataclass(frozen=True)
+class PostedInventoryLine:
+    item_code: str
+    material_name: str
+    quantity: float | Decimal
+    uom: str = "PCS"
+
+
+@dataclass(frozen=True, kw_only=True)
+class GrnPostedEvent(DomainEvent):
+    grn_id: str
+    grn_number: str
+    po_number: str | None = None
+    asn_number: str | None = None
+    supplier_name: str | None = None
+    warehouse_id: str | None = None
+    lines: list[PostedInventoryLine]
+
