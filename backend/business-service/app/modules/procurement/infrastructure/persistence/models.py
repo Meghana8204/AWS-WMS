@@ -184,7 +184,7 @@ class RfqModel(Base):
     closing_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Selection Fields
-    selected_supplier_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=True)
+    selected_supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
     selection_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     selected_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     selection_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)

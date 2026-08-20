@@ -892,29 +892,36 @@ async def create_rfq(
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> RfqResponse:
-    repo = SqlAlchemyRfqRepository(uow.session)
-    use_case = CreateRfqUseCase(repo)
-    command = CreateRfqCommand(
-        rfq_date=request.rfq_date,
-        warehouse=request.warehouse,
-        procurement_officer=request.procurement_officer,
-        supplier_ids=request.supplier_ids,
-        items=[RfqItemCommand(**item.dict()) for item in request.items],
-        material_request_number=request.material_request_number,
-        required_delivery_date=request.required_delivery_date,
-        remarks=request.remarks,
-    )
-    rfq_id = await use_case.handle(command)
-    
-    # Fetch the model directly with preloaded relationships to get actual supplier names
-    stmt = select(RfqModel).options(
-        selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
-    ).where(RfqModel.id == rfq_id.value)
-    res = await uow.session.execute(stmt)
-    entity = res.scalar_one_or_none()
-    
-    return _to_rfq_response(entity)
+    try:
+        repo = SqlAlchemyRfqRepository(uow.session)
+        use_case = CreateRfqUseCase(repo)
+        command = CreateRfqCommand(
+            rfq_date=request.rfq_date,
+            warehouse=request.warehouse,
+            procurement_officer=request.procurement_officer,
+            supplier_ids=request.supplier_ids,
+            items=[RfqItemCommand(**item.dict()) for item in request.items],
+            material_request_number=request.material_request_number,
+            required_delivery_date=request.required_delivery_date,
+            remarks=request.remarks,
+        )
+        rfq_id = await use_case.handle(command)
+        await uow.commit()
+
+        # Fetch the model directly with preloaded relationships to get actual supplier names
+        stmt = select(RfqModel).options(
+            selectinload(RfqModel.items),
+            selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        ).where(RfqModel.id == rfq_id.value)
+        res = await uow.session.execute(stmt)
+        entity = res.scalar_one_or_none()
+
+        return _to_rfq_response(entity)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create RFQ: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create RFQ: {str(e)}")
 
 
 @router.post("/rfqs/{id}/send")
