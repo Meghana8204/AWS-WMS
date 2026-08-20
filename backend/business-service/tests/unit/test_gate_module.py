@@ -130,7 +130,7 @@ def test_unscheduled_arrival_missing_po():
 
 
 def test_active_duplicate_entry_prevention():
-    """Should reject duplicate active gate entry for same vehicle plate or PO number."""
+    """Should reject duplicate active gate entry for same PO number, but allow same vehicle with different PO."""
     repo = InMemoryGateEntryRepository()
 
     existing_entry = GateEntry.create(
@@ -145,12 +145,17 @@ def test_active_duplicate_entry_prevention():
         po_number="PO-1001", vehicle_plate="MH-12-AB-1234"
     )
 
+    # 1. Duplicate PO should be rejected
     with pytest.raises(DomainRuleViolationException) as exc_info:
         GateVerificationService.check_duplicate_active_entry(
-            active_entries, po_number="PO-1001", vehicle_plate="MH-12-AB-1234"
+            active_entries, po_number="PO-1001"
         )
-
     assert "Active gate entry attempt" in str(exc_info.value)
+
+    # 2. Same vehicle with different PO should be allowed without raising an exception
+    GateVerificationService.check_duplicate_active_entry(
+        active_entries, po_number="PO-9999", vehicle_plate="MH-12-AB-1234"
+    )
 
 
 def test_outbox_event_emitted_on_approval():

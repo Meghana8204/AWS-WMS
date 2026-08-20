@@ -17,7 +17,6 @@ import { Route as DockManagementRouteImport } from './routes/dock-management'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
 import { Route as GateEntryRouteImport } from './routes/gate-entry'
-import { Route as GateExitManagementRouteImport } from './routes/gate-exit-management'
 import { Route as GrnRouteImport } from './routes/grn'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
@@ -32,7 +31,6 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
 import { Route as SupplierDashboardRouteImport } from './routes/supplier-dashboard'
-import { Route as VehicleExitRouteImport } from './routes/vehicle-exit'
 import { Route as VehicleQueueRouteImport } from './routes/vehicle-queue'
 import { Route as VehicleVerificationRouteImport } from './routes/vehicle-verification'
 import { Route as WarehouseDashboardRouteImport } from './routes/warehouse-dashboard'
@@ -90,11 +88,6 @@ const FinanceDashboardRoute = FinanceDashboardRouteImport.update({
 const GateEntryRoute = GateEntryRouteImport.update({
   id: '/gate-entry',
   path: '/gate-entry',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const GateExitManagementRoute = GateExitManagementRouteImport.update({
-  id: '/gate-exit-management',
-  path: '/gate-exit-management',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GrnRoute = GrnRouteImport.update({
@@ -165,11 +158,6 @@ const SubmitQuotationRoute = SubmitQuotationRouteImport.update({
 const SupplierDashboardRoute = SupplierDashboardRouteImport.update({
   id: '/supplier-dashboard',
   path: '/supplier-dashboard',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VehicleExitRoute = VehicleExitRouteImport.update({
-  id: '/vehicle-exit',
-  path: '/vehicle-exit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const VehicleQueueRoute = VehicleQueueRouteImport.update({
@@ -277,7 +265,6 @@ export interface FileRoutesByFullPath {
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
-  '/gate-exit-management': typeof GateExitManagementRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
@@ -292,7 +279,6 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
-  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -321,7 +307,6 @@ export interface FileRoutesByTo {
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
-  '/gate-exit-management': typeof GateExitManagementRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
@@ -336,7 +321,6 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
-  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -364,7 +348,6 @@ export interface FileRoutesById {
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-entry': typeof GateEntryRoute
-  '/gate-exit-management': typeof GateExitManagementRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
@@ -379,7 +362,6 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
-  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -410,7 +392,6 @@ export interface FileRouteTypes {
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-entry'
-    | '/gate-exit-management'
     | '/grn'
     | '/inventory'
     | '/login'
@@ -425,7 +406,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
-    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -454,7 +434,6 @@ export interface FileRouteTypes {
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-entry'
-    | '/gate-exit-management'
     | '/grn'
     | '/inventory'
     | '/login'
@@ -469,7 +448,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
-    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -496,7 +474,6 @@ export interface FileRouteTypes {
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-entry'
-    | '/gate-exit-management'
     | '/grn'
     | '/inventory'
     | '/login'
@@ -511,7 +488,6 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
-    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -541,7 +517,6 @@ export interface RootRouteChildren {
   DriverVerificationRoute: typeof DriverVerificationRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   GateEntryRoute: typeof GateEntryRoute
-  GateExitManagementRoute: typeof GateExitManagementRoute
   GrnRoute: typeof GrnRoute
   InventoryRoute: typeof InventoryRoute
   LoginRoute: typeof LoginRoute
@@ -556,7 +531,6 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubmitQuotationRoute: typeof SubmitQuotationRoute
   SupplierDashboardRoute: typeof SupplierDashboardRoute
-  VehicleExitRoute: typeof VehicleExitRoute
   VehicleQueueRoute: typeof VehicleQueueRoute
   VehicleVerificationRoute: typeof VehicleVerificationRoute
   WarehouseDashboardRoute: typeof WarehouseDashboardRoute
@@ -628,13 +602,6 @@ declare module '@tanstack/react-router' {
       path: '/gate-entry'
       fullPath: '/gate-entry'
       preLoaderRoute: typeof GateEntryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/gate-exit-management': {
-      id: '/gate-exit-management'
-      path: '/gate-exit-management'
-      fullPath: '/gate-exit-management'
-      preLoaderRoute: typeof GateExitManagementRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/grn': {
@@ -733,13 +700,6 @@ declare module '@tanstack/react-router' {
       path: '/supplier-dashboard'
       fullPath: '/supplier-dashboard'
       preLoaderRoute: typeof SupplierDashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/vehicle-exit': {
-      id: '/vehicle-exit'
-      path: '/vehicle-exit'
-      fullPath: '/vehicle-exit'
-      preLoaderRoute: typeof VehicleExitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/vehicle-queue': {
@@ -909,7 +869,6 @@ const rootRouteChildren: RootRouteChildren = {
   DriverVerificationRoute: DriverVerificationRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   GateEntryRoute: GateEntryRoute,
-  GateExitManagementRoute: GateExitManagementRoute,
   GrnRoute: GrnRoute,
   InventoryRoute: InventoryRoute,
   LoginRoute: LoginRoute,
@@ -924,7 +883,6 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubmitQuotationRoute: SubmitQuotationRoute,
   SupplierDashboardRoute: SupplierDashboardRoute,
-  VehicleExitRoute: VehicleExitRoute,
   VehicleQueueRoute: VehicleQueueRoute,
   VehicleVerificationRoute: VehicleVerificationRoute,
   WarehouseDashboardRoute: WarehouseDashboardRoute,

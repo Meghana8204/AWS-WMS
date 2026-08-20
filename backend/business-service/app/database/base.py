@@ -32,11 +32,16 @@ class GUID(TypeDecorator):
     def load_dialect_impl(self, dialect: Any) -> Any:
         if dialect.name == "postgresql":
             return dialect.type_descriptor(PG_UUID(as_uuid=True))
-        return dialect.type_descriptor(String(36))
-
     def process_bind_param(self, value: Any, dialect: Any) -> Any:
         if value is None:
             return value
+        if dialect.name == "postgresql":
+            if isinstance(value, uuid.UUID):
+                return value
+            try:
+                return uuid.UUID(str(value))
+            except (ValueError, TypeError):
+                return value
         if isinstance(value, uuid.UUID):
             return str(value)
         return str(uuid.UUID(str(value)))
@@ -46,7 +51,10 @@ class GUID(TypeDecorator):
             return value
         if isinstance(value, uuid.UUID):
             return value
-        return uuid.UUID(str(value))
+        try:
+            return uuid.UUID(str(value))
+        except (ValueError, TypeError):
+            return value
 
 
 class Base(DeclarativeBase):

@@ -893,29 +893,36 @@ async def create_rfq(
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> RfqResponse:
-    repo = SqlAlchemyRfqRepository(uow.session)
-    use_case = CreateRfqUseCase(repo)
-    command = CreateRfqCommand(
-        rfq_date=request.rfq_date,
-        warehouse=request.warehouse,
-        procurement_officer=request.procurement_officer,
-        supplier_ids=request.supplier_ids,
-        items=[RfqItemCommand(**item.dict()) for item in request.items],
-        material_request_number=request.material_request_number,
-        required_delivery_date=request.required_delivery_date,
-        remarks=request.remarks,
-    )
-    rfq_id = await use_case.handle(command)
-    
-    # Fetch the model directly with preloaded relationships to get actual supplier names
-    stmt = select(RfqModel).options(
-        selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
-    ).where(RfqModel.id == rfq_id.value)
-    res = await uow.session.execute(stmt)
-    entity = res.scalar_one_or_none()
-    
-    return _to_rfq_response(entity)
+    try:
+        repo = SqlAlchemyRfqRepository(uow.session)
+        use_case = CreateRfqUseCase(repo)
+        command = CreateRfqCommand(
+            rfq_date=request.rfq_date,
+            warehouse=request.warehouse,
+            procurement_officer=request.procurement_officer,
+            supplier_ids=request.supplier_ids,
+            items=[RfqItemCommand(**item.dict()) for item in request.items],
+            material_request_number=request.material_request_number,
+            required_delivery_date=request.required_delivery_date,
+            remarks=request.remarks,
+        )
+        rfq_id = await use_case.handle(command)
+        await uow.commit()
+
+        # Fetch the model directly with preloaded relationships to get actual supplier names
+        stmt = select(RfqModel).options(
+            selectinload(RfqModel.items),
+            selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        ).where(RfqModel.id == rfq_id.value)
+        res = await uow.session.execute(stmt)
+        entity = res.scalar_one_or_none()
+
+        return _to_rfq_response(entity)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create RFQ: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to create RFQ: {str(e)}")
 
 
 @router.post("/rfqs/{id}/send")
@@ -943,6 +950,8 @@ async def send_rfq_endpoint(
             "message": "RFQ published. Supplier emails are being delivered in the background.",
             "delivery": {"status": "queued"},
         }
+    except HTTPException:
+        raise
     except NotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -986,8 +995,9 @@ async def _notify_suppliers_rfq(rfq_id: str):
             su_res = await session.execute(su_stmt)
             sup_user = su_res.scalar_one_or_none()
 
-            # Always generate a new random password for every quotation as requested
-            temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+            # Always generate a fresh random temporary password for every quotation request
+            chars = string.ascii_letters + string.digits
+            temp_password = "".join(random.choices(chars, k=10))
             password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
 
             if not sup_user:
@@ -996,6 +1006,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 username = f"supplier_{code.lower()}"
 
                 sup_user = SupplierUserModel(
+                    id=uuid.uuid4(),
                     supplier_id=supplier.id,
                     username=username,
                     password_hash=password_hash,
@@ -1004,8 +1015,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 session.add(sup_user)
             else:
                 username = sup_user.username
-                # Overwrite existing password with the new random one
                 sup_user.password_hash = password_hash
+                sup_user.must_change_password = False
 
             email = None
             if supplier.contact and supplier.contact.primary_email:
@@ -1019,7 +1030,6 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 for idx, item in enumerate(rfq.items):
                     materials_str += f"\nMaterial: {item.material_name}\nQuantity: {item.quantity} {item.uom}\nRequired Delivery: {item.required_delivery_date}\nWarehouse: {item.warehouse}\n"
 
-                pwd_info = temp_password
                 login_link = f"http://localhost:8080/login?redirect=/submit-quotation?rfqId={rfq.id}"
 
                 body = (
@@ -1030,8 +1040,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     f"{login_link}\n\n"
                     f"Your Credentials:\n"
                     f"Username: {username}\n"
-                    f"Temporary Password: {pwd_info}\n\n"
-                    f"Note: If this is your first login, you will be required to change your password.\n"
+                    f"Temporary Password: {temp_password}\n\n"
+                    f"Note: This temporary access password was generated for your quotation submission.\n"
                 )
                 html_body = render_premium_email(
                     eyebrow="Request for quotation",
@@ -1045,7 +1055,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                         "delivery": str(item.required_delivery_date or "As specified"),
                         "warehouse": item.warehouse or "Main warehouse",
                     } for item in rfq.items],
-                    credentials=[("Username", username), ("Temporary password", pwd_info)],
+                    credentials=[("Username", username), ("Temporary password", temp_password)],
                     primary_cta=("Review & submit quotation", login_link),
                     note="Please submit your quotation before the RFQ closing date. Pricing and delivery commitments entered in the portal will form part of your official response.",
                 )
