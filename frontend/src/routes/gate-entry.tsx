@@ -440,8 +440,8 @@ function GateEntry() {
   };
 
   return <AppShell
-    title="Gate entry"
-    subtitle="Complete security approval from the existing ASN reference."
+    title="Gate Entry"
+    subtitle="Security verification, vehicle photo capture, and arrival queue management."
     actions={
       <div className="flex gap-2">
         <Button

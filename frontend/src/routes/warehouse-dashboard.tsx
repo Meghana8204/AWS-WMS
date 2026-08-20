@@ -108,8 +108,8 @@ function WarehouseDashboard() {
 
   return (
     <AppShell
-      title="Good morning, Rohit"
-      subtitle="Friday, 31 July 2026 · Pune Distribution Centre · Shift A (06:00 – 14:00)"
+      title="Gate Entry"
+      subtitle="Warehouse & Security Operations · Live Gate Queue & Yard Arrivals"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>
