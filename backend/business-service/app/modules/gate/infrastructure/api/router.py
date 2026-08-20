@@ -280,7 +280,9 @@ def _generate_gate_entry_number() -> str:
     return f"GE-{today_str}-{hex_suffix}"
 
 
-def _to_gate_entry_response(entry: GateEntry) -> GateEntryResponse:
+def _to_gate_entry_response(
+    entry: GateEntry, po_status: Optional[str] = None, asn_status: Optional[str] = None
+) -> GateEntryResponse:
     ocr_dto = (
         OcrResultDto(
             po_number=entry.ocr_result.po_number or "",
@@ -315,8 +317,10 @@ def _to_gate_entry_response(entry: GateEntry) -> GateEntryResponse:
         created_by=entry.created_by,
         po_id=entry.po_id,
         po_number=entry.po_number,
+        po_status=po_status,
         asn_id=entry.asn_id,
         asn_number=entry.asn_number,
+        asn_status=asn_status,
         assigned_dock_id=entry.assigned_dock_id,
         supplier_name=entry.ocr_result.supplier_name if entry.ocr_result else None,
         material_description=entry.ocr_result.material_description if entry.ocr_result else None,
@@ -736,7 +740,11 @@ async def create_gate_entry(
 
     document_data = base64.b64decode(request.document_image_base64) if request.document_image_base64 else None
     await _save_gate_entry(uow.session, entry, document_data=document_data)
-    return _to_gate_entry_response(entry)
+    return _to_gate_entry_response(
+        entry,
+        po_status=po_record.status if po_record else None,
+        asn_status=asn.status if asn else None,
+    )
 
 
 @router.post("/reset-dev-entries")
