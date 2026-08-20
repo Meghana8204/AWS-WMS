@@ -145,11 +145,11 @@ function MaterialRequests() {
 
       {/* View Details Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
               {/* Header */}
-              <div className="p-6 text-white bg-slate-900 flex justify-between items-start">
+              <div className="p-6 text-white bg-blue-600 flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <DialogTitle className="text-xl font-bold tracking-tight">Material Request Details</DialogTitle>
@@ -157,9 +157,6 @@ function MaterialRequests() {
                   </div>
                   <p className="text-white/70 text-sm font-mono font-bold tracking-widest">{selectedRequest.requestNumber}</p>
                 </div>
-                <Button variant="ghost" size="icon" className="text-white/50 hover:text-white hover:bg-white/10 rounded-full" onClick={() => setIsModalOpen(false)}>
-                  <X className="size-5" />
-                </Button>
               </div>
 
               {/* Scrollable Content */}
@@ -191,8 +188,8 @@ function MaterialRequests() {
                     <table className="w-full text-left text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/50 border-b border-border/60">
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Code</th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Description</th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Material Code</th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Material Name</th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">Qty</th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-24">UOM</th>
                         </tr>
