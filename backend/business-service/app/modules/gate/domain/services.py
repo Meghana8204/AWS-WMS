@@ -106,24 +106,19 @@ class GateVerificationService:
     def check_duplicate_active_entry(
         active_entries: List[GateEntry],
         po_number: Optional[str],
-        vehicle_plate: Optional[str],
+        vehicle_plate: Optional[str] = None,
     ) -> None:
         """
-        Active Duplicate Prevention: Detect active/open Gate Entry attempts for the same PO Number
-        or Vehicle Plate.
+        Active Duplicate Prevention: Detect active/open Gate Entry attempts for the same PO Number.
+        Vehicle number duplicates are explicitly allowed.
         """
         non_terminal_statuses = {
             GateEntryStatus.PO_VERIFIED,
             GateEntryStatus.UNSCHEDULED_ARRIVAL,
         }
 
-
         for entry in active_entries:
             if entry.status in non_terminal_statuses:
-                if vehicle_plate and entry.vehicle_plate.upper() == vehicle_plate.upper():
-                    raise DomainRuleViolationException(
-                        f"Active gate entry attempt ({entry.gate_entry_number}) already exists for vehicle plate '{vehicle_plate}'"
-                    )
                 if po_number and entry.po_number and entry.po_number.upper() == po_number.upper():
                     raise DomainRuleViolationException(
                         f"Active gate entry attempt ({entry.gate_entry_number}) already exists for PO number '{po_number}'"

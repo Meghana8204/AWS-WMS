@@ -42,7 +42,8 @@ def main():
 
     elif command in ("migrate", "makemigrations"):
         print("Running Alembic migrations...")
-        cmd = [sys.executable, "-m", "alembic", "-c", os.path.join(business_service_dir, "alembic.ini"), "upgrade", "head"]
+        ini_path = os.path.join(business_service_dir, "alembic.ini")
+        cmd = [sys.executable, "-c", f"import sys; from alembic.config import main; sys.exit(main(argv=['-c', r'{ini_path}', 'upgrade', 'head']))"]
         subprocess.run(cmd, cwd=business_service_dir)
 
     elif command in ("test", "pytest"):

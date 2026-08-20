@@ -7,6 +7,7 @@ import { SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
@@ -321,20 +322,40 @@ function GateEntry() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // React does not guarantee that currentTarget remains available after an
-    // await. Keep the concrete form element before starting the API request.
     const formElement = event.currentTarget;
+
+    if (!vehiclePhoto) {
+      return toast.error("Vehicle photo is required", {
+        description: "Please capture or upload a vehicle photo before creating the entry."
+      });
+    }
+
+    if (!poNumber.trim()) {
+      return toast.error("Purchase order number is required");
+    }
+
+    if (!supplierName.trim()) {
+      return toast.error("Supplier name is required");
+    }
+
+    const parsedQty = parseFloat(totalQuantity);
+    if (!totalQuantity || isNaN(parsedQty) || parsedQty <= 0) {
+      return toast.error("Total quantity is required and must be greater than 0");
+    }
+
+    if (!vehicleNumber.trim()) {
+      return toast.error("Vehicle number is required");
+    }
 
     const isVehicleValid = isValidVehicleNumber(vehicleNumber);
     if (!isVehicleValid) {
-        return toast.error("Invalid Vehicle Number format", {
-            description: "Use a valid format such as MH-12-AB-1234 or 22-BH-1234-AA."
-        });
+      return toast.error("Invalid Vehicle Number format", {
+        description: "Use a valid format such as MH-12-AB-1234 or 22-BH-1234-AA."
+      });
     }
 
-    if (!poDocument) return toast.error("Scan or upload the purchase order document before creating the entry");
     const form = new FormData(formElement);
-    form.append("po_document", poDocument);
+    if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
     setSubmitting(true);
     try {
@@ -413,13 +434,13 @@ function GateEntry() {
     <div className="grid gap-4 xl:grid-cols-3">
       <form onSubmit={submit} className="space-y-4 xl:col-span-2">
         <SectionCard title="Arrival scanning & upload" description="Capture from camera or upload an image—OCR/ANPR will process either" icon={ScanLine}>
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
-            <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Required"} kind="po" captured={!!poDocument} onOpen={() => setPoScannerOpen(true)} onUpload={(f) => void scanCapture("po", f)} />
-            <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full">
+            <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Optional (Scan/Upload)"} kind="po" captured={!!poDocument} onOpen={() => setPoScannerOpen(true)} onUpload={(f) => void scanCapture("po", f)} />
+            <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Required"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
           </div>
 
           {(poPreview || vehiclePreview) && (
-            <div className="mt-6 grid gap-4 grid-cols-2 max-w-xl">
+            <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 w-full">
               {poPreview && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -434,7 +455,7 @@ function GateEntry() {
               {vehiclePreview && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Vehicle Photo</Label>
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">Vehicle Photo <span className="text-destructive">*</span></Label>
                     <Button variant="ghost" size="sm" className="h-5 px-1 text-destructive" onClick={() => setVehiclePhoto(null)}><X className="size-3" /></Button>
                   </div>
                   <div className="aspect-[4/3] rounded-xl border border-border/60 overflow-hidden bg-muted/20">
@@ -451,11 +472,12 @@ function GateEntry() {
         <SectionCard title="Auto-filled arrival details" description="Review values detected by OCR and ANPR before submission" icon={Truck}>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="relative">
-              <Label htmlFor="po_number">Purchase order number</Label>
+              <Label htmlFor="po_number">Purchase order number <span className="text-destructive">*</span></Label>
               <div className="relative">
                 <Input
                   id="po_number"
                   name="po_number"
+                  required
                   value={poNumber}
                   onChange={(e) => { setPoNumber(e.target.value); setPoVerificationStatus(null); }}
                   onBlur={() => fetchPoDetails(poNumber)}
@@ -463,6 +485,7 @@ function GateEntry() {
                   className={cn(inputClass, "pr-10")}
                 />
                 <button
+                  suppressHydrationWarning
                   type="button"
                   onClick={() => fetchPoDetails(poNumber)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
@@ -482,7 +505,7 @@ function GateEntry() {
                 </div>
               )}
             </div>
-            <div><Label htmlFor="supplier_name">Supplier name</Label><Input id="supplier_name" name="supplier_name" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Auto-filled from PO" className={inputClass} /></div>
+            <div><Label htmlFor="supplier_name">Supplier name <span className="text-destructive">*</span></Label><Input id="supplier_name" name="supplier_name" required value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="Auto-filled from PO" className={inputClass} /></div>
             {arrivalLineItems.length ? (
               <div className="space-y-3 sm:col-span-2 lg:col-span-3">
                 <Label>Materials detected ({arrivalLineItems.length})</Label>
@@ -504,16 +527,17 @@ function GateEntry() {
             ) : (
               <>
                 <div><Label htmlFor="material_description">Material description</Label><Input id="material_description" name="material_description" value={materialDescription} onChange={(e) => setMaterialDescription(e.target.value)} placeholder="Auto-filled from PO" className={inputClass} /></div>
-                <div><Label htmlFor="total_quantity">Total quantity</Label><Input id="total_quantity" name="total_quantity" type="number" min="0" step="any" value={totalQuantity} onChange={(e) => setTotalQuantity(e.target.value)} placeholder="Auto-filled from PO" className={inputClass} /></div>
+                <div><Label htmlFor="total_quantity">Total quantity <span className="text-destructive">*</span></Label><Input id="total_quantity" name="total_quantity" type="number" min="0.01" step="any" required value={totalQuantity} onChange={(e) => setTotalQuantity(e.target.value)} placeholder="Auto-filled from PO" className={inputClass} /></div>
               </>
             )}
             <div><Label htmlFor="po_date">PO date</Label><Input id="po_date" name="po_date" type="date" min={new Date().toISOString().split("T")[0]} value={poDate} onChange={(e) => setPoDate(e.target.value)} className={inputClass} /></div>
             <div><Label htmlFor="delivery_date">Delivery date</Label><Input id="delivery_date" name="delivery_date" type="date" min={new Date().toISOString().split("T")[0]} value={deliveryDate} onChange={(e) => setDeliveryDate(e.target.value)} className={inputClass} /></div>
             <div className="relative">
-                <Label htmlFor="vehicle_number">Vehicle number</Label>
+                <Label htmlFor="vehicle_number">Vehicle number <span className="text-destructive">*</span></Label>
                 <Input
                     id="vehicle_number"
                     name="vehicle_number"
+                    required
                     value={vehicleNumber}
                     onChange={(e) => handleVehicleNumberChange(e.target.value)}
                     placeholder="MH-12-AB-1234"
@@ -536,7 +560,7 @@ function GateEntry() {
           </div>
         </SectionCard>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4"><p className="text-sm text-muted-foreground">Creating the entry publishes the verified arrival to the yard in real time.</p><Button type="submit" className="rounded-xl shadow-glow" disabled={submitting || !poDocument}>{submitting ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}{submitting ? "Creating entry…" : "Create gate entry"}</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4"><p className="text-sm text-muted-foreground">Creating the entry publishes the verified arrival to the yard in real time.</p><Button type="submit" className="rounded-xl shadow-glow" disabled={submitting || !vehiclePhoto || !poNumber.trim() || !supplierName.trim() || !totalQuantity || parseFloat(totalQuantity) <= 0 || !vehicleNumber.trim() || !isValidVehicleNumber(vehicleNumber)}>{submitting ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}{submitting ? "Creating entry…" : "Create gate entry"}</Button></div>
       </form>
 
       <SectionCard title="Live gate queue" description="Refreshes automatically every 2 seconds" icon={CheckCircle2}>
@@ -681,56 +705,127 @@ function GateEntry() {
   </AppShell>;
 }
 
-function ScanCard({ label, detail, kind, captured, onOpen, onUpload, hideCamera = false }: { label: string; detail: string; kind: CaptureKind; captured: boolean; onOpen: (kind: CaptureKind) => void; onUpload: (file: File) => void; hideCamera?: boolean }) {
+function ScanCard({
+  label,
+  detail,
+  kind,
+  captured,
+  onOpen,
+  onUpload,
+  hideCamera = false,
+}: {
+  label: string;
+  detail: string;
+  kind: CaptureKind;
+  captured: boolean;
+  onOpen: (kind: CaptureKind) => void;
+  onUpload: (file: File) => void;
+  hideCamera?: boolean;
+}) {
   const fileInput = useRef<HTMLInputElement>(null);
+  const isRequired = detail.toLowerCase().includes("required");
 
   return (
-    <div className="relative flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => hideCamera ? fileInput.current?.click() : onOpen(kind)}
-        className="flex-1 rounded-2xl border border-dashed border-border bg-muted/30 p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft"
+    <div
+      suppressHydrationWarning
+      className={cn(
+        "relative flex flex-col justify-between rounded-2xl border p-4 transition-all duration-200",
+        captured
+          ? "border-success/40 bg-success-soft/20 shadow-sm"
+          : isRequired
+          ? "border-primary/30 bg-card hover:border-primary/50 hover:shadow-md"
+          : "border-border bg-card hover:border-primary/30 hover:shadow-sm"
+      )}
+    >
+      <div
+        suppressHydrationWarning
+        role="button"
+        tabIndex={0}
+        onClick={() => (hideCamera ? fileInput.current?.click() : onOpen(kind))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            hideCamera ? fileInput.current?.click() : onOpen(kind);
+          }
+        }}
+        className="cursor-pointer space-y-3"
       >
-        <span className={`grid size-9 place-items-center rounded-xl ${captured ? "bg-success-soft text-success" : "bg-primary-soft text-primary"}`}>
-          {captured ? <CheckCircle2 className="size-[18px]" /> : (hideCamera ? <Upload className="size-[18px]" /> : <Camera className="size-[18px]" />)}
-        </span>
-        <p className="mt-3 text-sm font-semibold">{label}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-      </button>
+        <div className="flex items-center justify-between">
+          <span
+            className={cn(
+              "grid size-10 place-items-center rounded-xl transition-colors",
+              captured
+                ? "bg-success text-success-foreground shadow-sm"
+                : "bg-primary/10 text-primary"
+            )}
+          >
+            {captured ? (
+              <CheckCircle2 className="size-5" />
+            ) : hideCamera ? (
+              <Upload className="size-5" />
+            ) : (
+              <Camera className="size-5" />
+            )}
+          </span>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-wider",
+              captured
+                ? "border-success/30 bg-success-soft text-success"
+                : isRequired
+                ? "border-destructive/30 bg-destructive/10 text-destructive"
+                : "border-border text-muted-foreground"
+            )}
+          >
+            {captured ? "Attached" : isRequired ? "Required *" : "Optional"}
+          </Badge>
+        </div>
 
-      <div className="flex gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">{detail}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 pt-3 border-t border-border/50">
         {!hideCamera && (
           <Button
+            suppressHydrationWarning
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 w-full rounded-lg text-[10px]"
+            className="h-8 w-full rounded-xl text-xs font-semibold bg-background hover:bg-primary-soft hover:text-primary hover:border-primary/40 transition-colors"
             onClick={() => onOpen(kind)}
           >
-            <Camera className="mr-1 size-3" /> Camera
+            <Camera className="mr-1.5 size-3.5" /> Camera
           </Button>
         )}
         <Button
+          suppressHydrationWarning
           type="button"
           variant="outline"
           size="sm"
-          className={`h-8 w-full rounded-lg text-[10px] ${hideCamera ? "bg-primary text-white hover:bg-primary/90" : ""}`}
+          className={cn(
+            "h-8 w-full rounded-xl text-xs font-semibold transition-colors",
+            hideCamera
+              ? "col-span-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-background hover:bg-primary-soft hover:text-primary hover:border-primary/40"
+          )}
           onClick={() => fileInput.current?.click()}
         >
-          <Upload className="mr-1 size-3" /> Upload
+          <Upload className="mr-1.5 size-3.5" /> Upload
         </Button>
       </div>
 
       <input
+        suppressHydrationWarning
         type="file"
         ref={fileInput}
         className="hidden"
         accept="image/*"
-        capture="environment"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onUpload(file);
-          e.target.value = ""; // Reset for same file re-upload
         }}
       />
     </div>

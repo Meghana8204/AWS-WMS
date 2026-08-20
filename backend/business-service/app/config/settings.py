@@ -12,7 +12,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", "business-service/.env", "../business-service/.env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     # --- Service identity -------------------------------------------------
     service_name: str = "business-service"

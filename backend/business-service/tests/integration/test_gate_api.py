@@ -152,7 +152,7 @@ async def test_gate_entry_lifecycle_create_verify_lookup(client: AsyncClient):
 
 @pytest.mark.anyio
 async def test_duplicate_active_gate_entry_rejection(client: AsyncClient):
-    """Test that creating a second active Gate Entry for the same PO or vehicle is rejected with HTTP 400."""
+    """Test that creating a second active Gate Entry for the same PO is rejected with HTTP 400, while same vehicle with different PO succeeds."""
     # 1. Reset state
     await client.post("/api/gate-entries/reset-dev-entries")
 
@@ -168,11 +168,21 @@ async def test_duplicate_active_gate_entry_rejection(client: AsyncClient):
     res1 = await client.post("/api/gate-entries", json=payload)
     assert res1.status_code == 201
 
-    # 3. Duplicate creation attempt fails with 400 Bad Request
+    # 3. Duplicate PO creation attempt fails with 400 Bad Request
     res2 = await client.post("/api/gate-entries", json=payload)
     assert res2.status_code == 400
     err_data = res2.json()
     assert "Active gate entry attempt" in err_data["message"]
+
+    # 4. Same vehicle with different PO succeeds with 201 Created
+    payload_diff_po = {
+        "vehiclePlate": "TS-09-EA-1122",
+        "poNumber": "PO-1003-DIFF",
+        "anprImageBase64": img_b64,
+        "documentImageBase64": img_b64,
+    }
+    res3 = await client.post("/api/gate-entries", json=payload_diff_po)
+    assert res3.status_code == 201
 
 
 @pytest.mark.anyio

@@ -874,16 +874,21 @@ async def send_rfq_endpoint(
             raise HTTPException(status_code=409, detail=f"Cannot send RFQ in status: {rfq.status}")
 
         delivery = await _notify_suppliers_rfq(id)
-        if delivery["failed"]:
-            raise HTTPException(
-                status_code=502,
-                detail=f"RFQ published, but email delivery failed for {delivery['failed']} of {delivery['total']} suppliers",
-            )
+        
+        if delivery.get("failed", 0) > 0 and delivery.get("sent", 0) == 0:
+            message = f"RFQ published successfully. (Mock email saved to media_uploads/emails; live SMTP delivery skipped/failed: check EMAIL_HOST_USER/PASSWORD in .env)"
+        elif delivery.get("failed", 0) > 0:
+            message = f"RFQ published. Email sent to {delivery['sent']} supplier(s), but failed for {delivery['failed']}."
+        else:
+            message = f"RFQ published and notification sent to {delivery.get('sent', 0)} supplier(s) successfully."
+
         return {
             "status": "success",
-            "message": f"RFQ email delivered to {delivery['sent']} supplier(s)",
+            "message": message,
             "delivery": delivery,
         }
+    except HTTPException:
+        raise
     except NotFoundException as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -926,16 +931,18 @@ async def _notify_suppliers_rfq(rfq_id: str):
             su_res = await session.execute(su_stmt)
             sup_user = su_res.scalar_one_or_none()
 
-            temp_password = None
+            # Always generate a fresh random temporary password for every quotation request
+            chars = string.ascii_letters + string.digits
+            temp_password = "".join(random.choices(chars, k=10))
+            password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
+
             if not sup_user:
                 # Generate username: supplier_code or clean name
                 code = supplier.supplier_code or "".join(c for c in supplier.supplier_name if c.isalnum()).lower()[:10]
                 username = f"supplier_{code.lower()}"
-                # Generate secure temporary password
-                temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-                password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
 
                 sup_user = SupplierUserModel(
+                    id=uuid.uuid4(),
                     supplier_id=supplier.id,
                     username=username,
                     password_hash=password_hash,
@@ -944,11 +951,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 session.add(sup_user)
             else:
                 username = sup_user.username
-                if sup_user.must_change_password:
-                    # If they haven't changed it yet, reset to a new temp password
-                    temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-                    password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
-                    sup_user.password_hash = password_hash
+                sup_user.password_hash = password_hash
+                sup_user.must_change_password = False
 
             email = None
             if supplier.contact and supplier.contact.primary_email:
@@ -962,7 +966,6 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 for idx, item in enumerate(rfq.items):
                     materials_str += f"\nMaterial: {item.material_name}\nQuantity: {item.quantity} {item.uom}\nRequired Delivery: {item.required_delivery_date}\nWarehouse: {item.warehouse}\n"
 
-                pwd_info = temp_password if temp_password else "[Use your existing secure password]"
                 login_link = f"http://localhost:8080/login?redirect=/submit-quotation?rfqId={rfq.id}"
 
                 body = (
@@ -973,8 +976,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     f"{login_link}\n\n"
                     f"Your Credentials:\n"
                     f"Username: {username}\n"
-                    f"Temporary Password: {pwd_info}\n\n"
-                    f"Note: If this is your first login, you will be required to change your password.\n"
+                    f"Temporary Password: {temp_password}\n\n"
+                    f"Note: This temporary access password was generated for your quotation submission.\n"
                 )
                 html_body = render_premium_email(
                     eyebrow="Request for quotation",
@@ -988,7 +991,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                         "delivery": str(item.required_delivery_date or "As specified"),
                         "warehouse": item.warehouse or "Main warehouse",
                     } for item in rfq.items],
-                    credentials=[("Username", username), ("Temporary password", pwd_info)],
+                    credentials=[("Username", username), ("Temporary password", temp_password)],
                     primary_cta=("Review & submit quotation", login_link),
                     note="Please submit your quotation before the RFQ closing date. Pricing and delivery commitments entered in the portal will form part of your official response.",
                 )
@@ -1003,8 +1006,11 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     logger.error(f"Failed to write mock email file: {file_err}")
 
                 try:
-                    await send_email(email, subject, body, html_body)
-                    logger.info(f"Sent RFQ notification to {email}")
+                    dispatched = await send_email(email, subject, body, html_body)
+                    if dispatched:
+                        logger.info(f"Sent live RFQ notification email to {email}")
+                    else:
+                        logger.info(f"Saved mock RFQ notification to media_uploads/emails for {email}")
                     sent += 1
                 except Exception as e:
                     logger.error(f"Failed to send email to {email}: {e}")

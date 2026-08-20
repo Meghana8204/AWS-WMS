@@ -584,16 +584,22 @@ async def create_gate_entry(
         raise DomainRuleViolationException("Vehicle license plate is mandatory.")
     if not po_num:
         raise DomainRuleViolationException("Purchase order number is mandatory.")
+    if not request.truck_photo_base64:
+        raise DomainRuleViolationException("Vehicle photo is mandatory.")
+    if not (request.supplier_name and request.supplier_name.strip()):
+        raise DomainRuleViolationException("Supplier name is mandatory.")
+    if request.total_quantity is None or request.total_quantity <= 0:
+        raise DomainRuleViolationException("Total quantity is mandatory and must be greater than 0.")
 
-    # 1. Active duplicate check
+    # 1. Active duplicate check (PO only; vehicle duplicates are allowed)
     active_result = await uow.session.execute(
         select(GateEntryModel).where(
-            or_(GateEntryModel.po_number == po_num, GateEntryModel.vehicle_number == plate),
+            GateEntryModel.po_number == po_num,
             GateEntryModel.status.notin_([GateEntryStatus.REJECTED.value]),
         )
     )
     active_entries = [_gate_entry_from_model(model) for model in active_result.scalars().all()]
-    GateVerificationService.check_duplicate_active_entry(active_entries, po_num, plate)
+    GateVerificationService.check_duplicate_active_entry(active_entries, po_num)
 
     # 2. Dynamic OCR processing or extraction
     ocr_res: Optional[OcrResult] = None

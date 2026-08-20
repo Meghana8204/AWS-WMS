@@ -233,6 +233,7 @@ export function AppShell({
 
         <div className="border-t border-sidebar-border p-3 space-y-1">
           <button
+            suppressHydrationWarning
             onClick={() => setCollapsed((c) => !c)}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
           >
@@ -240,6 +241,7 @@ export function AppShell({
             {!collapsed && <span>Collapse</span>}
           </button>
           <button
+            suppressHydrationWarning
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
           >
@@ -258,6 +260,7 @@ export function AppShell({
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
+                suppressHydrationWarning
                 placeholder="Search truck no, PO, vendor, gate entry…"
                 className="h-10 w-full rounded-xl border border-border bg-muted/60 pl-9 pr-16 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:bg-card focus:ring-2 focus:ring-ring/40"
                 value={searchTerm}
@@ -314,6 +317,7 @@ export function AppShell({
 
             <div className="ml-auto flex items-center gap-1.5">
               <button
+                suppressHydrationWarning
                 onClick={() => setDark((d) => !d)}
                 aria-label="Toggle dark mode"
                 className="grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -345,6 +349,7 @@ export function AppShell({
                   </p>
                 </div>
                 <button
+                  suppressHydrationWarning
                   onClick={handleLogout}
                   className="ml-2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   title="Logout"

@@ -119,8 +119,14 @@ async def send_email(to_email: str, subject: str, body: str, html_body: str | No
     """
     settings = get_settings()
 
-    if not settings.email_host_user or "@" not in settings.email_host_user:
-        logger.warning(f"SMTP credentials missing. Skipping.")
+    if (
+        not settings.email_host_user
+        or "@" not in settings.email_host_user
+        or "your_email" in settings.email_host_user.lower()
+        or not settings.email_host_password
+        or "your_app_password" in settings.email_host_password.lower()
+    ):
+        logger.warning("SMTP credentials not configured or using placeholder. Skipping live email dispatch.")
         return False
 
     try:
