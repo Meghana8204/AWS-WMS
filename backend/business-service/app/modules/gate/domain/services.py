@@ -123,3 +123,66 @@ class GateVerificationService:
                     raise DomainRuleViolationException(
                         f"Active gate entry attempt ({entry.gate_entry_number}) already exists for PO number '{po_number}'"
                     )
+
+
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+from app.modules.gate.domain.enums import MismatchField, VerificationResultType
+from app.modules.gate.domain.value_objects import AnprResult, VerificationResult
+
+
+@dataclass(frozen=True)
+class PurchaseOrderDetails:
+    po_id: str
+    po_number: str
+    supplier_name: str
+    product_material: str
+    total_quantity: Decimal
+    po_date: Optional[date] = None
+    expected_delivery_date: Optional[date] = None
+
+
+class GateEntryVerificationDomainService:
+    def __init__(self, anpr_confidence_threshold: float = 0.85):
+        self.anpr_confidence_threshold = anpr_confidence_threshold
+
+    def verify(
+        self,
+        vehicle_number: str,
+        anpr_result: Optional[AnprResult] = None,
+        ocr_result: Optional[OcrResult] = None,
+        po_details: Optional[PurchaseOrderDetails] = None,
+    ) -> VerificationResult:
+        if po_details is None or ocr_result is None or not ocr_result.po_number:
+            return VerificationResult(
+                status=GateEntryStatus.UNSCHEDULED_ARRIVAL,
+                verification_type=VerificationResultType.UNSCHEDULED_PO,
+                mismatched_fields=[],
+                reasons=["PO not found in database"],
+            )
+
+        mismatches: list[MismatchField] = []
+        if ocr_result.supplier_name and po_details.supplier_name and ocr_result.supplier_name.strip().upper() != po_details.supplier_name.strip().upper():
+            mismatches.append(MismatchField.SUPPLIER_NAME)
+        if ocr_result.product_material and po_details.product_material and ocr_result.product_material.strip().upper() != po_details.product_material.strip().upper():
+            mismatches.append(MismatchField.PRODUCT_MATERIAL)
+        if ocr_result.quantity is not None and po_details.total_quantity is not None and Decimal(str(ocr_result.quantity)) != Decimal(str(po_details.total_quantity)):
+            mismatches.append(MismatchField.QUANTITY)
+
+        low_anpr = anpr_result is not None and anpr_result.confidence < self.anpr_confidence_threshold
+        if mismatches or low_anpr:
+            return VerificationResult(
+                status=GateEntryStatus.MANUAL_VERIFICATION_REQUIRED,
+                verification_type=VerificationResultType.MISMATCH if mismatches else VerificationResultType.LOW_CONFIDENCE,
+                mismatched_fields=mismatches,
+                reasons=["Mismatches detected" if mismatches else "Low ANPR confidence"],
+            )
+
+        return VerificationResult(
+            status=GateEntryStatus.PO_VERIFIED,
+            verification_type=VerificationResultType.MATCHED,
+            mismatched_fields=[],
+            reasons=[],
+        )
+

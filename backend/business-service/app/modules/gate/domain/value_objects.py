@@ -66,3 +66,30 @@ class PurchaseOrderRecord:
     po_date: str
     delivery_date: str
     status: str = "OPEN"
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    status: GateEntryStatus
+    verification_type: Any = None
+    mismatched_fields: list[Any] = ()
+    reasons: list[str] = ()
+
+
+@dataclass(frozen=True)
+class GateEntryId:
+    value: str
+
+
+@dataclass(frozen=True)
+class VehicleNumber:
+    value: str
+
+
+@dataclass(frozen=True)
+class DriverInfo:
+    name: str
+    license_number: Optional[str] = None
+    phone: Optional[str] = None
+
+
