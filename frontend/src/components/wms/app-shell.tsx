@@ -33,6 +33,7 @@ import { toast } from "sonner";
 
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
@@ -199,19 +200,57 @@ export function AppShell({
           collapsed ? "w-[76px]" : "w-[264px]",
         )}
       >
-        <div className="flex h-16 items-center gap-3 px-4">
+        <div className="flex h-16 items-center gap-3 px-4 border-b border-sidebar-border">
           <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
             <Warehouse className="size-5" />
           </div>
           {!collapsed && (
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
-              <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+              <p className="truncate text-[11px] text-muted-foreground">Enterprise Logistics Suite</p>
             </div>
           )}
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+        {!collapsed && (
+          <div className="px-3 pt-3 pb-1">
+            <p className="px-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Modules</p>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-muted/60 p-1 border border-border/50">
+              <Link
+                to="/warehouse-dashboard"
+                className={cn(
+                  "rounded-lg py-1.5 text-center text-[11px] font-semibold transition-all",
+                  isWarehouseRoute ? "bg-card text-primary shadow-xs" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Warehouse & Gate"
+              >
+                Yard
+              </Link>
+              <Link
+                to="/procurement-dashboard"
+                className={cn(
+                  "rounded-lg py-1.5 text-center text-[11px] font-semibold transition-all",
+                  isProcurementRoute ? "bg-card text-primary shadow-xs" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Procurement & ASNs"
+              >
+                Procure
+              </Link>
+              <Link
+                to="/finance-dashboard"
+                className={cn(
+                  "rounded-lg py-1.5 text-center text-[11px] font-semibold transition-all",
+                  isFinanceRoute ? "bg-card text-primary shadow-xs" : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Finance Approvals"
+              >
+                Finance
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
           {nav.map((item) => {
             const active = path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
             return (
@@ -344,14 +383,14 @@ export function AppShell({
               </Link>
               <div className="group relative ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3 transition-colors hover:bg-accent/50">
                 <span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-                  {user?.username?.substring(0, 2).toUpperCase() || "RS"}
+                  {user?.username?.substring(0, 2).toUpperCase() || "AO"}
                 </span>
                 <div className="hidden leading-tight lg:block">
-                  <p className="text-xs font-semibold">{user?.username || "Rohit Sharma"}</p>
+                  <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
                      user?.roles?.includes("FINANCE") ? "Finance Manager" :
-                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Warehouse Manager"}
+                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Operations Manager"}
                   </p>
                 </div>
                 <button
