@@ -21,7 +21,9 @@ type GateEntryRecord = {
   id: string;
   gate_entry_number?: string;
   poNumber: string;
+  poStatus?: string;
   asnNumber?: string;
+  asnStatus?: string;
   vehiclePlate: string;
   driverName: string;
   status: string;
@@ -395,6 +397,9 @@ function GateEntry() {
         id: entry.id,
         gate_entry_number: createdGateNumber,
         poNumber: createdPo,
+        poStatus: entry.poStatus,
+        asnNumber: entry.asnNumber,
+        asnStatus: entry.asnStatus,
         vehiclePlate: createdVehicle,
         driverName: createdDriver,
         status: entry.status,
@@ -454,6 +459,7 @@ function GateEntry() {
           </div>
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
             <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
+            <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Optional"} kind="po" captured={!!poDocument} onOpen={setScanning} onUpload={(f) => void scanCapture("po", f)} />
           </div>
 
           {(poPreview || vehiclePreview) && (
@@ -685,6 +691,29 @@ function GateEntry() {
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Vehicle No</span>
                 <p className="mt-1 font-mono text-sm font-bold">{lastCreatedEntry.vehiclePlate}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-2">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">PO Status</span>
+                <div className="mt-1.5">
+                  {lastCreatedEntry.poStatus ? (
+                    <StatusBadge status={lastCreatedEntry.poStatus} />
+                  ) : (
+                    <span className="text-[10px] font-medium text-muted-foreground italic tracking-tight">Manual entry</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">ASN Status</span>
+                <div className="mt-1.5">
+                  {lastCreatedEntry.asnStatus ? (
+                    <StatusBadge status={lastCreatedEntry.asnStatus} />
+                  ) : (
+                    <span className="text-[10px] font-medium text-muted-foreground italic tracking-tight">Direct arrival</span>
+                  )}
+                </div>
               </div>
             </div>
 

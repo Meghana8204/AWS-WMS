@@ -45,7 +45,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api-client";
-import { INDIAN_STATES } from "@/lib/constants";
+import { INDIAN_STATES, TDS_SECTIONS } from "@/lib/constants";
 
 export const Route = createFileRoute("/new-supplier")({
   component: NewSupplier,
@@ -113,7 +113,7 @@ function NewSupplier() {
     supplierName: "",
     registeredCompanyName: "",
     vendorType: "",
-    category: "",
+    category: [] as string[],
     mainMaterials: [] as string[],
     industry: "",
     gstin: "",
@@ -177,7 +177,7 @@ function NewSupplier() {
     }
   };
 
-  const validateStep = (step: number) => {
+  const validateStep = async (step: number) => {
     const newErrors: Record<string, string> = {};
 
     if (step === 1) {
@@ -193,7 +193,7 @@ function NewSupplier() {
       else if (regName.length < 2 || regName.length > 200) newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
 
       if (!formData.vendorType) newErrors.vendorType = "Please select a Vendor Type";
-      if (!formData.category) newErrors.category = "Please select a Category";
+      if (formData.category.length === 0) newErrors.category = "Please select at least one Category";
       if (formData.mainMaterials.length === 0) newErrors.mainMaterials = "Please select at least one material";
 
       if (!industry) newErrors.industry = "Industry is required";
@@ -203,6 +203,20 @@ function NewSupplier() {
       else if (gstin.length !== 15) newErrors.gstin = "Must be exactly 15 characters";
       else if (!(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase()))) {
         newErrors.gstin = "Invalid GSTIN format (e.g. 29ABCDE1234F1Z5)";
+      }
+
+      // Backend Duplicate Check
+      if (Object.keys(newErrors).length === 0) {
+        try {
+          const existence = await api.checkSupplierExistence({
+            company_name: regName,
+            gstin: gstin
+          });
+          if (existence.company_name) newErrors.registeredCompanyName = "This company is already registered";
+          if (existence.gstin) newErrors.gstin = "This GSTIN is already registered";
+        } catch (e) {
+          console.error("Duplicate check failed", e);
+        }
       }
     }
 
@@ -218,9 +232,8 @@ function NewSupplier() {
       const primaryEmail = formData.contact.primaryEmail.trim();
       const secondaryEmail = formData.contact.secondaryEmail.trim();
 
-      // Address Validation
-      if (!addr) newErrors["address.registeredAddress"] = "Registered Address is required";
-      else if (addr.length < 10 || addr.length > 300) newErrors["address.registeredAddress"] = "Must be between 10 and 300 characters";
+      // Address Validation (Strict validation removed for registered address)
+      if (addr && addr.length > 500) newErrors["address.registeredAddress"] = "Must be under 500 characters";
 
       if (!city) newErrors["address.city"] = "City is required";
       else if (city.length < 2 || city.length > 100) newErrors["address.city"] = "Must be between 2 and 100 characters";
@@ -254,14 +267,82 @@ function NewSupplier() {
       else if (!emailRegex.test(primaryEmail)) newErrors["contact.primaryEmail"] = "Invalid email format";
 
       if (secondaryEmail && !emailRegex.test(secondaryEmail)) newErrors["contact.secondaryEmail"] = "Invalid email format";
+
+      // Backend Duplicate Check
+      if (Object.keys(newErrors).length === 0) {
+        try {
+          const existence = await api.checkSupplierExistence({
+            email: primaryEmail,
+            phone: phone
+          });
+          if (existence.email) newErrors["contact.primaryEmail"] = "This email is already in use";
+          if (existence.phone) newErrors["contact.phone"] = "This phone number is already in use";
+        } catch (e) {
+          console.error("Duplicate check failed", e);
+        }
+      }
+    }
+
+    if (step === 3) {
+      const bankName = formData.bankInfo.bankName.trim();
+      const accNo = formData.bankInfo.accountNumber.trim();
+      const ifsc = formData.bankInfo.ifsc.trim();
+      const holder = formData.bankInfo.accountHolderName.trim();
+      const branch = formData.bankInfo.branch.trim();
+      const swift = formData.bankInfo.swiftBic.trim();
+
+      if (!bankName) newErrors["bankInfo.bankName"] = "Bank name is required";
+
+      if (!accNo) newErrors["bankInfo.accountNumber"] = "Account number is required";
+      else if (accNo.length < 9 || accNo.length > 18) newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
+      else if (!/^\d+$/.test(accNo)) newErrors["bankInfo.accountNumber"] = "Must contain only digits";
+
+      if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
+      else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
+        newErrors["bankInfo.ifsc"] = "Invalid IFSC format (e.g. SBIN0012345)";
+      }
+
+      if (!holder) newErrors["bankInfo.accountHolderName"] = "Account holder name is required";
+      else if (!/^[a-zA-Z\s.]+$/.test(holder)) newErrors["bankInfo.accountHolderName"] = "Invalid characters in name";
+
+      if (!branch) newErrors["bankInfo.branch"] = "Branch name is required";
+
+      if (swift && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.toUpperCase())) {
+        newErrors["bankInfo.swiftBic"] = "Invalid SWIFT/BIC format";
+      }
+
+      // Backend Duplicate Check for Account Number
+      if (Object.keys(newErrors).length === 0) {
+        try {
+          const existence = await api.checkSupplierExistence({
+            account_number: accNo,
+            swift: swift
+          });
+          if (existence.account_number) newErrors["bankInfo.accountNumber"] = "This bank account is already registered";
+          if (existence.swift) newErrors["bankInfo.swiftBic"] = "This SWIFT/BIC is already in use";
+        } catch (e) {
+          console.error("Duplicate check failed", e);
+        }
+      }
+    }
+
+    if (step === 4) {
+      const hasCancelledCheque = formData.documents.some(d => d.document_type === "Cancelled Cheque");
+      if (!hasCancelledCheque) {
+        newErrors["documents"] = "Cancelled Cheque is mandatory";
+        toast.error("Cancelled Cheque is mandatory for registration");
+      }
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
+  const handleNext = async () => {
+    setIsSubmitting(true);
+    const isValid = await validateStep(currentStep);
+    setIsSubmitting(false);
+    if (isValid) {
       if (currentStep < 5) setCurrentStep(currentStep + 1);
     }
   };
@@ -316,6 +397,16 @@ function NewSupplier() {
     });
   };
 
+  const toggleCategory = (cat: string) => {
+    setFormData((prev) => {
+      const current = prev.category || [];
+      const updated = current.includes(cat)
+        ? current.filter((c) => c !== cat)
+        : [...current, cat];
+      return { ...prev, category: updated };
+    });
+  };
+
   const handleAddVendorType = async () => {
     if (!newVendorType.trim()) {
       toast.error("Please enter a vendor type name");
@@ -351,7 +442,7 @@ function NewSupplier() {
     try {
       await api.createSupplierCategory(newCategory.trim());
       setCategories((prev) => [...prev, newCategory.trim()]);
-      updateFormData("root", "category", newCategory.trim());
+      toggleCategory(newCategory.trim());
       setNewCategory("");
       setShowAddCategory(false);
       toast.success("New category added to database!");
@@ -384,7 +475,15 @@ function NewSupplier() {
 
   const handleSubmit = async () => {
     // Final validation before submission
-    if (!validateStep(1) || !validateStep(2)) {
+    setIsSubmitting(true);
+    const step1Valid = await validateStep(1);
+    const step2Valid = await validateStep(2);
+    const step3Valid = await validateStep(3);
+    const step4Valid = await validateStep(4);
+    setIsSubmitting(false);
+
+    if (!step1Valid || !step2Valid || !step3Valid || !step4Valid) {
+      toast.error("Please fix errors in previous steps before submitting.");
       return;
     }
 
@@ -544,20 +643,44 @@ function NewSupplier() {
                 </div>
                 <div className="space-y-2">
                   <Label>Category <span className="text-destructive">*</span></Label>
-                  <Select
-                    onValueChange={(v) => updateFormData("root", "category", v)}
-                    value={formData.category}
-                  >
-                    <SelectTrigger className={cn(errors.category && "border-destructive focus:ring-destructive")}>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat} value={cat}>
-                          {cat}
-                        </SelectItem>
-                      ))}
-                      <div className="px-2 py-2 border-t border-border mt-1">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn("w-full justify-between rounded-xl h-10 px-3 font-normal", errors.category && "border-destructive")}
+                      >
+                        <span className="truncate">
+                          {formData.category?.length > 0
+                            ? formData.category.join(", ")
+                            : "Select categories"}
+                        </span>
+                        <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50 rotate-90" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0 rounded-xl" align="start">
+                      <div className="p-2 space-y-1 max-h-[300px] overflow-y-auto">
+                        {categories.map((cat) => (
+                          <div
+                            key={cat}
+                            className="flex items-center space-x-2 p-2 hover:bg-muted rounded-lg cursor-pointer"
+                            onClick={() => toggleCategory(cat)}
+                          >
+                            <Checkbox
+                              id={`cat-${cat}`}
+                              checked={formData.category?.includes(cat)}
+                              onCheckedChange={() => toggleCategory(cat)}
+                            />
+                            <Label
+                              htmlFor={`cat-${cat}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {cat}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-2 border-t border-border">
                         <Button
                           variant="ghost"
                           size="sm"
@@ -570,8 +693,8 @@ function NewSupplier() {
                           <Plus className="mr-2 size-3" /> Add New Category
                         </Button>
                       </div>
-                    </SelectContent>
-                  </Select>
+                    </PopoverContent>
+                  </Popover>
                   {errors.category && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.category}</p>}
                 </div>
                 <div className="space-y-2">
@@ -646,7 +769,11 @@ function NewSupplier() {
                   <Input
                     id="gstin"
                     value={formData.gstin}
-                    onChange={(e) => updateFormData("root", "gstin", e.target.value)}
+                    maxLength={15}
+                    onChange={(e) => {
+                      const val = e.target.value.substring(0, 15);
+                      updateFormData("root", "gstin", val);
+                    }}
                     placeholder="15-digit GST number"
                     className={cn("font-mono", errors.gstin && "border-destructive focus-visible:ring-destructive")}
                   />
@@ -662,7 +789,7 @@ function NewSupplier() {
               <h3 className="text-lg font-semibold">Address & Primary Contact</h3>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="address">Registered Address <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="address">Registered Address</Label>
                   <Textarea
                     id="address"
                     value={formData.address.registeredAddress}
@@ -707,8 +834,13 @@ function NewSupplier() {
                     <Input
                       id="pincode"
                       value={formData.address.pincode}
-                      onChange={(e) => updateFormData("address", "pincode", e.target.value)}
+                      maxLength={6}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, "").substring(0, 6);
+                        updateFormData("address", "pincode", val);
+                      }}
                       className={cn(errors["address.pincode"] && "border-destructive focus-visible:ring-destructive")}
+                      placeholder="6-digit PIN"
                     />
                     {errors["address.pincode"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.pincode"]}</p>}
                   </div>
@@ -740,8 +872,13 @@ function NewSupplier() {
                       <Input
                         id="phone"
                         value={formData.contact.phone}
-                        onChange={(e) => updateFormData("contact", "phone", e.target.value)}
+                        maxLength={10}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "").substring(0, 10);
+                          updateFormData("contact", "phone", val);
+                        }}
                         className={cn(errors["contact.phone"] && "border-destructive focus-visible:ring-destructive")}
+                        placeholder="10-digit mobile number"
                       />
                       {errors["contact.phone"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.phone"]}</p>}
                     </div>
@@ -763,7 +900,23 @@ function NewSupplier() {
                         id="primaryEmail"
                         type="email"
                         value={formData.contact.primaryEmail}
-                        onChange={(e) => updateFormData("contact", "primaryEmail", e.target.value)}
+                        maxLength={128}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\s/g, "").substring(0, 128);
+                          updateFormData("contact", "primaryEmail", val);
+
+                          // Run-time validation
+                          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                          if (val && !emailRegex.test(val)) {
+                            setErrors(prev => ({ ...prev, ["contact.primaryEmail"]: "Invalid email format" }));
+                          } else {
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next["contact.primaryEmail"];
+                              return next;
+                            });
+                          }
+                        }}
                         placeholder="main@company.com"
                         className={cn(errors["contact.primaryEmail"] && "border-destructive focus-visible:ring-destructive")}
                       />
@@ -775,7 +928,23 @@ function NewSupplier() {
                         id="secondaryEmail"
                         type="email"
                         value={formData.contact.secondaryEmail}
-                        onChange={(e) => updateFormData("contact", "secondaryEmail", e.target.value)}
+                        maxLength={128}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\s/g, "").substring(0, 128);
+                          updateFormData("contact", "secondaryEmail", val);
+
+                          // Run-time validation
+                          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                          if (val && !emailRegex.test(val)) {
+                            setErrors(prev => ({ ...prev, ["contact.secondaryEmail"]: "Invalid email format" }));
+                          } else {
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next["contact.secondaryEmail"];
+                              return next;
+                            });
+                          }
+                        }}
                         placeholder="reference@company.com"
                         className={cn(errors["contact.secondaryEmail"] && "border-destructive focus-visible:ring-destructive")}
                       />
@@ -793,49 +962,113 @@ function NewSupplier() {
               <h3 className="text-lg font-semibold">Banking Information</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="bankName">Bank Name</Label>
+                  <Label htmlFor="bankName">Bank Name <span className="text-destructive">*</span></Label>
                   <Input
                     id="bankName"
                     value={formData.bankInfo.bankName}
                     onChange={(e) => updateFormData("bankInfo", "bankName", e.target.value)}
+                    className={cn(errors["bankInfo.bankName"] && "border-destructive focus-visible:ring-destructive")}
                   />
+                  {errors["bankInfo.bankName"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.bankName"]}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accNo">Account Number</Label>
+                  <Label htmlFor="accNo">Account Number <span className="text-destructive">*</span></Label>
                   <Input
                     id="accNo"
                     value={formData.bankInfo.accountNumber}
-                    onChange={(e) => updateFormData("bankInfo", "accountNumber", e.target.value)}
+                    maxLength={18}
+                    onChange={async (e) => {
+                      const val = e.target.value.replace(/\D/g, "").substring(0, 18);
+                      updateFormData("bankInfo", "accountNumber", val);
+
+                      // Run-time validation for duplicates
+                      if (val.length >= 9) {
+                        try {
+                          const existence = await api.checkSupplierExistence({ account_number: val });
+                          if (existence.account_number) {
+                            setErrors(prev => ({ ...prev, ["bankInfo.accountNumber"]: "This account number already exists" }));
+                          } else {
+                            setErrors(prev => {
+                              const next = { ...prev };
+                              delete next["bankInfo.accountNumber"];
+                              return next;
+                            });
+                          }
+                        } catch (err) {
+                          console.error("Runtime duplicate check failed", err);
+                        }
+                      }
+                    }}
+                    className={cn(errors["bankInfo.accountNumber"] && "border-destructive focus-visible:ring-destructive")}
                   />
+                  {errors["bankInfo.accountNumber"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.accountNumber"]}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ifsc">IFSC Code</Label>
+                  <Label htmlFor="ifsc">IFSC Code <span className="text-destructive">*</span></Label>
                   <Input
                     id="ifsc"
                     value={formData.bankInfo.ifsc}
-                    onChange={(e) => updateFormData("bankInfo", "ifsc", e.target.value)}
-                    className="font-mono"
+                    maxLength={11}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "").substring(0, 11).toUpperCase();
+                      updateFormData("bankInfo", "ifsc", val);
+                    }}
+                    className={cn("font-mono", errors["bankInfo.ifsc"] && "border-destructive focus-visible:ring-destructive")}
+                    placeholder="e.g. SBIN0012345"
                   />
+                  {errors["bankInfo.ifsc"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.ifsc"]}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="holder">Account Holder Name</Label>
+                  <Label htmlFor="holder">Account Holder Name <span className="text-destructive">*</span></Label>
                   <Input
                     id="holder"
                     value={formData.bankInfo.accountHolderName}
                     onChange={(e) => updateFormData("bankInfo", "accountHolderName", e.target.value)}
+                    className={cn(errors["bankInfo.accountHolderName"] && "border-destructive focus-visible:ring-destructive")}
                   />
+                  {errors["bankInfo.accountHolderName"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.accountHolderName"]}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="branch">Branch</Label>
-                  <Input id="branch" value={formData.bankInfo.branch} onChange={(e) => updateFormData("bankInfo", "branch", e.target.value)} />
+                  <Label htmlFor="branch">Branch <span className="text-destructive">*</span></Label>
+                  <Input
+                    id="branch"
+                    value={formData.bankInfo.branch}
+                    onChange={(e) => updateFormData("bankInfo", "branch", e.target.value)}
+                    className={cn(errors["bankInfo.branch"] && "border-destructive focus-visible:ring-destructive")}
+                  />
+                  {errors["bankInfo.branch"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.branch"]}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="swiftBic">SWIFT / BIC</Label>
-                  <Input id="swiftBic" value={formData.bankInfo.swiftBic} onChange={(e) => updateFormData("bankInfo", "swiftBic", e.target.value)} />
+                  <Input
+                    id="swiftBic"
+                    value={formData.bankInfo.swiftBic}
+                    maxLength={11}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "").substring(0, 11).toUpperCase();
+                      updateFormData("bankInfo", "swiftBic", val);
+                    }}
+                    className={cn("font-mono", errors["bankInfo.swiftBic"] && "border-destructive focus-visible:ring-destructive")}
+                  />
+                  {errors["bankInfo.swiftBic"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.swiftBic"]}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tdsSection">TDS Section</Label>
-                  <Input id="tdsSection" value={formData.bankInfo.tdsSection} onChange={(e) => updateFormData("bankInfo", "tdsSection", e.target.value)} />
+                  <Select
+                    onValueChange={(v) => updateFormData("bankInfo", "tdsSection", v)}
+                    value={formData.bankInfo.tdsSection}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select TDS section" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TDS_SECTIONS.map((section) => (
+                        <SelectItem key={section} value={section}>
+                          {section}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
@@ -849,40 +1082,46 @@ function NewSupplier() {
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  "GST Certificate",
-                  "Cancelled Cheque",
-                  "MSME Certificate",
-                  "ISO Certificate",
-                  "Vendor Code of Conduct",
-                  "Other"
-                ].map((type) => (
-                  <div key={type} className="relative">
+                  { name: "GST Certificate", mandatory: false },
+                  { name: "Cancelled Cheque", mandatory: true },
+                  { name: "Vendor Code of Conduct", mandatory: false },
+                  { name: "Other", mandatory: false }
+                ].map((doc) => (
+                  <div key={doc.name} className="relative">
                     <input
                       type="file"
-                      id={`file-${type}`}
+                      id={`file-${doc.name}`}
                       className="hidden"
-                      onChange={(e) => handleFileUpload(e, type)}
+                      onChange={(e) => handleFileUpload(e, doc.name)}
                       disabled={isUploading}
                     />
                     <Button
                       type="button"
                       variant="outline"
                       className="w-full h-24 flex-col gap-2 rounded-xl border-dashed border-2 hover:border-primary/50 hover:bg-primary/5"
-                      onClick={() => document.getElementById(`file-${type}`)?.click()}
+                      onClick={() => document.getElementById(`file-${doc.name}`)?.click()}
                       disabled={isUploading}
                     >
                       {isUploading ? (
                         <Loader2 className="size-5 animate-spin" />
-                      ) : formData.documents.some((d) => d.document_type === type) ? (
+                      ) : formData.documents.some((d) => d.document_type === doc.name) ? (
                         <CheckCircle2 className="size-5 text-success" />
                       ) : (
                         <Plus className="size-5" />
                       )}
-                      <span className="text-[10px] uppercase font-bold">{type}</span>
+                      <span className="text-[10px] uppercase font-bold">
+                        {doc.name} {doc.mandatory && <span className="text-destructive">*</span>}
+                      </span>
                     </Button>
                   </div>
                 ))}
               </div>
+
+              {errors["documents"] && (
+                <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                  <AlertCircle className="size-3" /> {errors["documents"]}
+                </p>
+              )}
 
               {formData.documents.length > 0 && (
                 <div className="mt-8 space-y-2">
@@ -917,17 +1156,43 @@ function NewSupplier() {
 
           {/* Step 5: Remarks */}
           {currentStep === 5 && (
-            <div className="space-y-4 animate-fade-in">
-              <h3 className="text-lg font-semibold">Final Remarks</h3>
-              <div className="space-y-2">
-                <Label htmlFor="remarks">Additional Information / Justification</Label>
-                <Textarea
-                  id="remarks"
-                  value={formData.remarks}
-                  onChange={(e) => updateFormData("root", "remarks", e.target.value)}
-                  placeholder="Enter any additional notes about this vendor..."
-                  className="min-h-[150px] rounded-xl"
-                />
+            <div className="space-y-6 animate-fade-in">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Final Remarks</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="remarks">Additional Information / Justification</Label>
+                  <Textarea
+                    id="remarks"
+                    value={formData.remarks}
+                    onChange={(e) => updateFormData("root", "remarks", e.target.value)}
+                    placeholder="Enter any additional notes about this vendor..."
+                    className="min-h-[120px] rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-muted/30 border border-border/50 p-5 space-y-4">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <AlertCircle className="size-4" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider">Audit Information</h4>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Created By</Label>
+                    <div className="text-sm font-medium flex items-center gap-2">
+                      <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] text-primary font-bold">
+                        P
+                      </div>
+                      Procurement Officer (Current Session)
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Registration Date</Label>
+                    <div className="text-sm font-medium">
+                      {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -942,7 +1207,8 @@ function NewSupplier() {
             </Button>
 
             {currentStep < 5 ? (
-              <Button onClick={handleNext} className="shadow-glow">
+              <Button onClick={handleNext} className="shadow-glow" disabled={isSubmitting}>
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Next <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (

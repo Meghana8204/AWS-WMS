@@ -20,6 +20,9 @@ import { isAuthenticated, getUserInfo } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/login")({
   beforeLoad: () => {
+    // Skip server-side redirects for localStorage-based auth
+    if (typeof window === "undefined") return;
+
     if (isAuthenticated()) {
       const user = getUserInfo();
       let target = "/warehouse-dashboard";

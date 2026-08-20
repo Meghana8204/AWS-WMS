@@ -31,6 +31,7 @@ export function isAuthenticated(): boolean {
 }
 
 export function requireAuth() {
+  if (typeof window === "undefined") return; // Skip server-side redirect for localStorage auth
   if (!isAuthenticated()) {
     throw redirect({
       to: "/login",
@@ -42,6 +43,7 @@ export function requireAuth() {
 }
 
 export function requireRole(roles: string[] | string) {
+  if (typeof window === "undefined") return; // Skip server-side redirect for localStorage auth
   requireAuth();
   if (!hasRole(roles)) {
     // If they are authenticated but don't have the role, send them to their primary dashboard
