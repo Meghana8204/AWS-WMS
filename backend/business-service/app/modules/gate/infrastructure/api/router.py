@@ -615,11 +615,6 @@ async def create_gate_entry(
     """
     request = await _read_gate_entry_request(http_request)
     from app.modules.gate.infrastructure.services.ocr_service import normalize_vehicle_registration
-    if not request.asn_reference:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="ASN reference is required; PO, supplier and vehicle data are resolved from the ASN.",
-        )
     asn = None
     if request.asn_reference:
         reference = request.asn_reference.strip()
@@ -642,7 +637,7 @@ async def create_gate_entry(
     po_num = ((asn.po_number if asn else request.po_number) or "").strip().upper()
 
     if not plate:
-        raise DomainRuleViolationException("The referenced ASN must contain a vehicle number.")
+        raise DomainRuleViolationException("Vehicle number is mandatory.")
     if not po_num:
         raise DomainRuleViolationException("Purchase order number is mandatory.")
     if not request.truck_photo_base64:
