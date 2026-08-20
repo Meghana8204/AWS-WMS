@@ -26,8 +26,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/submit-quotation")({
+  beforeLoad: () => requireRole("SUPPLIER"),
   component: SubmitQuotation,
 });
 

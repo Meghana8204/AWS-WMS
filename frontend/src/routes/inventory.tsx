@@ -26,13 +26,17 @@ export const Route = createFileRoute("/inventory")({
 
 function Inventory() {
   const [stock, setStock] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [locationBalances, setLocationBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await api.getMaterialStock();
+      const [data, transactionData, locationData] = await Promise.all([api.getMaterialStock(), api.getInventoryTransactions(), api.getInventoryLocationBalances()]);
       setStock(data);
+      setTransactions(transactionData);
+      setLocationBalances(locationData);
     } catch (error) {
       toast.error("Failed to load inventory");
     } finally {
@@ -85,6 +89,7 @@ function Inventory() {
                  <thead className="bg-muted/30 border-b border-border/60 text-[10px] uppercase font-black tracking-widest text-muted-foreground">
                     <tr>
                        <th className="px-6 py-4">Material</th>
+                       <th className="px-6 py-4">Storage Locations</th>
                        <th className="px-6 py-4">Category</th>
                        <th className="px-6 py-4 text-right">On Hand</th>
                        <th className="px-6 py-4 text-right">Allocated</th>
@@ -102,6 +107,7 @@ function Inventory() {
                             <p className="font-bold text-foreground">{s.materialName}</p>
                             <p className="font-mono text-[10px] text-muted-foreground">{s.materialCode}</p>
                          </td>
+                         <td className="px-6 py-4"><div className="min-w-64 space-y-2">{locationBalances.filter(location => location.material_code === s.materialCode).length === 0 ? <span className="text-xs text-muted-foreground">Awaiting putaway</span> : locationBalances.filter(location => location.material_code === s.materialCode).map(location => <div key={location.id} className="rounded-lg border bg-muted/20 px-3 py-2"><p className="flex items-center gap-1 font-mono text-xs font-bold"><MapPin className="size-3 text-primary" />{location.warehouse_id} / {location.zone} / {location.rack} / {location.bin}</p><p className="mt-1 text-[11px] text-muted-foreground">Stock: <b className="text-foreground">{location.quantity.toLocaleString()} {location.uom}</b> · Available: <b className="text-success">{location.available_quantity.toLocaleString()} {location.uom}</b></p></div>)}</div></td>
                          <td className="px-6 py-4 text-muted-foreground font-medium">{s.category}</td>
                          <td className="px-6 py-4 text-right font-mono font-bold">{parseFloat(s.onHand).toLocaleString()}</td>
                          <td className="px-6 py-4 text-right font-mono text-muted-foreground">{parseFloat(s.allocated).toLocaleString()}</td>
@@ -132,6 +138,7 @@ function Inventory() {
            </div>
         </Card>
       )}
+      {!loading && <Card className="mt-8 overflow-hidden border-border/40 shadow-soft"><div className="flex items-center gap-3 border-b p-5"><History className="size-5 text-primary" /><div><h2 className="font-bold">Inventory Transactions</h2><p className="text-xs text-muted-foreground">GRN → Inventory transaction → Stock updated</p></div></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-muted/30 text-[10px] font-black uppercase tracking-widest text-muted-foreground"><tr><th className="px-4 py-3">GRN / References</th><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Warehouse</th><th className="px-4 py-3">Material</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">GRN</th><th className="px-4 py-3 text-right">New Stock</th><th className="px-4 py-3">Date / Time</th></tr></thead><tbody className="divide-y">{transactions.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No posted GRN inventory transactions.</td></tr> : transactions.map(tx => <tr key={tx.id}><td className="px-4 py-3"><b className="font-mono text-primary">{tx.grn_number}</b><p className="font-mono text-xs text-muted-foreground">{tx.po_number} · {tx.asn_number}</p></td><td className="px-4 py-3">{tx.supplier_name}</td><td className="px-4 py-3 font-mono">{tx.warehouse_id}</td><td className="px-4 py-3"><b>{tx.material_name}</b><p className="font-mono text-xs text-muted-foreground">{tx.item_code}</p></td><td className="px-4 py-3 text-right font-mono">{tx.previous_stock.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-right font-mono font-bold text-success">+{tx.quantity.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-right font-mono font-bold">{tx.new_stock.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-xs">{new Date(tx.posted_at).toLocaleString()}<p className="text-muted-foreground">{tx.posted_by}</p></td></tr>)}</tbody></table></div></Card>}
     </AppShell>
   );
 }

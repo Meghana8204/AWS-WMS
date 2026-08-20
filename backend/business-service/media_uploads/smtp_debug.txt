@@ -166,3 +166,35 @@ SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
 SMTP Success: harshavardhandevang@gmail.com via port 587
 SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
 SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials a92af1059eb24-1416ad564bcsm13255307c88.5 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef3bb5csm13470325eec.2 - gsmtp')
+SMTP Start: srujanms34@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef6ec40sm13275888eec.7 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bf10d497sm20120764eec.14 - gsmtp')
+SMTP Start: vardh2008@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327d01ff056sm3762922eec.19 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef77fc0sm22840497eec.8 - gsmtp')
+SMTP Start: harshavardhandevang@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials a92af1059eb24-1416aea2429sm11791587c88.15 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-3957fb17eb5sm6187011a91.3 - gsmtp')
+SMTP Start: srujanms34@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials a92af1059eb24-1416ac3d1bfsm11834426c88.0 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials d9443c01a7336-2d62e3cf1f0sm1987555ad.76 - gsmtp')
+SMTP Start: vardh2008@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef77fc0sm22848595eec.8 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef3bb51sm12847222eec.6 - gsmtp')
+SMTP Start: harshavardhandevang@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bf14376asm12618841eec.24 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 98e67ed59e1d1-3957f96cb76sm5496441a91.1 - gsmtp')
+SMTP Start: srujanms34@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bf10a94dsm12268608eec.15 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials a92af1059eb24-1416ae143edsm22583633c88.10 - gsmtp')
+SMTP Start: vardh2008@gmail.com via your_email@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bec30f49sm11275178eec.0 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bf1970b0sm12551805eec.29 - gsmtp')
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: srujanms34@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: srujanms34@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: srujanms34@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: srujanms34@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
