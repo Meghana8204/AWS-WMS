@@ -109,8 +109,10 @@ class GateEntryResponse(ApiModel):
     created_by: str
     po_id: Optional[str] = None
     po_number: Optional[str] = None
+    po_status: Optional[str] = None
     asn_id: Optional[str] = None
     asn_number: Optional[str] = None
+    asn_status: Optional[str] = None
     assigned_dock_id: Optional[str] = None
     supplier_name: Optional[str] = None
     material_description: Optional[str] = None
