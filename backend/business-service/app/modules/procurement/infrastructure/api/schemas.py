@@ -68,7 +68,7 @@ class SupplierResponse(ApiModel):
     supplier_name: str
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
-    category: Optional[str] = None
+    category: List[str] = []
     industry: Optional[str] = None
     gstin: Optional[str] = None
     main_materials: List[str] = []
@@ -79,14 +79,17 @@ class SupplierResponse(ApiModel):
     remarks: Optional[str] = None
     status: Optional[str] = "Active"
     created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+    updated_at: Optional[datetime] = None
+    updated_by: Optional[str] = None
 
 
 class AddressRequest(ApiModel):
-    registered_address: str
-    city: str
-    country: str
-    state: str
-    pincode: str
+    registered_address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = "India"
+    state: Optional[str] = None
+    pincode: Optional[str] = None
 
 
 class ContactRequest(ApiModel):
@@ -121,7 +124,7 @@ class CreateSupplierRequest(ApiModel):
     supplier_name: str
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
-    category: Optional[str] = None
+    category: List[str] = []
     industry: Optional[str] = None
     gstin: Optional[str] = None
     main_materials: List[str] = []
@@ -130,13 +133,14 @@ class CreateSupplierRequest(ApiModel):
     bank_info: Optional[BankInfoRequest] = None
     documents: List[DocumentRequest] = []
     remarks: Optional[str] = None
+    created_by: Optional[str] = None
 
 
 class UpdateSupplierRequest(ApiModel):
     supplier_name: Optional[str] = None
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[List[str]] = None
     industry: Optional[str] = None
     gstin: Optional[str] = None
     main_materials: Optional[List[str]] = None

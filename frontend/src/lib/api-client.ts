@@ -44,6 +44,12 @@ async function request<T>(
   const token = getAuthToken();
   const headers = new Headers(options.headers || {});
 
+  // Fetch treats a string body as plain text unless its media type is declared.
+  // All string bodies produced by this client are JSON.stringify payloads.
+  if (typeof options.body === "string" && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   // Inject Bearer Authorization header if token exists
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -148,6 +154,127 @@ export const api = {
       ? `${BUSINESS_API_URL}/api/gate-entries?status=${encodeURIComponent(status)}`
       : `${BUSINESS_API_URL}/api/gate-entries`;
     return request<any[]>(url);
+  },
+
+  async getInboundArrivals(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
+  },
+
+  async getDocks(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/docks`);
+  },
+
+  async createDock(payload: { dock_number: string; warehouse_id: string; dock_type: string; capacity: number; status: string }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/docks`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  async updateDock(dockNumber: string, payload: { warehouse_id?: string; dock_type?: string; capacity?: number; status?: string }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/docks/${encodeURIComponent(dockNumber)}`, { method: "PATCH", body: JSON.stringify(payload) });
+  },
+
+  async assignDock(gateEntryId: string, dockId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/assign-dock`, {
+      method: "POST",
+      body: JSON.stringify({ dock_id: dockId }),
+    });
+  },
+
+  async startDockMovement(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/start-dock-movement`, { method: "POST" });
+  },
+
+  async confirmDockCheckIn(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/dock-check-in`, { method: "POST" });
+  },
+
+  async startUnloading(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/start-unloading`, { method: "POST" });
+  },
+
+  async recordReceivingQuantities(gateEntryId: string, items: Array<{ item_code: string; received_quantity: number }>): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/receiving-quantities`, {
+      method: "PUT",
+      body: JSON.stringify({ items }),
+    });
+  },
+
+  async getQuantityVerificationPolicy(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quantity-verification-policy`);
+  },
+
+  async updateQuantityVerificationPolicy(payload: { shortage_tolerance: number; excess_tolerance: number }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quantity-verification-policy`, { method: "PUT", body: JSON.stringify(payload) });
+  },
+
+  async recordMaterialConditions(gateEntryId: string, items: Array<{ item_code: string; good_quantity: number; damaged_quantity: number; rejected_quantity: number; inspection_required: boolean; notes?: string }>): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/material-conditions`, { method: "PUT", body: JSON.stringify({ items }) });
+  },
+
+  async completeQualityInspection(gateEntryId: string, decision: "PASS" | "FAIL", notes?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/quality-inspection`, { method: "POST", body: JSON.stringify({ decision, notes }) });
+  },
+
+  async completeReceiving(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-receiving`, { method: "POST" });
+  },
+
+  async releaseDock(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/release-dock`, { method: "POST" });
+  },
+
+  async getVehicleExitQueue(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/exit-queue`);
+  },
+
+  async approveVehicleExit(gateEntryId: string, payload: { exit_document_reference: string; asn_verified: boolean; po_verified: boolean; grn_verified: boolean; receiving_verified: boolean; vehicle_verified: boolean; driver_verified: boolean }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/approve-exit`, { method: "POST", body: JSON.stringify(payload) });
+  },
+
+  async getGateExitQueue(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/gate-exit-queue`);
+  },
+
+  async completeGateExit(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-gate-exit`, { method: "POST" });
+  },
+
+  async getGrnDrafts(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/grn-drafts`);
+  },
+
+  async postGrn(grnId: string, verificationNotes?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/grns/${grnId}/post`, { method: "POST", body: JSON.stringify({ verification_notes: verificationNotes }) });
+  },
+
+  async getInventoryTransactions(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inventory-transactions`);
+  },
+
+  async getPutawayTasks(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/storage/putaway-tasks`);
+  },
+
+  async getStorageLocations(warehouseId?: string): Promise<any[]> {
+    const query = warehouseId ? `?warehouse_id=${encodeURIComponent(warehouseId)}` : "";
+    return request<any[]>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/locations${query}`);
+  },
+
+  async getInventoryLocationBalances(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/inventory-locations`);
+  },
+
+  async assignPutawayLocation(taskId: string, locationId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/${taskId}/location`, {
+      method: "PUT", body: JSON.stringify({ location_id: locationId }),
+    });
+  },
+
+  async startPutaway(taskId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/${taskId}/start`, { method: "POST" });
+  },
+
+  async completePutaway(taskId: string, payload: { material_scan: string; location_scan: string; quantity: number }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/${taskId}/complete`, { method: "POST", body: JSON.stringify(payload) });
   },
 
   async getDashboardStats(): Promise<any> {
@@ -277,6 +404,17 @@ export const api = {
   },
 
   // Procurement Use Cases
+  async checkSupplierExistence(params: { company_name?: string; gstin?: string; email?: string; phone?: string; account_number?: string; swift?: string }): Promise<any> {
+    const searchParams = new URLSearchParams();
+    if (params.company_name) searchParams.append("company_name", params.company_name);
+    if (params.gstin) searchParams.append("gstin", params.gstin);
+    if (params.email) searchParams.append("email", params.email);
+    if (params.phone) searchParams.append("phone", params.phone);
+    if (params.account_number) searchParams.append("account_number", params.account_number);
+    if (params.swift) searchParams.append("swift", params.swift);
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/suppliers/check-existence?${searchParams.toString()}`);
+  },
+
   async getSuppliers(filters?: { search?: string; category?: string; material?: string; city?: string; vendor_type?: string; status?: string }): Promise<any[]> {
     let url = `${BUSINESS_API_URL}/api/v1/procurement/suppliers`;
     if (filters) {
@@ -330,6 +468,14 @@ export const api = {
   async createMaterialRequest(data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async updateMaterialRequest(id: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests/${id}`, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data)
     });

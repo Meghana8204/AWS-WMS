@@ -20,7 +20,7 @@ rfq_supplier_link = Table(
     "rfq_supplier_link",
     Base.metadata,
     Column("rfq_id", GUID, ForeignKey("rfq.id"), primary_key=True),
-    Column("supplier_id", GUID, ForeignKey("supplier.id"), primary_key=True),
+    Column("supplier_id", String(64), ForeignKey("supplier.id"), primary_key=True),
 )
 
 
@@ -45,13 +45,13 @@ class RawMaterialMasterModel(Base):
 class SupplierModel(Base):
     __tablename__ = "supplier"
 
-    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
     supplier_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    registered_company_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    registered_company_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
     vendor_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    category: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     industry: Mapped[str] = mapped_column(String(64), nullable=False)
-    gstin: Mapped[str] = mapped_column(String(32), nullable=False)
+    gstin: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
     supplier_code: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
     main_materials: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
     rating: Mapped[float] = mapped_column(Numeric(3, 2), default=0.0, nullable=False)
@@ -59,7 +59,9 @@ class SupplierModel(Base):
     remarks: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="Active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     address: Mapped[Optional["SupplierAddressModel"]] = relationship(
         "SupplierAddressModel", back_populates="supplier", uselist=False, cascade="all, delete-orphan"
@@ -83,11 +85,11 @@ class SupplierAddressModel(Base):
     __tablename__ = "supplier_address"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
-    registered_address: Mapped[str] = mapped_column(Text, nullable=False)
-    city: Mapped[str] = mapped_column(String(64), nullable=False)
+    registered_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     state: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     pincode: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
@@ -99,14 +101,14 @@ class SupplierContactModel(Base):
     __tablename__ = "supplier_contact"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     primary_contact_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    primary_email: Mapped[str] = mapped_column(String(128), nullable=False)
+    primary_email: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     secondary_email: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     designation: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, unique=True)
     website: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
 
     supplier: Mapped["SupplierModel"] = relationship("SupplierModel", back_populates="contact")
@@ -116,11 +118,11 @@ class SupplierBankInfoModel(Base):
     __tablename__ = "supplier_bank_info"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     bank_name: Mapped[str] = mapped_column(String(128), nullable=False)
-    account_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    account_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     account_holder_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     ifsc: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     branch: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -134,13 +136,13 @@ class SupplierDocumentModel(Base):
     __tablename__ = "supplier_document"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     document_type: Mapped[str] = mapped_column(String(64), nullable=False)
     file_name: Mapped[str] = mapped_column(String(256), nullable=False)
-    file_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    file_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    file_size: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
     upload_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
@@ -161,7 +163,7 @@ class MaterialModel(Base):
 supplier_material_link = Table(
     "supplier_material_link",
     Base.metadata,
-    Column("supplier_id", GUID, ForeignKey("supplier.id", ondelete="CASCADE"), primary_key=True),
+    Column("supplier_id", String(64), ForeignKey("supplier.id", ondelete="CASCADE"), primary_key=True),
     Column("material_id", GUID, ForeignKey("material.id", ondelete="CASCADE"), primary_key=True),
 )
 
@@ -182,7 +184,7 @@ class RfqModel(Base):
     closing_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Selection Fields
-    selected_supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
+    selected_supplier_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=True)
     selection_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     selected_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     selection_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -219,7 +221,7 @@ class QuotationModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     rfq_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=False)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=False)
+    supplier_id: Mapped[str] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -269,7 +271,7 @@ class AsnModel(Base):
     __tablename__ = "asn"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
+    supplier_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=True)
     asn_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     po_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -326,7 +328,7 @@ class PurchaseOrderModel(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED")
 
     rfq_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=True)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=False)
+    supplier_id: Mapped[str] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=False)
 
     supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     warehouse_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -491,8 +493,8 @@ class SupplierUserModel(Base):
     __tablename__ = "supplier_user"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
-        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False, unique=True
+    supplier_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)

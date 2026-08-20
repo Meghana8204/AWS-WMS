@@ -51,6 +51,20 @@ class CreateSupplierUseCase:
         self._supplier_repository = supplier_repository
 
     async def handle(self, command: CreateSupplierCommand) -> SupplierId:
+        # Check for duplicates
+        if await self._supplier_repository.exists_by_company_name(command.registered_company_name):
+            raise DomainRuleViolationException(f"Supplier with company name '{command.registered_company_name}' already exists")
+        if await self._supplier_repository.exists_by_gstin(command.gstin):
+            raise DomainRuleViolationException(f"Supplier with GSTIN '{command.gstin}' already exists")
+        if command.contact and await self._supplier_repository.exists_by_email(command.contact.primary_email):
+            raise DomainRuleViolationException(f"Supplier with email '{command.contact.primary_email}' already exists")
+        if command.contact and command.contact.phone and await self._supplier_repository.exists_by_phone(command.contact.phone):
+            raise DomainRuleViolationException(f"Supplier with phone '{command.contact.phone}' already exists")
+        if command.bank_info and await self._supplier_repository.exists_by_bank_account(command.bank_info.account_number):
+            raise DomainRuleViolationException(f"Supplier with bank account number '{command.bank_info.account_number}' already exists")
+        if command.bank_info and command.bank_info.swift_bic and await self._supplier_repository.exists_by_swift(command.bank_info.swift_bic):
+            raise DomainRuleViolationException(f"Supplier with SWIFT/BIC '{command.bank_info.swift_bic}' already exists")
+
         address = None
         if command.address is not None:
             address = SupplierAddress(
@@ -98,7 +112,11 @@ class CreateSupplierUseCase:
                     )
                 )
 
+        seq = await self._supplier_repository.get_next_sequence()
+        supplier_id = SupplierId.new_id(seq)
+
         supplier = Supplier.create(
+            supplier_id=supplier_id,
             supplier_name=command.supplier_name,
             registered_company_name=command.registered_company_name,
             vendor_type=command.vendor_type,
@@ -111,6 +129,7 @@ class CreateSupplierUseCase:
             bank_info=bank_info,
             documents=documents,
             remarks=command.remarks,
+            created_by=command.created_by,
         )
         await self._supplier_repository.save(supplier)
         return supplier.id
@@ -143,6 +162,20 @@ class UpdateSupplierUseCase:
         supplier = await self._supplier_repository.find_by_id(SupplierId.of(command.supplier_id))
         if not supplier:
             raise NotFoundException(f"Supplier not found: {command.supplier_id}")
+
+        # Check for duplicates (excluding current supplier)
+        if command.registered_company_name and await self._supplier_repository.exists_by_company_name(command.registered_company_name, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with company name '{command.registered_company_name}' already exists")
+        if command.gstin and await self._supplier_repository.exists_by_gstin(command.gstin, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with GSTIN '{command.gstin}' already exists")
+        if command.contact and await self._supplier_repository.exists_by_email(command.contact.primary_email, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with email '{command.contact.primary_email}' already exists")
+        if command.contact and command.contact.phone and await self._supplier_repository.exists_by_phone(command.contact.phone, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with phone '{command.contact.phone}' already exists")
+        if command.bank_info and await self._supplier_repository.exists_by_bank_account(command.bank_info.account_number, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with bank account number '{command.bank_info.account_number}' already exists")
+        if command.bank_info and command.bank_info.swift_bic and await self._supplier_repository.exists_by_swift(command.bank_info.swift_bic, exclude_id=command.supplier_id):
+            raise DomainRuleViolationException(f"Another supplier with SWIFT/BIC '{command.bank_info.swift_bic}' already exists")
 
         address = None
         if command.address is not None:
@@ -189,6 +222,7 @@ class UpdateSupplierUseCase:
             contact=contact,
             bank_info=bank_info,
             remarks=command.remarks,
+            updated_by=command.updated_by,
         )
         await self._supplier_repository.save(supplier)
 
