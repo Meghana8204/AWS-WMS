@@ -7,8 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/procurement/rfqs")({
+  beforeLoad: () => requireRole("PROCUREMENT"),
   component: Rfqs,
 });
 

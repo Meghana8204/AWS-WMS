@@ -20,8 +20,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/procurement/purchase-orders")({
+  beforeLoad: () => requireRole("PROCUREMENT"),
   component: PurchaseOrders,
 });
 

@@ -430,6 +430,34 @@ async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
     return {"status": "success"}
 
 
+@router.put("/material-requests/{id}")
+async def update_material_request(id: str, request: CreateMaterialRequest, uow: UnitOfWork = Depends(get_uow)):
+    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).where(MaterialRequestModel.id == uuid.UUID(id))
+    res = await uow.session.execute(stmt)
+    mr = res.scalar_one_or_none()
+    if not mr:
+        raise HTTPException(status_code=404, detail="Material request not found")
+
+    mr.department = request.department
+    mr.required_date = request.required_date
+    mr.remarks = request.remarks
+
+    # Standard sync: clear and re-add (cascade="all, delete-orphan" handles deletion)
+    from app.modules.procurement.infrastructure.persistence.models import MaterialRequestItemModel
+    mr.items = []
+    for it in request.items:
+        mr.items.append(MaterialRequestItemModel(
+            id=uuid.uuid4(),
+            material_code=it.material_code,
+            material_name=it.material_name,
+            quantity=it.quantity,
+            uom=it.uom
+        ))
+
+    await uow.commit()
+    return {"status": "success"}
+
+
 @router.get("/material-stock", response_model=List[MaterialStockResponse])
 async def list_material_stock(uow: UnitOfWork = Depends(get_uow)):
     try:
@@ -518,7 +546,7 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
             supplier_name=e_name,
             registered_company_name=getattr(entity, 'registered_company_name', None),
             vendor_type=getattr(entity, 'vendor_type', None),
-            category=getattr(entity, 'category', None),
+            category=getattr(entity, 'category', []) if isinstance(getattr(entity, 'category', None), list) else ([getattr(entity, 'category')] if getattr(entity, 'category', None) else []),
             industry=getattr(entity, 'industry', None),
             gstin=getattr(entity, 'gstin', None),
             main_materials=getattr(entity, 'main_materials', []) if isinstance(getattr(entity, 'main_materials', None), list) else [],
@@ -558,8 +586,11 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
                 for d in docs
             ],
             remarks=getattr(entity, 'remarks', None),
-            status=getattr(entity, 'status', 'Active'),
-            created_at=getattr(entity, 'created_at', None) or datetime.now(),
+            status=getattr(entity, 'status', "Active"),
+            created_at=getattr(entity, 'created_at', None),
+            created_by=getattr(entity, 'created_by', None),
+            updated_at=getattr(entity, 'updated_at', None),
+            updated_by=getattr(entity, 'updated_by', None),
         )
     except Exception as exc:
         logger.error(f"Mapping crash for supplier {getattr(entity, 'id', 'unknown')}: {exc}", exc_info=True)
@@ -610,6 +641,34 @@ async def upload_supplier_document(
     }
 
 
+@router.get("/suppliers/check-existence")
+async def check_supplier_existence(
+    company_name: Optional[str] = Query(None),
+    gstin: Optional[str] = Query(None),
+    email: Optional[str] = Query(None),
+    phone: Optional[str] = Query(None),
+    account_number: Optional[str] = Query(None),
+    swift: Optional[str] = Query(None),
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    repo = SqlAlchemySupplierRepository(uow.session)
+    results = {}
+    if company_name:
+        results["company_name"] = await repo.exists_by_company_name(company_name)
+    if gstin:
+        results["gstin"] = await repo.exists_by_gstin(gstin)
+    if email:
+        results["email"] = await repo.exists_by_email(email)
+    if phone:
+        results["phone"] = await repo.exists_by_phone(phone)
+    if account_number:
+        results["account_number"] = await repo.exists_by_bank_account(account_number)
+    if swift:
+        results["swift"] = await repo.exists_by_swift(swift)
+    return results
+
+
 @router.post("/suppliers", response_model=SupplierResponse, status_code=status.HTTP_201_CREATED)
 async def create_supplier(
     request: CreateSupplierRequest,
@@ -637,6 +696,7 @@ async def create_supplier(
         bank_info=bank_info_cmd,
         documents=doc_cmds,
         remarks=request.remarks,
+        created_by=_user.username,
     )
     supplier_id = await use_case.handle(command)
     entity = await repo.find_by_id(supplier_id)
@@ -669,7 +729,8 @@ async def list_suppliers(
                 )
             )
         if category:
-            stmt = stmt.where(SupplierModel.category == category)
+            from sqlalchemy import cast, String
+            stmt = stmt.where(cast(SupplierModel.category, String).ilike(f"%{category}%"))
         if material:
             from sqlalchemy import cast, String
             stmt = stmt.where(cast(SupplierModel.main_materials, String).ilike(f"%{material}%"))
@@ -748,6 +809,7 @@ async def update_supplier(
             contact=contact_cmd,
             bank_info=bank_info_cmd,
             remarks=request.remarks,
+            updated_by=_user.username,
         )
         await use_case.handle(command)
         await uow.commit()
@@ -926,14 +988,14 @@ async def _notify_suppliers_rfq(rfq_id: str):
             su_res = await session.execute(su_stmt)
             sup_user = su_res.scalar_one_or_none()
 
-            temp_password = None
+            # Always generate a new random password for every quotation as requested
+            temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
+            password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
+
             if not sup_user:
                 # Generate username: supplier_code or clean name
                 code = supplier.supplier_code or "".join(c for c in supplier.supplier_name if c.isalnum()).lower()[:10]
                 username = f"supplier_{code.lower()}"
-                # Generate secure temporary password
-                temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-                password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
 
                 sup_user = SupplierUserModel(
                     supplier_id=supplier.id,
@@ -944,11 +1006,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 session.add(sup_user)
             else:
                 username = sup_user.username
-                if sup_user.must_change_password:
-                    # If they haven't changed it yet, reset to a new temp password
-                    temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=8))
-                    password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
-                    sup_user.password_hash = password_hash
+                # Overwrite existing password with the new random one
+                sup_user.password_hash = password_hash
 
             email = None
             if supplier.contact and supplier.contact.primary_email:
@@ -962,7 +1021,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 for idx, item in enumerate(rfq.items):
                     materials_str += f"\nMaterial: {item.material_name}\nQuantity: {item.quantity} {item.uom}\nRequired Delivery: {item.required_delivery_date}\nWarehouse: {item.warehouse}\n"
 
-                pwd_info = temp_password if temp_password else "[Use your existing secure password]"
+                pwd_info = temp_password
                 login_link = f"http://localhost:8080/login?redirect=/submit-quotation?rfqId={rfq.id}"
 
                 body = (
@@ -1021,7 +1080,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
     try:
         rfq_uuid = uuid.UUID(rfq_id)
         supplier_id = request.supplier_id
-        supplier_uuid = uuid.UUID(supplier_id)
+        supplier_uuid = supplier_id
 
         stmt = select(RfqModel).options(selectinload(RfqModel.items)).where(RfqModel.id == rfq_uuid)
         res = await uow.session.execute(stmt)
@@ -2104,10 +2163,8 @@ async def create_asn(
         use_case = CreateAsnUseCase(repo, notification_repository=notif_repo)
 
         supplier_id = _user.raw_claims.get("supplier_id") if "SUPPLIER" in _user.roles else None
-        try:
-            supplier_id = str(uuid.UUID(str(supplier_id))) if supplier_id else None
-        except (ValueError, TypeError):
-            supplier_id = None
+        if supplier_id:
+            supplier_id = str(supplier_id)
 
         # Older local supplier tokens did not preserve UUIDs correctly. Resolve
         # the supplier through the referenced PO so the ASN still has ownership.
@@ -2276,7 +2333,7 @@ async def list_asns(
             )
         )
         if supplier_id:
-            stmt = stmt.where(resolved_supplier_id == uuid.UUID(supplier_id))
+            stmt = stmt.where(resolved_supplier_id == supplier_id)
 
         res = await uow.session.execute(stmt)
         rows = res.all()

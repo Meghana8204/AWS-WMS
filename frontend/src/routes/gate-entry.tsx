@@ -9,14 +9,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
 
-export const Route = createFileRoute("/gate-entry")({ component: GateEntry });
+export const Route = createFileRoute("/gate-entry")({
+  beforeLoad: () => requireRole("GATE_SECURITY"),
+  component: GateEntry
+});
 
 type GateEntryRecord = {
   id: string;
   gate_entry_number?: string;
   poNumber: string;
+  asnNumber?: string;
   vehiclePlate: string;
   driverName: string;
   status: string;
@@ -57,6 +62,7 @@ function GateEntry() {
   const [poPreview, setPoPreview] = useState<string | null>(null);
   const [vehiclePreview, setVehiclePreview] = useState<string | null>(null);
   const [poNumber, setPoNumber] = useState("");
+  const [asnReference, setAsnReference] = useState("");
   const [poVerificationStatus, setPoVerificationStatus] = useState<"PO_VERIFIED" | "UNSCHEDULED_ARRIVAL" | null>(null);
   const [supplierName, setSupplierName] = useState("");
   const [materialDescription, setMaterialDescription] = useState("");
@@ -319,6 +325,31 @@ function GateEntry() {
     }
   }
 
+  async function fetchAsnDetails(reference: string) {
+    if (!reference.trim()) return;
+    const toastId = toast.loading(`Loading ASN ${reference}...`);
+    try {
+      const asns = await api.getAsns();
+      const lookup = reference.trim().toUpperCase();
+      const shipment = asns.find((asn: any) =>
+        String(asn.id || "").toUpperCase() === lookup ||
+        String(asn.asnNumber || asn.asn_number || "").toUpperCase() === lookup
+      );
+      if (!shipment) throw new Error(`ASN ${reference} was not found`);
+      setAsnReference(shipment.asnNumber || shipment.asn_number || shipment.id);
+      setPoNumber(shipment.poNumber || shipment.po_number || "");
+      setSupplierName(shipment.supplierName || shipment.supplier_name || "");
+      setVehicleNumber(formatVehicleNumber(shipment.vehicleNumber || shipment.vehicle_number || ""));
+      setDriverName(shipment.driverName || shipment.driver_name || "Driver");
+      setDriverPhone(shipment.driverContact || shipment.driver_contact || "");
+      setDeliveryDate((shipment.expectedArrivalAt || shipment.expected_arrival_at || "").slice(0, 10));
+      applyLineItems(shipment.lines || shipment.items || []);
+      toast.success("ASN details loaded", { id: toastId, description: "PO, supplier, vehicle and shipment data remain sourced from the ASN." });
+    } catch (error) {
+      toast.error("Unable to load ASN", { id: toastId, description: error instanceof Error ? error.message : undefined });
+    }
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     // React does not guarantee that currentTarget remains available after an
@@ -332,9 +363,10 @@ function GateEntry() {
         });
     }
 
-    if (!poDocument) return toast.error("Scan or upload the purchase order document before creating the entry");
+    if (!asnReference.trim()) return toast.error("Enter the ASN reference before approving gate entry");
     const form = new FormData(formElement);
-    form.append("po_document", poDocument);
+    form.set("asn_reference", asnReference.trim());
+    if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
     setSubmitting(true);
     try {
@@ -356,7 +388,7 @@ function GateEntry() {
         vehicleNumber,
         verifiedAt: new Date().toISOString(),
       }));
-      toast.success("Gate entry created", { description: `${createdVehicle} was published to the live queue.` });
+      toast.success("Gate entry approved", { description: "The Warehouse Manager has been notified." });
 
       // Show the created pass card instead of auto-downloading
       setLastCreatedEntry({
@@ -370,7 +402,7 @@ function GateEntry() {
 
       formElement.reset();
       setPoDocument(null); setVehiclePhoto(null);
-      setPoNumber(""); setPoVerificationStatus(null); setSupplierName(""); setMaterialDescription(""); setTotalQuantity(""); setArrivalLineItems([]); setPoDate(""); setDeliveryDate(""); setVehicleNumber(""); setDriverName("Driver"); setLicenseNumber(""); setDriverPhone("");
+      setAsnReference(""); setPoNumber(""); setPoVerificationStatus(null); setSupplierName(""); setMaterialDescription(""); setTotalQuantity(""); setArrivalLineItems([]); setPoDate(""); setDeliveryDate(""); setVehicleNumber(""); setDriverName("Driver"); setLicenseNumber(""); setDriverPhone("");
       await loadEntries(true);
     } catch (error) { toast.error("Gate entry could not be created", { description: error instanceof Error ? error.message : undefined }); }
     finally { setSubmitting(false); }
@@ -389,7 +421,7 @@ function GateEntry() {
 
   return <AppShell
     title="Gate entry"
-    subtitle="Scan or upload images to automatically fill arrival and driver details with local OCR."
+    subtitle="Complete security approval from the existing ASN reference."
     actions={
       <div className="flex gap-2">
         <Button
@@ -412,9 +444,15 @@ function GateEntry() {
   >
     <div className="grid gap-4 xl:grid-cols-3">
       <form onSubmit={submit} className="space-y-4 xl:col-span-2">
-        <SectionCard title="Arrival scanning & upload" description="Capture from camera or upload an image—OCR/ANPR will process either" icon={ScanLine}>
+        <SectionCard title="ASN gate entry" description="Reference the submitted ASN; shipment data is not entered again" icon={ScanLine}>
+          <div className="mb-4 max-w-xl">
+            <Label htmlFor="asn_reference">ASN reference</Label>
+            <div className="relative">
+              <Input id="asn_reference" name="asn_reference" value={asnReference} onChange={(e) => setAsnReference(e.target.value)} onBlur={() => void fetchAsnDetails(asnReference)} placeholder="ASN-2026-0001" className={cn(inputClass, "pr-10")} required />
+              <button type="button" onClick={() => void fetchAsnDetails(asnReference)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary" title="Load ASN"><RefreshCw className="size-4" /></button>
+            </div>
+          </div>
           <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
-            <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Required"} kind="po" captured={!!poDocument} onOpen={() => setPoScannerOpen(true)} onUpload={(f) => void scanCapture("po", f)} />
             <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
           </div>
 
@@ -448,7 +486,7 @@ function GateEntry() {
           <p className="mt-4 text-xs text-muted-foreground"><ShieldCheck className="mr-1 inline size-3.5 text-primary" />Captured or uploaded images stay attached to the audited gate-entry record.</p>
         </SectionCard>
 
-        <SectionCard title="Auto-filled arrival details" description="Review values detected by OCR and ANPR before submission" icon={Truck}>
+        <SectionCard title="ASN shipment details" description="Read from the ASN and shown here for security verification" icon={Truck}>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="relative">
               <Label htmlFor="po_number">Purchase order number</Label>
@@ -536,7 +574,7 @@ function GateEntry() {
           </div>
         </SectionCard>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4"><p className="text-sm text-muted-foreground">Creating the entry publishes the verified arrival to the yard in real time.</p><Button type="submit" className="rounded-xl shadow-glow" disabled={submitting || !poDocument}>{submitting ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}{submitting ? "Creating entry…" : "Create gate entry"}</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4"><p className="text-sm text-muted-foreground">Approval sets GATE_ENTRY_APPROVED and notifies the Warehouse Manager.</p><Button type="submit" className="rounded-xl shadow-glow" disabled={submitting || !asnReference.trim()}>{submitting ? <Loader2 className="size-4 animate-spin" /> : <ClipboardCheck className="size-4" />}{submitting ? "Approving…" : "Approve gate entry"}</Button></div>
       </form>
 
       <SectionCard title="Live gate queue" description="Refreshes automatically every 2 seconds" icon={CheckCircle2}>
@@ -629,8 +667,8 @@ function GateEntry() {
             <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-success-soft text-success">
               <CheckCircle2 className="size-6" />
             </div>
-            <h3 className="text-xl font-bold tracking-tight">Gate Entry Created</h3>
-            <p className="text-sm text-muted-foreground">Vehicle is now in the live queue.</p>
+            <h3 className="text-xl font-bold tracking-tight">Gate Entry Approved</h3>
+            <p className="text-sm text-muted-foreground">Warehouse Manager notified.</p>
           </div>
 
           <div className="mt-8 space-y-4 rounded-2xl border border-dashed border-border bg-muted/30 p-5">

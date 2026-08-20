@@ -23,8 +23,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/supplier/asns/new")({
+  beforeLoad: () => requireRole("SUPPLIER"),
   component: NewAsn,
 });
 
