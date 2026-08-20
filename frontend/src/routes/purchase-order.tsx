@@ -15,7 +15,7 @@ import {
   User,
   Warehouse,
   CreditCard,
-  Send
+  Send,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
@@ -34,7 +34,10 @@ export const Route = createFileRoute("/purchase-order")({
   head: () => ({
     meta: [
       { title: "Purchase Order Details · NexusWMS" },
-      { name: "description", content: "Comprehensive Purchase Order details and supplier communication." },
+      {
+        name: "description",
+        content: "Comprehensive Purchase Order details and supplier communication.",
+      },
     ],
   }),
   validateSearch: (search: Record<string, unknown>): POSearch => {
@@ -74,9 +77,10 @@ function PurchaseOrder() {
     try {
       setSending(true);
       const result = await api.sendPoToSupplier(poId as string);
-      toast.success(result.resent
-        ? "Purchase Order resent to supplier successfully!"
-        : "Purchase Order sent to supplier successfully!");
+      toast.success(
+        result.message ||
+          (result.resent ? "Purchase Order resend queued." : "Purchase Order email queued."),
+      );
       fetchPo();
     } catch (e: any) {
       toast.error("Failed to send PO: " + e.message);
@@ -118,7 +122,11 @@ function PurchaseOrder() {
               onClick={handleSendToSupplier}
               disabled={sending}
             >
-              {sending ? <Loader2 className="size-4 animate-spin mr-2" /> : <Send className="size-4 mr-2" />}
+              {sending ? (
+                <Loader2 className="size-4 animate-spin mr-2" />
+              ) : (
+                <Send className="size-4 mr-2" />
+              )}
               Send to Supplier
             </Button>
           )}
@@ -129,7 +137,11 @@ function PurchaseOrder() {
               onClick={handleSendToSupplier}
               disabled={sending}
             >
-              {sending ? <Loader2 className="size-4 animate-spin mr-2" /> : <Send className="size-4 mr-2" />}
+              {sending ? (
+                <Loader2 className="size-4 animate-spin mr-2" />
+              ) : (
+                <Send className="size-4 mr-2" />
+              )}
               Resend to Supplier
             </Button>
           )}
@@ -149,7 +161,11 @@ function PurchaseOrder() {
               }
             }}
           >
-            {downloading ? <Loader2 className="size-4 animate-spin mr-2" /> : <Download className="size-4 mr-2" />}
+            {downloading ? (
+              <Loader2 className="size-4 animate-spin mr-2" />
+            ) : (
+              <Download className="size-4 mr-2" />
+            )}
             Download PDF
           </Button>
         </>
@@ -200,12 +216,21 @@ function PurchaseOrder() {
                     <tr key={idx} className="group hover:bg-muted/5 transition-colors">
                       <td className="py-4">
                         <p className="font-bold text-foreground">{l.materialName}</p>
-                        <p className="font-mono text-[10px] text-muted-foreground">{l.materialCode}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground">
+                          {l.materialCode}
+                        </p>
                       </td>
                       <td className="py-4 text-right tabular-nums">{Math.floor(l.quantity)}</td>
                       <td className="py-4 text-muted-foreground">{l.uom}</td>
-                      <td className="py-4 text-right tabular-nums">₹ {parseFloat(l.unitPrice).toLocaleString()}</td>
-                      <td className="py-4 text-right tabular-nums font-bold text-foreground">₹ {(Math.floor(parseFloat(l.quantity)) * parseFloat(l.unitPrice)).toLocaleString()}</td>
+                      <td className="py-4 text-right tabular-nums">
+                        ₹ {parseFloat(l.unitPrice).toLocaleString()}
+                      </td>
+                      <td className="py-4 text-right tabular-nums font-bold text-foreground">
+                        ₹{" "}
+                        {(
+                          Math.floor(parseFloat(l.quantity)) * parseFloat(l.unitPrice)
+                        ).toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -220,7 +245,9 @@ function PurchaseOrder() {
                 <SummaryRow label="Additional Charges" value={poData.additionalCharges} />
                 <div className="pt-3 border-t border-primary/20 flex items-center justify-between">
                   <span className="text-sm font-black text-foreground uppercase">Grand Total</span>
-                  <span className="text-xl font-black text-primary">₹ {parseFloat(poData.totalAmount).toLocaleString()}</span>
+                  <span className="text-xl font-black text-primary">
+                    ₹ {parseFloat(poData.totalAmount).toLocaleString()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -230,7 +257,10 @@ function PurchaseOrder() {
             <SectionCard title="Delivery Details" icon={Warehouse}>
               <div className="grid gap-3">
                 <Field label="Delivery Warehouse" value={poData.deliveryWarehouseName} />
-                <Field label="Expected Delivery" value={poData.expectedDeliveryDate || "As per schedule"} />
+                <Field
+                  label="Expected Delivery"
+                  value={poData.expectedDeliveryDate || "As per schedule"}
+                />
                 <Field label="Delivery Address" value={poData.deliveryAddress} />
               </div>
             </SectionCard>
@@ -259,8 +289,13 @@ function PurchaseOrder() {
               "{poData.rejectionReason}"
             </p>
             <div className="mt-4 p-3 bg-white/50 rounded-lg border border-destructive/10">
-              <p className="text-xs text-destructive font-bold uppercase tracking-tighter">Status: Permanent Rejection</p>
-              <p className="text-[11px] text-muted-foreground mt-1">This Purchase Order has been rejected by Finance and is permanently closed. It cannot be modified or resubmitted.</p>
+              <p className="text-xs text-destructive font-bold uppercase tracking-tighter">
+                Status: Permanent Rejection
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                This Purchase Order has been rejected by Finance and is permanently closed. It
+                cannot be modified or resubmitted.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -275,22 +310,40 @@ function PurchaseOrder() {
                   {idx < poData.history.length - 1 && (
                     <div className="absolute left-[15px] top-7 bottom-0 w-0.5 bg-border/40" />
                   )}
-                  <div className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-full border text-[10px] font-bold",
-                    (h.status === "APPROVED" || h.status === "Approved") ? "bg-success-soft text-success border-success/30" :
-                    (h.status === "REJECTED" || h.status === "Rejected" || h.status === "FINANCE_REJECTED") ? "bg-danger-soft text-destructive border-destructive/30" :
-                    (h.status === "SHIPPED" || h.status === "Shipped" || h.status === "IN_TRANSIT" || h.status === "ASN_SUBMITTED") ? "bg-teal-soft text-teal border-teal/30" :
-                    "bg-muted text-muted-foreground"
-                  )}>
+                  <div
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-full border text-[10px] font-bold",
+                      h.status === "APPROVED" || h.status === "Approved"
+                        ? "bg-success-soft text-success border-success/30"
+                        : h.status === "REJECTED" ||
+                            h.status === "Rejected" ||
+                            h.status === "FINANCE_REJECTED"
+                          ? "bg-danger-soft text-destructive border-destructive/30"
+                          : h.status === "SHIPPED" ||
+                              h.status === "Shipped" ||
+                              h.status === "IN_TRANSIT" ||
+                              h.status === "ASN_SUBMITTED"
+                            ? "bg-teal-soft text-teal border-teal/30"
+                            : "bg-muted text-muted-foreground",
+                    )}
+                  >
                     {idx + 1}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-bold">{h.status}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{new Date(h.created_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(h.created_at).toLocaleString()}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground font-medium italic">By {h.actor_name}</p>
-                    {h.comments && <p className="mt-1 text-xs text-foreground/70 bg-muted/30 p-2 rounded-lg">{h.comments}</p>}
+                    <p className="text-xs text-muted-foreground font-medium italic">
+                      By {h.actor_name}
+                    </p>
+                    {h.comments && (
+                      <p className="mt-1 text-xs text-foreground/70 bg-muted/30 p-2 rounded-lg">
+                        {h.comments}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}

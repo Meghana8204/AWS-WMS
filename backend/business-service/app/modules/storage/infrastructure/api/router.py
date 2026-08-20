@@ -1,4 +1,5 @@
 import datetime
+import json
 import uuid
 from decimal import Decimal
 
@@ -8,7 +9,7 @@ from sqlalchemy import select
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.procurement.infrastructure.persistence.models import MaterialStockModel
-from app.modules.storage.infrastructure.persistence.models import InventoryLocationBalanceModel, PutawayMovementModel, PutawayTaskModel, StorageLocationModel
+from app.modules.storage.infrastructure.persistence.models import HandlingUnitModel, InventoryLocationBalanceModel, PutawayMovementModel, PutawayTaskModel, StorageLocationModel
 from app.security.dependencies import require_permission
 
 router = APIRouter(prefix="/api/storage/putaway-tasks", tags=["storage"])
@@ -26,6 +27,7 @@ class PutawayConfirmationRequest(BaseModel):
 
 def task_response(task: PutawayTaskModel) -> dict:
     return {"id": str(task.id), "task_number": task.task_number, "grn_id": str(task.grn_id), "grn_number": task.grn_number,
+            "handling_unit_id": str(task.handling_unit_id) if task.handling_unit_id else None,
             "item_code": task.item_code, "material_name": task.material_name, "quantity": float(task.quantity), "uom": task.uom,
             "warehouse_id": task.warehouse_id, "source_location": task.source_location,
             "destination_location_id": str(task.destination_location_id) if task.destination_location_id else None,
@@ -35,6 +37,34 @@ def task_response(task: PutawayTaskModel) -> dict:
             "started_by": task.started_by, "started_at": task.started_at.isoformat() if task.started_at else None,
             "completed_by": task.completed_by, "completed_at": task.completed_at.isoformat() if task.completed_at else None,
             "status": task.status, "created_by": task.created_by, "created_at": task.created_at.isoformat()}
+
+
+def normalize_hu_scan(value: str) -> str:
+    scanned = value.strip()
+    if scanned.startswith("{"):
+        try:
+            payload = json.loads(scanned)
+            return str(payload.get("hu_number") or payload.get("barcode_value") or "").strip()
+        except (json.JSONDecodeError, AttributeError):
+            return scanned
+    for line in scanned.splitlines():
+        label, separator, candidate = line.partition(":")
+        if separator and label.strip().upper() in {"HU", "HANDLING UNIT", "HU NUMBER"}:
+            return candidate.strip()
+    return scanned
+
+
+def handling_unit_response(unit: HandlingUnitModel, task: PutawayTaskModel | None = None) -> dict:
+    return {
+        "id": str(unit.id), "hu_number": unit.hu_number, "barcode_value": unit.barcode_value,
+        "item_code": unit.item_code, "material_name": unit.material_name, "quantity": float(unit.quantity),
+        "uom": unit.uom, "batch_number": unit.batch_number, "supplier_name": unit.supplier_name,
+        "po_number": unit.po_number, "asn_number": unit.asn_number, "grn_number": unit.grn_number,
+        "warehouse_id": unit.warehouse_id, "current_location": unit.current_location, "status": unit.status,
+        "putaway_task_id": str(task.id) if task else None, "putaway_task_number": task.task_number if task else None,
+        "destination_location_id": str(task.destination_location_id) if task and task.destination_location_id else None,
+        "destination": f"{task.warehouse_id} / {task.destination_zone} / {task.destination_rack} / {task.destination_bin}" if task and task.destination_bin else None,
+    }
 
 
 @router.get("")
@@ -81,6 +111,23 @@ async def list_inventory_location_balances(
              "last_putaway_task_id": str(balance.last_putaway_task_id), "last_grn_number": balance.last_grn_number,
              "updated_at": balance.updated_at.isoformat()}
             for balance, location in result.all()]
+
+
+@router.get("/handling-units/{scan_value}")
+async def get_handling_unit(
+    scan_value: str,
+    _user=Depends(require_permission("gate:read")),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    normalized = normalize_hu_scan(scan_value)
+    result = await uow.session.execute(select(HandlingUnitModel).where(
+        (HandlingUnitModel.hu_number == normalized) | (HandlingUnitModel.barcode_value == normalized)
+    ))
+    unit = result.scalar_one_or_none()
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Handling unit was not found")
+    task_result = await uow.session.execute(select(PutawayTaskModel).where(PutawayTaskModel.handling_unit_id == unit.id))
+    return handling_unit_response(unit, task_result.scalar_one_or_none())
 
 
 @router.put("/{task_id}/location")
@@ -146,8 +193,14 @@ async def complete_putaway(
         raise HTTPException(status_code=404, detail="Putaway task not found")
     if task.status != "PUTAWAY_IN_PROGRESS":
         raise HTTPException(status_code=409, detail="Putaway task must be in progress")
-    if request.material_scan.strip().upper() != task.item_code.strip().upper():
-        raise HTTPException(status_code=422, detail="Scanned material does not match the putaway task")
+    scanned_hu = normalize_hu_scan(request.material_scan)
+    hu_result = await uow.session.execute(select(HandlingUnitModel).where(
+        HandlingUnitModel.id == task.handling_unit_id,
+        (HandlingUnitModel.hu_number == scanned_hu) | (HandlingUnitModel.barcode_value == scanned_hu),
+    ).with_for_update())
+    handling_unit = hu_result.scalar_one_or_none()
+    if handling_unit is None:
+        raise HTTPException(status_code=422, detail="Scanned handling unit does not match the putaway task")
     location_result = await uow.session.execute(select(StorageLocationModel).where(StorageLocationModel.id == task.destination_location_id).with_for_update())
     location = location_result.scalar_one_or_none()
     if location is None or not location.active:
@@ -192,6 +245,9 @@ async def complete_putaway(
     task.status = "PUTAWAY_COMPLETED"
     task.completed_by = user.username
     task.completed_at = completed_at
+    handling_unit.current_location = location.location_code
+    handling_unit.status = "STORED"
+    handling_unit.updated_at = completed_at
     uow.session.add(PutawayMovementModel(
         putaway_task_id=task.id, material_scan=request.material_scan.strip(), location_scan=request.location_scan.strip(),
         confirmed_quantity=request.quantity, uom=task.uom,
