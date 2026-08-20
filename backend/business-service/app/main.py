@@ -397,6 +397,169 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_size DROP NOT NULL")
             logger.debug("Ensured extended columns exist and are nullable on supplier_document")
         except Exception: pass
+
+        # Create or ensure complete columns on gate_entry
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS gate_entry (
+                    id UUID PRIMARY KEY,
+                    gate_entry_number VARCHAR(64) UNIQUE,
+                    po_id UUID,
+                    asn_id UUID,
+                    assigned_dock_id VARCHAR(32),
+                    po_number VARCHAR(64) NOT NULL,
+                    vehicle_number VARCHAR(32) NOT NULL,
+                    driver_name VARCHAR(128) NOT NULL DEFAULT 'Driver',
+                    driver_license_number VARCHAR(64),
+                    driver_phone VARCHAR(32),
+                    driver_photo_path VARCHAR(256),
+                    po_document_path VARCHAR(256) NOT NULL DEFAULT '',
+                    vehicle_photo_path VARCHAR(256),
+                    po_document_data BYTEA,
+                    vehicle_photo_data BYTEA,
+                    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_VERIFICATION',
+                    verification_type VARCHAR(32),
+                    mismatched_fields JSONB,
+                    reasons JSONB,
+                    anpr_detected_vehicle VARCHAR(32),
+                    anpr_confidence NUMERIC(5, 4),
+                    anpr_metadata JSONB,
+                    ocr_po_number VARCHAR(64),
+                    ocr_supplier_name VARCHAR(128),
+                    ocr_product_material VARCHAR(128),
+                    ocr_quantity NUMERIC(18, 4),
+                    ocr_po_date VARCHAR(32),
+                    ocr_expected_delivery_date VARCHAR(32),
+                    ocr_confidence NUMERIC(5, 4),
+                    ocr_raw_text TEXT,
+                    ocr_line_items JSONB,
+                    security_officer_id VARCHAR(64) NOT NULL DEFAULT 'SECURITY',
+                    verified_by_user_id VARCHAR(64),
+                    manual_verification_notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception: pass
+
+        for col, col_type in [
+            ("gate_entry_number", "VARCHAR(64)"),
+            ("po_id", "UUID"),
+            ("asn_id", "UUID"),
+            ("assigned_dock_id", "VARCHAR(32)"),
+            ("driver_license_number", "VARCHAR(64)"),
+            ("driver_phone", "VARCHAR(32)"),
+            ("driver_photo_path", "VARCHAR(256)"),
+            ("po_document_path", "VARCHAR(256) DEFAULT ''"),
+            ("vehicle_photo_path", "VARCHAR(256)"),
+            ("po_document_data", "BYTEA"),
+            ("vehicle_photo_data", "BYTEA"),
+            ("verification_type", "VARCHAR(32)"),
+            ("mismatched_fields", "JSONB"),
+            ("reasons", "JSONB"),
+            ("anpr_detected_vehicle", "VARCHAR(32)"),
+            ("anpr_confidence", "NUMERIC(5, 4)"),
+            ("anpr_metadata", "JSONB"),
+            ("ocr_po_number", "VARCHAR(64)"),
+            ("ocr_supplier_name", "VARCHAR(128)"),
+            ("ocr_product_material", "VARCHAR(128)"),
+            ("ocr_quantity", "NUMERIC(18, 4)"),
+            ("ocr_po_date", "VARCHAR(32)"),
+            ("ocr_expected_delivery_date", "VARCHAR(32)"),
+            ("ocr_confidence", "NUMERIC(5, 4)"),
+            ("ocr_raw_text", "TEXT"),
+            ("ocr_line_items", "JSONB"),
+            ("security_officer_id", "VARCHAR(64) DEFAULT 'SECURITY'"),
+            ("verified_by_user_id", "VARCHAR(64)"),
+            ("manual_verification_notes", "TEXT"),
+            ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE gate_entry ADD COLUMN IF NOT EXISTS {col} {col_type}")
+            except Exception: pass
+
+        # Create warehouse workflow tables if not exist
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS warehouse_dock (
+                    id UUID PRIMARY KEY,
+                    dock_number VARCHAR(32) UNIQUE NOT NULL,
+                    warehouse_id VARCHAR(64) NOT NULL,
+                    dock_type VARCHAR(64) NOT NULL,
+                    capacity INTEGER NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception: pass
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS inventory_receipt_posting (
+                    id UUID PRIMARY KEY,
+                    grn_id UUID NOT NULL,
+                    grn_number VARCHAR(64),
+                    po_id UUID,
+                    po_number VARCHAR(64),
+                    asn_id UUID,
+                    asn_number VARCHAR(64),
+                    supplier_name VARCHAR(256),
+                    item_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(256),
+                    uom VARCHAR(32),
+                    warehouse_id VARCHAR(64),
+                    posted_quantity NUMERIC(18, 4) NOT NULL,
+                    on_hand_before NUMERIC(18, 4) NOT NULL,
+                    on_hand_after NUMERIC(18, 4) NOT NULL,
+                    posted_by VARCHAR(128) NOT NULL,
+                    posted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception: pass
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS storage_location (
+                    id UUID PRIMARY KEY,
+                    warehouse_id VARCHAR(64) NOT NULL,
+                    zone VARCHAR(32) NOT NULL,
+                    rack VARCHAR(32) NOT NULL,
+                    bin VARCHAR(32) NOT NULL,
+                    capacity NUMERIC(18, 4) NOT NULL DEFAULT 1000,
+                    occupied_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception: pass
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS putaway_task (
+                    id UUID PRIMARY KEY,
+                    task_number VARCHAR(64) UNIQUE NOT NULL,
+                    grn_id UUID,
+                    grn_number VARCHAR(64),
+                    item_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(256),
+                    quantity NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32),
+                    warehouse_id VARCHAR(64),
+                    source_location VARCHAR(64),
+                    destination_location_id UUID,
+                    destination_zone VARCHAR(32),
+                    destination_rack VARCHAR(32),
+                    destination_bin VARCHAR(32),
+                    location_assigned_by VARCHAR(128),
+                    location_assigned_at TIMESTAMP WITH TIME ZONE,
+                    status VARCHAR(32) NOT NULL DEFAULT 'PUTAWAY_PENDING',
+                    created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        except Exception: pass
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 
