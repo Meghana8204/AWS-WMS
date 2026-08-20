@@ -82,8 +82,167 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         return self._to_aggregate(entity)
 
     async def list_all(self) -> List[Supplier]:
-        result = await self._session.execute(select(SupplierModel))
+        result = await self._session.execute(
+            select(SupplierModel).options(
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            )
+        )
         return [self._to_aggregate(e) for e in result.scalars().all()]
+
+    async def exists_by_gstin(self, gstin: str, exclude_id: Optional[str] = None) -> bool:
+        if not gstin:
+            return False
+        stmt = select(func.count(SupplierModel.id)).where(func.upper(SupplierModel.gstin) == gstin.upper())
+        if exclude_id:
+            stmt = stmt.where(SupplierModel.id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
+
+    async def exists_by_company_name(self, name: str, exclude_id: Optional[str] = None) -> bool:
+        if not name:
+            return False
+        stmt = select(func.count(SupplierModel.id)).where(func.upper(SupplierModel.registered_company_name) == name.upper())
+        if exclude_id:
+            stmt = stmt.where(SupplierModel.id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
+
+    async def get_next_sequence(self) -> int:
+        stmt = select(func.count(SupplierModel.id))
+        result = await self._session.execute(stmt)
+        return (result.scalar() or 0) + 1
+
+    async def save(self, supplier: Supplier) -> None:
+        model = await self._session.get(
+            SupplierModel,
+            supplier.id.value,
+            options=[
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            ]
+        )
+        if not model:
+            model = SupplierModel(id=supplier.id.value)
+            self._session.add(model)
+
+        model.supplier_name = supplier.supplier_name
+        model.registered_company_name = supplier.registered_company_name
+        model.vendor_type = supplier.vendor_type
+        model.category = supplier.category
+        model.industry = supplier.industry
+        model.gstin = supplier.gstin
+        model.supplier_code = supplier.supplier_code
+        model.main_materials = supplier.main_materials
+        model.rating = Decimal(str(supplier.rating))
+        model.performance_score = Decimal(str(supplier.performance_score))
+        model.remarks = supplier.remarks
+        model.status = supplier.status
+        model.created_by = supplier.created_by
+        model.created_at = supplier.created_at
+        model.updated_by = supplier.updated_by
+        model.updated_at = supplier.updated_at
+
+        # Address
+        if supplier.address:
+            if not model.address:
+                model.address = SupplierAddressModel(supplier_id=supplier.id.value)
+            model.address.registered_address = supplier.address.registered_address
+            model.address.city = supplier.address.city
+            model.address.country = supplier.address.country
+            model.address.state = supplier.address.state
+            model.address.pincode = supplier.address.pincode
+        elif model.address:
+            await self._session.delete(model.address)
+
+        # Contact
+        if supplier.contact:
+            if not model.contact:
+                model.contact = SupplierContactModel(supplier_id=supplier.id.value)
+            model.contact.primary_contact_name = supplier.contact.primary_contact_name
+            model.contact.primary_email = supplier.contact.primary_email
+            model.contact.secondary_email = supplier.contact.secondary_email
+            model.contact.designation = supplier.contact.designation
+            model.contact.phone = supplier.contact.phone
+            model.contact.website = supplier.contact.website
+        elif model.contact:
+            await self._session.delete(model.contact)
+
+        # Bank Info
+        if supplier.bank_info:
+            if not model.bank_info:
+                model.bank_info = SupplierBankInfoModel(supplier_id=supplier.id.value)
+            model.bank_info.bank_name = supplier.bank_info.bank_name
+            model.bank_info.account_number = supplier.bank_info.account_number
+            model.bank_info.account_holder_name = supplier.bank_info.account_holder_name
+            model.bank_info.ifsc = supplier.bank_info.ifsc
+            model.bank_info.branch = supplier.bank_info.branch
+            model.bank_info.swift_bic = supplier.bank_info.swift_bic
+            model.bank_info.tds_section = supplier.bank_info.tds_section
+        elif model.bank_info:
+            await self._session.delete(model.bank_info)
+
+        # Documents
+        await self._session.execute(delete(SupplierDocumentModel).where(SupplierDocumentModel.supplier_id == model.id))
+        for doc in supplier.documents:
+            model.documents.append(
+                SupplierDocumentModel(
+                    supplier_id=model.id,
+                    document_type=doc.document_type,
+                    file_name=doc.file_name,
+                    file_type=doc.file_type,
+                    file_size=doc.file_size,
+                    storage_path=doc.storage_path,
+                    upload_id=doc.upload_id
+                )
+            )
+
+        # Write outbox domain events
+        for event in supplier.domain_events:
+            self._session.add(to_outbox_row("Supplier", str(supplier.id.value), event))
+        supplier.clear_events()
+
+        await self._session.flush()
+
+    async def exists_by_email(self, email: str, exclude_id: Optional[str] = None) -> bool:
+        if not email:
+            return False
+        stmt = select(func.count(SupplierContactModel.id)).where(func.upper(SupplierContactModel.primary_email) == email.upper())
+        if exclude_id:
+            stmt = stmt.where(SupplierContactModel.supplier_id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
+
+    async def exists_by_phone(self, phone: str, exclude_id: Optional[str] = None) -> bool:
+        if not phone:
+            return False
+        stmt = select(func.count(SupplierContactModel.id)).where(SupplierContactModel.phone == phone)
+        if exclude_id:
+            stmt = stmt.where(SupplierContactModel.supplier_id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
+
+    async def exists_by_bank_account(self, account_number: str, exclude_id: Optional[str] = None) -> bool:
+        if not account_number:
+            return False
+        stmt = select(func.count(SupplierBankInfoModel.id)).where(SupplierBankInfoModel.account_number == account_number)
+        if exclude_id:
+            stmt = stmt.where(SupplierBankInfoModel.supplier_id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
+
+    async def exists_by_swift(self, swift: str, exclude_id: Optional[str] = None) -> bool:
+        if not swift:
+            return False
+        stmt = select(func.count(SupplierBankInfoModel.id)).where(func.upper(SupplierBankInfoModel.swift_bic) == swift.upper())
+        if exclude_id:
+            stmt = stmt.where(SupplierBankInfoModel.supplier_id != exclude_id)
+        res = await self._session.execute(stmt)
+        return (res.scalar() or 0) > 0
 
     def _to_aggregate(self, entity: SupplierModel) -> Supplier:
         address = None
@@ -136,11 +295,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             supplier_name=entity.supplier_name,
             registered_company_name=entity.registered_company_name,
             vendor_type=entity.vendor_type,
-            category=entity.category,
+            category=entity.category or [],
             industry=entity.industry,
             gstin=entity.gstin,
             supplier_code=entity.supplier_code,
-            main_materials=entity.main_materials,
+            main_materials=entity.main_materials or [],
             rating=float(entity.rating) if entity.rating else 0.0,
             performance_score=float(entity.performance_score) if entity.performance_score else 0.0,
             address=address,
@@ -148,88 +307,12 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             bank_info=bank_info,
             documents=documents,
             remarks=entity.remarks,
-            status=entity.status
+            status=entity.status,
+            created_by=entity.created_by,
+            created_at=entity.created_at,
+            updated_by=entity.updated_by,
+            updated_at=entity.updated_at
         )
-
-    async def save(self, supplier: Supplier) -> None:
-        model = await self._session.get(
-            SupplierModel,
-            supplier.id.value,
-            options=[
-                selectinload(SupplierModel.address),
-                selectinload(SupplierModel.contact),
-                selectinload(SupplierModel.bank_info),
-                selectinload(SupplierModel.documents),
-            ]
-        )
-        if not model:
-            model = SupplierModel(id=supplier.id.value)
-            self._session.add(model)
-
-        model.supplier_name = supplier.supplier_name
-        model.registered_company_name = supplier.registered_company_name
-        model.vendor_type = supplier.vendor_type
-        model.category = supplier.category
-        model.industry = supplier.industry
-        model.gstin = supplier.gstin
-        model.supplier_code = supplier.supplier_code
-        model.main_materials = supplier.main_materials
-        model.remarks = supplier.remarks
-        model.status = supplier.status
-
-        # Address
-        if supplier.address:
-            if not model.address:
-                model.address = SupplierAddressModel(supplier_id=supplier.id.value)
-            model.address.registered_address = supplier.address.registered_address
-            model.address.city = supplier.address.city
-            model.address.country = supplier.address.country
-            model.address.state = supplier.address.state
-            model.address.pincode = supplier.address.pincode
-
-        # Contact
-        if supplier.contact:
-            if not model.contact:
-                model.contact = SupplierContactModel(supplier_id=supplier.id.value)
-            model.contact.primary_contact_name = supplier.contact.primary_contact_name
-            model.contact.primary_email = supplier.contact.primary_email
-            model.contact.secondary_email = supplier.contact.secondary_email
-            model.contact.designation = supplier.contact.designation
-            model.contact.phone = supplier.contact.phone
-            model.contact.website = supplier.contact.website
-
-        # Bank Info
-        if supplier.bank_info:
-            if not model.bank_info:
-                model.bank_info = SupplierBankInfoModel(supplier_id=supplier.id.value)
-            model.bank_info.bank_name = supplier.bank_info.bank_name
-            model.bank_info.account_number = supplier.bank_info.account_number
-            model.bank_info.account_holder_name = supplier.bank_info.account_holder_name
-            model.bank_info.ifsc = supplier.bank_info.ifsc
-            model.bank_info.branch = supplier.bank_info.branch
-            model.bank_info.swift_bic = supplier.bank_info.swift_bic
-            model.bank_info.tds_section = supplier.bank_info.tds_section
-
-        # Documents
-        model.documents = [
-            SupplierDocumentModel(
-                supplier_id=supplier.id.value,
-                document_type=doc.document_type,
-                file_name=doc.file_name,
-                file_type=doc.file_type,
-                file_size=doc.file_size,
-                storage_path=doc.storage_path,
-                upload_id=doc.upload_id
-            )
-            for doc in supplier.documents
-        ]
-
-        # Write outbox domain events
-        for event in supplier.domain_events:
-            self._session.add(to_outbox_row("Supplier", str(supplier.id.value), event))
-        supplier.clear_events()
-
-        await self._session.flush()
 
 
 class SqlAlchemyRfqRepository(RfqRepository):
@@ -512,10 +595,7 @@ class SqlAlchemyAsnRepository(AsnRepository):
         model.package_type = asn.package_type
         model.shipping_method = asn.shipping_method
         if asn.supplier_id:
-            try:
-                model.supplier_id = uuid.UUID(asn.supplier_id)
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid supplier_id UUID format: {asn.supplier_id}")
+            model.supplier_id = asn.supplier_id
 
         # Sync lines
         model.lines = [
@@ -623,7 +703,7 @@ class SqlAlchemyAsnRepository(AsnRepository):
             selectinload(AsnModel.documents),
         )
         if supplier_id:
-            stmt = stmt.where(AsnModel.supplier_id == uuid.UUID(supplier_id))
+            stmt = stmt.where(AsnModel.supplier_id == supplier_id)
         res = await self._session.execute(stmt)
         return [self._to_aggregate(m) for m in res.scalars().all()]
 

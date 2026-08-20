@@ -41,6 +41,9 @@ class GateEntry(AggregateRoot):
         gate_entry_number: Optional[str] = None,
         po_id: Optional[str] = None,
         po_number: Optional[str] = None,
+        asn_id: Optional[str] = None,
+        asn_number: Optional[str] = None,
+        assigned_dock_id: Optional[str] = None,
         truck_photo_base64: Optional[str] = None,
         ocr_result: Optional[OcrResult] = None,
         mismatched_fields: Optional[List[FieldMismatch]] = None,
@@ -57,6 +60,9 @@ class GateEntry(AggregateRoot):
         self.driver_name = driver_name
         self.po_id = po_id
         self.po_number = po_number
+        self.asn_id = asn_id
+        self.asn_number = asn_number
+        self.assigned_dock_id = assigned_dock_id
         self.truck_photo_base64 = truck_photo_base64
         self.status = status
         self.ocr_result = ocr_result
@@ -72,6 +78,8 @@ class GateEntry(AggregateRoot):
         driver_name: Optional[str] = "Driver",
         po_number: Optional[str] = None,
         po_id: Optional[str] = None,
+        asn_id: Optional[str] = None,
+        asn_number: Optional[str] = None,
         truck_photo_base64: Optional[str] = None,
         ocr_result: Optional[OcrResult] = None,
         status: GateEntryStatus = GateEntryStatus.UNSCHEDULED_ARRIVAL,
@@ -89,6 +97,8 @@ class GateEntry(AggregateRoot):
             status=status,
             created_by=created_by,
             po_id=po_id,
+            asn_id=asn_id,
+            asn_number=asn_number,
             po_number=po_number,
             truck_photo_base64=truck_photo_base64,
             ocr_result=ocr_result,
@@ -122,13 +132,76 @@ class GateEntry(AggregateRoot):
 
     def approve(self, supervisor_id: str, remarks: Optional[str] = None) -> None:
         """Manual supervisor approval for manual verification / field mismatches / unscheduled arrivals."""
-        if self.status in (GateEntryStatus.APPROVED, GateEntryStatus.REJECTED):
+        if self.status in (GateEntryStatus.APPROVED, GateEntryStatus.GATE_ENTRY_APPROVED, GateEntryStatus.REJECTED):
             raise DomainRuleViolationException(f"Gate entry is already in terminal status: {self.status}")
 
         self.status = GateEntryStatus.APPROVED
         self.verified_by = supervisor_id
         self.updated_at = datetime.now(timezone.utc)
         self._emit_ready_event()
+
+    def approve_gate_entry(self, security_officer_id: str) -> None:
+        if not self.asn_id or not self.asn_number:
+            raise DomainRuleViolationException("An ASN reference is required to approve gate entry")
+        self.status = GateEntryStatus.GATE_ENTRY_APPROVED
+        self.verified_by = security_officer_id
+        self.updated_at = datetime.now(timezone.utc)
+        self._emit_ready_event()
+
+    def move_to_inbound_queue(self) -> None:
+        if self.status != GateEntryStatus.GATE_ENTRY_APPROVED:
+            raise DomainRuleViolationException("Gate entry must be approved before awaiting a dock")
+        self.status = GateEntryStatus.AWAITING_DOCK
+        self.updated_at = datetime.now(timezone.utc)
+
+    def assign_dock(self, dock_id: str) -> None:
+        if self.status != GateEntryStatus.AWAITING_DOCK:
+            raise DomainRuleViolationException("Only an arrival awaiting a dock can be assigned")
+        if not dock_id or not dock_id.strip():
+            raise DomainRuleViolationException("Dock id is required")
+        self.assigned_dock_id = dock_id.strip().upper()
+        self.status = GateEntryStatus.DOCK_ASSIGNED
+        self.updated_at = datetime.now(timezone.utc)
+
+    def start_moving_to_dock(self) -> None:
+        if self.status != GateEntryStatus.DOCK_ASSIGNED:
+            raise DomainRuleViolationException("Vehicle movement requires an assigned dock")
+        if not self.assigned_dock_id:
+            raise DomainRuleViolationException("Assigned dock is missing")
+        self.status = GateEntryStatus.MOVING_TO_DOCK
+        self.updated_at = datetime.now(timezone.utc)
+
+    def check_in_at_dock(self) -> None:
+        if self.status != GateEntryStatus.MOVING_TO_DOCK:
+            raise DomainRuleViolationException("Vehicle must be moving to the dock before check-in")
+        if not self.assigned_dock_id:
+            raise DomainRuleViolationException("Assigned dock is missing")
+        self.status = GateEntryStatus.AT_DOCK
+        self.updated_at = datetime.now(timezone.utc)
+
+    def start_unloading(self) -> None:
+        if self.status != GateEntryStatus.AT_DOCK:
+            raise DomainRuleViolationException("Vehicle must be checked in at the dock before unloading")
+        self.status = GateEntryStatus.UNLOADING_IN_PROGRESS
+        self.updated_at = datetime.now(timezone.utc)
+
+    def require_quality_inspection(self) -> None:
+        if self.status != GateEntryStatus.UNLOADING_IN_PROGRESS:
+            raise DomainRuleViolationException("Quality inspection can only start during receiving")
+        self.status = GateEntryStatus.QUALITY_INSPECTION_REQUIRED
+        self.updated_at = datetime.now(timezone.utc)
+
+    def complete_quality_inspection(self, passed: bool) -> None:
+        if self.status != GateEntryStatus.QUALITY_INSPECTION_REQUIRED:
+            raise DomainRuleViolationException("Shipment is not awaiting quality inspection")
+        self.status = GateEntryStatus.QUALITY_PASSED if passed else GateEntryStatus.QUALITY_FAILED
+        self.updated_at = datetime.now(timezone.utc)
+
+    def complete_receiving(self) -> None:
+        if self.status not in (GateEntryStatus.UNLOADING_IN_PROGRESS, GateEntryStatus.QUALITY_PASSED):
+            raise DomainRuleViolationException("Receiving completion requires verified items and any required quality inspection to pass")
+        self.status = GateEntryStatus.RECEIVING_COMPLETED
+        self.updated_at = datetime.now(timezone.utc)
 
     def reject(self, supervisor_id: str, reason: str) -> None:
         """Reject gate entry attempt."""
@@ -174,6 +247,9 @@ class GateEntry(AggregateRoot):
         driver_name: Optional[str] = "Driver",
         po_id: Optional[str] = None,
         po_number: Optional[str] = None,
+        asn_id: Optional[str] = None,
+        asn_number: Optional[str] = None,
+        assigned_dock_id: Optional[str] = None,
         truck_photo_base64: Optional[str] = None,
         ocr_result: Optional[OcrResult] = None,
         mismatched_fields: Optional[List[FieldMismatch]] = None,
@@ -191,6 +267,9 @@ class GateEntry(AggregateRoot):
             driver_name=driver_name,
             po_id=po_id,
             po_number=po_number,
+            asn_id=asn_id,
+            asn_number=asn_number,
+            assigned_dock_id=assigned_dock_id,
             truck_photo_base64=truck_photo_base64,
             ocr_result=ocr_result,
             mismatched_fields=mismatched_fields,

@@ -12,6 +12,8 @@ import { Toaster } from "@/components/ui/sonner";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { isAuthenticated } from "../lib/auth-utils";
+import { redirect } from "@tanstack/react-router";
 
 function NotFoundComponent() {
   return (
@@ -92,6 +94,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
   }),
+  beforeLoad: ({ location }) => {
+    // List of routes that don't require authentication
+    const publicRoutes = ["/login"];
+
+    if (!publicRoutes.includes(location.pathname) && !isAuthenticated()) {
+      throw redirect({
+        to: "/login",
+        search: {
+          redirect: location.pathname,
+        },
+      });
+    }
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
@@ -114,18 +129,6 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const router = useRouter();
-
-  useEffect(() => {
-    // Protected Route Guard - Client Side Only
-    const userInfo = localStorage.getItem("user_info");
-    const path = router.state.location.pathname;
-    const isPublicRoute = path === "/login";
-
-    if (!userInfo && !isPublicRoute) {
-      router.navigate({ to: "/login" });
-    }
-  }, [router.state.location.pathname, router]);
 
   return (
     <QueryClientProvider client={queryClient}>

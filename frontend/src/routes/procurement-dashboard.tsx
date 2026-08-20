@@ -26,8 +26,10 @@ import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/procurement-dashboard")({
+  beforeLoad: () => requireRole("PROCUREMENT"),
   head: () => ({
     meta: [
       { title: "Procurement Dashboard · NexusWMS" },
