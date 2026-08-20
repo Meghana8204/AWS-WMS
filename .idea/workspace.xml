@@ -4,7 +4,26 @@
     <option name="autoReloadType" value="NONE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0cc91df2-f405-48eb-a795-04ee4a857c7f" name="Changes" comment="" />
+    <list default="true" id="0cc91df2-f405-48eb-a795-04ee4a857c7f" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/app/modules/gate/infrastructure/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/app/modules/gate/infrastructure/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/app/modules/procurement/infrastructure/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/app/modules/procurement/infrastructure/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/app/modules/storage/infrastructure/api/router.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/app/modules/storage/infrastructure/api/router.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/app/modules/storage/infrastructure/persistence/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/app/modules/storage/infrastructure/persistence/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/media_uploads/emails/po_issued_PO-2026-0002.html" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/media_uploads/emails/po_issued_PO-2026-0002.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/media_uploads/emails/rfq_RFQ-2026-0002_supplier_abcindustr.html" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/media_uploads/emails/rfq_RFQ-2026-0002_supplier_abcindustr.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/backend/business-service/media_uploads/smtp_debug.txt" beforeDir="false" afterPath="$PROJECT_DIR$/backend/business-service/media_uploads/smtp_debug.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package-lock.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/lib/api-client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/lib/api-client.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/lib/auth-utils.ts" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/lib/auth-utils.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/__root.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/__root.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/login.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/login.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/purchase-order.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/purchase-order.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/putaway-tasks.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/putaway-tasks.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/routes/receiving.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/routes/receiving.tsx" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

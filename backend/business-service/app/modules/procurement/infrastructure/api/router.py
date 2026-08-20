@@ -5,6 +5,7 @@ Purchase Order module has been removed.
 from __future__ import annotations
 
 import os
+import asyncio
 import uuid
 from io import BytesIO
 from datetime import date, datetime
@@ -927,6 +928,7 @@ async def create_rfq(
 @router.post("/rfqs/{id}/send")
 async def send_rfq_endpoint(
     id: str,
+    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow)
 ):
     repo = SqlAlchemyRfqRepository(uow.session)
@@ -942,6 +944,7 @@ async def send_rfq_endpoint(
         elif rfq.status != "OPEN":
             raise HTTPException(status_code=409, detail=f"Cannot send RFQ in status: {rfq.status}")
 
+<<<<<<< HEAD
         delivery = await _notify_suppliers_rfq(id)
         
         if delivery.get("failed", 0) > 0 and delivery.get("sent", 0) == 0:
@@ -955,6 +958,13 @@ async def send_rfq_endpoint(
             "status": "success",
             "message": message,
             "delivery": delivery,
+=======
+        background_tasks.add_task(_notify_suppliers_rfq, id)
+        return {
+            "status": "queued",
+            "message": "RFQ published. Supplier emails are being delivered in the background.",
+            "delivery": {"status": "queued"},
+>>>>>>> origin/main
         }
     except HTTPException:
         raise
@@ -966,7 +976,7 @@ async def send_rfq_endpoint(
 
 
 async def _notify_suppliers_rfq(rfq_id: str):
-    """Background task to send real-time emails to invited suppliers."""
+    """Persist supplier access, then deliver all supplier emails concurrently."""
     from app.database.session import session_scope
     import random
     import string
@@ -976,6 +986,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
     sent = 0
     failed = 0
     total = 0
+    deliveries = []
     async with session_scope() as session:
         # Fetch RFQ with suppliers and their contact info
         stmt = (
@@ -1074,6 +1085,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 except Exception as file_err:
                     logger.error(f"Failed to write mock email file: {file_err}")
 
+<<<<<<< HEAD
                 try:
                     dispatched = await send_email(email, subject, body, html_body)
                     if dispatched:
@@ -1084,11 +1096,41 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 except Exception as e:
                     logger.error(f"Failed to send email to {email}: {e}")
                     failed += 1
+=======
+                deliveries.append((email, subject, body, html_body))
+>>>>>>> origin/main
             else:
                 logger.warning(f"No primary email configured for supplier {supplier.id}")
                 failed += 1
 
+        # Credentials must be durable before any supplier can receive them.
+        await session.commit()
+        results = await asyncio.gather(
+            *(send_email(email, subject, body, html_body) for email, subject, body, html_body in deliveries),
+            return_exceptions=True,
+        )
+        for delivery, result in zip(deliveries, results):
+            email = delivery[0]
+            if isinstance(result, Exception) or result is not True:
+                logger.error(f"Failed to send RFQ notification to {email}: {result}")
+                failed += 1
+            else:
+                logger.info(f"Sent RFQ notification to {email}")
+                sent += 1
+
     return {"total": total, "sent": sent, "failed": failed}
+
+
+async def _send_email_logged(to_email: str, subject: str, body: str, html_body: str, context: str) -> None:
+    """Background delivery boundary: failures are logged without delaying the API response."""
+    try:
+        delivered = await send_email(to_email, subject, body, html_body)
+        if delivered:
+            logger.info(f"{context} email delivered to {to_email}")
+        else:
+            logger.error(f"{context} email skipped because SMTP is not configured")
+    except Exception as error:
+        logger.error(f"{context} email delivery failed for {to_email}: {error}", exc_info=True)
 
 
 @router.post("/rfqs/{rfq_id}/select-supplier")
@@ -1554,7 +1596,7 @@ async def reject_purchase_order(id: str, request: dict, uow: UnitOfWork = Depend
 
 
 @router.post("/purchase-orders/{id}/send-to-supplier")
-async def send_po_to_supplier(id: str, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
+async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
     try:
         try:
             po_id = uuid.UUID(id)
@@ -1676,20 +1718,6 @@ async def send_po_to_supplier(id: str, uow: UnitOfWork = Depends(get_uow), _user
         except Exception as fe:
             logger.error(f"Failed to write mock PO email: {fe}")
 
-        try:
-            delivered = await send_email(recipient_email, subject, body, html_body)
-        except Exception as email_error:
-            logger.error(f"Failed to send PO email to {recipient_email}: {email_error}")
-            raise HTTPException(
-                status_code=503,
-                detail="Email delivery failed. Check the SMTP configuration and try again.",
-            ) from email_error
-        if not delivered:
-            raise HTTPException(
-                status_code=503,
-                detail="Email service is not configured. Configure SMTP and try again.",
-            )
-
         po.status = "SENT"
         po.history.append(POApprovalHistoryModel(
             id=uuid.uuid4(),
@@ -1699,7 +1727,8 @@ async def send_po_to_supplier(id: str, uow: UnitOfWork = Depends(get_uow), _user
         ))
 
         await uow.commit()
-        return {"status": "success", "recipient": recipient_email, "resent": is_resend}
+        background_tasks.add_task(_send_email_logged, recipient_email, subject, body, html_body, f"PO {po.po_number}")
+        return {"status": "queued", "message": "Purchase order saved. Email delivery is running in the background.", "recipient": recipient_email, "resent": is_resend}
     except HTTPException:
         raise
     except Exception as e:

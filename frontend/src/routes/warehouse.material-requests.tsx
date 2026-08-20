@@ -186,9 +186,22 @@ function WarehouseMaterialRequests() {
     if (!selectedRequest) return;
     setSubmitting(true);
     try {
-        // In a real app, api.updateMaterialRequest(selectedRequest.id, selectedRequest)
-        // For now, we simulate re-submission or processing logic
-        toast.success("Request updated successfully (simulated)");
+        const payload = {
+            request_number: selectedRequest.requestNumber,
+            warehouse_id: selectedRequest.warehouseId,
+            department: selectedRequest.department,
+            requested_by: selectedRequest.requestedBy,
+            required_date: new Date(selectedRequest.requiredDate).toISOString().split("T")[0],
+            remarks: selectedRequest.remarks,
+            items: selectedRequest.items.map((it: any) => ({
+                material_code: it.materialCode,
+                material_name: it.materialName,
+                quantity: it.quantity,
+                uom: it.uom
+            }))
+        };
+        await api.updateMaterialRequest(selectedRequest.id, payload);
+        toast.success("Request updated successfully");
         setIsEditing(false);
         setIsRequestModalOpen(false);
         fetchData();
@@ -267,7 +280,7 @@ function WarehouseMaterialRequests() {
                       {items.map((item, idx) => (
                         <div key={idx} className="flex gap-3 items-end">
                            <div className="flex-[2] space-y-1">
-                              <Label className="text-[10px]">Code</Label>
+                              <Label className="text-[10px]">Material Code</Label>
                               <Input
                                 placeholder="MAT-XXXX"
                                 className="h-9 rounded-lg font-mono text-xs bg-muted/50"
@@ -276,7 +289,7 @@ function WarehouseMaterialRequests() {
                               />
                            </div>
                            <div className="flex-[3] space-y-1">
-                              <Label className="text-[10px]">Description</Label>
+                              <Label className="text-[10px]">Material Name</Label>
                               <Input
                                 placeholder="Steel Pipe..."
                                 className="h-9 rounded-lg text-xs"
@@ -316,7 +329,7 @@ function WarehouseMaterialRequests() {
                              type="button"
                              variant="ghost"
                              size="icon"
-                             className="size-9 rounded-lg text-destructive"
+                             className="size-9 rounded-lg text-destructive disabled:opacity-30 disabled:pointer-events-none"
                              onClick={() => removeItem(idx)}
                              disabled={items.length === 1}
                            >
@@ -412,13 +425,13 @@ function WarehouseMaterialRequests() {
 
       {/* View/Edit Modal */}
       <Dialog open={isViewing} onOpenChange={setIsRequestModalOpen}>
-        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
               {/* Header */}
               <div className={cn(
                 "p-6 text-white flex justify-between items-start",
-                isEditing ? "bg-primary" : "bg-slate-900"
+                "bg-blue-600"
               )}>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -429,9 +442,6 @@ function WarehouseMaterialRequests() {
                   </div>
                   <p className="text-white/70 text-sm font-mono font-bold tracking-widest">{selectedRequest.requestNumber}</p>
                 </div>
-                <Button variant="ghost" size="icon" className="text-white/50 hover:text-white hover:bg-white/10 rounded-full" onClick={() => setIsRequestModalOpen(false)}>
-                  <X className="size-5" />
-                </Button>
               </div>
 
               {/* Scrollable Content */}
@@ -489,8 +499,8 @@ function WarehouseMaterialRequests() {
                     <table className="w-full text-left text-sm border-collapse">
                       <thead>
                         <tr className="bg-muted/50 border-b border-border/60">
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Code</th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Description</th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Material Code</th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">Material Name</th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">Qty</th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-24">UOM</th>
                           {isEditing && <th className="p-3 w-10"></th>}
@@ -556,7 +566,13 @@ function WarehouseMaterialRequests() {
                             </td>
                             {isEditing && (
                                 <td className="p-2">
-                                    <Button variant="ghost" size="icon" className="size-8 rounded-lg text-destructive hover:bg-destructive/10" onClick={() => removeEditItem(idx)}>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-8 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
+                                        onClick={() => removeEditItem(idx)}
+                                        disabled={selectedRequest.items.length <= 1}
+                                    >
                                         <Trash2 className="size-4" />
                                     </Button>
                                 </td>
@@ -591,7 +607,7 @@ function WarehouseMaterialRequests() {
                   {isEditing ? (
                     <>
                         <Button variant="ghost" className="rounded-2xl h-11 px-6 font-bold text-xs uppercase" onClick={() => setIsEditing(false)}>Cancel</Button>
-                        <Button className="rounded-2xl h-11 px-8 shadow-glow font-bold text-xs uppercase" onClick={handleUpdate} disabled={submitting}>
+                        <Button className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase" onClick={handleUpdate} disabled={submitting}>
                             {submitting ? <Loader2 className="size-4 animate-spin mr-2" /> : <Save className="size-4 mr-2" />}
                             Update Request
                         </Button>
@@ -599,7 +615,7 @@ function WarehouseMaterialRequests() {
                   ) : (
                     <>
                         <Button variant="ghost" className="rounded-2xl h-11 px-6 font-bold text-xs uppercase" onClick={() => setIsRequestModalOpen(false)}>Close</Button>
-                        <Button className="rounded-2xl h-11 px-8 shadow-glow font-bold text-xs uppercase" onClick={() => setIsEditing(true)}>
+                        <Button className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase" onClick={() => setIsEditing(true)}>
                             Edit Request
                         </Button>
                     </>

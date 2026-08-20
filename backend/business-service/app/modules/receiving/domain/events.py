@@ -42,4 +42,3 @@ class GrnPostedEvent(DomainEvent):
     supplier_name: str | None = None
     warehouse_id: str | None = None
     lines: list[PostedInventoryLine]
-

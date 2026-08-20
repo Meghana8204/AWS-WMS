@@ -95,6 +95,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
   }),
   beforeLoad: ({ location }) => {
+    // Skip server-side redirects for localStorage-based auth to prevent refresh redirects to login
+    if (typeof window === "undefined") return;
+
     // List of routes that don't require authentication
     const publicRoutes = ["/login"];
 
