@@ -11,6 +11,22 @@ class MasterDataCreate(ApiModel):
     name: str
 
 
+class MasterDataResponse(ApiModel):
+    id: int
+    name: str
+
+
+class NotificationResponse(ApiModel):
+    id: str
+    user_role: str
+    title: str
+    message: str
+    link: Optional[str] = None
+    is_read: bool = False
+    created_at: datetime
+
+
+
 class SupplierAddressResponse(ApiModel):
     registered_address: Optional[str] = None
     city: Optional[str] = None
