@@ -3,20 +3,12 @@ SQLAlchemy ORM models for the receiving module.
 """
 from __future__ import annotations
 
-<<<<<<< HEAD
-=======
-import uuid
->>>>>>> origin/main
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 import uuid
 
-<<<<<<< HEAD
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
-=======
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
->>>>>>> origin/main
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID

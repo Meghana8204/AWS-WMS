@@ -504,18 +504,12 @@ function GateEntry() {
               </button>
             </div>
           </div>
-<<<<<<< HEAD
         </SectionCard>
 
         <SectionCard title="Arrival scanning & upload" description="Capture from camera or upload an image—OCR/ANPR will process either" icon={ScanLine}>
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full">
             <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Optional (Scan/Upload)"} kind="po" captured={!!poDocument} onOpen={() => setPoScannerOpen(true)} onUpload={(f) => void scanCapture("po", f)} />
             <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Required"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
-=======
-          <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
-            <ScanCard label="Vehicle photo" detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"} kind="vehicle" captured={!!vehiclePhoto} onOpen={setScanning} onUpload={(f) => void scanCapture("vehicle", f)} />
-            <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Optional"} kind="po" captured={!!poDocument} onOpen={setScanning} onUpload={(f) => void scanCapture("po", f)} />
->>>>>>> origin/main
           </div>
 
           {(poPreview || vehiclePreview) && (

@@ -944,27 +944,11 @@ async def send_rfq_endpoint(
         elif rfq.status != "OPEN":
             raise HTTPException(status_code=409, detail=f"Cannot send RFQ in status: {rfq.status}")
 
-<<<<<<< HEAD
-        delivery = await _notify_suppliers_rfq(id)
-        
-        if delivery.get("failed", 0) > 0 and delivery.get("sent", 0) == 0:
-            message = f"RFQ published successfully. (Mock email saved to media_uploads/emails; live SMTP delivery skipped/failed: check EMAIL_HOST_USER/PASSWORD in .env)"
-        elif delivery.get("failed", 0) > 0:
-            message = f"RFQ published. Email sent to {delivery['sent']} supplier(s), but failed for {delivery['failed']}."
-        else:
-            message = f"RFQ published and notification sent to {delivery.get('sent', 0)} supplier(s) successfully."
-
-        return {
-            "status": "success",
-            "message": message,
-            "delivery": delivery,
-=======
         background_tasks.add_task(_notify_suppliers_rfq, id)
         return {
             "status": "queued",
             "message": "RFQ published. Supplier emails are being delivered in the background.",
             "delivery": {"status": "queued"},
->>>>>>> origin/main
         }
     except HTTPException:
         raise
@@ -1085,20 +1069,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 except Exception as file_err:
                     logger.error(f"Failed to write mock email file: {file_err}")
 
-<<<<<<< HEAD
-                try:
-                    dispatched = await send_email(email, subject, body, html_body)
-                    if dispatched:
-                        logger.info(f"Sent live RFQ notification email to {email}")
-                    else:
-                        logger.info(f"Saved mock RFQ notification to media_uploads/emails for {email}")
-                    sent += 1
-                except Exception as e:
-                    logger.error(f"Failed to send email to {email}: {e}")
-                    failed += 1
-=======
                 deliveries.append((email, subject, body, html_body))
->>>>>>> origin/main
             else:
                 logger.warning(f"No primary email configured for supplier {supplier.id}")
                 failed += 1
