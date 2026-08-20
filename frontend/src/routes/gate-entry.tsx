@@ -464,6 +464,43 @@ function GateEntry() {
   >
     <div className="grid gap-4 xl:grid-cols-3">
       <form onSubmit={submit} className="space-y-4 xl:col-span-2">
+        <SectionCard
+          title="ASN Reference Lookup (Optional)"
+          description="Enter an ASN reference to quickly auto-populate PO, supplier, vehicle, and item details"
+          icon={ScanLine}
+        >
+          <div className="w-full">
+            <Label htmlFor="asn_reference">ASN Reference</Label>
+            <div className="relative mt-1.5">
+              <Input
+                suppressHydrationWarning
+                id="asn_reference"
+                name="asn_reference"
+                value={asnReference}
+                onChange={(e) => setAsnReference(e.target.value)}
+                onBlur={() => void fetchAsnDetails(asnReference)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void fetchAsnDetails(asnReference);
+                  }
+                }}
+                placeholder="e.g. ASN-2026-0001 (Press Enter or click refresh to load)"
+                className={cn(inputClass, "pr-10")}
+              />
+              <button
+                suppressHydrationWarning
+                type="button"
+                onClick={() => void fetchAsnDetails(asnReference)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                title="Load ASN Details"
+              >
+                <RefreshCw className="size-4" />
+              </button>
+            </div>
+          </div>
+        </SectionCard>
+
         <SectionCard title="Arrival scanning & upload" description="Capture from camera or upload an image—OCR/ANPR will process either" icon={ScanLine}>
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full">
             <ScanCard label="PO document" detail={poDocument ? "PO document ready" : "Optional (Scan/Upload)"} kind="po" captured={!!poDocument} onOpen={() => setPoScannerOpen(true)} onUpload={(f) => void scanCapture("po", f)} />
