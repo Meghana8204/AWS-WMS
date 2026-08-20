@@ -15,7 +15,7 @@ class SupplierCreatedEvent(DomainEvent):
     supplier_name: str
     registered_company_name: str
     vendor_type: str
-    category: str
+    category: List[str]
     industry: str
     gstin: str
 

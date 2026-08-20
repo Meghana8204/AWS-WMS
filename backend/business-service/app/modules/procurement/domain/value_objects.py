@@ -74,15 +74,15 @@ class AsnId:
 
 @dataclass(frozen=True)
 class SupplierId:
-    value: uuid.UUID
+    value: str
 
     @staticmethod
-    def new_id() -> SupplierId:
-        return SupplierId(uuid.uuid4())
+    def new_id(sequence: int) -> SupplierId:
+        return SupplierId(f"SUP-{sequence:05d}")
 
     @staticmethod
-    def of(value: str | uuid.UUID) -> SupplierId:
-        return SupplierId(value if isinstance(value, uuid.UUID) else uuid.UUID(value))
+    def of(value: str) -> SupplierId:
+        return SupplierId(str(value))
 
     def __str__(self) -> str:
-        return str(self.value)
+        return self.value

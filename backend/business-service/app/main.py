@@ -25,6 +25,7 @@ from app.modules.notification.infrastructure.api.router import router as notific
 from app.modules.procurement.infrastructure.api.router import router as procurement_router
 from app.modules.receiving.infrastructure.api.router import router as receiving_router
 from app.modules.returns.infrastructure.api.router import router as returns_router
+from app.modules.storage.infrastructure.api.router import router as storage_router
 from app.workers.notification_consumer import start_notification_consumer
 from app.workers.outbox_relay import relay_once
 
@@ -104,11 +105,47 @@ async def lifespan(app: FastAPI):
             ("gstin", "VARCHAR(32)"),
             ("registered_company_name", "VARCHAR(256)"),
             ("vendor_type", "VARCHAR(64)"),
-            ("category", "VARCHAR(64)"),
+            ("category", "JSON"),
+            ("created_by", "VARCHAR(64)"),
+            ("updated_by", "VARCHAR(64)"),
         ]:
             try:
                 await run_ddl(f"ALTER TABLE supplier ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
+
+        # Ensure category is JSONB (it was incorrectly VARCHAR(64) in early versions)
+        try:
+            # More robust migration: handle existing VARCHAR data
+            await run_ddl("""
+                ALTER TABLE supplier
+                ALTER COLUMN category TYPE JSONB
+                USING (
+                    CASE
+                        WHEN category IS NULL THEN '[]'::JSONB
+                        WHEN category = '' THEN '[]'::JSONB
+                        WHEN category LIKE '[%' THEN category::JSONB
+                        ELSE jsonb_build_array(category)
+                    END
+                )
+            """)
+
+            # Also ensure main_materials is JSONB
+            await run_ddl("""
+                ALTER TABLE supplier
+                ALTER COLUMN main_materials TYPE JSONB
+                USING (
+                    CASE
+                        WHEN main_materials IS NULL THEN '[]'::JSONB
+                        WHEN main_materials = '' THEN '[]'::JSONB
+                        WHEN main_materials LIKE '[%' THEN main_materials::JSONB
+                        ELSE jsonb_build_array(main_materials)
+                    END
+                )
+            """)
+            logger.debug("Migrated 'category' and 'main_materials' to JSONB on supplier table")
+        except Exception as e:
+            logger.debug(f"JSONB migration skipped or already done: {e}")
+
         logger.debug("Ensured columns exist on supplier")
 
         # Ensure rfq has missing columns
@@ -354,7 +391,11 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_type VARCHAR(64)")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_size BIGINT")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS upload_id VARCHAR(128)")
-            logger.debug("Ensured extended columns exist on supplier_document")
+
+            # Ensure they are nullable to prevent IntegrityErrors on incomplete data
+            await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_type DROP NOT NULL")
+            await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_size DROP NOT NULL")
+            logger.debug("Ensured extended columns exist and are nullable on supplier_document")
         except Exception: pass
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
@@ -462,6 +503,7 @@ def create_app() -> FastAPI:
 
     app.include_router(receiving_router)
     app.include_router(returns_router)
+    app.include_router(storage_router)
     app.include_router(notification_router)
     app.include_router(gate_router)
     app.include_router(gate_preview_router)

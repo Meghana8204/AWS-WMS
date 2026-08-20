@@ -8,8 +8,10 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { requireAuth } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/notifications")({
+  beforeLoad: () => requireAuth(),
   component: Notifications,
 });
 
@@ -43,8 +45,11 @@ function Notifications() {
     try {
       if (!quiet) setLoading(true);
       if (role === "WAREHOUSE") {
-          const data = await api.getArrivalNotifications();
-          setNotifications(data.map((n: any) => ({
+          const [arrivalData, workflowData] = await Promise.all([
+            api.getArrivalNotifications(),
+            api.getNotifications("WAREHOUSE"),
+          ]);
+          const arrivals = arrivalData.map((n: any) => ({
               id: n.id,
               title: "Arrival Notification",
               message: n.message || `Truck ${n.vehicleNumber || n.vehicle_number || "not assigned"} from ${n.supplierName || n.supplier_name || "supplier not available"} is arriving.`,
@@ -54,7 +59,10 @@ function Notifications() {
               is_read: (n.status || "").toUpperCase() === "ACKNOWLEDGED",
               po_number: n.poNumber || n.po_number,
               supplier_name: n.supplierName || n.supplier_name
-          })));
+          }));
+          setNotifications([...workflowData, ...arrivals].sort((a: any, b: any) =>
+            new Date(b.created_at || b.createdAt || 0).getTime() - new Date(a.created_at || a.createdAt || 0).getTime()
+          ));
       } else {
           const data = await api.getNotifications(role);
           setNotifications(data);
@@ -69,7 +77,8 @@ function Notifications() {
 
   const handleMarkRead = async (id: string) => {
       try {
-          if (userRole === "WAREHOUSE") await api.markArrivalNotificationRead(id);
+          const notification = notifications.find(n => n.id === id);
+          if (userRole === "WAREHOUSE" && notification?.type === "arrival") await api.markArrivalNotificationRead(id);
           else await api.markNotificationRead(id);
           setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
           window.dispatchEvent(new Event("notifications:refresh"));
@@ -80,8 +89,9 @@ function Notifications() {
 
   const handleMarkAllRead = async () => {
     try {
-      if (userRole === "WAREHOUSE") await api.markAllArrivalNotificationsRead();
-      else await api.markAllNotificationsRead(userRole);
+      if (userRole === "WAREHOUSE") {
+        await Promise.all([api.markAllArrivalNotificationsRead(), api.markAllNotificationsRead(userRole)]);
+      } else await api.markAllNotificationsRead(userRole);
       setNotifications(prev => prev.map(notification => ({ ...notification, is_read: true })));
       window.dispatchEvent(new Event("notifications:refresh"));
       toast.success("All notifications marked as read");

@@ -12,7 +12,8 @@ import {
   CreditCard,
   Building2,
   Calendar,
-  Loader2
+  Loader2,
+  Table as TableIcon
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -20,8 +21,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/finance-dashboard")({
+  beforeLoad: () => requireRole("FINANCE"),
   component: FinanceDashboard,
 });
 
@@ -38,7 +41,6 @@ function FinanceDashboard() {
   const loadData = async (quiet = false) => {
     try {
       if (!quiet) setLoading(true);
-      // We can use the existing getFinanceApprovals or getPurchaseOrders
       const allPos = await api.getPurchaseOrders();
 
       const pending = allPos.filter((p: any) => p.status === "PENDING_FINANCE");
@@ -53,7 +55,7 @@ function FinanceDashboard() {
         totalValue
       });
 
-      setApprovals(pending.slice(0, 5)); // Show top 5 pending
+      setApprovals(pending);
     } catch (e) {
       if (!quiet) toast.error("Failed to load dashboard data");
     } finally {
@@ -66,6 +68,14 @@ function FinanceDashboard() {
     const interval = setInterval(() => loadData(true), 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Group pending by RFQ
+  const groupedByRfq = approvals.reduce((acc: any, po: any) => {
+    const rfqId = po.rfqId || "no-rfq";
+    if (!acc[rfqId]) acc[rfqId] = [];
+    acc[rfqId].push(po);
+    return acc;
+  }, {});
 
   return (
     <AppShell
@@ -108,58 +118,71 @@ function FinanceDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Pending Queue */}
-        <Card className="lg:col-span-2 border-border/40 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle className="text-lg font-bold tracking-tight">Priority Approvals</CardTitle>
-              <p className="text-sm text-muted-foreground">Purchase orders awaiting your signature</p>
-            </div>
-            <Button variant="ghost" size="sm" className="rounded-xl text-primary" asChild>
-              <Link to="/finance/approvals">View All <ArrowRight className="ml-2 size-4" /></Link>
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex h-48 items-center justify-center">
-                <Loader2 className="size-8 animate-spin text-primary" />
+        {/* Comparison Matrix Area */}
+        <div className="lg:col-span-2 space-y-6">
+          <Card className="border-border/40 shadow-soft">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-lg font-bold tracking-tight">Priority Approvals</CardTitle>
+                <p className="text-sm text-muted-foreground">Purchase orders awaiting your signature</p>
               </div>
-            ) : approvals.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/10 rounded-2xl border-dashed border-2">
-                <ShieldCheck className="size-10 text-muted-foreground/30 mb-2" />
-                <p className="text-sm font-medium text-muted-foreground">Your queue is clear</p>
-              </div>
-            ) : (
+              <Button variant="ghost" size="sm" className="rounded-xl text-primary" asChild>
+                <Link to="/finance/approvals">View All <ArrowRight className="ml-2 size-4" /></Link>
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex h-48 items-center justify-center">
+                  <Loader2 className="size-8 animate-spin text-primary" />
+                </div>
+              ) : Object.keys(groupedByRfq).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12 text-center bg-muted/10 rounded-2xl border-dashed border-2">
+                  <ShieldCheck className="size-10 text-muted-foreground/30 mb-2" />
+                  <p className="text-sm font-medium text-muted-foreground">Your queue is clear</p>
+                </div>
+              ) : (
               <div className="space-y-3">
-                {approvals.map((po) => (
-                  <div key={po.id} className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 transition-all bg-card/50">
+                {Object.entries(groupedByRfq).map(([rfqId, rfqApprovals]: [string, any]) => (
+                  <Link
+                    key={rfqId}
+                    to={rfqId === "no-rfq" ? "/finance/approvals" : "/finance/approvals/compare/$rfqId"}
+                    params={rfqId === "no-rfq" ? {} : { rfqId }}
+                    className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 hover:shadow-glow transition-all bg-card/50 group"
+                  >
                     <div className="flex items-center gap-4">
-                      <div className="size-10 rounded-xl bg-primary-soft/20 flex items-center justify-center text-primary">
-                        <CreditCard className="size-5" />
+                      <div className="size-10 rounded-xl bg-primary-soft/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                        <TableIcon className="size-5" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold">{po.poNumber}</p>
-                        <p className="text-[11px] text-muted-foreground">{po.supplierName} · {po.warehouseId}</p>
+                        <p className="text-sm font-bold uppercase tracking-tight">
+                          {rfqId === "no-rfq" ? "Direct Purchase Orders" : `RFQ: ${rfqApprovals[0]?.rfqNumber || rfqId}`}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {rfqApprovals.length} Proposal(s) awaiting signature · {rfqApprovals.map((p: any) => p.supplierName).join(", ")}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right flex items-center gap-6">
                       <div className="hidden sm:block">
-                        <p className="text-sm font-bold">₹{parseFloat(po.totalAmount).toLocaleString()}</p>
-                        <p className="text-[10px] text-muted-foreground uppercase font-bold">{po.items?.length} items</p>
+                        <p className="text-sm font-black text-primary">
+                          ₹{rfqApprovals.reduce((sum: number, po: any) => sum + parseFloat(po.totalAmount || 0), 0).toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Total Value</p>
                       </div>
-                      <Button variant="outline" size="sm" className="rounded-xl h-8 text-xs font-bold" asChild>
-                        <Link to="/finance/approvals/$approvalId" params={{ approvalId: po.id }}>Review</Link>
+                      <Button variant="outline" size="sm" className="rounded-xl h-8 text-xs font-bold pointer-events-none group-hover:bg-primary group-hover:text-white transition-colors">
+                        Review Comparison
                       </Button>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Financial Policy */}
-        <Card className="border-border/40 shadow-soft">
+        {/* Finance Policy */}
+        <Card className="border-border/40 shadow-soft self-start">
           <CardHeader>
             <CardTitle className="text-lg font-bold tracking-tight">Finance Controls</CardTitle>
           </CardHeader>

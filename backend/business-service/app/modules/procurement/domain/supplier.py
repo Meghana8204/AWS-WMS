@@ -6,6 +6,7 @@ Zero framework dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import List, Optional
 from app.common.domain.exceptions import DomainRuleViolationException
 from app.modules.procurement.domain.value_objects import SupplierId
@@ -72,10 +73,10 @@ ALLOWED_DOCUMENT_TYPES = {
 class SupplierDocument:
     document_type: str
     file_name: str
-    file_type: str
-    file_size: int
     storage_path: str
     upload_id: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
 
     def __post_init__(self) -> None:
         if not self.document_type or not str(self.document_type).strip():
@@ -89,7 +90,7 @@ class SupplierDocument:
             raise DomainRuleViolationException("Invalid document format. Only PDF and JPG files are allowed.")
         # Validate size (max 10MB)
         max_size_bytes = 10 * 1024 * 1024
-        if self.file_size > max_size_bytes:
+        if self.file_size is not None and self.file_size > max_size_bytes:
             raise DomainRuleViolationException("Document size exceeds maximum limit of 10 MB.")
 
 
@@ -105,7 +106,7 @@ class Supplier(AggregateRoot):
         supplier_name: str,
         registered_company_name: str,
         vendor_type: str,
-        category: str,
+        category: List[str],
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
@@ -118,6 +119,10 @@ class Supplier(AggregateRoot):
         documents: Optional[List[SupplierDocument]] = None,
         remarks: Optional[str] = None,
         status: str = "Active",
+        created_by: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_by: Optional[str] = None,
+        updated_at: Optional[datetime] = None,
     ) -> None:
         super().__init__()
         self.id = id
@@ -137,13 +142,17 @@ class Supplier(AggregateRoot):
         self.documents = documents or []
         self.remarks = remarks
         self.status = status
+        self.created_by = created_by
+        self.created_at = created_at or datetime.now()
+        self.updated_by = updated_by
+        self.updated_at = updated_at or datetime.now()
 
     def update(
         self,
         supplier_name: Optional[str] = None,
         registered_company_name: Optional[str] = None,
         vendor_type: Optional[str] = None,
-        category: Optional[str] = None,
+        category: Optional[List[str]] = None,
         industry: Optional[str] = None,
         gstin: Optional[str] = None,
         main_materials: Optional[List[str]] = None,
@@ -151,6 +160,7 @@ class Supplier(AggregateRoot):
         contact: Optional[SupplierContact] = None,
         bank_info: Optional[SupplierBankInfo] = None,
         remarks: Optional[str] = None,
+        updated_by: Optional[str] = None,
     ) -> None:
         if supplier_name is not None:
             self.supplier_name = supplier_name.strip()
@@ -159,7 +169,7 @@ class Supplier(AggregateRoot):
         if vendor_type is not None:
             self.vendor_type = vendor_type.strip()
         if category is not None:
-            self.category = category.strip()
+            self.category = category
         if industry is not None:
             self.industry = industry.strip()
         if gstin is not None:
@@ -175,6 +185,9 @@ class Supplier(AggregateRoot):
         if remarks is not None:
             self.remarks = remarks.strip() if remarks else None
 
+        self.updated_by = updated_by
+        self.updated_at = datetime.now()
+
     def block(self) -> None:
         self.status = "Blocked"
 
@@ -183,10 +196,11 @@ class Supplier(AggregateRoot):
 
     @staticmethod
     def create(
+        supplier_id: SupplierId,
         supplier_name: str,
         registered_company_name: str,
         vendor_type: str,
-        category: str,
+        category: List[str],
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
@@ -196,13 +210,13 @@ class Supplier(AggregateRoot):
         bank_info: Optional[SupplierBankInfo] = None,
         documents: Optional[List[SupplierDocument]] = None,
         remarks: Optional[str] = None,
+        created_by: Optional[str] = None,
     ) -> "Supplier":
         """Factory method to create a new Supplier aggregate after validating Step 1-4 mandatory fields."""
         fields = {
             "Supplier Name": supplier_name,
             "Registered Company Name": registered_company_name,
             "Vendor Type": vendor_type,
-            "Category": category,
             "Industry": industry,
             "GSTIN": gstin,
         }
@@ -210,12 +224,20 @@ class Supplier(AggregateRoot):
             if value is None or not str(value).strip():
                 raise DomainRuleViolationException(f"{name} is mandatory and cannot be empty")
 
+        if not category:
+            raise DomainRuleViolationException("At least one Category is mandatory")
+
+        # Enforce Cancelled Cheque
+        has_cheque = any(d.document_type == "Cancelled Cheque" for d in (documents or []))
+        if not has_cheque:
+            raise DomainRuleViolationException("Cancelled Cheque is a mandatory document for registration")
+
         supplier = Supplier(
-            id=SupplierId.new_id(),
+            id=supplier_id,
             supplier_name=supplier_name.strip(),
             registered_company_name=registered_company_name.strip(),
             vendor_type=vendor_type.strip(),
-            category=category.strip(),
+            category=category,
             industry=industry.strip(),
             gstin=gstin.strip(),
             supplier_code=supplier_code,
@@ -228,6 +250,7 @@ class Supplier(AggregateRoot):
             documents=documents or [],
             remarks=remarks.strip() if remarks else None,
             status="Active",
+            created_by=created_by,
         )
 
         event = SupplierCreatedEvent(
@@ -249,7 +272,7 @@ class Supplier(AggregateRoot):
         supplier_name: str,
         registered_company_name: str,
         vendor_type: str,
-        category: str,
+        category: List[str],
         industry: str,
         gstin: str,
         supplier_code: Optional[str] = None,
@@ -262,6 +285,10 @@ class Supplier(AggregateRoot):
         documents: Optional[List[SupplierDocument]] = None,
         remarks: Optional[str] = None,
         status: str = "Active",
+        created_by: Optional[str] = None,
+        created_at: Optional[datetime] = None,
+        updated_by: Optional[str] = None,
+        updated_at: Optional[datetime] = None,
     ) -> "Supplier":
         """Reconstruct Supplier aggregate from stored database rows."""
         return Supplier(
@@ -282,4 +309,8 @@ class Supplier(AggregateRoot):
             documents=documents or [],
             remarks=remarks,
             status=status,
+            created_by=created_by,
+            created_at=created_at,
+            updated_by=updated_by,
+            updated_at=updated_at,
         )

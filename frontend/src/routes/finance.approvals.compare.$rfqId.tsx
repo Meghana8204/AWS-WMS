@@ -21,8 +21,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/finance/approvals/compare/$rfqId")({
+  beforeLoad: () => requireRole("FINANCE"),
   component: FinanceComparison,
 });
 

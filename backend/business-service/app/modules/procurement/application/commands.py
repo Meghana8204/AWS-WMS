@@ -12,8 +12,8 @@ from typing import List, Optional
 
 @dataclass(frozen=True)
 class AddressCommand:
-    registered_address: str
-    city: str
+    registered_address: Optional[str] = None
+    city: Optional[str] = None
     country: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
@@ -44,10 +44,10 @@ class BankInfoCommand:
 class DocumentCommand:
     document_type: str
     file_name: str
-    file_type: str
-    file_size: int
     storage_path: str
     upload_id: Optional[str] = None
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class CreateSupplierCommand:
     supplier_name: str
     registered_company_name: str
     vendor_type: str
-    category: str
+    category: List[str]
     industry: str
     gstin: str
     main_materials: Optional[List[str]] = None
@@ -64,6 +64,7 @@ class CreateSupplierCommand:
     bank_info: Optional[BankInfoCommand] = None
     documents: Optional[List[DocumentCommand]] = None
     remarks: Optional[str] = None
+    created_by: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -72,7 +73,7 @@ class UpdateSupplierCommand:
     supplier_name: Optional[str] = None
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[List[str]] = None
     industry: Optional[str] = None
     gstin: Optional[str] = None
     main_materials: Optional[List[str]] = None
@@ -80,6 +81,7 @@ class UpdateSupplierCommand:
     contact: Optional[ContactCommand] = None
     bank_info: Optional[BankInfoCommand] = None
     remarks: Optional[str] = None
+    updated_by: Optional[str] = None
 
 
 # --- RFQ ---

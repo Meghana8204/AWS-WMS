@@ -67,8 +67,9 @@ class PoOcrPreviewResponse(ApiModel):
 
 
 class CreateGateEntryRequest(ApiModel):
-    vehicle_plate: str = Field(..., min_length=1, description="Mandatory manual vehicle license plate number")
-    po_number: str = Field(..., min_length=1, description="Mandatory purchase order number")
+    asn_reference: Optional[str] = Field(default=None, description="Existing ASN id or ASN number")
+    vehicle_plate: Optional[str] = Field(default=None, description="Legacy/manual vehicle plate")
+    po_number: Optional[str] = Field(default=None, description="Legacy/manual purchase order number")
     supplier_name: Optional[str] = Field(default=None, description="Extracted or input supplier name")
     material_description: Optional[str] = Field(default=None, description="Extracted or input material description")
     total_quantity: Optional[float] = Field(default=None, description="Extracted or input total quantity")
@@ -108,6 +109,9 @@ class GateEntryResponse(ApiModel):
     created_by: str
     po_id: Optional[str] = None
     po_number: Optional[str] = None
+    asn_id: Optional[str] = None
+    asn_number: Optional[str] = None
+    assigned_dock_id: Optional[str] = None
     supplier_name: Optional[str] = None
     material_description: Optional[str] = None
     total_quantity: Optional[float] = None
@@ -118,3 +122,68 @@ class GateEntryResponse(ApiModel):
     verified_by: Optional[str] = None
     created_at: str
     updated_at: str
+
+
+class AssignDockRequest(ApiModel):
+    dock_id: str = Field(..., min_length=1, max_length=32)
+
+
+class CreateDockRequest(ApiModel):
+    dock_number: str = Field(..., min_length=1, max_length=32)
+    warehouse_id: str = Field(..., min_length=1, max_length=64)
+    dock_type: str = Field(..., min_length=1, max_length=64)
+    capacity: int = Field(..., gt=0)
+    status: str = "AVAILABLE"
+
+
+class UpdateDockRequest(ApiModel):
+    warehouse_id: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    dock_type: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    capacity: Optional[int] = Field(default=None, gt=0)
+    status: Optional[str] = None
+
+
+class ReceivingQuantityItem(ApiModel):
+    item_code: str = Field(..., min_length=1, max_length=64)
+    received_quantity: float = Field(..., ge=0)
+
+
+class RecordReceivingRequest(ApiModel):
+    items: List[ReceivingQuantityItem] = Field(..., min_length=1)
+
+
+class UpdateQuantityVerificationPolicyRequest(ApiModel):
+    shortage_tolerance: float = Field(..., ge=0)
+    excess_tolerance: float = Field(..., ge=0)
+
+
+class MaterialConditionItem(ApiModel):
+    item_code: str = Field(..., min_length=1, max_length=64)
+    good_quantity: float = Field(..., ge=0)
+    damaged_quantity: float = Field(default=0, ge=0)
+    rejected_quantity: float = Field(default=0, ge=0)
+    inspection_required: bool = False
+    notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class RecordMaterialConditionRequest(ApiModel):
+    items: List[MaterialConditionItem] = Field(..., min_length=1)
+
+
+class QualityInspectionDecisionRequest(ApiModel):
+    decision: str = Field(..., pattern="^(PASS|FAIL)$")
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class PostGrnRequest(ApiModel):
+    verification_notes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ApproveVehicleExitRequest(ApiModel):
+    exit_document_reference: str = Field(..., min_length=1, max_length=128)
+    asn_verified: bool
+    po_verified: bool
+    grn_verified: bool
+    receiving_verified: bool
+    vehicle_verified: bool
+    driver_verified: bool
