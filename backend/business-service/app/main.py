@@ -523,7 +523,6 @@ async def lifespan(app: FastAPI):
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS storage_location (
                     id UUID PRIMARY KEY,
-                    location_code VARCHAR(64) UNIQUE NOT NULL,
                     warehouse_id VARCHAR(64) NOT NULL,
                     zone VARCHAR(32) NOT NULL,
                     rack VARCHAR(32) NOT NULL,
@@ -534,16 +533,6 @@ async def lifespan(app: FastAPI):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-        except Exception: pass
-
-        try:
-            await run_ddl("ALTER TABLE storage_location ADD COLUMN IF NOT EXISTS location_code VARCHAR(64)")
-            await run_ddl("""
-                UPDATE storage_location
-                   SET location_code = UPPER(REGEXP_REPLACE(CONCAT_WS('-', warehouse_id, zone, rack, bin), '[^A-Za-z0-9-]+', '-', 'g'))
-                 WHERE location_code IS NULL
-            """)
-            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS ix_storage_location_location_code ON storage_location (location_code)")
         except Exception: pass
 
         try:

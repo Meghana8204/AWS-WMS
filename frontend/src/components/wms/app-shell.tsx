@@ -350,7 +350,9 @@ export function AppShell({
                 <div className="hidden leading-tight lg:block">
                   <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {getRoleLabel(user?.roles)}
+                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
+                     user?.roles?.includes("FINANCE") ? "Finance Manager" :
+                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Operations Manager"}
                   </p>
                 </div>
                 <button
@@ -400,17 +402,6 @@ export function AppShell({
       </div>
     </div>
   );
-}
-
-function getRoleLabel(roles: string[] = []) {
-  if (roles.includes("SUPPLIER")) return "Supplier";
-  if (roles.includes("PROCUREMENT")) return "Procurement Manager";
-  if (roles.includes("FINANCE")) return "Finance Manager";
-  if (roles.includes("GATE_SECURITY")) return "Security Officer";
-  if (roles.includes("WAREHOUSE_MANAGER") || roles.includes("WAREHOUSE")) return "Warehouse Manager";
-  if (roles.includes("GOODS_RECEIVING_DEPT")) return "Goods Receiving Officer";
-  if (roles.includes("ADMIN")) return "Administrator";
-  return roles[0]?.replaceAll("_", " ") || "User";
 }
 
 export function StatusBadge({ status }: { status: string }) {
