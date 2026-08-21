@@ -31,6 +31,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
 import { Route as SupplierDashboardRouteImport } from './routes/supplier-dashboard'
+import { Route as VehicleExitRouteImport } from './routes/vehicle-exit'
 import { Route as VehicleQueueRouteImport } from './routes/vehicle-queue'
 import { Route as VehicleVerificationRouteImport } from './routes/vehicle-verification'
 import { Route as WarehouseDashboardRouteImport } from './routes/warehouse-dashboard'
@@ -160,6 +161,11 @@ const SupplierDashboardRoute = SupplierDashboardRouteImport.update({
   path: '/supplier-dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VehicleExitRoute = VehicleExitRouteImport.update({
+  id: '/vehicle-exit',
+  path: '/vehicle-exit',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VehicleQueueRoute = VehicleQueueRouteImport.update({
   id: '/vehicle-queue',
   path: '/vehicle-queue',
@@ -279,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -321,6 +328,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -362,6 +370,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
@@ -406,6 +415,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -448,6 +458,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -488,6 +499,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
     | '/warehouse-dashboard'
@@ -531,6 +543,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubmitQuotationRoute: typeof SubmitQuotationRoute
   SupplierDashboardRoute: typeof SupplierDashboardRoute
+  VehicleExitRoute: typeof VehicleExitRoute
   VehicleQueueRoute: typeof VehicleQueueRoute
   VehicleVerificationRoute: typeof VehicleVerificationRoute
   WarehouseDashboardRoute: typeof WarehouseDashboardRoute
@@ -700,6 +713,13 @@ declare module '@tanstack/react-router' {
       path: '/supplier-dashboard'
       fullPath: '/supplier-dashboard'
       preLoaderRoute: typeof SupplierDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vehicle-exit': {
+      id: '/vehicle-exit'
+      path: '/vehicle-exit'
+      fullPath: '/vehicle-exit'
+      preLoaderRoute: typeof VehicleExitRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/vehicle-queue': {
@@ -883,6 +903,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubmitQuotationRoute: SubmitQuotationRoute,
   SupplierDashboardRoute: SupplierDashboardRoute,
+  VehicleExitRoute: VehicleExitRoute,
   VehicleQueueRoute: VehicleQueueRoute,
   VehicleVerificationRoute: VehicleVerificationRoute,
   WarehouseDashboardRoute: WarehouseDashboardRoute,

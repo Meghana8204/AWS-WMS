@@ -278,6 +278,9 @@ class AsnResponse(ApiModel):
     package_type: Optional[str] = None
     shipping_method: Optional[str] = None
     documents: List[AsnDocumentSchema] = []
+    warehouse_status: Optional[str] = None
+    warehouse_status_updated_at: Optional[datetime] = None
+    assigned_dock_id: Optional[str] = None
     created_at: datetime
 
 

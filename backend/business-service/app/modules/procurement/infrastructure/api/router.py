@@ -21,6 +21,7 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_, select, cast, String, update, func, Date
 from sqlalchemy.orm import aliased, selectinload, joinedload
+from app.modules.gate.infrastructure.persistence.models import GateEntryModel
 
 from app.common.domain.exceptions import NotFoundException
 from app.logging.logger import get_logger
@@ -2354,9 +2355,21 @@ async def list_asns(
         res = await uow.session.execute(stmt)
         rows = res.all()
 
+        asn_ids = [asn.id for asn, _, _ in rows]
+        warehouse_by_asn = {}
+        if asn_ids:
+            warehouse_result = await uow.session.execute(
+                select(GateEntryModel)
+                .where(GateEntryModel.asn_id.in_(asn_ids))
+                .order_by(GateEntryModel.updated_at.desc())
+            )
+            for gate_entry in warehouse_result.scalars().all():
+                warehouse_by_asn.setdefault(gate_entry.asn_id, gate_entry)
+
         responses = []
         for asn, supplier_name, resolved_id in rows:
             try:
+                warehouse_entry = warehouse_by_asn.get(asn.id)
                 # Map lines carefully
                 lines = []
                 for l in asn.lines:
@@ -2396,6 +2409,9 @@ async def list_asns(
                     number_of_packages=asn.number_of_packages,
                     package_type=asn.package_type,
                     shipping_method=asn.shipping_method,
+                    warehouse_status=warehouse_entry.status if warehouse_entry else None,
+                    warehouse_status_updated_at=warehouse_entry.updated_at if warehouse_entry else None,
+                    assigned_dock_id=warehouse_entry.assigned_dock_id if warehouse_entry else None,
                     created_at=asn.created_at,
                     documents=documents
                 ))
@@ -2436,6 +2452,13 @@ async def get_asn(id: str, uow: UnitOfWork = Depends(get_uow)):
             raise HTTPException(status_code=404, detail="ASN not found")
 
         asn, supplier_name, resolved_id = row
+        warehouse_result = await uow.session.execute(
+            select(GateEntryModel)
+            .where(GateEntryModel.asn_id == asn.id)
+            .order_by(GateEntryModel.updated_at.desc())
+            .limit(1)
+        )
+        warehouse_entry = warehouse_result.scalar_one_or_none()
 
         return AsnResponse(
             id=str(asn.id),
@@ -2460,6 +2483,9 @@ async def get_asn(id: str, uow: UnitOfWork = Depends(get_uow)):
             number_of_packages=asn.number_of_packages,
             package_type=asn.package_type,
             shipping_method=asn.shipping_method,
+            warehouse_status=warehouse_entry.status if warehouse_entry else None,
+            warehouse_status_updated_at=warehouse_entry.updated_at if warehouse_entry else None,
+            assigned_dock_id=warehouse_entry.assigned_dock_id if warehouse_entry else None,
             documents=[AsnDocumentSchema(
                 document_type=d.document_type,
                 file_name=d.file_name,

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight, Boxes, Eye, Loader2, RefreshCw, Truck, Warehouse } from "lucide-react";
@@ -106,7 +106,7 @@ function ArrivalRows({ arrival, expanded, onToggle, docks, selected, onSelect, o
   return <>
     <tr className="hover:bg-muted/20">
       <td className="px-4 py-4"><button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onToggle(); }} aria-expanded={expanded} className="font-mono font-semibold text-primary hover:underline">{arrival.asn_number}</button></td>
-      <td className="px-4 py-4"><Link to="/procurement/purchase-orders" className="font-mono text-primary hover:underline">{arrival.po_number}</Link></td>
+      <td className="px-4 py-4"><span className="font-mono">{arrival.po_number}</span></td>
       <td className="px-4 py-4 font-medium">{arrival.supplier_name || "—"}</td>
       <td className="px-4 py-4"><p className="font-mono font-semibold">{arrival.vehicle_number}</p><p className="text-xs text-muted-foreground">{arrival.driver_name || "—"}</p></td>
       <td className="px-4 py-4">{new Date(arrival.arrival_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</td>

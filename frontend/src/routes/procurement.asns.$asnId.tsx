@@ -174,18 +174,32 @@ function AsnTracking() {
   const eta = asn.expectedArrivalAt ? new Date(asn.expectedArrivalAt) : null;
   const isNear = eta && (eta.getTime() - Date.now() < 12 * 60 * 60 * 1000) && (eta.getTime() - Date.now() > 0);
 
+  const operationalStatus = asn.warehouseStatus || asn.status;
+  const statusOrder = [
+    "SUBMITTED", "DISPATCHED", "GATE_ENTRY_APPROVED", "AWAITING_DOCK",
+    "DOCK_ASSIGNED", "MOVING_TO_DOCK", "AT_DOCK", "UNLOADING_IN_PROGRESS",
+    "QUALITY_INSPECTION_REQUIRED", "QUALITY_PASSED", "RECEIVING_COMPLETED",
+  ];
+  const currentStatusIndex = statusOrder.indexOf(operationalStatus);
+  const stepStatus = (activeStatuses: string[], completedAt: string) => {
+    if (activeStatuses.includes(operationalStatus)) return "Active";
+    const completedIndex = statusOrder.indexOf(completedAt);
+    return currentStatusIndex > completedIndex ? "Completed" : "Pending";
+  };
+
   const steps = [
     { label: "Shipment Dispatched", status: "Completed", date: asn.shipmentDate },
     {
       label: "Real-time Tracking",
-      status: (asn.status === "SUBMITTED" || asn.status === "DISPATCHED") ? "Active" : (["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status) ? "Completed" : "Pending"),
+      status: stepStatus(["SUBMITTED", "DISPATCHED"], "DISPATCHED"),
       date: isNear ? "Nearing Warehouse" : "GPS Signal Online",
       icon: <Navigation className="size-3.5 fill-current" />
     },
-    { label: "In Transit", status: (asn.status === "SUBMITTED" || asn.status === "DISPATCHED") ? "Active" : "Completed", date: "Ongoing" },
-    { label: "At Warehouse Gate", status: asn.status === "GATE_CHECKED_IN" ? "Active" : (["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status) ? "Completed" : "Pending"), date: asn.expectedArrivalAt },
-    { label: "Unloading", status: asn.status === "RECEIVED" ? "Active" : "Pending", date: "-" },
-    { label: "Goods Received", status: asn.status === "RECEIVED" ? "Completed" : "Pending", date: "-" },
+    { label: "At Warehouse Gate", status: stepStatus(["GATE_ENTRY_APPROVED", "AWAITING_DOCK"], "AWAITING_DOCK"), date: asn.warehouseStatusUpdatedAt },
+    { label: "Dock Assigned", status: stepStatus(["DOCK_ASSIGNED", "MOVING_TO_DOCK"], "MOVING_TO_DOCK"), date: asn.assignedDockId || "-" },
+    { label: "At Dock", status: stepStatus(["AT_DOCK"], "AT_DOCK"), date: asn.assignedDockId || "-" },
+    { label: "Unloading / Quality", status: stepStatus(["UNLOADING_IN_PROGRESS", "QUALITY_INSPECTION_REQUIRED", "QUALITY_PASSED"], "QUALITY_PASSED"), date: asn.warehouseStatusUpdatedAt },
+    { label: "Goods Received", status: operationalStatus === "RECEIVING_COMPLETED" ? "Completed" : "Pending", date: operationalStatus === "RECEIVING_COMPLETED" ? asn.warehouseStatusUpdatedAt : "-" },
   ];
 
   const isSupplier = user?.roles?.includes("SUPPLIER");
@@ -323,6 +337,22 @@ function AsnTracking() {
         <div className="space-y-6">
           <SectionCard title="Logistics Carrier" icon={Truck}>
              <div className="space-y-4">
+                {!editing && asn.warehouseStatus && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Warehouse Manager Update</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <StatusBadge status={asn.warehouseStatus} />
+                      <span className="text-[10px] text-muted-foreground">
+                        {asn.warehouseStatusUpdatedAt
+                          ? new Date(asn.warehouseStatusUpdatedAt).toLocaleString()
+                          : "Live status"}
+                      </span>
+                    </div>
+                    {asn.assignedDockId && (
+                      <p className="mt-2 text-xs font-semibold">Assigned dock: {asn.assignedDockId}</p>
+                    )}
+                  </div>
+                )}
                 {editing ? (
                   <>
                     {[

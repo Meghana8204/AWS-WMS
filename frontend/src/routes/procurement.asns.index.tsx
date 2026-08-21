@@ -98,7 +98,7 @@ function Asns() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-foreground tracking-tight">{asn.asnNumber}</h3>
-                      <StatusBadge status={asn.status} />
+                      <StatusBadge status={asn.warehouseStatus || asn.status} />
                     </div>
                     <p className="mt-1 text-sm font-semibold text-foreground/80">{asn.supplierName || "Independent Supplier"}</p>
                     <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground font-medium">

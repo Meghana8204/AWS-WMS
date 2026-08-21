@@ -649,10 +649,7 @@ function GateEntry() {
           <div className="space-y-3">
             {entries.slice(0, 8).map((entry) => (
               <div key={entry.id} className="relative group">
-                <Link
-                  to="/vehicle-queue"
-                  className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft"
-                >
+                <div className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft">
                   {entry.truckPhotoBase64 ? (
                     <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border/40">
                       <img
@@ -668,9 +665,12 @@ function GateEntry() {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-mono text-sm font-semibold text-primary truncate">
+                      <Link
+                        to="/vehicle-queue"
+                        className="truncate font-mono text-sm font-semibold text-primary hover:underline"
+                      >
                         {entry.vehiclePlate || "NO PLATE"}
-                      </p>
+                      </Link>
                       <StatusBadge status={entry.status} />
                     </div>
                     <p className="mt-0.5 truncate text-sm font-medium">{entry.driverName}</p>
@@ -688,7 +688,7 @@ function GateEntry() {
                       </p>
                     )}
                   </div>
-                </Link>
+                </div>
                 <Button
                   variant="ghost"
                   size="icon"
