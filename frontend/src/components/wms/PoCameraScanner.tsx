@@ -30,11 +30,9 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            facingMode: 'environment'
+            facingMode: { ideal: 'environment' },
           },
-          audio: false
+          audio: false,
         });
 
         if (mounted) {

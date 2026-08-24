@@ -126,13 +126,13 @@ class EnterprisePoOcrEngine:
         if width < MIN_WIDTH or height < MIN_HEIGHT:
             return None
 
-        # Upscale or downscale based on longest edge for optimal OCR speed & accuracy
+        # Scale image to 1200px max edge for fast, highly accurate mobile OCR
         longest_edge = max(width, height)
-        if longest_edge > 2000:
-            scale = 2000 / longest_edge
+        if longest_edge > 1200:
+            scale = 1200 / longest_edge
             img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-        elif longest_edge < 1800:
-            scale = 1800 / longest_edge
+        elif longest_edge < 1000:
+            scale = 1000 / longest_edge
             img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
         # 1. Grayscale Conversion
@@ -483,23 +483,17 @@ class EnterprisePoOcrEngine:
         try:
             frame = self.preprocess_image(raw_bytes)
             if frame is not None:
-                # Fast path: clean POs normally need one Tesseract process.
+                # Fast path: process with PSM 6 for standard block layout
                 candidates.append(self.extract_real_text_tesseract(frame.enhanced_image, ("--psm 6",)))
                 fast_result = build_result(candidates)
-                if complete(fast_result):
+                if fast_result.po_number or complete(fast_result):
                     return fast_result
 
-                # Layout alternatives run only when the fast pass missed a
-                # required field.
-                candidates.append(self.extract_real_text_tesseract(frame.enhanced_image, ("--psm 4", "--psm 11")))
+                # Secondary pass: process adaptive threshold image with PSM 6
+                candidates.append(self.extract_real_text_tesseract(frame.adaptive_image, ("--psm 6",)))
                 layout_result = build_result(candidates)
-                if complete(layout_result):
+                if layout_result.po_number or complete(layout_result):
                     return layout_result
-
-                candidates.append(self.extract_real_text_tesseract(frame.threshold_image, ("--psm 6", "--psm 4")))
-                candidates.append(self.extract_real_text_tesseract(frame.adaptive_image, ("--psm 11",)))
-                if PaddleOCR is not None:
-                    candidates.append(self.extract_text_paddle(frame.enhanced_image))
         except Exception:
             candidates = []
 
