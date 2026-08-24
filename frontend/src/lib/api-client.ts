@@ -4,7 +4,12 @@
  * and Java auth-service (port 8080).
  */
 
-const BUSINESS_API_URL = "http://localhost:8000";
+const BUSINESS_API_URL =
+  typeof window !== "undefined"
+    ? window.location.hostname.includes("loca.lt")
+      ? "https://wms-mobile-backend-8000.loca.lt"
+      : `http://${window.location.hostname}:8000`
+    : "http://localhost:8000";
 
 function getApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;

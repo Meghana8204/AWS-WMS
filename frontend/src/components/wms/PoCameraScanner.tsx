@@ -15,10 +15,18 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     let mounted = true;
 
     async function startCamera() {
+      if (typeof window !== 'undefined' && (!navigator?.mediaDevices || !navigator?.mediaDevices?.getUserMedia)) {
+        if (mounted) {
+          setError("Live video streaming is blocked over plain HTTP on mobile browsers. Tap 'Take Photo / Upload Image' to capture a picture with your phone's camera.");
+        }
+        return;
+      }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
@@ -37,10 +45,10 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         } else {
           stream.getTracks().forEach(track => track.stop());
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Camera access error:", err);
         if (mounted) {
-          setError("Camera access was blocked or is not available. Please allow camera permissions.");
+          setError("Camera access is blocked or unavailable over HTTP. Use 'Take Photo / Upload Image' below to snap a picture with your camera app.");
         }
       }
     }
@@ -54,6 +62,38 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       }
     };
   }, []);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScanning(true);
+    const toastId = toast.loading("Analyzing PO document...");
+
+    try {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const dataUrl = event.target?.result as string;
+        if (!dataUrl) return;
+        const base64Image = dataUrl.split(',')[1];
+        const { api } = await import('@/lib/api-client');
+        const data = await api.previewPoOcr(base64Image);
+
+        toast.success("OCR Extraction Complete", { id: toastId });
+        onOcrSuccess(data, file);
+        onClose();
+      };
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      console.error("OCR Preview error:", err);
+      toast.error("Scanning failed", {
+        id: toastId,
+        description: err.message || "Could not process the document."
+      });
+    } finally {
+      setScanning(false);
+    }
+  };
 
   async function captureAndScanFrame() {
     if (!videoRef.current || !canvasRef.current) return;
@@ -74,9 +114,6 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      // Get base64 JPEG
-      // Preserve small table text and punctuation (especially the final PO
-      // sequence and date separators) for the local OCR engines.
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       const base64Image = dataUrl.split(',')[1];
 
@@ -84,7 +121,6 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       const { api } = await import('@/lib/api-client');
       const data = await api.previewPoOcr(base64Image);
 
-      // Create a File object from the blob for consistency with existing state
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
@@ -117,13 +153,21 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         </div>
 
         {/* Camera Feed Container */}
-        <div className="relative flex-1 bg-black overflow-hidden flex items-center justify-center">
+        <div className="relative flex-1 bg-black overflow-hidden flex items-center justify-center min-h-[250px]">
           {error ? (
-            <div className="p-8 text-center">
-              <div className="mx-auto mb-4 rounded-full bg-destructive/10 p-3 text-destructive w-fit">
-                <X className="size-6" />
+            <div className="p-8 text-center flex flex-col items-center">
+              <div className="mx-auto mb-4 rounded-full bg-amber-500/10 p-3 text-amber-500 w-fit">
+                <Camera className="size-6" />
               </div>
-              <p className="text-sm font-medium text-destructive">{error}</p>
+              <p className="text-sm font-medium text-muted-foreground mb-4 max-w-md">{error}</p>
+              <Button
+                variant="default"
+                className="rounded-xl font-bold shadow-glow"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={scanning}
+              >
+                <Camera className="mr-2 size-4" /> Take Photo / Upload Image
+              </Button>
             </div>
           ) : (
             <>
@@ -134,7 +178,6 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
                 muted
                 className="w-full h-full object-contain"
               />
-              {/* Optional Overlay Guide */}
               <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none flex items-center justify-center">
                  <div className="w-full h-full border-2 border-dashed border-primary/40 rounded-lg"></div>
               </div>
@@ -143,23 +186,33 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         </div>
 
         <canvas ref={canvasRef} className="hidden" />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileUpload}
+        />
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-border/50 p-5">
           <Button variant="outline" className="rounded-xl" onClick={onClose} disabled={scanning}>
             Cancel
           </Button>
-          <Button
-            className="rounded-xl px-8 font-bold shadow-glow"
-            disabled={!!error || scanning}
-            onClick={captureAndScanFrame}
-          >
-            {scanning ? (
-              <><Loader2 className="mr-2 size-4 animate-spin" /> Processing...</>
-            ) : (
-              <><Camera className="mr-2 size-4" /> Capture & Analyze</>
-            )}
-          </Button>
+          {!error && (
+            <Button
+              className="rounded-xl px-8 font-bold shadow-glow"
+              disabled={scanning}
+              onClick={captureAndScanFrame}
+            >
+              {scanning ? (
+                <><Loader2 className="mr-2 size-4 animate-spin" /> Processing...</>
+              ) : (
+                <><Camera className="mr-2 size-4" /> Capture & Analyze</>
+              )}
+            </Button>
+          )}
         </div>
       </div>
     </div>
