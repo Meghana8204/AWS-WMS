@@ -13,6 +13,48 @@ import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
 
+async function compressFileForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width;
+      let h = img.height;
+      const maxDim = 1024;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return; }
+          resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
   component: GateEntry
@@ -147,7 +189,8 @@ function GateEntry() {
 
     try {
       console.log(`Calling api.scanOcr for ${kind}...`);
-      const result = await api.scanOcr(file, kind);
+      const uploadFile = await compressFileForUpload(file);
+      const result = await api.scanOcr(uploadFile, kind);
       console.log("OCR scan result:", result);
 
       const extraction = result.extraction || result;

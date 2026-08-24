@@ -495,15 +495,24 @@ export const api = {
     });
   },
 
-  async previewPoOcr(base64Image: string, poNumberOverride?: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate/po-ocr-preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        documentImageBase64: base64Image,
-        poNumberOverride: poNumberOverride,
-      }),
-    });
+  async previewPoOcr(base64Image: string, _poNumberOverride?: string): Promise<any> {
+    try {
+      const byteCharacters = atob(base64Image);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: "image/jpeg" });
+      const file = new File([blob], "po-scan.jpg", { type: "image/jpeg" });
+      return this.scanOcr(file, "po");
+    } catch {
+      // Fallback if atob fails
+      return request<any>(`${BUSINESS_API_URL}/api/gate-entries/scan-ocr`, {
+        method: "POST",
+        body: new FormData(),
+      });
+    }
   },
 
   async getGrn(grnId: string): Promise<any> {
