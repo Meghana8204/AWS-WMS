@@ -8,6 +8,51 @@ interface PoCameraScannerProps {
   onClose: () => void;
 }
 
+function compressImageFile(file: File, maxDim = 1024, quality = 0.82): Promise<{ base64: string; compressedFile: File }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width;
+      let h = img.height;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas context failed"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      const base64 = dataUrl.split(",")[1];
+      canvas.toBlob(
+        (blob) => {
+          const compressedFile = new File([blob || file], file.name, { type: "image/jpeg" });
+          resolve({ base64, compressedFile });
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+    img.src = url;
+  });
+}
+
 export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -66,22 +111,17 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
     if (!file) return;
 
     setScanning(true);
-    const toastId = toast.loading("Analyzing PO document...");
+    const toastId = toast.loading("Compressing & analyzing PO document...");
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const dataUrl = event.target?.result as string;
-        if (!dataUrl) return;
-        const base64Image = dataUrl.split(',')[1];
-        const { api } = await import('@/lib/api-client');
-        const data = await api.previewPoOcr(base64Image);
+      // Fast client-side image compression before upload (max 1024px, 0.82 quality)
+      const { base64, compressedFile } = await compressImageFile(file, 1024, 0.82);
+      const { api } = await import('@/lib/api-client');
+      const data = await api.previewPoOcr(base64);
 
-        toast.success("OCR Extraction Complete", { id: toastId });
-        onOcrSuccess(data, file);
-        onClose();
-      };
-      reader.readAsDataURL(file);
+      toast.success("OCR Extraction Complete", { id: toastId });
+      onOcrSuccess(data, compressedFile);
+      onClose();
     } catch (err: any) {
       console.error("OCR Preview error:", err);
       toast.error("Scanning failed", {
@@ -103,16 +143,28 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       const canvas = canvasRef.current;
       const video = videoRef.current;
 
-      // Use natural video dimensions
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      let w = video.videoWidth || 1280;
+      let h = video.videoHeight || 720;
+      const maxDim = 1024;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+
+      canvas.width = w;
+      canvas.height = h;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error("Could not initialize canvas context");
 
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, 0, 0, w, h);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       const base64Image = dataUrl.split(',')[1];
 
       // Call API
