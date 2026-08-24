@@ -222,6 +222,7 @@ function GateEntry() {
   async function handlePoScannerSuccess(data: any, file: File) {
     setPoDocument(file);
     const result = data.ocr_result || data;
+    const fields = data.extraction?.fields || result.extraction?.fields || {};
 
     setExtractedDetails({
       ...data,
@@ -229,21 +230,29 @@ function GateEntry() {
       confidence: result.confidence,
     });
 
-    if (result.po_number) {
-      setPoNumber(result.po_number);
-      const previewStatus = data.computedStatus || data.computed_status;
-      setPoVerificationStatus(previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL");
-      void fetchPoDetails(result.po_number, true);
+    const detectedPo = result.po_number || fields.po_number;
+    const detectedSupplier = result.supplier_name || fields.supplier_name;
+    const detectedMaterial = result.material_description || fields.material_description;
+    const detectedQty = result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
+    const detectedPoDate = result.po_date || fields.po_date;
+    const detectedDeliveryDate = result.delivery_date || fields.delivery_date;
+
+    if (detectedPo) {
+      setPoNumber(detectedPo);
+      const previewStatus = data.computedStatus || data.computed_status || data.status;
+      setPoVerificationStatus(previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL");
+      void fetchPoDetails(detectedPo, true);
     }
-    if (result.supplier_name) setSupplierName(result.supplier_name);
-    const foundLineItems = applyLineItems(result.line_items || result.lineItems);
-    if (!foundLineItems) {
-      setArrivalLineItems([]);
-      if (result.material_description) setMaterialDescription(result.material_description);
-      if (result.total_quantity) setTotalQuantity(String(result.total_quantity));
+    if (detectedSupplier) setSupplierName(detectedSupplier);
+    if (detectedMaterial) setMaterialDescription(detectedMaterial);
+    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "") setTotalQuantity(String(detectedQty));
+    if (detectedPoDate) setPoDate(detectedPoDate);
+    if (detectedDeliveryDate) setDeliveryDate(detectedDeliveryDate);
+
+    const lineItems = result.line_items || result.lineItems || fields.line_items || [];
+    if (lineItems.length) {
+      applyLineItems(lineItems);
     }
-    if (result.po_date) setPoDate(result.po_date);
-    if (result.delivery_date) setDeliveryDate(result.delivery_date);
   }
 
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
@@ -292,14 +301,19 @@ function GateEntry() {
       // populate the editable material inputs. This is more reliable than
       // expecting OCR to reconstruct every cell in a photographed table.
       const items = po.items || [];
-      if (items.length) applyLineItems(items);
-
-      if (!preserveScannedFields) {
-        setSupplierName(po.supplierName || "");
-
-        setPoDate(po.poDate || "");
-        setDeliveryDate(po.expectedDeliveryDate || "");
+      if (items.length) {
+        applyLineItems(items);
       }
+
+      setSupplierName((prev) => prev || po.supplierName || po.supplier_name || "");
+      setPoDate((prev) => prev || po.poDate || po.po_date || "");
+      setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
+
+      const systemMat = items.map((i: any) => i.materialName || i.material_name).filter(Boolean).join(", ");
+      if (systemMat) setMaterialDescription((prev) => prev || systemMat);
+
+      const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
+      if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
 
       // Vehicle and driver details belong to the supplier's ASN, not the PO.
       // The ASN list is newest-first, so the first PO match is the current
