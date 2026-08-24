@@ -16,12 +16,8 @@ import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
 
-/**
- * Loads the RSA keypair used to sign (private key) and verify / publish via
- * JWKS (public key) access tokens. Paths are Spring resource locations
- * (classpath: for local dev keys, file: for a mounted Kubernetes secret in
- * every real environment - see deploy/k8s/base/auth-secrets.yaml).
- */
+
+
 @Component
 public class JwtKeyProvider {
 

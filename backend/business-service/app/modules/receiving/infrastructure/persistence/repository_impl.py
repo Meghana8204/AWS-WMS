@@ -32,7 +32,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
         self._session = session
 
     async def find_purchase_order(self, po_id: PurchaseOrderId) -> Optional[PurchaseOrderSnapshot]:
-        # Purchase Order module is removed. Returning a dummy snapshot.
+
         return PurchaseOrderSnapshot(id=po_id, ordered_quantity_by_item_code={})
 
     async def save(self, grn: GoodsReceiptNote) -> None:
@@ -47,9 +47,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
             )
         self._session.add(entity)
 
-        # Same local transaction as the GRN write above - the outbox
-        # pattern. If the commit fails, the GRN write rolls back too, so
-        # the two never go out of sync.
+
+
+
         for event in grn.domain_events:
             self._session.add(to_outbox_row("GoodsReceiptNote", str(grn.id), event))
 

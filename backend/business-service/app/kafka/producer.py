@@ -21,7 +21,7 @@ _producer: AIOKafkaProducer | None = None
 
 def _topic_for(event_type: str) -> str:
     settings = get_settings()
-    # e.g. ams.goods-received, ams.return-requested
+
     slug = "".join(
         f"-{c.lower()}" if c.isupper() else c for c in event_type
     ).lstrip("-")
@@ -42,7 +42,7 @@ async def start_producer() -> None:
         await _producer.start()
         logger.info("Kafka producer started")
     except Exception:
-        # Avoid unclosed producer warning if start fails
+
         try: await _producer.stop()
         except: pass
         _producer = None

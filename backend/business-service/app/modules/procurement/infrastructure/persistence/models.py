@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.base import Base, GUID
 
 
-# Association table for RFQ and Suppliers
+
 rfq_supplier_link = Table(
     "rfq_supplier_link",
     Base.metadata,
@@ -159,7 +159,7 @@ class MaterialModel(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-# Association table for Supplier and Materials
+
 supplier_material_link = Table(
     "supplier_material_link",
     Base.metadata,
@@ -183,7 +183,7 @@ class RfqModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     closing_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    # Selection Fields
+
     selected_supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
     selection_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     selected_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -226,7 +226,7 @@ class QuotationModel(Base):
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
-    # Extended Bidding Fields
+
     discount: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     tax: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
     freight_charges: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
@@ -338,7 +338,7 @@ class PurchaseOrderModel(Base):
     procurement_officer: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
-    # Supplier Info (Snapshot from Master at time of PO)
+
     supplier_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     supplier_contact_person: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     supplier_phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
@@ -346,24 +346,24 @@ class PurchaseOrderModel(Base):
     supplier_gstin: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     supplier_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Delivery Info
+
     delivery_warehouse_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     delivery_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Financial Summary
+
     subtotal: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
     discount_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
     freight_charges: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
     additional_charges: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
 
-    # Selection Audit
+
     selection_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     procurement_comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     selection_date: Mapped[Optional[datetime]] = mapped_column(DateTime, default=datetime.now)
     selected_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
 
-    # Approval Status
+
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -481,7 +481,7 @@ class NotificationModel(Base):
     __tablename__ = "notification"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    user_role: Mapped[str] = mapped_column(String(32), nullable=False) # PROCUREMENT | FINANCE | WAREHOUSE
+    user_role: Mapped[str] = mapped_column(String(32), nullable=False)
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
@@ -501,5 +501,3 @@ class SupplierUserModel(Base):
     must_change_password: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     supplier: Mapped[SupplierModel] = relationship("SupplierModel")
-
-

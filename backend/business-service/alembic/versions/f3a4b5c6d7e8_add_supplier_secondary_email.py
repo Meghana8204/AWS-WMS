@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Rename email to primary_email and add secondary_email
+
     op.alter_column("supplier_contact", "email", new_column_name="primary_email")
     op.add_column("supplier_contact", sa.Column("secondary_email", sa.String(length=128), nullable=True))
 

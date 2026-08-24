@@ -18,14 +18,14 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-    # --- Service identity -------------------------------------------------
+
     service_name: str = "business-service"
-    environment: str = Field(default="local")  # local | dev | staging | prod
+    environment: str = Field(default="local")
     api_prefix: str = "/api"
     log_level: str = "INFO"
     log_json: bool = Field(default=False)
 
-    # --- Database -----------------------------------------------------------
+
     database_url: str = Field(
         default="postgresql+asyncpg://ams_business:ams_business@localhost:5433/ams_business",
         description="Async SQLAlchemy URL for the business database (one DB per deployable unit).",
@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     database_max_overflow: int = 20
     database_echo: bool = False
 
-    # --- Auth / JWT (validated locally, never call the Java service per-request) ---
+
     auth_service_base_url: str = Field(default="http://auth-service:8080")
     jwt_jwks_url: str = Field(
         default="http://auth-service:8080/.well-known/jwks.json",
@@ -45,33 +45,33 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(default="RS256")
     jwks_cache_ttl_seconds: int = Field(default=300)
 
-    # --- Kafka ---------------------------------------------------------------
+
     kafka_bootstrap_servers: str = Field(default="localhost:9092")
     kafka_client_id: str = Field(default="business-service")
     kafka_topic_prefix: str = Field(default="ams")
     kafka_consumer_group: str = Field(default="business-service-notification")
     kafka_security_protocol: str = Field(default="PLAINTEXT")
 
-    # --- Redis (caching, rate limiting, idempotency keys) ---------------------
+
     redis_url: str = Field(default="redis://localhost:6379/0")
 
-    # --- Outbox relay ----------------------------------------------------------
+
     outbox_poll_interval_seconds: int = Field(default=2)
     outbox_batch_size: int = Field(default=100)
 
-    # --- Gemini document extraction ------------------------------------------
+
     gemini_api_key: str = Field(default="")
     gemini_model: str = Field(default="gemini-3.1-flash-lite-preview")
 
-    # --- CORS ------------------------------------------------------------------
+
     cors_allow_origins: List[str] = Field(default_factory=lambda: ["http://localhost:8080", "http://127.0.0.1:8080"])
 
-    # --- Observability -----------------------------------------------------------
+
     otel_exporter_otlp_endpoint: str = Field(default="http://otel-collector:4317")
     otel_enabled: bool = Field(default=False)
     prometheus_enabled: bool = Field(default=True)
 
-    # --- Role Credentials ---------------------------------------------------------
+
     admin_username: str = Field(default="admin")
     admin_password: str = Field(default="admin")
     procurement_username: str = Field(default="procurement")
@@ -87,7 +87,7 @@ class Settings(BaseSettings):
     supplier_username: str = Field(default="supplier")
     supplier_password: str = Field(default="supplier123")
 
-    # --- Email SMTP Settings ----------------------------------------------------
+
     email_host: str = Field(default="smtp.gmail.com")
     email_port: int = Field(default=587)
     email_host_user: str = Field(default="")

@@ -13,14 +13,7 @@
     <artifactId>common</artifactId>
     <packaging>jar</packaging>
 
-    <!--
-        Trimmed down for the post-migration architecture: this is now a
-        shared library for auth-service ONLY (generic exception types and
-        the HTTP error-shape/handler pattern). The outbox/domain-event
-        machinery that used to live here moved to Python
-        (business-service/app/common/domain and app/events) since it now
-        serves the business modules exclusively.
-    -->
+
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>

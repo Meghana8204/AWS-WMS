@@ -9,30 +9,33 @@ import { activeArrival } from "@/lib/wms-data";
 import truckGate from "@/assets/truck-gate.jpg";
 import truckRear from "@/assets/truck-rear.jpg";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-
 export const Route = createFileRoute("/vehicle-verification")({
   head: () => ({
     meta: [
       { title: "Vehicle Verification · MH 12 QT 4489 · NexusWMS" },
-      { name: "description", content: "Verify truck images, OCR-read plate number, fitness documents and visit history before dock allocation." },
+      {
+        name: "description",
+        content:
+          "Verify truck images, OCR-read plate number, fitness documents and visit history before dock allocation.",
+      },
       { property: "og:title", content: "Vehicle Verification · NexusWMS" },
-      { property: "og:description", content: "Image, OCR and compliance verification for inbound vehicles." },
+      {
+        property: "og:description",
+        content: "Image, OCR and compliance verification for inbound vehicles.",
+      },
     ],
   }),
   component: VehicleVerification,
 });
-
 const history = [
   { date: "22 Jul 2026", po: "PO-2026-117905", result: "Accepted", note: "No exception" },
   { date: "09 Jul 2026", po: "PO-2026-117402", result: "Accepted", note: "Late by 40 min" },
   { date: "27 Jun 2026", po: "PO-2026-116988", result: "Accepted", note: "No exception" },
 ];
-
 function VehicleVerification() {
   const a = activeArrival;
   const navigate = useNavigate();
   const [zoom, setZoom] = useState<string | null>(null);
-
   return (
     <AppShell
       title="Vehicle verification"
@@ -42,7 +45,11 @@ function VehicleVerification() {
           <Button
             variant="outline"
             className="rounded-xl border-warning/40 text-warning-foreground hover:bg-warning-soft"
-            onClick={() => toast.warning("Issue reported", { description: "Vehicle exception raised to gate security." })}
+            onClick={() =>
+              toast.warning("Issue reported", {
+                description: "Vehicle exception raised to gate security.",
+              })
+            }
           >
             <AlertTriangle className="size-4" /> Report issue
           </Button>
@@ -61,7 +68,12 @@ function VehicleVerification() {
       <StepRail current={2} />
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <SectionCard title="Captured vehicle images" description="Tap an image to zoom" icon={Truck} className="xl:col-span-2">
+        <SectionCard
+          title="Captured vehicle images"
+          description="Tap an image to zoom"
+          icon={Truck}
+          className="xl:col-span-2"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             {[
               { src: truckGate, label: "Front · Gate 2 · 09:04" },
@@ -72,7 +84,14 @@ function VehicleVerification() {
                 onClick={() => setZoom(img.src)}
                 className="group relative overflow-hidden rounded-2xl border border-border/70"
               >
-                <img src={img.src} alt={img.label} loading="lazy" width={1024} height={640} className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <img
+                  src={img.src}
+                  alt={img.label}
+                  loading="lazy"
+                  width={1024}
+                  height={640}
+                  className="h-56 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
                 <span className="absolute right-3 top-3 grid size-8 place-items-center rounded-lg bg-card/90 text-foreground shadow-soft">
                   <ZoomIn className="size-4" />
                 </span>
@@ -84,10 +103,16 @@ function VehicleVerification() {
           </div>
         </SectionCard>
 
-        <SectionCard title="OCR plate reading" description="Automatic number plate recognition" icon={ScanLine}>
+        <SectionCard
+          title="OCR plate reading"
+          description="Automatic number plate recognition"
+          icon={ScanLine}
+        >
           <div className="rounded-2xl border border-success/30 bg-success-soft p-4 text-center">
             <p className="font-mono text-xl font-bold tracking-widest">{a.truckNo}</p>
-            <p className="mt-1 text-xs font-medium text-success">98.7% confidence · matches gate entry</p>
+            <p className="mt-1 text-xs font-medium text-success">
+              98.7% confidence · matches gate entry
+            </p>
           </div>
           <div className="mt-4 grid gap-3">
             <Field label="RC validity" value="Valid till 14 Mar 2029" />
@@ -100,7 +125,11 @@ function VehicleVerification() {
       </div>
 
       <div className="mt-4">
-        <SectionCard title="Visit history" description="Last three visits by this vehicle" icon={History}>
+        <SectionCard
+          title="Visit history"
+          description="Last three visits by this vehicle"
+          icon={History}
+        >
           <div className="-mx-5 overflow-x-auto px-5">
             <table className="w-full min-w-[520px] text-sm">
               <thead>
@@ -116,7 +145,9 @@ function VehicleVerification() {
                   <tr key={h.po} className="border-b border-border/60 last:border-0">
                     <td className="py-3">{h.date}</td>
                     <td className="py-3 font-mono text-xs">{h.po}</td>
-                    <td className="py-3"><StatusBadge status="Completed" /></td>
+                    <td className="py-3">
+                      <StatusBadge status="Completed" />
+                    </td>
                     <td className="py-3 text-muted-foreground">{h.note}</td>
                   </tr>
                 ))}

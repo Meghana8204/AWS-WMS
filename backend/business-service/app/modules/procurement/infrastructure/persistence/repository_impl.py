@@ -165,7 +165,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         model.updated_by = supplier.updated_by
         model.updated_at = supplier.updated_at
 
-        # Address
+
         if supplier.address:
             if not model.address:
                 model.address = SupplierAddressModel(supplier_id=supplier.id.value)
@@ -177,7 +177,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         elif model.address:
             await self._session.delete(model.address)
 
-        # Contact
+
         if supplier.contact:
             if not model.contact:
                 model.contact = SupplierContactModel(supplier_id=supplier.id.value)
@@ -190,7 +190,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         elif model.contact:
             await self._session.delete(model.contact)
 
-        # Bank Info
+
         if supplier.bank_info:
             if not model.bank_info:
                 model.bank_info = SupplierBankInfoModel(supplier_id=supplier.id.value)
@@ -204,7 +204,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         elif model.bank_info:
             await self._session.delete(model.bank_info)
 
-        # Documents
+
         await self._session.execute(delete(SupplierDocumentModel).where(SupplierDocumentModel.supplier_id == model.id))
         for doc in supplier.documents:
             model.documents.append(
@@ -219,7 +219,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
                 )
             )
 
-        # Write outbox domain events
+
         for event in supplier.domain_events:
             self._session.add(to_outbox_row("Supplier", str(supplier.id.value), event))
         supplier.clear_events()
@@ -365,7 +365,7 @@ class SqlAlchemyRfqRepository(RfqRepository):
         model.selection_reason = rfq.selection_reason
         model.selection_comments = rfq.selection_comments
 
-        # Sync items
+
         model.items = [
             RfqItemModel(
                 rfq_id=rfq.id.value,
@@ -381,7 +381,7 @@ class SqlAlchemyRfqRepository(RfqRepository):
             for item in rfq.items
         ]
 
-        # Sync suppliers
+
         if rfq.supplier_ids:
             supplier_uuids = []
             for sid in rfq.supplier_ids:
@@ -400,7 +400,7 @@ class SqlAlchemyRfqRepository(RfqRepository):
         else:
             model.suppliers = []
 
-        # Write outbox domain events
+
         for event in rfq.domain_events:
             self._session.add(to_outbox_row("RFQ", str(rfq.id.value), event))
         rfq.clear_events()
@@ -501,7 +501,7 @@ class SqlAlchemyQuotationRepository(QuotationRepository):
         model.quotation_validity = quotation.quotation_validity
         model.remarks = quotation.remarks
 
-        # Sync lines
+
         model.lines = [
             QuotationLineModel(
                 quotation_id=quotation.id.value,
@@ -512,7 +512,7 @@ class SqlAlchemyQuotationRepository(QuotationRepository):
             for line in quotation.lines
         ]
 
-        # Sync documents
+
         model.documents = [
             QuotationDocumentModel(
                 quotation_id=quotation.id.value,
@@ -523,7 +523,7 @@ class SqlAlchemyQuotationRepository(QuotationRepository):
             for doc in quotation.documents
         ]
 
-        # Write outbox domain events
+
         for event in quotation.domain_events:
             self._session.add(to_outbox_row("Quotation", str(quotation.id.value), event))
         quotation.clear_events()
@@ -626,7 +626,7 @@ class SqlAlchemyAsnRepository(AsnRepository):
         if asn.supplier_id:
             model.supplier_id = asn.supplier_id
 
-        # Sync lines
+
         model.lines = [
             AsnLineModel(
                 asn_id=asn.id.value,
@@ -638,7 +638,7 @@ class SqlAlchemyAsnRepository(AsnRepository):
             for l in asn.lines
         ]
 
-        # Sync documents
+
         model.documents = [
             AsnDocumentModel(
                 asn_id=asn.id.value,
@@ -651,7 +651,7 @@ class SqlAlchemyAsnRepository(AsnRepository):
             for d in asn.documents
         ]
 
-        # Write outbox domain events
+
         for event in asn.domain_events:
             self._session.add(to_outbox_row("ASN", str(asn.id.value), event))
         asn.clear_events()
@@ -790,7 +790,7 @@ class SqlAlchemyMaterialRequestRepository(MaterialRequestRepository):
         self._session = session
 
     async def get_next_sequence(self, year_month: str) -> int:
-        # Pattern MR-YYYYMM-%
+
         pattern = f"MR-{year_month}-%"
         stmt = select(func.count(MaterialRequestModel.id)).where(MaterialRequestModel.request_number.like(pattern))
         res = await self._session.execute(stmt)

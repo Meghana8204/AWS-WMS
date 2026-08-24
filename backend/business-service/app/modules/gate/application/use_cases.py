@@ -40,7 +40,7 @@ class CreateGateEntryUseCase:
         self.verification_domain_service = verification_domain_service or GateEntryVerificationDomainService()
 
     async def execute(self, command: CreateGateEntryCommand) -> GateEntry:
-        # 1. Validate files
+
         self.file_storage_service.validate_file(
             command.po_document_bytes, command.po_document_filename, command.po_document_content_type
         )
@@ -57,12 +57,12 @@ class CreateGateEntryUseCase:
                 command.vehicle_photo_content_type or "image/jpeg",
             )
 
-        # 2. Execute ANPR (vehicle plate recognition) and OCR (PO document extraction)
+
         anpr_input = command.vehicle_photo_bytes or command.vehicle_number or b"empty"
         anpr_result = await self.anpr_service.recognize_license_plate(anpr_input)
         ocr_result = await self.ocr_service.process_po_document(command.po_document_bytes)
 
-        # Auto-populate vehicle_number, po_number, and driver_name from ANPR/OCR if not provided
+
         effective_vehicle_number = (
             command.vehicle_number
             or (anpr_result.detected_vehicle_number if (anpr_result and anpr_result.detected_vehicle_number) else None)
@@ -75,13 +75,13 @@ class CreateGateEntryUseCase:
         )
         effective_driver_name = command.driver_name or "Driver"
 
-        # 3. Check duplicate active entry
+
         vehicle = VehicleNumber(effective_vehicle_number)
         active_entry = await self.gate_entry_repo.find_active_by_po_and_vehicle(effective_po_number, vehicle)
         if active_entry is not None:
             raise DuplicateGateEntryException(effective_po_number, effective_vehicle_number)
 
-        # 4. Save files
+
         po_doc_path = await self.file_storage_service.save_file(
             command.po_document_bytes, command.po_document_filename, "po_documents"
         )
@@ -100,7 +100,7 @@ class CreateGateEntryUseCase:
                 "vehicle_photos",
             )
 
-        # 5. Create Gate Entry Aggregate
+
         gate_entry = GateEntry.create(
             po_number=effective_po_number,
             vehicle_number=effective_vehicle_number,
@@ -113,7 +113,7 @@ class CreateGateEntryUseCase:
             vehicle_photo_path=vehicle_photo_path,
         )
 
-        # 6. Query existing PO record from database
+
         target_po_num = ocr_result.po_number if (ocr_result and ocr_result.po_number) else effective_po_number
         po_details = await self.po_lookup_repo.find_po_details_by_number(target_po_num)
         if po_details is None and target_po_num != effective_po_number:
@@ -121,7 +121,7 @@ class CreateGateEntryUseCase:
 
         po_id = po_details.po_id if po_details else None
 
-        # 7. Perform Domain Verification & Mismatch Detection
+
         verification_result = self.verification_domain_service.verify(
             vehicle_number=effective_vehicle_number,
             anpr_result=anpr_result,
@@ -129,7 +129,7 @@ class CreateGateEntryUseCase:
             po_details=po_details,
         )
 
-        # 9. Apply Verification Result to Aggregate
+
         gate_entry.apply_verification(
             po_id=po_id,
             anpr_result=anpr_result,
@@ -137,10 +137,10 @@ class CreateGateEntryUseCase:
             verification_result=verification_result,
         )
 
-        # 10. Persist Gate Entry & Outbox Events
+
         await self.gate_entry_repo.save(gate_entry)
 
-        # 11. Send notification if ready for receiving
+
         if self.notification_gateway and gate_entry.status in (GateEntryStatus.PO_VERIFIED, GateEntryStatus.APPROVED):
             await self.notification_gateway.notify_ready_for_receiving(
                 gate_entry_id=str(gate_entry.id),

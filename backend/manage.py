@@ -24,7 +24,7 @@ def main():
             elif arg == "--host" and idx + 1 < len(sys.argv):
                 host = sys.argv[idx + 1]
             elif ":" in arg and not arg.startswith("-"):
-                # e.g. python manage.py runserver 8000 or 127.0.0.1:8000
+
                 parts = arg.split(":")
                 if len(parts) == 2:
                     host, port = parts[0], int(parts[1])

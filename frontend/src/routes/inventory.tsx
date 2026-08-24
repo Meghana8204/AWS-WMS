@@ -10,7 +10,7 @@ import {
   MoreHorizontal,
   Plus,
   History,
-  MapPin
+  MapPin,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -19,21 +19,22 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/inventory")({
   component: Inventory,
 });
-
 function Inventory() {
   const [stock, setStock] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [locationBalances, setLocationBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [data, transactionData, locationData] = await Promise.all([api.getMaterialStock(), api.getInventoryTransactions(), api.getInventoryLocationBalances()]);
+      const [data, transactionData, locationData] = await Promise.all([
+        api.getMaterialStock(),
+        api.getInventoryTransactions(),
+        api.getInventoryLocationBalances(),
+      ]);
       setStock(data);
       setTransactions(transactionData);
       setLocationBalances(locationData);
@@ -43,18 +44,18 @@ function Inventory() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, []);
-
   return (
     <AppShell
       title="Warehouse Inventory"
       subtitle="Real-time stock on hand and bin locations"
       actions={
         <Button className="rounded-xl shadow-glow" asChild>
-           <Link to="/warehouse/material-requests"><Plus className="size-4 mr-2" /> Raise MR</Link>
+          <Link to="/warehouse/material-requests">
+            <Plus className="size-4 mr-2" /> Raise MR
+          </Link>
         </Button>
       }
     >
@@ -72,10 +73,34 @@ function Inventory() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-         <InventoryStat label="Total SKUs" value={stock.length} icon={Boxes} color="text-primary" bg="bg-primary-soft/20" />
-         <InventoryStat label="Low Stock" value={stock.filter(s => parseFloat(s.onHand) < parseFloat(s.reorderPoint)).length} icon={AlertTriangle} color="text-warning" bg="bg-warning-soft/20" />
-         <InventoryStat label="Out of Stock" value={stock.filter(s => parseFloat(s.onHand) === 0).length} icon={Boxes} color="text-destructive" bg="bg-destructive-soft/20" />
-         <InventoryStat label="Total Units" value={stock.reduce((acc, s) => acc + parseFloat(s.onHand), 0).toLocaleString()} icon={Boxes} color="text-success" bg="bg-success-soft/20" />
+        <InventoryStat
+          label="Total SKUs"
+          value={stock.length}
+          icon={Boxes}
+          color="text-primary"
+          bg="bg-primary-soft/20"
+        />
+        <InventoryStat
+          label="Low Stock"
+          value={stock.filter((s) => parseFloat(s.onHand) < parseFloat(s.reorderPoint)).length}
+          icon={AlertTriangle}
+          color="text-warning"
+          bg="bg-warning-soft/20"
+        />
+        <InventoryStat
+          label="Out of Stock"
+          value={stock.filter((s) => parseFloat(s.onHand) === 0).length}
+          icon={Boxes}
+          color="text-destructive"
+          bg="bg-destructive-soft/20"
+        />
+        <InventoryStat
+          label="Total Units"
+          value={stock.reduce((acc, s) => acc + parseFloat(s.onHand), 0).toLocaleString()}
+          icon={Boxes}
+          color="text-success"
+          bg="bg-success-soft/20"
+        />
       </div>
 
       {loading ? (
@@ -84,72 +109,185 @@ function Inventory() {
         </div>
       ) : (
         <Card className="border-border/40 overflow-hidden shadow-soft">
-           <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                 <thead className="bg-muted/30 border-b border-border/60 text-[10px] uppercase font-black tracking-widest text-muted-foreground">
-                    <tr>
-                       <th className="px-6 py-4">Material</th>
-                       <th className="px-6 py-4">Storage Locations</th>
-                       <th className="px-6 py-4">Category</th>
-                       <th className="px-6 py-4 text-right">On Hand</th>
-                       <th className="px-6 py-4 text-right">Allocated</th>
-                       <th className="px-6 py-4 text-right">Available</th>
-                       <th className="px-6 py-4">UOM</th>
-                       <th className="px-6 py-4">Warehouse</th>
-                       <th className="px-6 py-4">Status</th>
-                       <th className="px-6 py-4"></th>
-                    </tr>
-                 </thead>
-                 <tbody className="divide-y divide-border/40">
-                    {stock.map((s) => (
-                      <tr key={s.id} className="hover:bg-muted/5 transition-colors group">
-                         <td className="px-6 py-4">
-                            <p className="font-bold text-foreground">{s.materialName}</p>
-                            <p className="font-mono text-[10px] text-muted-foreground">{s.materialCode}</p>
-                         </td>
-                         <td className="px-6 py-4"><div className="min-w-64 space-y-2">{locationBalances.filter(location => location.material_code === s.materialCode).length === 0 ? <span className="text-xs text-muted-foreground">Awaiting putaway</span> : locationBalances.filter(location => location.material_code === s.materialCode).map(location => <div key={location.id} className="rounded-lg border bg-muted/20 px-3 py-2"><p className="flex items-center gap-1 font-mono text-xs font-bold"><MapPin className="size-3 text-primary" />{location.warehouse_id} / {location.zone} / {location.rack} / {location.bin}</p><p className="mt-1 text-[11px] text-muted-foreground">Stock: <b className="text-foreground">{location.quantity.toLocaleString()} {location.uom}</b> · Available: <b className="text-success">{location.available_quantity.toLocaleString()} {location.uom}</b></p></div>)}</div></td>
-                         <td className="px-6 py-4 text-muted-foreground font-medium">{s.category}</td>
-                         <td className="px-6 py-4 text-right font-mono font-bold">{parseFloat(s.onHand).toLocaleString()}</td>
-                         <td className="px-6 py-4 text-right font-mono text-muted-foreground">{parseFloat(s.allocated).toLocaleString()}</td>
-                         <td className="px-6 py-4 text-right font-mono font-black text-primary">{parseFloat(s.available).toLocaleString()}</td>
-                         <td className="px-6 py-4 font-bold text-muted-foreground">{s.uom}</td>
-                         <td className="px-6 py-4">
-                            <div className="flex items-center gap-1.5 text-xs font-medium">
-                               <MapPin className="size-3 text-muted-foreground" />
-                               {s.warehouseId}
-                            </div>
-                         </td>
-                         <td className="px-6 py-4">
-                            {parseFloat(s.onHand) < parseFloat(s.reorderPoint) ? (
-                               <StatusBadge status="Waiting" /> // Reuse "Waiting" for low stock warning
-                            ) : (
-                               <StatusBadge status="Active" />
-                            )}
-                         </td>
-                         <td className="px-6 py-4 text-right">
-                            <Button variant="ghost" size="icon" className="rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                               <MoreHorizontal className="size-4" />
-                            </Button>
-                         </td>
-                      </tr>
-                    ))}
-                 </tbody>
-              </table>
-           </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-muted/30 border-b border-border/60 text-[10px] uppercase font-black tracking-widest text-muted-foreground">
+                <tr>
+                  <th className="px-6 py-4">Material</th>
+                  <th className="px-6 py-4">Storage Locations</th>
+                  <th className="px-6 py-4">Category</th>
+                  <th className="px-6 py-4 text-right">On Hand</th>
+                  <th className="px-6 py-4 text-right">Allocated</th>
+                  <th className="px-6 py-4 text-right">Available</th>
+                  <th className="px-6 py-4">UOM</th>
+                  <th className="px-6 py-4">Warehouse</th>
+                  <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {stock.map((s) => (
+                  <tr key={s.id} className="hover:bg-muted/5 transition-colors group">
+                    <td className="px-6 py-4">
+                      <p className="font-bold text-foreground">{s.materialName}</p>
+                      <p className="font-mono text-[10px] text-muted-foreground">
+                        {s.materialCode}
+                      </p>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="min-w-64 space-y-2">
+                        {locationBalances.filter(
+                          (location) => location.material_code === s.materialCode,
+                        ).length === 0 ? (
+                          <span className="text-xs text-muted-foreground">Awaiting putaway</span>
+                        ) : (
+                          locationBalances
+                            .filter((location) => location.material_code === s.materialCode)
+                            .map((location) => (
+                              <div
+                                key={location.id}
+                                className="rounded-lg border bg-muted/20 px-3 py-2"
+                              >
+                                <p className="flex items-center gap-1 font-mono text-xs font-bold">
+                                  <MapPin className="size-3 text-primary" />
+                                  {location.warehouse_id} / {location.zone} / {location.rack} /{" "}
+                                  {location.bin}
+                                </p>
+                                <p className="mt-1 text-[11px] text-muted-foreground">
+                                  Stock:{" "}
+                                  <b className="text-foreground">
+                                    {location.quantity.toLocaleString()} {location.uom}
+                                  </b>{" "}
+                                  · Available:{" "}
+                                  <b className="text-success">
+                                    {location.available_quantity.toLocaleString()} {location.uom}
+                                  </b>
+                                </p>
+                              </div>
+                            ))
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-muted-foreground font-medium">{s.category}</td>
+                    <td className="px-6 py-4 text-right font-mono font-bold">
+                      {parseFloat(s.onHand).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-right font-mono text-muted-foreground">
+                      {parseFloat(s.allocated).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 text-right font-mono font-black text-primary">
+                      {parseFloat(s.available).toLocaleString()}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-muted-foreground">{s.uom}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-xs font-medium">
+                        <MapPin className="size-3 text-muted-foreground" />
+                        {s.warehouseId}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {parseFloat(s.onHand) < parseFloat(s.reorderPoint) ? (
+                        <StatusBadge status="Waiting" />
+                      ) : (
+                        <StatusBadge status="Active" />
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
-      {!loading && <Card className="mt-8 overflow-hidden border-border/40 shadow-soft"><div className="flex items-center gap-3 border-b p-5"><History className="size-5 text-primary" /><div><h2 className="font-bold">Inventory Transactions</h2><p className="text-xs text-muted-foreground">GRN → Inventory transaction → Stock updated</p></div></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-muted/30 text-[10px] font-black uppercase tracking-widest text-muted-foreground"><tr><th className="px-4 py-3">GRN / References</th><th className="px-4 py-3">Supplier</th><th className="px-4 py-3">Warehouse</th><th className="px-4 py-3">Material</th><th className="px-4 py-3 text-right">Previous</th><th className="px-4 py-3 text-right">GRN</th><th className="px-4 py-3 text-right">New Stock</th><th className="px-4 py-3">Date / Time</th></tr></thead><tbody className="divide-y">{transactions.length === 0 ? <tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">No posted GRN inventory transactions.</td></tr> : transactions.map(tx => <tr key={tx.id}><td className="px-4 py-3"><b className="font-mono text-primary">{tx.grn_number}</b><p className="font-mono text-xs text-muted-foreground">{tx.po_number} · {tx.asn_number}</p></td><td className="px-4 py-3">{tx.supplier_name}</td><td className="px-4 py-3 font-mono">{tx.warehouse_id}</td><td className="px-4 py-3"><b>{tx.material_name}</b><p className="font-mono text-xs text-muted-foreground">{tx.item_code}</p></td><td className="px-4 py-3 text-right font-mono">{tx.previous_stock.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-right font-mono font-bold text-success">+{tx.quantity.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-right font-mono font-bold">{tx.new_stock.toLocaleString()} {tx.uom}</td><td className="px-4 py-3 text-xs">{new Date(tx.posted_at).toLocaleString()}<p className="text-muted-foreground">{tx.posted_by}</p></td></tr>)}</tbody></table></div></Card>}
+      {!loading && (
+        <Card className="mt-8 overflow-hidden border-border/40 shadow-soft">
+          <div className="flex items-center gap-3 border-b p-5">
+            <History className="size-5 text-primary" />
+            <div>
+              <h2 className="font-bold">Inventory Transactions</h2>
+              <p className="text-xs text-muted-foreground">
+                GRN → Inventory transaction → Stock updated
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/30 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3">GRN / References</th>
+                  <th className="px-4 py-3">Supplier</th>
+                  <th className="px-4 py-3">Warehouse</th>
+                  <th className="px-4 py-3">Material</th>
+                  <th className="px-4 py-3 text-right">Previous</th>
+                  <th className="px-4 py-3 text-right">GRN</th>
+                  <th className="px-4 py-3 text-right">New Stock</th>
+                  <th className="px-4 py-3">Date / Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {transactions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
+                      No posted GRN inventory transactions.
+                    </td>
+                  </tr>
+                ) : (
+                  transactions.map((tx) => (
+                    <tr key={tx.id}>
+                      <td className="px-4 py-3">
+                        <b className="font-mono text-primary">{tx.grn_number}</b>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {tx.po_number} · {tx.asn_number}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3">{tx.supplier_name}</td>
+                      <td className="px-4 py-3 font-mono">{tx.warehouse_id}</td>
+                      <td className="px-4 py-3">
+                        <b>{tx.material_name}</b>
+                        <p className="font-mono text-xs text-muted-foreground">{tx.item_code}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono">
+                        {tx.previous_stock.toLocaleString()} {tx.uom}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold text-success">
+                        +{tx.quantity.toLocaleString()} {tx.uom}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono font-bold">
+                        {tx.new_stock.toLocaleString()} {tx.uom}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {new Date(tx.posted_at).toLocaleString()}
+                        <p className="text-muted-foreground">{tx.posted_by}</p>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </AppShell>
   );
 }
-
 function InventoryStat({ label, value, icon: Icon, color, bg }: any) {
   return (
     <Card className="border-border/40 shadow-soft overflow-hidden">
       <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">{label}</p>
+            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
+              {label}
+            </p>
             <h2 className="text-2xl font-black mt-1">{value}</h2>
           </div>
           <div className={cn("size-12 rounded-2xl flex items-center justify-center", bg, color)}>

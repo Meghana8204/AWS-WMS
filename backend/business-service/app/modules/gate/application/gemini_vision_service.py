@@ -18,7 +18,7 @@ from app.config.settings import get_settings
 
 logger = logging.getLogger("ams.gate.gemini_vision")
 
-# Fallback model endpoints.  The configured model is always attempted first.
+
 GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-1.5-flash",
@@ -94,7 +94,7 @@ class GeminiVisionService:
             elif "application/pdf" in header:
                 mime_type = "application/pdf"
 
-        # Remove any whitespace/newlines
+
         b64_str = re.sub(r"\s+", "", b64_str)
         return b64_str, mime_type
 
@@ -150,7 +150,7 @@ class GeminiVisionService:
                                     if isinstance(parsed, dict):
                                         return parsed
                                 except json.JSONDecodeError:
-                                    # Attempt regex JSON extraction
+
                                     match = re.search(r"\{.*\}", text_response, re.DOTALL)
                                     if match:
                                         return json.loads(match.group(0))
@@ -180,7 +180,7 @@ class GeminiVisionService:
             conf = float(result.get("confidence", 0.0))
 
             if veh_num:
-                # Clean vehicle number
+
                 veh_clean = re.sub(r"[^A-Z0-9]", "", str(veh_num).upper())
                 if veh_clean:
                     return {
@@ -226,9 +226,9 @@ class GeminiVisionService:
                 clean_po = str(po_num).strip().upper()
                 return {
                     "poNumber": clean_po,
-                    # Never invent missing PO fields.  The gate operator can
-                    # supply an absent value, while verification still uses
-                    # the authoritative PO record.
+
+
+
                     "supplier": result.get("supplier"),
                     "poDate": result.get("poDate"),
                     "deliveryDate": result.get("deliveryDate"),

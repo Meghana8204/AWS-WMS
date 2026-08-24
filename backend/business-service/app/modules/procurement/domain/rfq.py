@@ -43,7 +43,7 @@ class RFQ(AggregateRoot):
         self.procurement_officer = procurement_officer
         self.remarks = remarks
         self.status = status
-        # Deduplicate supplier IDs
+
         self.supplier_ids = list(dict.fromkeys(supplier_ids))
         self.items = items or []
         self.created_at = created_at or datetime.now()
@@ -107,4 +107,3 @@ class RFQ(AggregateRoot):
             items=items,
         )
         return rfq
-

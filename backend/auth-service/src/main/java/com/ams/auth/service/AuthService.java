@@ -23,12 +23,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.UUID;
 
-/**
- * Login / logout / refresh - the core of the auth server. Access tokens
- * are short-lived RS256 JWTs (see JwtTokenProvider); refresh tokens are
- * opaque random values, stored only as a SHA-256 hash, rotated on every
- * use (the old one is revoked the moment a new one is issued).
- */
+
+
 @Service
 public class AuthService {
 
@@ -82,8 +78,7 @@ public class AuthService {
             throw new BadCredentialsException("Refresh token expired or revoked");
         }
 
-        // Rotate: revoke the presented token, issue a brand new one. A
-        // replayed (already-used) refresh token can never succeed twice.
+
         stored.revoke();
         refreshTokenRepository.save(stored);
 

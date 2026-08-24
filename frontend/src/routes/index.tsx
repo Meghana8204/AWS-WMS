@@ -3,7 +3,6 @@ import { isAuthenticated, getUserInfo } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    // On server-side (SSR), default to /login so the initial HTML payload is non-empty
     if (typeof window === "undefined") {
       throw redirect({ to: "/login" });
     }

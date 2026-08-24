@@ -31,7 +31,7 @@ async def run_consumer(
         await consumer.start()
     except Exception as exc:
         logger.debug(f"Kafka consumer skipped (Kafka offline or unavailable): {exc}")
-        # Explicitly stop to avoid 'Unclosed AIOKafkaConsumer' warnings
+
         try: await consumer.stop()
         except Exception: pass
         return

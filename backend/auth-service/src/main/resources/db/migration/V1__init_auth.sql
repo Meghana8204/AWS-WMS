@@ -1,5 +1,3 @@
--- auth-service owns this schema exclusively.
-
 CREATE TABLE app_user (
     id UUID PRIMARY KEY,
     username VARCHAR(128) NOT NULL UNIQUE,

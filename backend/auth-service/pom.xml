@@ -13,13 +13,7 @@
     <artifactId>auth-service</artifactId>
     <packaging>jar</packaging>
 
-    <!--
-        Dedicated Authentication Server. Contains ONLY: login/logout, JWT
-        issuance + validation (RS256, JWKS exposed for the Python
-        business-service to validate locally), refresh tokens, user/role/
-        permission management (RBAC), password encryption, and audit
-        logging. No business logic - see /docs/ARCHITECTURE.md.
-    -->
+
     <dependencies>
         <dependency>
             <groupId>com.ams</groupId>
@@ -62,7 +56,7 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
-        <!-- JWT (RS256) -->
+
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -81,7 +75,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Nimbus for building the JWKS document served at /.well-known/jwks.json -->
+
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>

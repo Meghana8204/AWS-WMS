@@ -1,7 +1,7 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Camera, X, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
+import React, { useRef, useState, useEffect } from "react";
+import { Camera, X, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 
 interface PoCameraScannerProps {
   onOcrSuccess: (data: any, file: File) => void;
@@ -57,14 +57,12 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
   useEffect(() => {
     let mounted = true;
-
     async function startCamera() {
       if (typeof window !== 'undefined' && (!navigator?.mediaDevices || !navigator?.mediaDevices?.getUserMedia)) {
         if (mounted) {
@@ -79,14 +77,13 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
           },
           audio: false,
         });
-
         if (mounted) {
           streamRef.current = stream;
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
           }
         } else {
-          stream.getTracks().forEach(track => track.stop());
+          stream.getTracks().forEach((track) => track.stop());
         }
       } catch (err: any) {
         console.error("Camera access error:", err);
@@ -95,13 +92,11 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         }
       }
     }
-
     startCamera();
-
     return () => {
       mounted = false;
       if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
@@ -114,7 +109,6 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
     const toastId = toast.loading("Compressing & analyzing PO document...");
 
     try {
-      // Fast client-side image compression before upload (max 1024px, 0.82 quality)
       const { base64, compressedFile } = await compressImageFile(file, 1024, 0.82);
       const { api } = await import('@/lib/api-client');
       const data = await api.previewPoOcr(base64);
@@ -135,10 +129,8 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
 
   async function captureAndScanFrame() {
     if (!videoRef.current || !canvasRef.current) return;
-
     setScanning(true);
     const toastId = toast.loading("Analyzing PO document...");
-
     try {
       const canvas = canvasRef.current;
       const video = videoRef.current;
@@ -167,13 +159,11 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
       const base64Image = dataUrl.split(',')[1];
 
-      // Call API
       const { api } = await import('@/lib/api-client');
       const data = await api.previewPoOcr(base64Image);
 
       const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: 'image/jpeg' });
-
+      const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: "image/jpeg" });
       toast.success("OCR Extraction Complete", { id: toastId });
       onOcrSuccess(data, file);
       onClose();
@@ -181,7 +171,7 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       console.error("OCR Preview error:", err);
       toast.error("Scanning failed", {
         id: toastId,
-        description: err.message || "Could not process the document."
+        description: err.message || "Could not process the document.",
       });
     } finally {
       setScanning(false);
@@ -191,18 +181,24 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
   return (
     <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-foreground/80 p-4 backdrop-blur-sm">
       <div className="flex max-h-full w-full max-w-2xl flex-col rounded-3xl bg-card shadow-2xl overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-border/50 p-5">
           <div>
             <h3 className="text-lg font-bold tracking-tight">Scan Purchase Order</h3>
-            <p className="text-xs text-muted-foreground">Align the PO document clearly within the frame.</p>
+            <p className="text-xs text-muted-foreground">
+              Align the PO document clearly within the frame.
+            </p>
           </div>
-          <Button variant="ghost" size="icon" className="rounded-full" onClick={onClose} disabled={scanning}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full"
+            onClick={onClose}
+            disabled={scanning}
+          >
             <X className="size-5" />
           </Button>
         </div>
 
-        {/* Camera Feed Container */}
         <div className="relative flex-1 bg-black overflow-hidden flex items-center justify-center min-h-[250px]">
           {error ? (
             <div className="p-8 text-center flex flex-col items-center">
@@ -229,7 +225,7 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
                 className="w-full h-full object-contain"
               />
               <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none flex items-center justify-center">
-                 <div className="w-full h-full border-2 border-dashed border-primary/40 rounded-lg"></div>
+                <div className="w-full h-full border-2 border-dashed border-primary/40 rounded-lg"></div>
               </div>
             </>
           )}
@@ -245,7 +241,6 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
           onChange={handleFileUpload}
         />
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-border/50 p-5">
           <Button variant="outline" className="rounded-xl" onClick={onClose} disabled={scanning}>
             Cancel

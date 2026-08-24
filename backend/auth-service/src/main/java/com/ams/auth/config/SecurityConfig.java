@@ -19,13 +19,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-/**
- * Auth-service is a stateless authentication server: no server-side
- * sessions, no server-rendered login form. /auth/login, /auth/refresh, and
- * the JWKS endpoint are public; everything else requires a valid access
- * token, enforced by JwtAuthenticationFilter. User/role management is
- * additionally restricted to the ADMIN authority.
- */
+
+
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {

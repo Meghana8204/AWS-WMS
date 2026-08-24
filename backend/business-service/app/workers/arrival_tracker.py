@@ -34,7 +34,7 @@ async def check_arrival_notifications_once() -> int:
 
 async def process_arrival_alerts(session: AsyncSession) -> int:
     today = date.today()
-    # Join with Supplier to get names, po_number is directly on AsnModel
+
     stmt = (
         select(AsnModel, AsnModel.po_number, SupplierModel.supplier_name)
         .outerjoin(SupplierModel, AsnModel.supplier_id == SupplierModel.id)
@@ -66,17 +66,17 @@ async def process_arrival_alerts(session: AsyncSession) -> int:
             message = f"Shipment {po_number or 'N/A'} / {asn.asn_number} is arriving {day_str}. Please prepare warehouse receiving and gate entry."
 
         if alert_type:
-            # Check if alert for this ASN on this specific date was already dispatched
-            # We filter by asn_id and message (or we could just use a daily flag)
-            # Using created_at check is better to allow different alert types on same day if needed,
-            # but for daily reminders, one per day is enough.
+
+
+
+
             existing_stmt = select(ArrivalNotificationModel).where(
                 ArrivalNotificationModel.asn_id == str(asn.id),
             )
             existing_res = await session.execute(existing_stmt)
             existing_notes = existing_res.scalars().all()
 
-            # Prevent duplicate notifications on the exact same date
+
             already_notified_today = any(
                 n.created_at.date() == today for n in existing_notes
             )
@@ -99,7 +99,7 @@ async def process_arrival_alerts(session: AsyncSession) -> int:
                 )
                 session.add(notif)
 
-                # Add outbox event for Kafka dispatching to notification service
+
                 event = ArrivalNotificationDispatchedEvent(
                     notification_id=notif.id,
                     asn_id=str(asn.id),

@@ -4,7 +4,7 @@ FastAPI application entrypoint - business-service.
 from __future__ import annotations
 
 import asyncio
-# Force reload - updated 2026-08-14
+
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -41,23 +41,23 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     global _consumer_task
 
-    # --- Development schema compatibility guard ---
-    #
-    # Older local databases can predate some of the fields now mapped by the
-    # procurement ORM.  Use PostgreSQL's idempotent form rather than catching
-    # duplicate-column errors: after a PostgreSQL statement fails, the whole
-    # transaction is aborted and every later migration statement would fail.
+
+
+
+
+
+
     try:
         from sqlalchemy import text
         from app.database.session import session_scope
 
-        # Helper to run DDL in its own transaction
+
         async def run_ddl(ddl_query: str):
             async with session_scope() as session:
                 await session.execute(text(ddl_query))
                 await session.commit()
 
-        # Add columns to asn
+
         for col in [
             ("shipment_date", "DATE DEFAULT CURRENT_DATE"),
             ("driver_name", "VARCHAR(128)"),
@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
                 logger.debug(f"Ensured column {col[0]} exists on asn")
             except Exception: pass
 
-        # Ensure supplier_contact has primary_email and secondary_email
+
         try:
             await run_ddl("ALTER TABLE supplier_contact RENAME COLUMN email TO primary_email")
             logger.debug("Renamed 'email' to 'primary_email' on supplier_contact")
@@ -91,7 +91,7 @@ async def lifespan(app: FastAPI):
             logger.debug("Ensured primary/secondary email columns exist on supplier_contact")
         except Exception: pass
 
-        # Ensure supplier has missing columns
+
         for col in [
             ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
             ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
@@ -113,9 +113,9 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE supplier ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-        # Ensure category is JSONB (it was incorrectly VARCHAR(64) in early versions)
+
         try:
-            # More robust migration: handle existing VARCHAR data
+
             await run_ddl("""
                 ALTER TABLE supplier
                 ALTER COLUMN category TYPE JSONB
@@ -129,7 +129,7 @@ async def lifespan(app: FastAPI):
                 )
             """)
 
-            # Also ensure main_materials is JSONB
+
             await run_ddl("""
                 ALTER TABLE supplier
                 ALTER COLUMN main_materials TYPE JSONB
@@ -148,7 +148,7 @@ async def lifespan(app: FastAPI):
 
         logger.debug("Ensured columns exist on supplier")
 
-        # Ensure rfq has missing columns
+
         for col in [
             ("rfq_number", "VARCHAR(64)"),
             ("rfq_date", "DATE DEFAULT CURRENT_DATE"),
@@ -169,7 +169,7 @@ async def lifespan(app: FastAPI):
             except Exception: pass
         logger.debug("Ensured columns exist on rfq")
 
-        # Ensure quotation has missing columns
+
         for col in [
             ("discount", "NUMERIC(18,4) DEFAULT 0"),
             ("tax", "NUMERIC(18,4) DEFAULT 0"),
@@ -185,7 +185,7 @@ async def lifespan(app: FastAPI):
             except Exception: pass
         logger.debug("Ensured columns exist on quotation")
 
-        # Create purchase_order table if not exists
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS purchase_order (
@@ -207,7 +207,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create purchase_order table: {e}")
 
-        # Create purchase_order_item table if not exists
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS purchase_order_item (
@@ -224,7 +224,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create purchase_order_item table: {e}")
 
-        # Ensure purchase_order_item has missing columns
+
         for col in [
             ("category", "VARCHAR(128)"),
             ("discount", "NUMERIC(18, 4) DEFAULT 0"),
@@ -234,7 +234,7 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-        # Ensure purchase_order has missing columns
+
         for col in [
             ("subtotal", "NUMERIC(18, 4) DEFAULT 0"),
             ("discount_amount", "NUMERIC(18, 4) DEFAULT 0"),
@@ -251,7 +251,7 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-        # Additional PO Columns for full data snapshot
+
         for col in [
             ("department", "VARCHAR(128)"),
             ("supplier_code", "VARCHAR(64)"),
@@ -272,7 +272,7 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
         except Exception: pass
 
-        # Create po_approval_history table
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS po_approval_history (
@@ -288,7 +288,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create po_approval_history table: {e}")
 
-        # Create notification table
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS notification (
@@ -305,7 +305,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create notification table: {e}")
 
-        # Create material_request table if not exists
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_request (
@@ -324,7 +324,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_request table: {e}")
 
-        # Create material_request_item table if not exists
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_request_item (
@@ -340,7 +340,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_request_item table: {e}")
 
-        # Create material_stock table
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_stock (
@@ -361,7 +361,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
-        # Create arrival_notification table
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS arrival_notification (
@@ -386,19 +386,19 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create arrival_notification table: {e}")
 
-        # Ensure supplier_document has file_type, file_size and upload_id
+
         try:
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_type VARCHAR(64)")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_size BIGINT")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS upload_id VARCHAR(128)")
 
-            # Ensure they are nullable to prevent IntegrityErrors on incomplete data
+
             await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_type DROP NOT NULL")
             await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_size DROP NOT NULL")
             logger.debug("Ensured extended columns exist and are nullable on supplier_document")
         except Exception: pass
 
-        # Create or ensure complete columns on gate_entry
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS gate_entry (
@@ -479,7 +479,7 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE gate_entry ADD COLUMN IF NOT EXISTS {col} {col_type}")
             except Exception: pass
 
-        # Create warehouse workflow tables if not exist
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS warehouse_dock (
@@ -542,6 +542,7 @@ async def lifespan(app: FastAPI):
                     task_number VARCHAR(64) UNIQUE NOT NULL,
                     grn_id UUID,
                     grn_number VARCHAR(64),
+                    handling_unit_id UUID UNIQUE REFERENCES handling_unit(id),
                     item_code VARCHAR(64) NOT NULL,
                     material_name VARCHAR(256),
                     quantity NUMERIC(18, 4) NOT NULL,
@@ -555,11 +556,34 @@ async def lifespan(app: FastAPI):
                     location_assigned_by VARCHAR(128),
                     location_assigned_at TIMESTAMP WITH TIME ZONE,
                     status VARCHAR(32) NOT NULL DEFAULT 'PUTAWAY_PENDING',
+                    started_by VARCHAR(128),
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    completed_by VARCHAR(128),
+                    completed_at TIMESTAMP WITH TIME ZONE,
                     created_by VARCHAR(128) NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         except Exception: pass
+
+
+        for col, col_type in [
+            ("handling_unit_id", "UUID"),
+            ("started_by", "VARCHAR(128)"),
+            ("started_at", "TIMESTAMP WITH TIME ZONE"),
+            ("completed_by", "VARCHAR(128)"),
+            ("completed_at", "TIMESTAMP WITH TIME ZONE"),
+            ("assigned_to", "VARCHAR(128)"),
+            ("assigned_by", "VARCHAR(128)"),
+            ("assigned_at", "TIMESTAMP WITH TIME ZONE"),
+            ("material_category", "VARCHAR(128)"),
+            ("handling_requirement", "VARCHAR(128)"),
+            ("rotation_policy", "VARCHAR(16)"),
+            ("placement_metadata", "JSON"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {col} {col_type}")
+            except Exception: pass
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 
@@ -577,12 +601,12 @@ async def lifespan(app: FastAPI):
         coalesce=True,
     )
 
-    # Add arrival notification check (every hour in prod, more frequent for dev demo)
+
     from app.modules.procurement.infrastructure.api.router import check_upcoming_arrivals
     scheduler.add_job(
         check_upcoming_arrivals,
         "interval",
-        minutes=1, # Check every minute for real-time demo feel
+        minutes=1,
         id="arrival-notification-check",
         max_instances=1,
         coalesce=True
@@ -619,8 +643,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # --- CORS Configuration -----------------------------------------------
-    # Robustly handle origins from settings (could be List[str] or comma-separated string)
+
+
     raw_origins = settings.cors_allow_origins
     if isinstance(raw_origins, str):
         try:
@@ -631,13 +655,13 @@ def create_app() -> FastAPI:
     else:
         origins = list(raw_origins)
 
-    # Always ensure common local dev origins are present for ease of use
+
     for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
         if o not in origins:
             origins.append(o)
 
-    # Register request context first so CORS wraps normal application responses.
-    # Top-level exception responses are covered in the centralized error handler.
+
+
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
@@ -649,7 +673,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
 
-    # Local development authentication override (for standalone testing without auth-service)
+
     if settings.environment.lower() in ("local", "test", "development"):
         from app.security.dependencies import CurrentUser, get_current_user
 
