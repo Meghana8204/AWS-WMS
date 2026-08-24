@@ -26,7 +26,6 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
-<<<<<<< HEAD
 
 async function compressFileForUpload(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
@@ -69,9 +68,6 @@ async function compressFileForUpload(file: File): Promise<File> {
     img.src = url;
   });
 }
-
-=======
->>>>>>> 934ad398ed515ca6eccdc3cea05acd1c08abf128
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
   component: GateEntry,
