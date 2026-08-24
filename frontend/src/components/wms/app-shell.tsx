@@ -30,7 +30,6 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
@@ -43,7 +42,6 @@ const warehouseNav = [
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
-
 const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
@@ -53,19 +51,16 @@ const procurementNav = [
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
-
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
-
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
-
 const gateSecurityNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
@@ -74,7 +69,6 @@ const gateSecurityNav = [
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Gate Exit Mgmt", to: "/gate-exit-management", icon: DoorOpen },
 ];
-
 export function AppShell({
   children,
   title,
@@ -91,15 +85,15 @@ export function AppShell({
   const [mounted, setMounted] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
+  const [user, setUser] = useState<{
+    username?: string;
+    roles?: string[];
+  } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-
-  // Global Search State
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (searchTerm.length >= 2) {
@@ -118,34 +112,33 @@ export function AppShell({
         setShowSearch(false);
       }
     }, 300);
-
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
-
   useEffect(() => {
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
-
-    // Load user only on client side to prevent hydration mismatch
     try {
       const savedUser = localStorage.getItem("user_info");
       if (savedUser) {
         const u = JSON.parse(savedUser);
         setUser(u);
-
-        // Fetch notifications for the user's role
-        const role = u.roles?.includes("SUPPLIER") ? "SUPPLIER"
-          : u.roles?.includes("FINANCE") ? "FINANCE"
-          : u.roles?.includes("PROCUREMENT") ? "PROCUREMENT"
-          : "WAREHOUSE";
+        const role = u.roles?.includes("SUPPLIER")
+          ? "SUPPLIER"
+          : u.roles?.includes("FINANCE")
+            ? "FINANCE"
+            : u.roles?.includes("PROCUREMENT")
+              ? "PROCUREMENT"
+              : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE") {
               const data = await api.getArrivalNotifications();
-              setUnreadNotifications(data.filter(n => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length);
+              setUnreadNotifications(
+                data.filter((n) => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length,
+              );
             } else {
               const data = await api.getNotifications(role);
-              setUnreadNotifications(data.filter(n => !(n.is_read ?? n.isRead)).length);
+              setUnreadNotifications(data.filter((n) => !(n.is_read ?? n.isRead)).length);
             }
           } catch (e) {
             console.error("Failed to fetch notifications", e);
@@ -165,33 +158,35 @@ export function AppShell({
       console.error("Failed to parse user info", e);
     }
   }, [dark]);
-
-  // The current route is available during server rendering, so procurement/supplier/finance
-  // pages can select their sidebar immediately rather than waiting for the
-  // client-side localStorage role lookup.
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
-  const isWarehouseRoute = path === "/warehouse-dashboard" || [
-    "/inventory", "/warehouse/material-requests", "/gate-entry", "/notifications", "/vehicle-queue", "/receiving", "/reports"
-  ].some(p => path.startsWith(p));
-
-  const nav = isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
-    ? supplierNav
-    : (isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
-      ? financeNav
-      : (isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
+  const isWarehouseRoute =
+    path === "/warehouse-dashboard" ||
+    [
+      "/inventory",
+      "/warehouse/material-requests",
+      "/gate-entry",
+      "/notifications",
+      "/vehicle-queue",
+      "/receiving",
+      "/reports",
+    ].some((p) => path.startsWith(p));
+  const nav =
+    isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
+      ? supplierNav
+      : isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
+        ? financeNav
+        : isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
           ? procurementNav
-          : (mounted && user?.roles?.includes("GATE_SECURITY")
-              ? gateSecurityNav
-              : warehouseNav)));
-
+          : mounted && user?.roles?.includes("GATE_SECURITY")
+            ? gateSecurityNav
+            : warehouseNav;
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
     navigate({ to: "/login" });
   };
-
   return (
     <div className="flex min-h-screen w-full bg-background">
       <aside
@@ -214,7 +209,8 @@ export function AppShell({
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {nav.map((item) => {
-            const active = path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
+            const active =
+              path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
             return (
               <Link
                 key={item.to}
@@ -244,7 +240,11 @@ export function AppShell({
             onClick={() => setCollapsed((c) => !c)}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
           >
-            {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
+            {collapsed ? (
+              <PanelLeft className="size-[18px]" />
+            ) : (
+              <PanelLeftClose className="size-[18px]" />
+            )}
             {!collapsed && <span>Collapse</span>}
           </button>
           <button
@@ -261,7 +261,10 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-            <Link to={nav[0].to} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden">
+            <Link
+              to={nav[0].to}
+              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
+            >
               <Warehouse className="size-4" />
             </Link>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
@@ -278,13 +281,9 @@ export function AppShell({
                 {isSearching ? <Loader2 className="size-3 animate-spin" /> : "⌘K"}
               </kbd>
 
-              {/* Search Results Dropdown */}
               {showSearch && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowSearch(false)}
-                  />
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
                   <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] max-h-[480px] overflow-y-auto z-50 rounded-2xl border border-border bg-card shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="p-2">
                       {searchResults.length > 0 ? (
@@ -300,12 +299,19 @@ export function AppShell({
                               className="flex flex-col gap-0.5 rounded-xl px-4 py-2.5 transition-colors hover:bg-accent"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold tracking-tight">{result.title}</span>
-                                <Badge variant="outline" className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30">
+                                <span className="text-sm font-bold tracking-tight">
+                                  {result.title}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30"
+                                >
                                   {result.type.replace("_", " ")}
                                 </Badge>
                               </div>
-                              <span className="text-[11px] text-muted-foreground line-clamp-1">{result.subtitle}</span>
+                              <span className="text-[11px] text-muted-foreground line-clamp-1">
+                                {result.subtitle}
+                              </span>
                             </Link>
                           ))}
                         </div>
@@ -350,9 +356,13 @@ export function AppShell({
                 <div className="hidden leading-tight lg:block">
                   <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
-                     user?.roles?.includes("FINANCE") ? "Finance Manager" :
-                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Operations Manager"}
+                    {user?.roles?.includes("PROCUREMENT")
+                      ? "Procurement Manager"
+                      : user?.roles?.includes("FINANCE")
+                        ? "Finance Manager"
+                        : user?.roles?.includes("GATE_SECURITY")
+                          ? "Security Officer"
+                          : "Operations Manager"}
                   </p>
                 </div>
                 <button
@@ -403,7 +413,6 @@ export function AppShell({
     </div>
   );
 }
-
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
@@ -455,16 +464,14 @@ export function StatusBadge({ status }: { status: string }) {
     SHIPPED: "bg-teal-soft text-teal border-teal/30",
     DISPATCHED: "bg-teal-soft text-teal border-teal/30",
   };
-
   const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
-
   return (
     <Badge
       variant="outline"
       className={cn(
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map["Hold"],
-        isLive && "pl-5"
+        isLive && "pl-5",
       )}
     >
       {isLive && (

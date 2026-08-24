@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 
-# Add the parent directory to sys.path so we can import app modules
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text
@@ -17,8 +17,8 @@ async def wipe_all_business_data():
     Wipes all data from the business database while preserving the schema and migrations.
     """
     async with session_scope() as session:
-        # Get all tables in the public schema
-        # We exclude alembic_version to keep the migration state
+
+
         query = text("""
             SELECT table_name
             FROM information_schema.tables
@@ -36,7 +36,7 @@ async def wipe_all_business_data():
 
         logger.warning(f"Preparing to wipe {len(tables)} tables: {', '.join(tables)}")
 
-        # We use CASCADE to handle foreign key dependencies
+
         truncate_query = text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE;")
 
         try:

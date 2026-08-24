@@ -134,7 +134,7 @@ class UpdateSupplierRequest(ApiModel):
     remarks: Optional[str] = None
 
 
-# --- RFQ ---
+
 
 class RfqItemSchema(ApiModel):
     material_code: str
@@ -174,7 +174,7 @@ class RfqResponse(ApiModel):
     created_at: Optional[datetime] = None
 
 
-# --- Quotation ---
+
 
 class QuotationLineSchema(ApiModel):
     item_code: str
@@ -224,7 +224,7 @@ class QuotationResponse(ApiModel):
     created_at: Optional[datetime] = None
 
 
-# --- ASN ---
+
 
 class AsnLineSchema(ApiModel):
     item_code: str
@@ -284,7 +284,7 @@ class AsnResponse(ApiModel):
     created_at: datetime
 
 
-# --- Purchase Order ---
+
 
 class POApprovalHistorySchema(ApiModel):
     status: str
@@ -355,7 +355,7 @@ class FinanceApprovalResponse(ApiModel):
     po_details: Optional[PurchaseOrderResponse] = None
 
 
-# --- Material Request ---
+
 
 class MaterialRequestItemSchema(ApiModel):
     material_code: Optional[str] = None
@@ -423,7 +423,7 @@ class ArrivalNotificationResponse(ApiModel):
     created_at: datetime
 
 
-# --- Global Search ---
+
 
 class ProcurementTrendItem(ApiModel):
     month: str
@@ -440,7 +440,7 @@ class ProcurementStatsResponse(ApiModel):
 
 class GlobalSearchItem(ApiModel):
     id: str
-    type: str  # SUPPLIER, PO, ASN, GATE_ENTRY, RFQ, MATERIAL_REQUEST
+    type: str
     title: str
     subtitle: str
     link: str
@@ -450,7 +450,7 @@ class GlobalSearchResponse(ApiModel):
     results: List[GlobalSearchItem]
 
 
-# --- Supplier Auth ---
+
 
 class SupplierLoginRequest(ApiModel):
     username: str
@@ -473,4 +473,3 @@ class ChangePasswordRequest(ApiModel):
 class DevLoginRequest(ApiModel):
     username: str
     password: str
-

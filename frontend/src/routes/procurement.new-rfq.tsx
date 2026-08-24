@@ -14,7 +14,7 @@ import {
   Plus,
   Trash2,
   Package,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -24,13 +24,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/procurement/new-rfq")({
   component: NewRfq,
 });
-
 const inputClass = "mt-1.5 h-11 rounded-xl border-border/80 bg-background";
-
 function NewRfq() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -44,7 +41,6 @@ function NewRfq() {
     material: "",
     city: "",
   });
-
   const [formData, setFormData] = useState({
     rfq_date: new Date().toISOString().split("T")[0],
     material_request_number: "",
@@ -53,9 +49,7 @@ function NewRfq() {
     procurement_officer: "",
     remarks: "",
   });
-
   const generateRandomCode = () => `MAT-${Math.floor(100000 + Math.random() * 900000)}`;
-
   const [items, setItems] = useState<any[]>([
     {
       material_code: generateRandomCode(),
@@ -64,9 +58,8 @@ function NewRfq() {
       quantity: 1,
       uom: "PCS",
       special_requirements: "",
-    }
+    },
   ]);
-
   const addItem = () => {
     setItems((prev) => [
       ...prev,
@@ -80,7 +73,6 @@ function NewRfq() {
       },
     ]);
   };
-
   const removeItem = (index: number) => {
     if (items.length === 1) {
       toast.error("At least one material requirement is required");
@@ -88,23 +80,22 @@ function NewRfq() {
     }
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
-
   const handleItemChange = (index: number, field: string, value: any) => {
-    setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
-    );
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
   };
-
   useEffect(() => {
     async function fetchSuppliers() {
       try {
         setLoadingSuppliers(true);
         const data = await api.getSuppliers({ ...filters, status: "Active" });
-        // Keep the RFQ invitation list safe even if an older backend ignores
-        // the status query parameter.
-        setSuppliers(data.filter((supplier: any) =>
-          String(supplier.status ?? "").trim().toLowerCase() === "active"
-        ));
+        setSuppliers(
+          data.filter(
+            (supplier: any) =>
+              String(supplier.status ?? "")
+                .trim()
+                .toLowerCase() === "active",
+          ),
+        );
       } catch (err) {
         toast.error("Failed to load suppliers");
       } finally {
@@ -114,19 +105,15 @@ function NewRfq() {
     const debounceTimer = setTimeout(() => {
       fetchSuppliers();
     }, 300);
-
     return () => clearTimeout(debounceTimer);
   }, [filters]);
-
   useEffect(() => {
-    // Fetch available supplier categories for the filter
     const fetchCategories = async () => {
       try {
         const cats = await api.getSupplierCategories();
         if (cats.length > 0) {
           setAvailableCategories(cats.map((c: any) => c.name));
         } else {
-          // Fallback if no categories in DB yet
           setAvailableCategories(["Raw Materials", "Components", "Services", "Hardware"]);
         }
       } catch (e) {
@@ -135,39 +122,35 @@ function NewRfq() {
       }
     };
     fetchCategories();
-
-    // Get current user for procurement officer field
     const userInfo = localStorage.getItem("user_info");
     if (userInfo) {
       const user = JSON.parse(userInfo);
-      setFormData(prev => ({ ...prev, procurement_officer: user.username || "" }));
+      setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
     }
-
-    // Handle auto-fill from Material Request
     const urlParams = new URLSearchParams(window.location.search);
-    const fromRequestId = urlParams.get('fromRequestId');
-
+    const fromRequestId = urlParams.get("fromRequestId");
     if (fromRequestId) {
       const loadMR = async () => {
         try {
           const allMRs = await api.getMaterialRequests();
-          const mr = allMRs.find(r => r.id === fromRequestId);
+          const mr = allMRs.find((r) => r.id === fromRequestId);
           if (mr) {
-            setFormData(prev => ({
+            setFormData((prev) => ({
               ...prev,
               material_request_number: mr.requestNumber,
               warehouse: mr.warehouseId,
               required_delivery_date: mr.requiredDate,
             }));
-
-            setItems(mr.items.map((it: any) => ({
-              material_code: it.materialCode,
-              material_name: it.materialName || it.materialCode,
-              category: "Raw Materials",
-              quantity: it.quantity,
-              uom: it.uom,
-              special_requirements: ""
-            })));
+            setItems(
+              mr.items.map((it: any) => ({
+                material_code: it.materialCode,
+                material_name: it.materialName || it.materialCode,
+                category: "Raw Materials",
+                quantity: it.quantity,
+                uom: it.uom,
+                special_requirements: "",
+              })),
+            );
           }
         } catch (e) {
           console.error("Failed to load MR details", e);
@@ -178,61 +161,52 @@ function NewRfq() {
       void fetchNextMrNumber();
     }
   }, []);
-
   const fetchNextMrNumber = async () => {
     try {
       const { requestNumber } = await api.getNextMaterialRequestNumber();
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        material_request_number: requestNumber
+        material_request_number: requestNumber,
       }));
     } catch (e) {
       console.error("Failed to fetch next MR number", e);
-      // Fallback if API fails
-      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, '');
-      setFormData(prev => ({
+      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
+      setFormData((prev) => ({
         ...prev,
-        material_request_number: `MR-${yearMonth}-0001`
+        material_request_number: `MR-${yearMonth}-0001`,
       }));
     }
   };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
   const toggleSupplier = (id: string) => {
-    setSelectedSuppliers(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    setSelectedSuppliers((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedSuppliers.length === 0) {
       toast.error("Please select at least one supplier");
       return;
     }
-
-    if (items.some(item => !item.material_code.trim() || !item.material_name.trim())) {
+    if (items.some((item) => !item.material_code.trim() || !item.material_name.trim())) {
       toast.error("Please fill in Material Code and Name for all items");
       return;
     }
-
     setSubmitting(true);
     try {
       const payload = {
         ...formData,
         supplier_ids: selectedSuppliers,
-        items: items.map(item => ({
+        items: items.map((item) => ({
           ...item,
           quantity: parseFloat(item.quantity) || 0,
         })),
-        // Convert empty strings to null for optional date fields to prevent Pydantic errors
         required_delivery_date: formData.required_delivery_date || null,
       };
-
       await api.createRfq(payload);
       toast.success("RFQ Draft created successfully");
       navigate({ to: "/procurement/rfqs" });
@@ -242,19 +216,26 @@ function NewRfq() {
       setSubmitting(false);
     }
   };
-
   return (
     <AppShell
       title="Create New RFQ"
       subtitle="Request for Quotations — Auto-generate RFQ numbers and track bids"
       actions={
-        <Button variant="outline" className="rounded-xl" onClick={() => navigate({ to: "/procurement/rfqs" })}>
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => navigate({ to: "/procurement/rfqs" })}
+        >
           <ArrowLeft className="mr-2 size-4" /> Cancel
         </Button>
       }
     >
       <form onSubmit={handleSubmit} className="mx-auto max-w-4xl space-y-6">
-        <SectionCard title="RFQ Metadata" description="Core identification and scheduling for this request" icon={FileText}>
+        <SectionCard
+          title="RFQ Metadata"
+          description="Core identification and scheduling for this request"
+          icon={FileText}
+        >
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="rfq_date">RFQ Date</Label>
@@ -350,10 +331,17 @@ function NewRfq() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Material Requirements" description="List materials required in this RFQ" icon={Package}>
+        <SectionCard
+          title="Material Requirements"
+          description="List materials required in this RFQ"
+          icon={Package}
+        >
           <div className="space-y-6">
             {items.map((item, index) => (
-              <div key={index} className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30">
+              <div
+                key={index}
+                className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30"
+              >
                 <div className="absolute right-4 top-4">
                   <Button
                     type="button"
@@ -366,7 +354,9 @@ function NewRfq() {
                   </Button>
                 </div>
 
-                <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">Item #{index + 1}</p>
+                <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">
+                  Item #{index + 1}
+                </p>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1.5">
@@ -439,7 +429,9 @@ function NewRfq() {
                     placeholder="e.g. Needs specialized temperature control, surface treatment certificate..."
                     className="h-10 rounded-xl"
                     value={item.special_requirements}
-                    onChange={(e) => handleItemChange(index, "special_requirements", e.target.value)}
+                    onChange={(e) =>
+                      handleItemChange(index, "special_requirements", e.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -456,7 +448,11 @@ function NewRfq() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Select Suppliers" description="Search and select active vendors from the master data" icon={Building2}>
+        <SectionCard
+          title="Select Suppliers"
+          description="Search and select active vendors from the master data"
+          icon={Building2}
+        >
           <div className="mb-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="relative">
@@ -465,29 +461,31 @@ function NewRfq() {
                   placeholder="Name or code..."
                   className="pl-10 rounded-xl"
                   value={filters.search}
-                  onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
                 />
               </div>
               <Input
                 placeholder="Material..."
                 className="rounded-xl"
                 value={filters.material}
-                onChange={(e) => setFilters(f => ({ ...f, material: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, material: e.target.value }))}
               />
               <Input
                 placeholder="City/Location..."
                 className="rounded-xl"
                 value={filters.city}
-                onChange={(e) => setFilters(f => ({ ...f, city: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, city: e.target.value }))}
               />
               <select
                 className="h-11 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 value={filters.category}
-                onChange={(e) => setFilters(f => ({ ...f, category: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
               >
                 <option value="">All Categories</option>
-                {availableCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
               </select>
             </div>
@@ -512,15 +510,23 @@ function NewRfq() {
                     "relative cursor-pointer rounded-2xl border p-4 transition-all hover:bg-accent/30",
                     selectedSuppliers.includes(s.supplierId)
                       ? "border-primary bg-primary-soft/10 ring-1 ring-primary"
-                      : "border-border/60 bg-card"
+                      : "border-border/60 bg-card",
                   )}
                 >
                   <div className="flex items-start gap-4">
-                    <div className={cn(
-                      "grid size-12 shrink-0 place-items-center rounded-xl transition-colors",
-                      selectedSuppliers.includes(s.supplierId) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    )}>
-                      {selectedSuppliers.includes(s.supplierId) ? <CheckCircle2 className="size-6" /> : <Building2 className="size-6" />}
+                    <div
+                      className={cn(
+                        "grid size-12 shrink-0 place-items-center rounded-xl transition-colors",
+                        selectedSuppliers.includes(s.supplierId)
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {selectedSuppliers.includes(s.supplierId) ? (
+                        <CheckCircle2 className="size-6" />
+                      ) : (
+                        <Building2 className="size-6" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -544,7 +550,10 @@ function NewRfq() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-[10px] text-primary hover:bg-primary-soft/30"
-                onClick={(e) => { e.stopPropagation(); setSelectedSuppliers([]); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedSuppliers([]);
+                }}
               >
                 Clear all
               </Button>
@@ -557,7 +566,11 @@ function NewRfq() {
             Creating this RFQ will notify the selected suppliers via the portal.
           </p>
           <Button type="submit" size="lg" className="rounded-xl shadow-glow" disabled={submitting}>
-            {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+            {submitting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 size-4" />
+            )}
             Create RFQ
           </Button>
         </div>

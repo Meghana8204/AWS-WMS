@@ -131,7 +131,7 @@ Do not invent values. Use null for unreadable or missing values. Preserve dates,
             conf = res_data.get("confidence", 0.0)
             return AnprResult(plate or "NOT_FOUND", conf, {"source": "gemini-fast", "extraction": res_data})
         except Exception:
-            # Fallback to general extraction if schema-based fails
+
             data = await self.extract_details(image_data, mime_type, document_type="vehicle licence plate")
             fields = data.get("fields", {})
             plate = self._field(
@@ -209,7 +209,7 @@ Do not invent values. Use null for unreadable or missing values. Preserve dates,
 
         try:
             with Image.open(BytesIO(data)) as image:
-                # Resize if larger than 1280px in any dimension
+
                 max_dim = 1280
                 if max(image.size) > max_dim:
                     scale = max_dim / max(image.size)
@@ -217,7 +217,7 @@ Do not invent values. Use null for unreadable or missing values. Preserve dates,
                     image = image.resize(new_size, Image.Resampling.LANCZOS)
 
                 converted = BytesIO()
-                # Always convert to JPEG for smallest payload
+
                 image.convert("RGB").save(converted, format="JPEG", quality=80, optimize=True)
                 return converted.getvalue(), "image/jpeg"
         except Exception as exc:

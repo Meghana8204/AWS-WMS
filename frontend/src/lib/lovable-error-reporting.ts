@@ -3,7 +3,6 @@ type LovableErrorOptions = {
   handled?: boolean;
   severity?: "error" | "warning" | "info";
 };
-
 type LovableEvents = {
   captureException?: (
     error: unknown,
@@ -11,7 +10,6 @@ type LovableEvents = {
     options?: LovableErrorOptions,
   ) => void;
 };
-
 declare global {
   interface Window {
     __lovableEvents?: LovableEvents;
@@ -22,7 +20,6 @@ declare global {
     }) => void;
   }
 }
-
 export function reportLovableError(error: unknown, context: Record<string, unknown> = {}) {
   if (typeof window === "undefined") return;
   window.__lovableEvents?.captureException?.(
@@ -38,11 +35,6 @@ export function reportLovableError(error: unknown, context: Record<string, unkno
       severity: "error",
     },
   );
-  // Prod React does not rethrow boundary-caught errors to window.onerror, so the
-  // editor's telemetry never sees them. Forward to lovable.js's reporting hook,
-  // which is present only inside the editor preview.
-  // Loaders and server fns commonly throw a raw Response; String(it) is the
-  // opaque "[object Response]", so pull out the status and URL instead.
   const message =
     error instanceof Response
       ? `Response ${error.status}${error.url ? ` at ${error.url}` : ""}`

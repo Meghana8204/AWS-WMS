@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { LucideIcon } from "lucide-react";
-
 export function ModulePlaceholder({
   icon: Icon,
   title,

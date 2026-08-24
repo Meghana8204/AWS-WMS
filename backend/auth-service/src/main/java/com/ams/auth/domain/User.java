@@ -35,7 +35,7 @@ public class User {
     private Set<Role> roles = new HashSet<>();
 
     protected User() {
-        // required by JPA
+
     }
 
     public User(String username, String passwordHash) {

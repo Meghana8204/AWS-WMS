@@ -6,9 +6,13 @@ export interface MaterialRequest {
   date: string;
   status: "Draft" | "Pending Approval" | "Approved" | "Converted to RFQ" | "Rejected";
   priority: "High" | "Normal" | "Low";
-  items: { code: string; desc: string; qty: number; uom: string }[];
+  items: {
+    code: string;
+    desc: string;
+    qty: number;
+    uom: string;
+  }[];
 }
-
 export const materialRequests: MaterialRequest[] = [
   {
     id: "MR-1001",
@@ -31,9 +35,7 @@ export const materialRequests: MaterialRequest[] = [
     date: "11 Aug 2026",
     status: "Pending Approval",
     priority: "Normal",
-    items: [
-      { code: "MRO-OIL-02", desc: "Hydraulic Oil ISO 46", qty: 10, uom: "CAN" },
-    ],
+    items: [{ code: "MRO-OIL-02", desc: "Hydraulic Oil ISO 46", qty: 10, uom: "CAN" }],
   },
   {
     id: "MR-1003",
@@ -43,12 +45,9 @@ export const materialRequests: MaterialRequest[] = [
     date: "12 Aug 2026",
     status: "Draft",
     priority: "Low",
-    items: [
-      { code: "PK-BOX-12", desc: "Corrugated Box 12x12x12", qty: 1000, uom: "PCS" },
-    ],
+    items: [{ code: "PK-BOX-12", desc: "Corrugated Box 12x12x12", qty: 1000, uom: "PCS" }],
   },
 ];
-
 export interface RFQ {
   id: string;
   rfqNo: string;
@@ -57,9 +56,13 @@ export interface RFQ {
   expiryDate: string;
   status: "Draft" | "Published" | "Quotations Received" | "Closed" | "PO Created";
   vendors: string[];
-  items: { code: string; desc: string; qty: number; uom: string }[];
+  items: {
+    code: string;
+    desc: string;
+    qty: number;
+    uom: string;
+  }[];
 }
-
 export const rfqs: RFQ[] = [
   {
     id: "RFQ-5001",
@@ -69,9 +72,7 @@ export const rfqs: RFQ[] = [
     expiryDate: "15 Aug 2026",
     status: "Quotations Received",
     vendors: ["Hindustan Polymers Ltd.", "Reliance Industries", "Supreme Petrochem"],
-    items: [
-      { code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502", qty: 5000, uom: "BAG" },
-    ],
+    items: [{ code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502", qty: 5000, uom: "BAG" }],
   },
   {
     id: "RFQ-5002",
@@ -81,12 +82,9 @@ export const rfqs: RFQ[] = [
     expiryDate: "20 Aug 2026",
     status: "Published",
     vendors: ["Arvind Packaging", "Horizon Packs"],
-    items: [
-      { code: "PK-BOX-12", desc: "Corrugated Box 12x12x12", qty: 10000, uom: "PCS" },
-    ],
+    items: [{ code: "PK-BOX-12", desc: "Corrugated Box 12x12x12", qty: 10000, uom: "PCS" }],
   },
 ];
-
 export interface Quotation {
   id: string;
   quotationNo: string;
@@ -96,9 +94,14 @@ export interface Quotation {
   totalValue: string;
   status: "Submitted" | "Technical Review" | "Selected" | "Rejected";
   deliveryLeadTime: string;
-  items: { code: string; desc: string; qty: number; rate: number; amount: number }[];
+  items: {
+    code: string;
+    desc: string;
+    qty: number;
+    rate: number;
+    amount: number;
+  }[];
 }
-
 export const quotations: Quotation[] = [
   {
     id: "QT-9001",
@@ -110,7 +113,13 @@ export const quotations: Quotation[] = [
     status: "Selected",
     deliveryLeadTime: "7 Days",
     items: [
-      { code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502", qty: 5000, rate: 2180, amount: 10900000 },
+      {
+        code: "RM-HDPE-04",
+        desc: "HDPE Granules Grade 5502",
+        qty: 5000,
+        rate: 2180,
+        amount: 10900000,
+      },
     ],
   },
   {
@@ -123,11 +132,16 @@ export const quotations: Quotation[] = [
     status: "Submitted",
     deliveryLeadTime: "5 Days",
     items: [
-      { code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502", qty: 5000, rate: 2250, amount: 11250000 },
+      {
+        code: "RM-HDPE-04",
+        desc: "HDPE Granules Grade 5502",
+        qty: 5000,
+        rate: 2250,
+        amount: 11250000,
+      },
     ],
   },
 ];
-
 export interface PurchaseOrder {
   id: string;
   poNo: string;
@@ -136,9 +150,15 @@ export interface PurchaseOrder {
   expectedDelivery: string;
   status: "Draft" | "Released" | "Acknowledged" | "Partially Received" | "Completed" | "Cancelled";
   totalValue: string;
-  items: { code: string; desc: string; qty: number; uom: string; rate: number; received: number }[];
+  items: {
+    code: string;
+    desc: string;
+    qty: number;
+    uom: string;
+    rate: number;
+    received: number;
+  }[];
 }
-
 export const purchaseOrders: PurchaseOrder[] = [
   {
     id: "PO-2026-118432",
@@ -149,8 +169,22 @@ export const purchaseOrders: PurchaseOrder[] = [
     status: "Released",
     totalValue: "₹ 24,88,500",
     items: [
-      { code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502", qty: 960, uom: "BAG", rate: 2180, received: 0 },
-      { code: "RM-HDPE-09", desc: "HDPE Granules Grade 6070", qty: 240, uom: "BAG", rate: 2410, received: 0 },
+      {
+        code: "RM-HDPE-04",
+        desc: "HDPE Granules Grade 5502",
+        qty: 960,
+        uom: "BAG",
+        rate: 2180,
+        received: 0,
+      },
+      {
+        code: "RM-HDPE-09",
+        desc: "HDPE Granules Grade 6070",
+        qty: 240,
+        uom: "BAG",
+        rate: 2410,
+        received: 0,
+      },
     ],
   },
   {
@@ -166,7 +200,6 @@ export const purchaseOrders: PurchaseOrder[] = [
     ],
   },
 ];
-
 export interface ASN {
   id: string;
   asnNo: string;
@@ -177,7 +210,6 @@ export interface ASN {
   truckNo: string;
   status: "Shipped" | "In Transit" | "Arrived" | "Cancelled";
 }
-
 export const asns: ASN[] = [
   {
     id: "ASN-2026-001",

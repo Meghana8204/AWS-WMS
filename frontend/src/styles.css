@@ -57,8 +57,10 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  --shadow-soft: 0 1px 2px oklch(0.21 0.05 258 / 0.04), 0 8px 24px -12px oklch(0.21 0.05 258 / 0.16);
-  --shadow-lift: 0 2px 4px oklch(0.21 0.05 258 / 0.05), 0 18px 40px -18px oklch(0.21 0.05 258 / 0.28);
+  --shadow-soft:
+    0 1px 2px oklch(0.21 0.05 258 / 0.04), 0 8px 24px -12px oklch(0.21 0.05 258 / 0.16);
+  --shadow-lift:
+    0 2px 4px oklch(0.21 0.05 258 / 0.05), 0 18px 40px -18px oklch(0.21 0.05 258 / 0.28);
   --shadow-glow: 0 12px 32px -12px oklch(0.55 0.22 264 / 0.5);
 }
 
@@ -177,9 +179,21 @@
 
 @utility surface-mesh {
   background-image:
-    radial-gradient(60rem 40rem at 8% -10%, color-mix(in oklab, var(--primary) 14%, transparent), transparent 60%),
-    radial-gradient(50rem 35rem at 100% 0%, color-mix(in oklab, var(--teal) 16%, transparent), transparent 60%),
-    radial-gradient(40rem 30rem at 60% 110%, color-mix(in oklab, var(--primary) 8%, transparent), transparent 60%);
+    radial-gradient(
+      60rem 40rem at 8% -10%,
+      color-mix(in oklab, var(--primary) 14%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      50rem 35rem at 100% 0%,
+      color-mix(in oklab, var(--teal) 16%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      40rem 30rem at 60% 110%,
+      color-mix(in oklab, var(--primary) 8%, transparent),
+      transparent 60%
+    );
 }
 
 @utility ripple {

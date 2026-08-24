@@ -15,7 +15,7 @@ ALLOWED_MIME_TYPES = {
     "application/pdf": ".pdf",
 }
 
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 
 
 class FileStorageService:
@@ -33,7 +33,7 @@ class FileStorageService:
             )
 
         if content_type and content_type.lower() not in ALLOWED_MIME_TYPES:
-            # Fall back to checking filename extension
+
             ext = os.path.splitext(filename)[1].lower()
             if ext not in (".jpg", ".jpeg", ".png", ".webp", ".pdf"):
                 raise InvalidFileException(

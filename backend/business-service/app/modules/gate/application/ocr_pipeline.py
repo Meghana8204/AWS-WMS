@@ -20,15 +20,15 @@ if os.getenv("ENABLE_PADDLE_OCR", "true").lower() == "true":
     try:
         from paddleocr import PaddleOCR
     except ImportError:
-        PaddleOCR = None  # type: ignore[assignment,misc]
+        PaddleOCR = None
 else:
-    # Operators can explicitly disable Paddle and retain Tesseract-only OCR.
-    PaddleOCR = None  # type: ignore[assignment,misc]
+
+    PaddleOCR = None
 
 from app.common.domain.exceptions import DomainRuleViolationException
 from app.modules.gate.domain.value_objects import FieldMismatch, GateEntryStatus, OcrResult, PurchaseOrderRecord
 
-# Auto-configure Tesseract executable path on Windows if present
+
 TESSERACT_WIN_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 if os.path.exists(TESSERACT_WIN_PATH):
     pytesseract.pytesseract.tesseract_cmd = TESSERACT_WIN_PATH
@@ -39,7 +39,7 @@ MIN_IMAGE_BYTES = 50
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
 MIN_WIDTH, MIN_HEIGHT = 50, 20
 
-# Dynamic Anchor Keyword Regex Patterns
+
 PO_NUMBER_PATTERNS = [
     re.compile(r"(?:PO|P0|PQ|PD|PR|PURCHASE\s*ORDER|ORDER\s*NO|INVOICE\s*NO|REF)[\s#/:.=-]{0,3}(?:NO|NUMBER)?[\s#/:.=-]{0,3}(PO-[A-Z0-9]+(?:-[A-Z0-9]+){0,3}|UNSCH-[A-Z0-9-]{3,12}|\d{4,10})", re.IGNORECASE),
     re.compile(r"\b(PO-[A-Z0-9]+(?:-[A-Z0-9]+){0,3})\b", re.IGNORECASE),
@@ -126,7 +126,7 @@ class EnterprisePoOcrEngine:
         if width < MIN_WIDTH or height < MIN_HEIGHT:
             return None
 
-        # Upscale or downscale based on longest edge for optimal OCR speed & accuracy
+
         longest_edge = max(width, height)
         if longest_edge > 2000:
             scale = 2000 / longest_edge
@@ -135,21 +135,21 @@ class EnterprisePoOcrEngine:
             scale = 1800 / longest_edge
             img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-        # 1. Grayscale Conversion
+
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # 2. Bilateral Filter Denoise (preserves sharp text edges)
+
         denoised = cv2.bilateralFilter(gray, 9, 75, 75)
 
-        # 3. CLAHE Contrast Adjustment
+
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(denoised)
 
-        # 4. Otsu Thresholding
+
         _, threshold = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-        # A sharpened adaptive pass is more tolerant of shadows, glare and
-        # uneven illumination in live phone-camera captures.
+
+
         sharpened = cv2.addWeighted(enhanced, 1.6, cv2.GaussianBlur(enhanced, (0, 0), 2), -0.6, 0)
         adaptive = cv2.adaptiveThreshold(
             sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -172,14 +172,14 @@ class EnterprisePoOcrEngine:
         Runs Tesseract OCR on preprocessed image frame and computes average OCR confidence score.
         """
         try:
-            # Try both a uniform document block and sparse document layout.
-            # Purchase orders frequently contain tables that PSM 6 alone can
-            # misread. Prefer the result with the strongest word confidence.
+
+
+
             best_text, best_confidence = "", 0.0
             for config in configs:
-                # image_to_data already contains every recognised word.  The
-                # previous implementation called both image_to_string and
-                # image_to_data, which ran Tesseract twice for every PSM.
+
+
+
                 ocr_data = pytesseract.image_to_data(
                     image, config=config, output_type=pytesseract.Output.DICT
                 )
@@ -210,7 +210,7 @@ class EnterprisePoOcrEngine:
                     best_text, best_confidence = raw_text, confidence
             return best_text, best_confidence
         except Exception as e:
-            # If tesseract binary fails or text is empty, parse raw bytes string
+
             return "", 0.0
 
     def extract_text_paddle(self, image: np.ndarray) -> Tuple[str, float]:
@@ -235,14 +235,14 @@ class EnterprisePoOcrEngine:
                         enable_mkldnn=False,
                     )
                 except TypeError:
-                    # PaddleOCR 2.x uses this constructor shape.
+
                     self._paddle_ocr = PaddleOCR(lang="en", use_angle_cls=True)
             if self._paddle_ocr is None:
                 return "", 0.0
 
             paddle_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR) if image.ndim == 2 else image
 
-            # PaddleOCR 3.x exposes predict() and structured result objects.
+
             if hasattr(self._paddle_ocr, "predict"):
                 results = list(self._paddle_ocr.predict(paddle_image))
                 lines: list[str] = []
@@ -259,7 +259,7 @@ class EnterprisePoOcrEngine:
                     confidences.extend(float(value) for value in payload.get("rec_scores", []))
                 return "\n".join(lines), (sum(confidences) / len(confidences) if confidences else 0.0)
 
-            # PaddleOCR 2.x compatibility.
+
             result = self._paddle_ocr.ocr(paddle_image, cls=True)
             lines: list[str] = []
             confidences: list[float] = []
@@ -276,8 +276,8 @@ class EnterprisePoOcrEngine:
                         confidences.append(float(confidence))
             return "\n".join(lines), (sum(confidences) / len(confidences) if confidences else 0.0)
         except Exception:
-            # Tesseract and the regex/parser path remain available when a
-            # Paddle model cannot be loaded in a deployment environment.
+
+
             self._paddle_ocr = None
             return "", 0.0
 
@@ -315,16 +315,16 @@ class EnterprisePoOcrEngine:
         if not text:
             return fields
 
-        # 1. PO Number
+
         for pat in PO_NUMBER_PATTERNS:
             m = pat.search(text)
             if m:
                 fields["po_number"] = m.group(1).upper().strip()
                 break
 
-        # Tesseract commonly reads the letter O in the PO prefix as zero or
-        # inserts spaces around separators. Capture the complete identifier;
-        # the old expression stopped at the year in PO-2026-0005.
+
+
+
         spaced_number = re.search(
             r"\bP[O0]\s*[-/]?\s*(\d{4})\s*[-/\s]\s*(\d{3,8})\b",
             text,
@@ -343,15 +343,15 @@ class EnterprisePoOcrEngine:
             if not fields["po_number"] or len(variant_number) > len(fields["po_number"]):
                 fields["po_number"] = variant_number
 
-        # 2. Supplier Name
+
         for pat in SUPPLIER_PATTERNS:
             m = pat.search(text)
             if m:
                 val = m.group(1).strip()
                 val = re.sub(r"^(?:NAME|NAME\s*:|:|-|=)\s*", "", val, flags=re.IGNORECASE).strip()
-                # PSM 6 can place adjacent table cells on one text line.
-                # Stop at the next known header instead of treating it as
-                # part of the supplier name.
+
+
+
                 val = re.split(
                     r"\s+(?:PAYMENT\s+TERMS?|SUPPLIER\s+ADDRESS|DELIVERY\s+ADDRESS|STATUS|DATE)\b",
                     val,
@@ -362,7 +362,7 @@ class EnterprisePoOcrEngine:
                     fields["supplier_name"] = val
                     break
 
-        # 3. Material Description
+
         for pat in MATERIAL_PATTERNS:
             m = pat.search(text)
             if m:
@@ -372,7 +372,7 @@ class EnterprisePoOcrEngine:
                     fields["material_description"] = val
                     break
 
-        # 4. Total Quantity
+
         for pat in QUANTITY_PATTERNS:
             m = pat.search(text)
             if m:
@@ -382,12 +382,12 @@ class EnterprisePoOcrEngine:
                 except ValueError:
                     pass
 
-        # Table OCR often emits headers first and then each row as a vertical
-        # sequence: material code, description, quantity, UOM. Recover the
-        # first line item and prefer it over header words such as "Qty".
+
+
+
         table_rows = list(re.finditer(
-            # Accept real supplier material codes such as ELEC-015,
-            # MAT-006, SKU-A12 and PART-900 instead of only MAT-*.
+
+
             r"\b((?=[A-Z0-9-]*\d)[A-Z][A-Z0-9]*-[A-Z0-9-]{2,})\s+"
             r"([^\n\r]{2,120}?)\s+"
             r"(\d+(?:\.\d+)?)\s+"
@@ -412,24 +412,24 @@ class EnterprisePoOcrEngine:
                 fields["material_description"] = ", ".join(item["material_description"] for item in line_items)
                 fields["total_quantity"] = sum(item["quantity"] for item in line_items)
 
-        # 5. PO Date
+
         for pat in PO_DATE_PATTERNS:
             m = pat.search(text)
             if m:
                 fields["po_date"] = self._normalise_date(m.group(1))
                 break
 
-        # 6. Delivery Date
+
         for pat in DELIVERY_DATE_PATTERNS:
             m = pat.search(text)
             if m:
                 fields["delivery_date"] = self._normalise_date(m.group(1))
                 break
 
-        # Some supplier templates place dates in a header/table without a
-        # label that survives OCR.  Use the first and last distinct document
-        # dates only to complete missing values; explicit labels above always
-        # take precedence.
+
+
+
+
         detected_dates: list[str] = []
         for match in re.finditer(DATE_VALUE_PATTERN, text, re.IGNORECASE):
             normalised = self._normalise_date(match.group(0))
@@ -483,14 +483,14 @@ class EnterprisePoOcrEngine:
         try:
             frame = self.preprocess_image(raw_bytes)
             if frame is not None:
-                # Fast path: clean POs normally need one Tesseract process.
+
                 candidates.append(self.extract_real_text_tesseract(frame.enhanced_image, ("--psm 6",)))
                 fast_result = build_result(candidates)
                 if complete(fast_result):
                     return fast_result
 
-                # Layout alternatives run only when the fast pass missed a
-                # required field.
+
+
                 candidates.append(self.extract_real_text_tesseract(frame.enhanced_image, ("--psm 4", "--psm 11")))
                 layout_result = build_result(candidates)
                 if complete(layout_result):
@@ -503,8 +503,8 @@ class EnterprisePoOcrEngine:
         except Exception:
             candidates = []
 
-        # Fallback text decoding is useful for text fixtures and never wins
-        # over an image OCR candidate containing a PO number.
+
+
         if not any(text.strip() for text, _ in candidates):
             try:
                 candidates.append((raw_bytes.decode("utf-8", errors="ignore"), 0.0))
@@ -528,7 +528,7 @@ class EnterprisePoOcrEngine:
 
         mismatches: List[FieldMismatch] = []
 
-        # 1. PO Number
+
         if ocr_result.po_number and ocr_result.po_number.upper() != po_record.po_number.upper():
             mismatches.append(
                 FieldMismatch(
@@ -538,7 +538,7 @@ class EnterprisePoOcrEngine:
                 )
             )
 
-        # 2. Supplier Name
+
         if ocr_result.supplier_name and ocr_result.supplier_name.strip().lower() != po_record.supplier_name.strip().lower():
             mismatches.append(
                 FieldMismatch(
@@ -548,7 +548,7 @@ class EnterprisePoOcrEngine:
                 )
             )
 
-        # 3. Material Description
+
         if ocr_result.material_description and ocr_result.material_description.strip().lower() != po_record.material_description.strip().lower():
             mismatches.append(
                 FieldMismatch(
@@ -558,7 +558,7 @@ class EnterprisePoOcrEngine:
                 )
             )
 
-        # 4. Total Quantity
+
         if ocr_result.total_quantity and float(ocr_result.total_quantity) != float(po_record.total_quantity):
             mismatches.append(
                 FieldMismatch(
@@ -568,7 +568,7 @@ class EnterprisePoOcrEngine:
                 )
             )
 
-        # 5. PO Date
+
         if ocr_result.po_date and ocr_result.po_date != po_record.po_date:
             mismatches.append(
                 FieldMismatch(
@@ -578,7 +578,7 @@ class EnterprisePoOcrEngine:
                 )
             )
 
-        # 6. Delivery Date
+
         if ocr_result.delivery_date and ocr_result.delivery_date != po_record.delivery_date:
             mismatches.append(
                 FieldMismatch(
@@ -589,8 +589,8 @@ class EnterprisePoOcrEngine:
             )
 
         if mismatches:
-            # Even with discrepancies, if the PO exists in the database, we treat it as a recognized arrival
-            # that might need manual reconciliation later, but it reflects as VERIFIED per user requirement.
+
+
             return GateEntryStatus.PO_VERIFIED, mismatches
 
         return GateEntryStatus.PO_VERIFIED, []

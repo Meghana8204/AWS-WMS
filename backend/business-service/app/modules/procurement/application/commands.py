@@ -84,7 +84,7 @@ class UpdateSupplierCommand:
     updated_by: Optional[str] = None
 
 
-# --- RFQ ---
+
 
 @dataclass(frozen=True)
 class RfqItemCommand:
@@ -110,7 +110,7 @@ class CreateRfqCommand:
     remarks: Optional[str] = None
 
 
-# --- Quotation ---
+
 
 @dataclass(frozen=True)
 class QuotationLineCommand:
@@ -143,9 +143,9 @@ class SubmitQuotationCommand:
     documents: Optional[List[QuotationDocumentCommand]] = None
 
 
-# --- Purchase Order ---
 
-# --- ASN ---
+
+
 
 @dataclass(frozen=True)
 class AsnLineCommand:

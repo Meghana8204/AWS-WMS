@@ -17,7 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
-
 export const Route = createFileRoute("/putaway-tasks")({ component: PutawayTasks });
 type Task = {
   id: string;
@@ -72,7 +71,6 @@ type HandlingUnit = {
   putaway_task_id?: string;
   destination?: string;
 };
-
 function PutawayTasks() {
   const [tasks, setTasks] = useState<Task[]>([]),
     [locations, setLocations] = useState<StorageLocation[]>([]),
@@ -80,7 +78,14 @@ function PutawayTasks() {
   const [selections, setSelections] = useState<Record<string, string>>({}),
     [saving, setSaving] = useState<string>();
   const [confirmations, setConfirmations] = useState<
-    Record<string, { material: string; location: string; quantity: string }>
+    Record<
+      string,
+      {
+        material: string;
+        location: string;
+        quantity: string;
+      }
+    >
   >({});
   const [handlingUnits, setHandlingUnits] = useState<Record<string, HandlingUnit>>({});
   const load = useCallback(async () => {

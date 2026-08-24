@@ -65,13 +65,13 @@ def render_premium_email(
 def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = None):
     settings = get_settings()
 
-    # Absolute path for debugging
+
     log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
     with open(log_path, "a") as lf:
         lf.write(f"SMTP Start: {to_email} via {settings.email_host_user}\n")
 
-    # Let Gmail, Outlook, and mobile clients prefer the premium HTML while
-    # retaining the plain-text version as an accessibility fallback.
+
+
     msg = MIMEMultipart('alternative')
     msg['From'] = f"{settings.email_from_name} <{settings.email_host_user}>"
     msg['To'] = to_email
@@ -137,7 +137,7 @@ async def send_email(to_email: str, subject: str, body: str, html_body: str | No
                 greeting="Hello,",
                 intro=body,
             )
-        # Run synchronous smtplib in a separate thread
+
         await anyio.to_thread.run_sync(_send_sync, to_email, subject, body, html_body)
         return True
     except Exception as e:

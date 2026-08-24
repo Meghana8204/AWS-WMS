@@ -34,14 +34,13 @@ export const INDIAN_STATES = [
   "Jammu and Kashmir",
   "Ladakh",
   "Lakshadweep",
-  "Puducherry"
+  "Puducherry",
 ];
-
 export const TDS_SECTIONS = [
   "194C (Contractors)",
   "194J (Professional Services)",
   "194H (Commission/Brokerage)",
   "194I (Rent)",
   "194Q (Purchase of Goods)",
-  "None / Exempt"
+  "None / Exempt",
 ];

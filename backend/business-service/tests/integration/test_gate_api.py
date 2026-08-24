@@ -104,11 +104,11 @@ async def test_anpr_ocr_preview_unscheduled_arrival(client: AsyncClient):
 @pytest.mark.anyio
 async def test_gate_entry_lifecycle_create_verify_lookup(client: AsyncClient):
     """Test full Gate Entry lifecycle: Reset -> Create -> Lookup -> Supervisor Approval."""
-    # 1. Reset dev entries
+
     reset_res = await client.post("/api/gate-entries/reset-dev-entries")
     assert reset_res.status_code == 200
 
-    # 2. Create Gate Entry
+
     img_b64 = make_dummy_image_base64()
     create_payload = {
         "vehiclePlate": "KA-05-MN-5678",
@@ -130,14 +130,14 @@ async def test_gate_entry_lifecycle_create_verify_lookup(client: AsyncClient):
     assert created_data["ocrResult"] is not None
 
 
-    # 3. Lookup Gate Entry by ID
+
     get_res = await client.get(f"/api/gate-entries/{entry_id}")
     assert get_res.status_code == 200
     fetched_data = get_res.json()
     assert fetched_data["id"] == entry_id
     assert fetched_data["gateEntryNumber"] == gate_entry_number
 
-    # 4. Supervisor Verification (APPROVE)
+
     verify_payload = {
         "action": "APPROVE",
         "remarks": "Driver credentials and physical seal intact",
@@ -153,7 +153,7 @@ async def test_gate_entry_lifecycle_create_verify_lookup(client: AsyncClient):
 @pytest.mark.anyio
 async def test_duplicate_active_gate_entry_rejection(client: AsyncClient):
     """Test that creating a second active Gate Entry for the same PO is rejected with HTTP 400, while same vehicle with different PO succeeds."""
-    # 1. Reset state
+
     await client.post("/api/gate-entries/reset-dev-entries")
 
     img_b64 = make_dummy_image_base64()
@@ -164,17 +164,17 @@ async def test_duplicate_active_gate_entry_rejection(client: AsyncClient):
         "documentImageBase64": img_b64,
     }
 
-    # 2. First creation succeeds
+
     res1 = await client.post("/api/gate-entries", json=payload)
     assert res1.status_code == 201
 
-    # 3. Duplicate PO creation attempt fails with 400 Bad Request
+
     res2 = await client.post("/api/gate-entries", json=payload)
     assert res2.status_code == 400
     err_data = res2.json()
     assert "Active gate entry attempt" in err_data["message"]
 
-    # 4. Same vehicle with different PO succeeds with 201 Created
+
     payload_diff_po = {
         "vehiclePlate": "TS-09-EA-1122",
         "poNumber": "PO-1003-DIFF",

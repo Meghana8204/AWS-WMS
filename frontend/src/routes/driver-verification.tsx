@@ -6,23 +6,27 @@ import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { activeArrival } from "@/lib/wms-data";
 import driverPhoto from "@/assets/driver.jpg";
-
 export const Route = createFileRoute("/driver-verification")({
   head: () => ({
     meta: [
       { title: "Driver Verification · NexusWMS" },
-      { name: "description", content: "Verify driver identity, licence validity, contact details, previous visits and blacklist status before dock entry." },
+      {
+        name: "description",
+        content:
+          "Verify driver identity, licence validity, contact details, previous visits and blacklist status before dock entry.",
+      },
       { property: "og:title", content: "Driver Verification · NexusWMS" },
-      { property: "og:description", content: "Identity, licence and blacklist checks for inbound truck drivers." },
+      {
+        property: "og:description",
+        content: "Identity, licence and blacklist checks for inbound truck drivers.",
+      },
     ],
   }),
   component: DriverVerification,
 });
-
 function DriverVerification() {
   const a = activeArrival;
   const navigate = useNavigate();
-
   return (
     <AppShell
       title="Driver verification"
@@ -32,14 +36,20 @@ function DriverVerification() {
           <Button
             variant="outline"
             className="rounded-xl border-destructive/30 text-destructive hover:bg-danger-soft hover:text-destructive"
-            onClick={() => toast.error("Driver rejected", { description: "Transporter asked to send a replacement driver." })}
+            onClick={() =>
+              toast.error("Driver rejected", {
+                description: "Transporter asked to send a replacement driver.",
+              })
+            }
           >
             <XCircle className="size-4" /> Reject
           </Button>
           <Button
             className="rounded-xl shadow-glow"
             onClick={() => {
-              toast.success("Driver approved", { description: "Continue to vendor and purchase order check." });
+              toast.success("Driver approved", {
+                description: "Continue to vendor and purchase order check.",
+              });
               navigate({ to: "/purchase-order" });
             }}
           >
@@ -83,7 +93,10 @@ function DriverVerification() {
                 { label: "PPE compliance", value: "Helmet + vest issued", ok: true },
                 { label: "Licence authenticity", value: "Verified via VAHAN", ok: true },
               ].map((c) => (
-                <div key={c.label} className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2.5">
+                <div
+                  key={c.label}
+                  className="flex items-center justify-between rounded-xl border border-border/70 px-3 py-2.5"
+                >
                   <span className="text-sm">{c.label}</span>
                   <span className="text-xs font-semibold text-success">{c.value}</span>
                 </div>

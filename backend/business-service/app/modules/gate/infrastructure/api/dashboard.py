@@ -23,7 +23,7 @@ async def get_dashboard_stats(
     """
     Get real-time dashboard metrics from the gate repository.
     """
-    # Fetch real gate entries from PostgreSQL
+
     result = await uow.session.execute(
         select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
     )
@@ -31,7 +31,7 @@ async def get_dashboard_stats(
 
     total_arrivals = len(models)
 
-    # Compute status-based counters
+
     verified_arrivals = 0
     unscheduled_arrivals = 0
     vehicles_waiting = 0
@@ -42,19 +42,19 @@ async def get_dashboard_stats(
 
         if "REJECT" in status_upper:
             continue
-        
+
         if status_upper == "PO_VERIFIED" or status_upper == "APPROVED":
             verified_arrivals += 1
         elif status_upper == "UNSCHEDULED_ARRIVAL":
             unscheduled_arrivals += 1
 
-        # Logic for vehicles waiting and receiving
+
         if "DOCK" in status_upper or "RECEIV" in status_upper:
             receiving_in_progress += 1
         elif "COMPLET" not in status_upper:
             vehicles_waiting += 1
 
-    # Dock Occupancy (Mock list for UI mapping)
+
     docks = [
         { "id": "D-01", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
         { "id": "D-02", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
@@ -66,7 +66,7 @@ async def get_dashboard_stats(
         { "id": "D-08", "zone": "Zone D — Hazmat", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Hazmat certified" },
     ]
 
-    # Dynamically map gate entries to docks
+
     for m in models:
         status_upper = (m.status or "").upper()
         if "DOCK" in status_upper or "RECEIV" in status_upper:
@@ -77,10 +77,10 @@ async def get_dashboard_stats(
                     dock["eta"] = "Free in 30 min" if "RECEIV" in status_upper else "Docking soon"
                     break
 
-    # Build real-time timeline of activity
+
     activity = []
     for m in models[:5]:
-        # Ensure naive datetime if needed or handle timezone
+
         time_str = m.created_at.strftime("%H:%M")
         status_upper = (m.status or "").upper()
 
@@ -137,7 +137,7 @@ async def get_dashboard_stats(
         "percentage": int(((total_arrivals - vehicles_waiting) / max(total_arrivals + 2, 10)) * 100) if total_arrivals > 0 else 0
     }
 
-    # Format gate entries list for dashboard table
+
     formatted_entries = []
     for m in models[:10]:
         dock_no = "—"

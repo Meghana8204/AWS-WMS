@@ -1,5 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, Filter, Mail, MoreHorizontal, ArrowRight, Loader2, Calendar, X, Send, Eye, Building2, Package, Info } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Filter,
+  Mail,
+  MoreHorizontal,
+  ArrowRight,
+  Loader2,
+  Calendar,
+  X,
+  Send,
+  Eye,
+  Building2,
+  Package,
+  Info,
+} from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,18 +23,15 @@ import { api } from "@/lib/api-client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { requireRole } from "@/lib/auth-utils";
-
 export const Route = createFileRoute("/procurement/rfqs")({
   beforeLoad: () => requireRole("PROCUREMENT"),
   component: Rfqs,
 });
-
 function Rfqs() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRfq, setSelectedRfq] = useState<any | null>(null);
   const [sendingRfq, setSendingRfq] = useState(false);
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -32,11 +44,9 @@ function Rfqs() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, []);
-
   const handleSendRfq = async (rfqId: string) => {
     try {
       setSendingRfq(true);
@@ -50,7 +60,6 @@ function Rfqs() {
       setSendingRfq(false);
     }
   };
-
   return (
     <AppShell
       title="Request for Quotations"
@@ -83,7 +92,10 @@ function Rfqs() {
       ) : (
         <div className="grid gap-4">
           {rfqs.map((rfq) => (
-            <Card key={rfq.id} className="overflow-hidden border-border/50 transition-all hover:border-primary/30 hover:shadow-soft">
+            <Card
+              key={rfq.id}
+              className="overflow-hidden border-border/50 transition-all hover:border-primary/30 hover:shadow-soft"
+            >
               <div className="flex flex-col p-5 md:flex-row md:items-center">
                 <div className="mb-4 flex flex-1 items-start gap-4 md:mb-0">
                   <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft/30 text-primary">
@@ -123,17 +135,24 @@ function Rfqs() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" className="rounded-xl" onClick={() => setSelectedRfq(rfq)}>
+                    <Button
+                      variant="outline"
+                      className="rounded-xl"
+                      onClick={() => setSelectedRfq(rfq)}
+                    >
                       {rfq.status === "DRAFT" ? (
                         <>Review & Send</>
                       ) : (
-                        <><Eye className="mr-1.5 size-3.5" /> View Details</>
+                        <>
+                          <Eye className="mr-1.5 size-3.5" /> View Details
+                        </>
                       )}
                     </Button>
                     {rfq.status !== "DRAFT" && (
                       <Link to="/procurement/quotations" search={{ rfqId: rfq.id }}>
                         <Button variant="outline" className="rounded-xl group">
-                          Compare Bids <ArrowRight className="ml-2 size-3 transition-transform group-hover:translate-x-1" />
+                          Compare Bids{" "}
+                          <ArrowRight className="ml-2 size-3 transition-transform group-hover:translate-x-1" />
                         </Button>
                       </Link>
                     )}
@@ -145,59 +164,80 @@ function Rfqs() {
         </div>
       )}
 
-      {/* Detail & Review Modal */}
       {selectedRfq && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm transition-all duration-200">
           <Card className="flex max-h-[85vh] w-full max-w-4xl flex-col border-border/80 bg-card shadow-soft animate-in fade-in zoom-in-95">
-            {/* Header */}
             <div className="flex items-center justify-between border-b border-border/60 p-6">
               <div>
                 <div className="flex items-center gap-3">
                   <h2 className="text-xl font-bold">{selectedRfq.rfqNumber}</h2>
                   <StatusBadge status={selectedRfq.status} />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">Created on {new Date(selectedRfq.createdAt).toLocaleString()}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Created on {new Date(selectedRfq.createdAt).toLocaleString()}
+                </p>
               </div>
-              <Button variant="ghost" size="icon" className="rounded-xl" onClick={() => setSelectedRfq(null)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-xl"
+                onClick={() => setSelectedRfq(null)}
+              >
                 <X className="size-5" />
               </Button>
             </div>
 
-            {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Metadata Grid */}
               <div className="grid gap-4 rounded-xl border border-border/60 bg-muted/10 p-4 sm:grid-cols-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Procurement Officer</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Procurement Officer
+                  </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.procurementOfficer}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Warehouse</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Warehouse
+                  </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.warehouse}</p>
                 </div>
                 {selectedRfq.materialRequestNumber && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Material Request Ref</p>
-                    <p className="mt-1 text-sm font-semibold">{selectedRfq.materialRequestNumber}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Material Request Ref
+                    </p>
+                    <p className="mt-1 text-sm font-semibold">
+                      {selectedRfq.materialRequestNumber}
+                    </p>
                   </div>
                 )}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">RFQ Date</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    RFQ Date
+                  </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.rfqDate}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Required Delivery Date</p>
-                  <p className="mt-1 text-sm font-semibold">{selectedRfq.requiredDeliveryDate || "—"}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Required Delivery Date
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {selectedRfq.requiredDeliveryDate || "—"}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Supplier Email(s)</p>
-                  <p className="mt-1 text-sm font-semibold truncate" title={selectedRfq.supplierEmails?.join(", ")}>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Supplier Email(s)
+                  </p>
+                  <p
+                    className="mt-1 text-sm font-semibold truncate"
+                    title={selectedRfq.supplierEmails?.join(", ")}
+                  >
                     {selectedRfq.supplierEmails?.join(", ") || "—"}
                   </p>
                 </div>
               </div>
 
-              {/* Items Section */}
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
                   <Package className="size-4 text-primary" /> Material Requirements
@@ -221,14 +261,23 @@ function Rfqs() {
                           <tr key={idx} className="border-b border-border/40 hover:bg-muted/5">
                             <td className="py-3 pr-2">
                               <p className="font-semibold text-foreground">{item.materialName}</p>
-                              <span className="font-mono text-[10px] text-muted-foreground">{item.materialCode}</span>
+                              <span className="font-mono text-[10px] text-muted-foreground">
+                                {item.materialCode}
+                              </span>
                             </td>
                             <td className="py-3 text-muted-foreground">{item.category}</td>
-                            <td className="py-3 text-right font-mono font-bold pr-4">{Math.floor(item.quantity)}</td>
+                            <td className="py-3 text-right font-mono font-bold pr-4">
+                              {Math.floor(item.quantity)}
+                            </td>
                             <td className="py-3 font-semibold text-muted-foreground">{item.uom}</td>
-                            <td className="py-3 text-muted-foreground">{item.requiredDeliveryDate}</td>
+                            <td className="py-3 text-muted-foreground">
+                              {item.requiredDeliveryDate}
+                            </td>
                             <td className="py-3 text-muted-foreground">{item.warehouse}</td>
-                            <td className="py-3 text-muted-foreground italic max-w-[200px] truncate" title={item.specialRequirements || ""}>
+                            <td
+                              className="py-3 text-muted-foreground italic max-w-[200px] truncate"
+                              title={item.specialRequirements || ""}
+                            >
                               {item.specialRequirements || "None"}
                             </td>
                           </tr>
@@ -245,7 +294,6 @@ function Rfqs() {
                 </div>
               </div>
 
-              {/* Invited Suppliers List */}
               {selectedRfq.suppliers && selectedRfq.suppliers.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
@@ -253,7 +301,11 @@ function Rfqs() {
                   </h3>
                   <div className="flex flex-wrap gap-2">
                     {selectedRfq.suppliers.map((sup: any) => (
-                      <Badge key={sup.supplierId} variant="outline" className="rounded-lg py-1 px-2.5 bg-muted/10 border-border/60">
+                      <Badge
+                        key={sup.supplierId}
+                        variant="outline"
+                        className="rounded-lg py-1 px-2.5 bg-muted/10 border-border/60"
+                      >
                         <Building2 className="mr-1.5 size-3.5 text-muted-foreground animate-pulse" />
                         {sup.supplierName}
                       </Badge>
@@ -262,20 +314,23 @@ function Rfqs() {
                 </div>
               )}
 
-              {/* Suppliers count info */}
               <div className="flex items-start gap-3 rounded-xl border border-warning/20 bg-warning-soft/10 p-4">
                 <Info className="size-5 text-warning shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-semibold text-warning-foreground">Invitation Scope</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    This RFQ invitation will be sent to <strong>{selectedRfq.suppliers?.length || 0}</strong> selected suppliers. Suppliers will be notified immediately to submit bids once published.
+                    This RFQ invitation will be sent to{" "}
+                    <strong>{selectedRfq.suppliers?.length || 0}</strong> selected suppliers.
+                    Suppliers will be notified immediately to submit bids once published.
                   </p>
                 </div>
               </div>
 
               {selectedRfq.remarks && (
                 <div>
-                  <h4 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">Remarks / Instructions</h4>
+                  <h4 className="text-xs uppercase tracking-wider font-bold text-muted-foreground">
+                    Remarks / Instructions
+                  </h4>
                   <p className="mt-1.5 rounded-lg bg-muted/30 p-3 text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
                     {selectedRfq.remarks}
                   </p>
@@ -283,7 +338,6 @@ function Rfqs() {
               )}
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-end gap-3 border-t border-border/60 p-6 bg-muted/5">
               <Button variant="outline" className="rounded-xl" onClick={() => setSelectedRfq(null)}>
                 Close
@@ -295,9 +349,14 @@ function Rfqs() {
                   onClick={() => handleSendRfq(selectedRfq.id)}
                 >
                   {sendingRfq ? (
-                    <><Loader2 className="mr-2 size-4 animate-spin" /> Sending...</>
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" /> Sending...
+                    </>
                   ) : (
-                    <><Send className="mr-2 size-4" /> {selectedRfq.status === "OPEN" ? "Resend RFQ Email" : "Approve & Send RFQ"}</>
+                    <>
+                      <Send className="mr-2 size-4" />{" "}
+                      {selectedRfq.status === "OPEN" ? "Resend RFQ Email" : "Approve & Send RFQ"}
+                    </>
                   )}
                 </Button>
               )}
