@@ -324,17 +324,13 @@ function GateEntry() {
   async function handlePoScannerSuccess(data: any, file: File) {
     setPoDocument(file);
     const result = data.ocr_result || data;
-<<<<<<< HEAD
     const fields = data.extraction?.fields || result.extraction?.fields || {};
 
-=======
->>>>>>> 934ad398ed515ca6eccdc3cea05acd1c08abf128
     setExtractedDetails({
       ...data,
       source: "local-ocr",
       confidence: result.confidence,
     });
-<<<<<<< HEAD
 
     const detectedPo = result.po_number || fields.po_number;
     const detectedSupplier = result.supplier_name || fields.supplier_name;
@@ -348,15 +344,6 @@ function GateEntry() {
       const previewStatus = data.computedStatus || data.computed_status || data.status;
       setPoVerificationStatus(previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL");
       void fetchPoDetails(detectedPo, true);
-=======
-    if (result.po_number) {
-      setPoNumber(result.po_number);
-      const previewStatus = data.computedStatus || data.computed_status;
-      setPoVerificationStatus(
-        previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
-      );
-      void fetchPoDetails(result.po_number, true);
->>>>>>> 934ad398ed515ca6eccdc3cea05acd1c08abf128
     }
     if (detectedSupplier) setSupplierName(detectedSupplier);
     if (detectedMaterial) setMaterialDescription(detectedMaterial);
@@ -369,6 +356,7 @@ function GateEntry() {
       applyLineItems(lineItems);
     }
   }
+
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
     if (!number || number.length < 5) return;
     const toastId = toast.loading(`Fetching details for PO: ${number}...`);
@@ -411,7 +399,6 @@ function GateEntry() {
       setPoNumber(resolvedPoNumber);
       setPoVerificationStatus("PO_VERIFIED");
       const items = po.items || [];
-<<<<<<< HEAD
       if (items.length) {
         applyLineItems(items);
       }
@@ -426,23 +413,10 @@ function GateEntry() {
       const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
       if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
 
-      // Vehicle and driver details belong to the supplier's ASN, not the PO.
-      // The ASN list is newest-first, so the first PO match is the current
-      // shipment after a supplier edits and re-submits it.
-      const shipment = asns.find((asn: any) =>
-        String(asn.poNumber || asn.po_number || "").toUpperCase() === resolvedPoNumber.toUpperCase()
-=======
-      if (items.length) applyLineItems(items);
-      if (!preserveScannedFields) {
-        setSupplierName(po.supplierName || "");
-        setPoDate(po.poDate || "");
-        setDeliveryDate(po.expectedDeliveryDate || "");
-      }
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
           resolvedPoNumber.toUpperCase(),
->>>>>>> 934ad398ed515ca6eccdc3cea05acd1c08abf128
       );
       setVehicleNumber("");
       if (shipment?.driverName || shipment?.driver_name) {

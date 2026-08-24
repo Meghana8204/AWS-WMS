@@ -443,8 +443,6 @@ export const api = {
       body: formData,
     });
   },
-<<<<<<< HEAD
-
   async previewPoOcr(base64Image: string, _poNumberOverride?: string): Promise<any> {
     try {
       const byteCharacters = atob(base64Image);
@@ -463,17 +461,6 @@ export const api = {
         body: new FormData(),
       });
     }
-=======
-  async previewPoOcr(base64Image: string, poNumberOverride?: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate/po-ocr-preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        documentImageBase64: base64Image,
-        poNumberOverride: poNumberOverride,
-      }),
-    });
->>>>>>> 934ad398ed515ca6eccdc3cea05acd1c08abf128
   },
   async getGrn(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
