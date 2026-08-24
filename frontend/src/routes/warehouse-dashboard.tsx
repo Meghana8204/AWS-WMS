@@ -103,8 +103,8 @@ function WarehouseDashboard() {
   const targetProgress = dashboardData?.targetProgress || { current: 0, target: 10, percentage: 0 };
   return (
     <AppShell
-      title="Gate Entry"
-      subtitle="Warehouse & Security Operations · Live Gate Queue & Yard Arrivals"
+      title="Warehouse Dashboard"
+      subtitle="Warehouse Operations · Live arrivals, receiving and inventory overview"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>

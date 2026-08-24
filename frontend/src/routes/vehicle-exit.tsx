@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { requireRole } from "@/lib/auth-utils";
 export const Route = createFileRoute("/vehicle-exit")({
-  beforeLoad: () => requireRole("GATE_SECURITY"),
+  beforeLoad: () => requireRole(["WAREHOUSE", "WAREHOUSE_OPERATOR", "GATE_SECURITY"]),
   component: VehicleExit,
 });
 type ExitRecord = {

@@ -1,7 +1,6 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  DoorOpen,
   Truck,
   ListOrdered,
   Warehouse,
@@ -32,7 +31,6 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
-  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
@@ -62,12 +60,10 @@ const financeNav = [
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 const gateSecurityNav = [
-  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
-  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
+  { label: "Dashboard", to: "/gate-entry", icon: LayoutDashboard },
   { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
-  { label: "Gate Exit Mgmt", to: "/gate-exit-management", icon: DoorOpen },
 ];
 export function AppShell({
   children,
@@ -161,27 +157,52 @@ export function AppShell({
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
+  const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
+    (route) => path.startsWith(route),
+  );
   const isWarehouseRoute =
-    path === "/warehouse-dashboard" ||
+    isSharedOperationsRoute ||
     [
       "/inventory",
       "/warehouse/material-requests",
-      "/gate-entry",
-      "/notifications",
-      "/vehicle-queue",
+      "/dock-management",
       "/receiving",
+      "/putaway-tasks",
       "/reports",
     ].some((p) => path.startsWith(p));
-  const nav =
-    isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
-      ? supplierNav
-      : isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
-        ? financeNav
-        : isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
-          ? procurementNav
-          : mounted && user?.roles?.includes("GATE_SECURITY")
-            ? gateSecurityNav
-            : warehouseNav;
+  const isGateSecurityRoute =
+    [
+      "/gate-entry",
+      "/notifications",
+      "/accept-arrival",
+      "/driver-verification",
+      "/vehicle-verification",
+      "/dock-assignment",
+      "/arrival-success",
+    ].some((route) => path.startsWith(route)) ||
+    (isGateSecurityUser && isSharedOperationsRoute);
+  const resolvedNav = isSupplierRoute
+    ? supplierNav
+    : isFinanceRoute
+      ? financeNav
+      : isProcurementRoute
+        ? procurementNav
+        : isGateSecurityRoute
+          ? gateSecurityNav
+          : isWarehouseRoute
+            ? warehouseNav
+            : mounted && user?.roles?.includes("SUPPLIER")
+              ? supplierNav
+              : mounted && user?.roles?.includes("FINANCE")
+                ? financeNav
+                : mounted && user?.roles?.includes("PROCUREMENT")
+                  ? procurementNav
+                  : isGateSecurityUser
+                    ? gateSecurityNav
+                    : warehouseNav;
+  const navigationPending = !mounted && isSharedOperationsRoute;
+  const nav = navigationPending ? [] : resolvedNav;
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
@@ -208,6 +229,10 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+          {navigationPending &&
+            Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
+            ))}
           {nav.map((item) => {
             const active =
               path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
@@ -262,7 +287,7 @@ export function AppShell({
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
             <Link
-              to={nav[0].to}
+              to={nav[0]?.to ?? "/warehouse-dashboard"}
               className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
             >
               <Warehouse className="size-4" />
