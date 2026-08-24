@@ -16,7 +16,7 @@ def main():
 
     if command in ("runserver", "server"):
         port = 8000
-        host = "127.0.0.1"
+        host = "0.0.0.0"
 
         for idx, arg in enumerate(sys.argv):
             if arg == "--port" and idx + 1 < len(sys.argv):

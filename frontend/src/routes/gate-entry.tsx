@@ -26,6 +26,48 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
+
+async function compressFileForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width;
+      let h = img.height;
+      const maxDim = 1024;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(file); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { resolve(file); return; }
+          resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
   component: GateEntry,
@@ -181,7 +223,8 @@ function GateEntry() {
     const toastId = toast.loading(`OCR is analyzing ${kind === "po" ? "document" : "vehicle"}...`);
     try {
       console.log(`Calling api.scanOcr for ${kind}...`);
-      const result = await api.scanOcr(file, kind);
+      const uploadFile = await compressFileForUpload(file);
+      const result = await api.scanOcr(uploadFile, kind);
       console.log("OCR scan result:", result);
       const extraction = result.extraction || result;
       const fields = extraction.fields || {};
@@ -277,29 +320,39 @@ function GateEntry() {
   async function handlePoScannerSuccess(data: any, file: File) {
     setPoDocument(file);
     const result = data.ocr_result || data;
+    const fields = data.extraction?.fields || result.extraction?.fields || {};
+
     setExtractedDetails({
       ...data,
       source: "local-ocr",
       confidence: result.confidence,
     });
-    if (result.po_number) {
-      setPoNumber(result.po_number);
-      const previewStatus = data.computedStatus || data.computed_status;
-      setPoVerificationStatus(
-        previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
-      );
-      void fetchPoDetails(result.po_number, true);
+
+    const detectedPo = result.po_number || fields.po_number;
+    const detectedSupplier = result.supplier_name || fields.supplier_name;
+    const detectedMaterial = result.material_description || fields.material_description;
+    const detectedQty = result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
+    const detectedPoDate = result.po_date || fields.po_date;
+    const detectedDeliveryDate = result.delivery_date || fields.delivery_date;
+
+    if (detectedPo) {
+      setPoNumber(detectedPo);
+      const previewStatus = data.computedStatus || data.computed_status || data.status;
+      setPoVerificationStatus(previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL");
+      void fetchPoDetails(detectedPo, true);
     }
-    if (result.supplier_name) setSupplierName(result.supplier_name);
-    const foundLineItems = applyLineItems(result.line_items || result.lineItems);
-    if (!foundLineItems) {
-      setArrivalLineItems([]);
-      if (result.material_description) setMaterialDescription(result.material_description);
-      if (result.total_quantity) setTotalQuantity(String(result.total_quantity));
+    if (detectedSupplier) setSupplierName(detectedSupplier);
+    if (detectedMaterial) setMaterialDescription(detectedMaterial);
+    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "") setTotalQuantity(String(detectedQty));
+    if (detectedPoDate) setPoDate(detectedPoDate);
+    if (detectedDeliveryDate) setDeliveryDate(detectedDeliveryDate);
+
+    const lineItems = result.line_items || result.lineItems || fields.line_items || [];
+    if (lineItems.length) {
+      applyLineItems(lineItems);
     }
-    if (result.po_date) setPoDate(result.po_date);
-    if (result.delivery_date) setDeliveryDate(result.delivery_date);
   }
+
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
     if (!number || number.length < 5) return;
     const toastId = toast.loading(`Fetching details for PO: ${number}...`);
@@ -342,12 +395,20 @@ function GateEntry() {
       setPoNumber(resolvedPoNumber);
       setPoVerificationStatus("PO_VERIFIED");
       const items = po.items || [];
-      if (items.length) applyLineItems(items);
-      if (!preserveScannedFields) {
-        setSupplierName(po.supplierName || "");
-        setPoDate(po.poDate || "");
-        setDeliveryDate(po.expectedDeliveryDate || "");
+      if (items.length) {
+        applyLineItems(items);
       }
+
+      setSupplierName((prev) => prev || po.supplierName || po.supplier_name || "");
+      setPoDate((prev) => prev || po.poDate || po.po_date || "");
+      setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
+
+      const systemMat = items.map((i: any) => i.materialName || i.material_name).filter(Boolean).join(", ");
+      if (systemMat) setMaterialDescription((prev) => prev || systemMat);
+
+      const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
+      if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
+
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
