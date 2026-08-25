@@ -1,0 +1,21 @@
+Subject: Request for Quotation - RFQ-2026-0002
+To: harshavardhandevang@gmail.com
+
+Dear MTR,
+
+We request you to submit a quotation for the following materials:
+
+Material: plastic
+Quantity: 15.0000 PCS
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse
+
+Please use the following link to login and submit your quotation:
+
+http://localhost:8080/login?redirect=/submit-quotation?rfqId=dd2e273d-4709-4a08-8ca8-64254e624e72
+
+Your Credentials:
+Username: supplier_mtr
+Temporary Password: [Use your existing secure password]
+
+Note: If this is your first login, you will be required to change your password.

@@ -1,0 +1,33 @@
+Subject: Purchase Order PO-2026-0001
+To: harshavardhandevang@gmail.com
+
+Dear ABC Industrial Supplies,
+
+Your Purchase Order has been approved and issued.
+
+PO Number: PO-2026-0001
+Total Amount: ₹ 454.00
+Expected Delivery: 2026-08-25
+
+Material Summary:
+- Mild Steel Pipe 2-inch (1.0000 PCS)
+- Stainless Steel Sheet 2mm (1.0000 KG)
+- Industrial Lubricant 20W-40 (1.0000 LTR)
+- Hex Bolt M10 × 50mm (1.0000 PCS)
+
+Portal Access Credentials:
+URL: http://localhost:8080/login
+Username: supplier_abcindustr
+Temporary Password: 9kFjF8qBNY
+
+Note: For security, you will be required to change this password upon your first login.
+
+You can view the full PO details here:
+http://localhost:8080/purchase-order?poId=4e286e9e-801b-4d02-b76c-16e8a9ebd94a
+
+Once the shipment is ready, please login and submit the Advance Shipping Notice (ASN) here:
+http://localhost:8080/login?redirect=/supplier/asns/new?poId=4e286e9e-801b-4d02-b76c-16e8a9ebd94a
+
+Regards,
+Arun Kumar – Procurement Officer
+NexusWMS

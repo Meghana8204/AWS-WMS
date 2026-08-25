@@ -1,0 +1,30 @@
+Subject: Purchase Order PO-2026-0005
+To: harshavardhandevang@gmail.com
+
+Dear ABC ENGINEERING PVT. LTD.,
+
+Your Purchase Order has been approved and issued.
+
+PO Number: PO-2026-0005
+Total Amount: ₹ 1,743.00
+Expected Delivery: 2026-08-31
+
+Material Summary:
+- steel (1.0000 PCS)
+
+Portal Access Credentials:
+URL: http://localhost:8080/login
+Username: supplier_abcenginee
+Temporary Password: YuILnlGmLV
+
+Note: For security, you will be required to change this password upon your first login.
+
+You can view the full PO details here:
+http://localhost:8080/purchase-order?poId=09eb9310-c01a-4ab7-b75e-124142dc76e7
+
+Once the shipment is ready, please login and submit the Advance Shipping Notice (ASN) here:
+http://localhost:8080/login?redirect=/supplier/asns/new?poId=09eb9310-c01a-4ab7-b75e-124142dc76e7
+
+Regards,
+procurement
+NexusWMS

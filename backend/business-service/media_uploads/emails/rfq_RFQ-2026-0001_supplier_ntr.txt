@@ -1,0 +1,21 @@
+Subject: Request for Quotation - RFQ-2026-0001
+To: harshavardhandevang@gmail.com
+
+Dear NTR,
+
+We request you to submit a quotation for the following materials:
+
+Material: plastic
+Quantity: 15.0000 PCS
+Required Delivery: 2026-08-25
+Warehouse: Main Warehouse
+
+Please use the following link to login and submit your quotation:
+
+http://localhost:8080/login?redirect=/submit-quotation?rfqId=80fadf96-a6bb-4251-bedb-3b0dc15af4a5
+
+Your Credentials:
+Username: supplier_ntr
+Temporary Password: wWY1Oxo8
+
+Note: If this is your first login, you will be required to change your password.
