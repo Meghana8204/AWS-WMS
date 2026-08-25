@@ -23,6 +23,7 @@ import {
   FileQuestion,
   FileBadge,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -60,8 +61,8 @@ const financeNav = [
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 const gateSecurityNav = [
-  { label: "Dashboard", to: "/gate-entry", icon: LayoutDashboard },
-  { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
+  { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
+  { label: "Gate Entry", to: "/gate-entry", icon: ShieldCheck },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
 ];
@@ -154,10 +155,21 @@ export function AppShell({
       console.error("Failed to parse user info", e);
     }
   }, [dark]);
-  const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
+  const isProcurementRoute =
+    path === "/procurement-dashboard" ||
+    path.startsWith("/procurement/") ||
+    path === "/master-data" ||
+    path === "/new-supplier" ||
+    (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
-  const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
+  const isSharedFinanceRoute = path.startsWith("/reports");
+  const isFinanceRoute =
+    path === "/finance-dashboard" ||
+    path.startsWith("/finance/") ||
+    (isFinanceUser && isSharedFinanceRoute);
   const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
+  const isNotificationsRoute = path.startsWith("/notifications");
   const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
     (route) => path.startsWith(route),
   );
@@ -174,14 +186,14 @@ export function AppShell({
   const isGateSecurityRoute =
     [
       "/gate-entry",
-      "/notifications",
+      "/gate-dashboard",
       "/accept-arrival",
       "/driver-verification",
       "/vehicle-verification",
       "/dock-assignment",
       "/arrival-success",
     ].some((route) => path.startsWith(route)) ||
-    (isGateSecurityUser && isSharedOperationsRoute);
+    (isGateSecurityUser && (isSharedOperationsRoute || isNotificationsRoute));
   const resolvedNav = isSupplierRoute
     ? supplierNav
     : isFinanceRoute
@@ -201,7 +213,7 @@ export function AppShell({
                   : isGateSecurityUser
                     ? gateSecurityNav
                     : warehouseNav;
-  const navigationPending = !mounted && isSharedOperationsRoute;
+  const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
   const nav = navigationPending ? [] : resolvedNav;
   const handleLogout = () => {
     api.logout();

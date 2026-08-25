@@ -193,9 +193,9 @@ class SubmitQuotationRequest(ApiModel):
     supplier_id: str
     lines: List[QuotationLineSchema]
     status: str = "SUBMITTED"
-    discount: Decimal = Decimal("0.0")
-    tax: Decimal = Decimal("0.0")
-    freight_charges: Decimal = Decimal("0.0")
+    discount: Decimal = Field(default=Decimal("0.0"), ge=0)
+    tax: Decimal = Field(default=Decimal("0.0"), ge=0, le=100)
+    freight_charges: Decimal = Field(default=Decimal("0.0"), ge=0)
     delivery_time: Optional[str] = None
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = None
@@ -329,6 +329,7 @@ class PurchaseOrderResponse(ApiModel):
     subtotal: Decimal = Decimal("0.0")
     discount_amount: Decimal = Decimal("0.0")
     tax_amount: Decimal = Decimal("0.0")
+    tax_percentage: Decimal = Decimal("0.0")
     freight_charges: Decimal = Decimal("0.0")
     additional_charges: Decimal = Decimal("0.0")
 
@@ -432,8 +433,10 @@ class ProcurementTrendItem(ApiModel):
 
 class ProcurementStatsResponse(ApiModel):
     active_suppliers: int
+    total_suppliers: int
     open_pos: int
-    compliance_rate: float
+    compliance_rate: Optional[float] = None
+    compliance_target: float
     total_po_value: Decimal
     trend: List[ProcurementTrendItem] = []
 

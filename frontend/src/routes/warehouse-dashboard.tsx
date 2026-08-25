@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import {
   Truck,
@@ -31,7 +31,13 @@ import { api } from "@/lib/api-client";
 import { activity, arrivalTrend, docks } from "@/lib/wms-data";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { getUserInfo } from "@/lib/auth-utils";
 export const Route = createFileRoute("/warehouse-dashboard")({
+  beforeLoad: () => {
+    if (getUserInfo()?.roles.includes("GATE_SECURITY")) {
+      throw redirect({ to: "/gate-dashboard" });
+    }
+  },
   head: () => ({
     meta: [
       { title: "Warehouse Dashboard · NexusWMS Pune DC" },

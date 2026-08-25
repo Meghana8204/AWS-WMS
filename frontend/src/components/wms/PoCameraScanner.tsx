@@ -8,8 +8,8 @@ interface PoCameraScannerProps {
   onClose: () => void;
 }
 
-function compressImageFile(file: File, maxDim = 1024, quality = 0.82): Promise<{ base64: string; compressedFile: File }> {
-  return new Promise((resolve, reject) => {
+function compressImageFile(file: File, maxDim = 1600, quality = 0.9): Promise<File> {
+  return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
@@ -30,24 +30,21 @@ function compressImageFile(file: File, maxDim = 1024, quality = 0.82): Promise<{
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
-        reject(new Error("Canvas context failed"));
+        resolve(file);
         return;
       }
       ctx.drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL("image/jpeg", quality);
-      const base64 = dataUrl.split(",")[1];
       canvas.toBlob(
         (blob) => {
-          const compressedFile = new File([blob || file], file.name, { type: "image/jpeg" });
-          resolve({ base64, compressedFile });
+          resolve(blob ? new File([blob], file.name, { type: "image/jpeg" }) : file);
         },
         "image/jpeg",
-        quality
+        quality,
       );
     };
-    img.onerror = (err) => {
+    img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(err);
+      resolve(file);
     };
     img.src = url;
   });
@@ -64,16 +61,21 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
   useEffect(() => {
     let mounted = true;
     async function startCamera() {
-      if (typeof window !== 'undefined' && (!navigator?.mediaDevices || !navigator?.mediaDevices?.getUserMedia)) {
+      if (
+        typeof window !== "undefined" &&
+        (!navigator?.mediaDevices || !navigator?.mediaDevices?.getUserMedia)
+      ) {
         if (mounted) {
-          setError("Live video streaming is blocked over plain HTTP on mobile browsers. Tap 'Take Photo / Upload Image' to capture a picture with your phone's camera.");
+          setError(
+            "Live video streaming is blocked over plain HTTP on mobile browsers. Tap 'Take Photo / Upload Image' to capture a picture with your phone's camera.",
+          );
         }
         return;
       }
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
-            facingMode: { ideal: 'environment' },
+            facingMode: { ideal: "environment" },
           },
           audio: false,
         });
@@ -88,7 +90,9 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       } catch (err: any) {
         console.error("Camera access error:", err);
         if (mounted) {
-          setError("Camera access is blocked or unavailable over HTTP. Use 'Take Photo / Upload Image' below to snap a picture with your camera app.");
+          setError(
+            "Camera access is blocked or unavailable over HTTP. Use 'Take Photo / Upload Image' below to snap a picture with your camera app.",
+          );
         }
       }
     }
@@ -109,9 +113,9 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
     const toastId = toast.loading("Compressing & analyzing PO document...");
 
     try {
-      const { base64, compressedFile } = await compressImageFile(file, 1024, 0.82);
-      const { api } = await import('@/lib/api-client');
-      const data = await api.previewPoOcr(base64);
+      const compressedFile = await compressImageFile(file);
+      const { api } = await import("@/lib/api-client");
+      const data = await api.scanOcr(compressedFile, "po");
 
       toast.success("OCR Extraction Complete", { id: toastId });
       onOcrSuccess(data, compressedFile);
@@ -120,10 +124,11 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       console.error("OCR Preview error:", err);
       toast.error("Scanning failed", {
         id: toastId,
-        description: err.message || "Could not process the document."
+        description: err.message || "Could not process the document.",
       });
     } finally {
       setScanning(false);
+      e.target.value = "";
     }
   };
 
@@ -151,19 +156,16 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       canvas.width = w;
       canvas.height = h;
 
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Could not initialize canvas context");
 
       ctx.drawImage(video, 0, 0, w, h);
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-      const base64Image = dataUrl.split(',')[1];
-
-      const { api } = await import('@/lib/api-client');
-      const data = await api.previewPoOcr(base64Image);
-
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      const { api } = await import("@/lib/api-client");
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: "image/jpeg" });
+      const data = await api.scanOcr(file, "po");
       toast.success("OCR Extraction Complete", { id: toastId });
       onOcrSuccess(data, file);
       onClose();
@@ -252,9 +254,13 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
               onClick={captureAndScanFrame}
             >
               {scanning ? (
-                <><Loader2 className="mr-2 size-4 animate-spin" /> Processing...</>
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+                </>
               ) : (
-                <><Camera className="mr-2 size-4" /> Capture & Analyze</>
+                <>
+                  <Camera className="mr-2 size-4" /> Capture & Analyze
+                </>
               )}
             </Button>
           )}

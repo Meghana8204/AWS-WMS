@@ -734,6 +734,13 @@ export const api = {
       body: JSON.stringify({ reason }),
     });
   },
+  async declineRfq(id: string, reason: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/rfqs/${id}/decline`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+  },
   async selectSupplier(rfqId: string, data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/rfqs/${rfqId}/select-supplier`, {
       method: "POST",

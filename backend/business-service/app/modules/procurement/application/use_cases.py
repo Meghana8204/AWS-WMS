@@ -117,6 +117,7 @@ class CreateSupplierUseCase:
 
         supplier = Supplier.create(
             supplier_id=supplier_id,
+            supplier_code=f"SUP-{seq:05d}",
             supplier_name=command.supplier_name,
             registered_company_name=command.registered_company_name,
             vendor_type=command.vendor_type,

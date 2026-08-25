@@ -218,7 +218,8 @@ function FinanceComparison() {
                     </td>
                     {approvals.map((po) => (
                       <td key={`${po.id}-tax`} className="p-4 border-r border-border/60 font-mono">
-                        ₹ {parseFloat(po.taxAmount || 0).toLocaleString()}
+                        ₹ {parseFloat(po.taxAmount || 0).toLocaleString()} (
+                        {parseFloat(po.taxPercentage || 0).toLocaleString()}%)
                       </td>
                     ))}
                   </tr>

@@ -38,6 +38,7 @@ function SubmitQuotation() {
   const [loading, setLoading] = useState(true);
   const [rfq, setRfq] = useState<any | null>(null);
   const [existingQuote, setExistingQuote] = useState<any | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [supplierId, setSupplierId] = useState("");
@@ -98,7 +99,16 @@ function SubmitQuotation() {
         const existing = quotesList.find((q: any) => q.rfqId === rfqId && q.supplierId === sid);
         if (existing) {
           setExistingQuote(existing);
-          setIsLocked(existing.status === "SUBMITTED");
+          const normalizedStatus = String(existing.status || "").toUpperCase();
+          setIsLocked(normalizedStatus === "SUBMITTED" || normalizedStatus === "SELECTED");
+          if (normalizedStatus === "REJECTED") {
+            const rejectionNote = String(existing.remarks || "")
+              .split("\n")
+              .findLast((line) => line.startsWith("Rejected by "));
+            setRejectionReason(rejectionNote || "The procurement team rejected this quotation.");
+          } else {
+            setRejectionReason("");
+          }
           const mappedItems: any = {};
           existing.lines?.forEach((line: any) => {
             const price = parseFloat(line.unitPrice || line.unit_price || "0");
@@ -171,7 +181,8 @@ function SubmitQuotation() {
     if (isLocked) return;
     const { name, value } = e.target;
     setMetaData((prev) => {
-      const newState = { ...prev, [name]: value };
+      const normalizedValue = name === "tax" && parseFloat(value) > 100 ? "100" : value;
+      const newState = { ...prev, [name]: normalizedValue };
       if (name === "deliveryTime") {
         const daysMatch = value.match(/\d+/);
         if (daysMatch) {
@@ -256,6 +267,11 @@ function SubmitQuotation() {
       toast.error("Please enter a valid unit price for all items before submitting");
       return;
     }
+    const gstRate = parseFloat(metaData.tax) || 0;
+    if (gstRate < 0 || gstRate > 100) {
+      toast.error("GST percentage must be between 0 and 100");
+      return;
+    }
     for (const item of rfq.items) {
       const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
       const requested = Math.floor(item.quantity);
@@ -300,6 +316,21 @@ function SubmitQuotation() {
       setSubmitting(false);
     }
   };
+  const quotationSubtotal = Object.values(itemsData).reduce((total, item) => {
+    return total + (parseFloat(item.unitPrice) || 0) * (parseFloat(item.availableQty) || 0);
+  }, 0);
+  const discountAmount = Math.min(parseFloat(metaData.discount) || 0, quotationSubtotal);
+  const taxableAmount = Math.max(quotationSubtotal - discountAmount, 0);
+  const gstRate = Math.min(Math.max(parseFloat(metaData.tax) || 0, 0), 100);
+  const gstAmount = taxableAmount * (gstRate / 100);
+  const freightAmount = parseFloat(metaData.freightCharges) || 0;
+  const quotationTotal = taxableAmount + gstAmount + freightAmount;
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center gap-3">
@@ -338,6 +369,20 @@ function SubmitQuotation() {
       }
     >
       <div className="mx-auto max-w-4xl space-y-6">
+        {rejectionReason && (
+          <div className="rounded-2xl border border-destructive/35 bg-destructive/10 p-4 text-sm">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" />
+              <div>
+                <p className="font-bold text-destructive">Quotation rejected — revision required</p>
+                <p className="mt-1 text-muted-foreground">{rejectionReason}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Update the quotation using the feedback below and submit it again.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         {isLocked && (
           <div className="flex items-center gap-3 rounded-2xl border border-success/35 bg-success-soft/10 p-4 text-sm text-success font-bold">
             <Lock className="size-5" />
@@ -501,8 +546,9 @@ function SubmitQuotation() {
                 <Input
                   type="number"
                   min="0"
+                  max="100"
                   name="tax"
-                  step="1"
+                  step="0.01"
                   className="pl-9 rounded-xl h-10 font-mono"
                   disabled={isLocked}
                   value={metaData.tax}
@@ -562,6 +608,22 @@ function SubmitQuotation() {
                 value={metaData.paymentTerms}
                 onChange={handleMetaChange}
               />
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <div className="ml-auto max-w-sm space-y-2 text-sm">
+              <CommercialRow label="Subtotal" value={formatCurrency(quotationSubtotal)} />
+              <CommercialRow label="Discount" value={`- ${formatCurrency(discountAmount)}`} />
+              <CommercialRow
+                label={`GST (${gstRate.toLocaleString("en-IN")}% on ${formatCurrency(taxableAmount)})`}
+                value={formatCurrency(gstAmount)}
+              />
+              <CommercialRow label="Freight" value={formatCurrency(freightAmount)} />
+              <div className="flex items-center justify-between border-t border-border pt-3 font-bold">
+                <span>Grand Total</span>
+                <span className="text-lg text-primary">{formatCurrency(quotationTotal)}</span>
+              </div>
             </div>
           </div>
 
@@ -670,5 +732,14 @@ function SubmitQuotation() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function CommercialRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-mono font-semibold tabular-nums">{value}</span>
+    </div>
   );
 }

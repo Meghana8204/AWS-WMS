@@ -41,6 +41,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api-client";
 import { INDIAN_STATES, TDS_SECTIONS } from "@/lib/constants";
+import { Certificate } from "crypto";
 export const Route = createFileRoute("/new-supplier")({
   component: NewSupplier,
 });
@@ -56,6 +57,8 @@ function NewSupplier() {
   const [currentStep, setCurrentStep] = React.useState(1);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [isLookingUpState, setIsLookingUpState] = React.useState(false);
+  const [stateLookupMessage, setStateLookupMessage] = React.useState("");
   const [vendorTypes, setVendorTypes] = React.useState([
     "Manufacturer",
     "Distributor",
@@ -132,6 +135,71 @@ function NewSupplier() {
     remarks: "",
   });
   const [isUploading, setIsUploading] = React.useState(false);
+  React.useEffect(() => {
+    const pincode = formData.address.pincode;
+
+    if (!/^\d{6}$/.test(pincode)) {
+      setIsLookingUpState(false);
+      setStateLookupMessage("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const lookupTimer = window.setTimeout(async () => {
+      setIsLookingUpState(true);
+      setStateLookupMessage("");
+      try {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("PIN lookup failed");
+
+        const payload = await response.json();
+        const postOffices = payload?.[0]?.PostOffice;
+        const postalState = Array.isArray(postOffices) ? postOffices[0]?.State : "";
+        const postalCity = Array.isArray(postOffices)
+          ? postOffices[0]?.District || postOffices[0]?.Block || postOffices[0]?.Name
+          : "";
+        const stateAliases: Record<string, string> = {
+          "Andaman & Nicobar Islands": "Andaman and Nicobar Islands",
+          "Dadra & Nagar Haveli": "Dadra and Nagar Haveli and Daman and Diu",
+          "Daman & Diu": "Dadra and Nagar Haveli and Daman and Diu",
+          "Jammu & Kashmir": "Jammu and Kashmir",
+          "NCT of Delhi": "Delhi",
+          Orissa: "Odisha",
+          Pondicherry: "Puducherry",
+        };
+        const resolvedState = stateAliases[postalState] || postalState;
+
+        if (!postalCity || !resolvedState || !INDIAN_STATES.includes(resolvedState)) {
+          throw new Error("No address found for this PIN code");
+        }
+
+        setFormData((previous) => ({
+          ...previous,
+          address: { ...previous.address, city: postalCity, state: resolvedState },
+        }));
+        setErrors((previous) => {
+          const nextErrors = { ...previous };
+          delete nextErrors["address.city"];
+          delete nextErrors["address.state"];
+          return nextErrors;
+        });
+        setStateLookupMessage(`City and state selected from PIN ${pincode}`);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStateLookupMessage("City and state could not be detected. Please enter them manually.");
+      } finally {
+        if (!controller.signal.aborted) setIsLookingUpState(false);
+      }
+    }, 400);
+
+    return () => {
+      window.clearTimeout(lookupTimer);
+      controller.abort();
+    };
+  }, [formData.address.pincode]);
+
   const updateFormData = (section: string, field: string, value: string) => {
     if (section === "root") {
       setFormData((prev) => ({ ...prev, [field]: value }));
@@ -220,7 +288,8 @@ function NewSupplier() {
         newErrors["address.city"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s-]+$/.test(city))
         newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
-      if (state && (state.length < 2 || state.length > 100))
+      if (!state) newErrors["address.state"] = "State is required";
+      else if (state.length < 2 || state.length > 100)
         newErrors["address.state"] = "Must be between 2 and 100 characters";
       if (!pincode) newErrors["address.pincode"] = "Pincode is required";
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
@@ -306,6 +375,13 @@ function NewSupplier() {
       if (!hasCancelledCheque) {
         newErrors["documents"] = "Cancelled Cheque is mandatory";
         toast.error("Cancelled Cheque is mandatory for registration");
+      }
+      const hasGSTCertificate = formData.documents.some(
+        (d) => d.document_type === "GST Certificate",
+      );
+      if (!hasGSTCertificate) {
+        newErrors["documents"] = "GST Certificate is mandatory";
+        toast.error("GST Certificate is mandatory for registration");
       }
     }
     setErrors(newErrors);
@@ -832,7 +908,12 @@ function NewSupplier() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="state">State</Label>
+                    <Label htmlFor="state" className="flex items-center gap-2">
+                      State <span className="text-destructive">*</span>
+                      {isLookingUpState && (
+                        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </Label>
                     <Select
                       onValueChange={(v) => updateFormData("address", "state", v)}
                       value={formData.address.state}
@@ -855,6 +936,23 @@ function NewSupplier() {
                     {errors["address.state"] && (
                       <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
                         <AlertCircle className="size-3" /> {errors["address.state"]}
+                      </p>
+                    )}
+                    {stateLookupMessage && !errors["address.state"] && (
+                      <p
+                        className={cn(
+                          "flex items-center gap-1 text-[11px] font-medium",
+                          stateLookupMessage.startsWith("City and state selected")
+                            ? "text-success"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {stateLookupMessage.startsWith("City and state selected") ? (
+                          <CheckCircle2 className="size-3" />
+                        ) : (
+                          <AlertCircle className="size-3" />
+                        )}
+                        {stateLookupMessage}
                       </p>
                     )}
                   </div>
@@ -1237,7 +1335,7 @@ function NewSupplier() {
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
-                  { name: "GST Certificate", mandatory: false },
+                  { name: "GST Certificate", mandatory: true },
                   { name: "Cancelled Cheque", mandatory: true },
                   { name: "Vendor Code of Conduct", mandatory: false },
                   { name: "Other", mandatory: false },

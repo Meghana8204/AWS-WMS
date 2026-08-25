@@ -107,7 +107,7 @@ function AcceptArrival() {
               className="h-11 rounded-xl border-destructive/30 text-destructive hover:bg-danger-soft hover:text-destructive"
               onClick={() => {
                 toast.error("Arrival rejected");
-                navigate({ to: "/notifications" });
+                navigate({ to: "/gate-entry" });
               }}
             >
               <XCircle className="size-4" /> Reject

@@ -254,7 +254,11 @@ function ApprovalDetail() {
             <CardContent className="p-6 space-y-4">
               <SummaryRow label="Subtotal" value={po.subtotal} />
               <SummaryRow label="Discount" value={po.discountAmount} isNegative />
-              <SummaryRow label="Tax (GST)" value={po.taxAmount} />
+              <SummaryRow
+                label={`Tax (GST ${parseFloat(po.taxPercentage || 0).toLocaleString()}%)`}
+                value={po.taxAmount}
+              />
+              <SummaryRow label="Freight Charges" value={po.freightCharges} />
               <SummaryRow label="Freight" value={po.freightCharges} />
 
               <div className="pt-4 border-t border-border mt-2">

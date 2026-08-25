@@ -128,6 +128,7 @@ from app.modules.procurement.infrastructure.persistence.models import (
     MaterialStockModel,
     POApprovalHistoryModel,
     NotificationModel,
+    rfq_supplier_link,
 )
 from app.modules.procurement.infrastructure.persistence.repository_impl import (
     SqlAlchemySupplierRepository,
@@ -158,6 +159,10 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
         suppliers_res = await uow.session.execute(suppliers_count_stmt)
         active_suppliers = suppliers_res.scalar() or 0
 
+        total_suppliers_stmt = select(func.count(SupplierModel.id))
+        total_suppliers_res = await uow.session.execute(total_suppliers_stmt)
+        total_suppliers = total_suppliers_res.scalar() or 0
+
 
         open_pos_stmt = select(func.count(PurchaseOrderModel.id)).where(
             PurchaseOrderModel.status.in_(["APPROVED", "SENT", "DISPATCHED", "SHIPPED"])
@@ -179,15 +184,13 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
         total_approved = total_approved_res.scalar() or 0
 
         if total_approved > 0:
-
-
             asns_with_po_stmt = select(func.count(func.distinct(AsnModel.po_id))).where(AsnModel.po_id.isnot(None))
             asns_with_po_res = await uow.session.execute(asns_with_po_stmt)
             compliant_pos = asns_with_po_res.scalar() or 0
 
             compliance_rate = (compliant_pos / total_approved) * 100
         else:
-            compliance_rate = 100.0
+            compliance_rate = None
 
 
         from datetime import timedelta
@@ -222,21 +225,16 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
 
         return ProcurementStatsResponse(
             active_suppliers=active_suppliers,
+            total_suppliers=total_suppliers,
             open_pos=open_pos,
-            compliance_rate=round(compliance_rate, 1),
+            compliance_rate=round(compliance_rate, 1) if compliance_rate is not None else None,
+            compliance_target=99.0,
             total_po_value=total_po_value,
             trend=trend
         )
     except Exception as e:
         logger.error(f"Failed to fetch stats: {e}", exc_info=True)
-
-        return ProcurementStatsResponse(
-            active_suppliers=0,
-            open_pos=0,
-            compliance_rate=100.0,
-            total_po_value=Decimal("0.0"),
-            trend=[]
-        )
+        raise HTTPException(status_code=500, detail="Unable to load procurement statistics") from e
 
 
 @router.get("/vendor-types")
@@ -1170,6 +1168,20 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             if mr_obj:
                 mr_dept = mr_obj.department
 
+        subtotal = Decimal("0.0")
+        if quotation:
+            quoted_prices = {line.item_code: line.unit_price for line in quotation.lines}
+            subtotal = sum(
+                (item.quantity * quoted_prices.get(item.material_code, Decimal("0.0")) for item in rfq.items),
+                Decimal("0.0"),
+            )
+        discount_amount = Decimal(str(quotation.discount or 0)) if quotation else Decimal("0.0")
+        tax_rate = Decimal(str(quotation.tax or 0)) if quotation else Decimal("0.0")
+        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+        tax_amount = taxable_amount * tax_rate / Decimal("100")
+        freight_charges = Decimal(str(quotation.freight_charges or 0)) if quotation else Decimal("0.0")
+        total_amount = taxable_amount + tax_amount + freight_charges
+
         new_po = PurchaseOrderModel(
             id=uuid.uuid4(),
             po_number=po_number,
@@ -1187,11 +1199,11 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             delivery_address="Main Industrial Area, Phase 2, Pune, MH",
             department=mr_dept,
             status="PENDING_FINANCE",
-            total_amount=quotation.total_amount if quotation else Decimal("0.0"),
-            subtotal=quotation.total_amount - (quotation.tax or 0) - (quotation.freight_charges or 0) + (quotation.discount or 0) if quotation else Decimal("0.0"),
-            discount_amount=quotation.discount or Decimal("0.0"),
-            tax_amount=quotation.tax or Decimal("0.0"),
-            freight_charges=quotation.freight_charges or Decimal("0.0"),
+            total_amount=total_amount,
+            subtotal=subtotal,
+            discount_amount=discount_amount,
+            tax_amount=tax_amount,
+            freight_charges=freight_charges,
             additional_charges=Decimal("0.0"),
             expected_delivery_date=rfq.required_delivery_date,
             payment_terms=quotation.payment_terms,
@@ -1234,7 +1246,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
                 quantity=item.quantity,
                 unit_price=price,
                 discount=Decimal("0.0"),
-                tax=quotation.tax / len(rfq.items) if quotation and quotation.tax else Decimal("0.0"),
+                tax=Decimal("0.0"),
                 uom=item.uom
             ))
 
@@ -1269,7 +1281,8 @@ async def list_purchase_orders(
 
         stmt = select(PurchaseOrderModel).options(
             selectinload(PurchaseOrderModel.items),
-            selectinload(PurchaseOrderModel.history)
+            selectinload(PurchaseOrderModel.history),
+            selectinload(PurchaseOrderModel.rfq),
         )
 
         if search:
@@ -1301,7 +1314,11 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
 
     result = await uow.session.execute(
         select(PurchaseOrderModel)
-        .options(selectinload(PurchaseOrderModel.items))
+        .options(
+            selectinload(PurchaseOrderModel.items),
+            selectinload(PurchaseOrderModel.history),
+            selectinload(PurchaseOrderModel.rfq),
+        )
         .where(PurchaseOrderModel.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -1348,21 +1365,8 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
     ]
 
     item_rows = [["#", "Material", "Description", "Qty", "UOM", "Unit Price", "Line Total"]]
-    calc_subtotal = Decimal("0.0")
-    calc_discount = Decimal("0.0")
-    calc_tax = Decimal("0.0")
-
     for index, item in enumerate(po.items, start=1):
-
         line_gross = item.quantity * item.unit_price
-        line_disc = getattr(item, "discount", Decimal("0.0"))
-        line_tax = getattr(item, "tax", Decimal("0.0"))
-        line_total = line_gross - line_disc + line_tax
-
-
-        calc_subtotal += line_gross
-        calc_discount += line_disc
-        calc_tax += line_tax
 
         item_rows.append([
             str(index),
@@ -1371,13 +1375,16 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
             f"{item.quantity:,.2f}",
             item.uom,
             f"{item.unit_price:,.2f}",
-            f"{line_total:,.2f}",
+            f"{line_gross:,.2f}",
         ])
 
-
+    normalized_po = _to_po_response(po)
+    calc_subtotal = normalized_po.subtotal
+    calc_discount = normalized_po.discount_amount
+    calc_tax = normalized_po.tax_amount
     calc_freight = po.freight_charges or Decimal("0.0")
     calc_additional = po.additional_charges or Decimal("0.0")
-    calc_grand_total = calc_subtotal - calc_discount + calc_tax + calc_freight + calc_additional
+    calc_grand_total = normalized_po.total_amount
 
     story.append(Table(
         item_rows,
@@ -1403,7 +1410,7 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
         Spacer(1, 6 * mm),
         Paragraph(f"Subtotal: {fmt(calc_subtotal)}", right_style),
         Paragraph(f"Discount: - {fmt(calc_discount)}", right_style),
-        Paragraph(f"Tax (GST): {fmt(calc_tax)}", right_style),
+        Paragraph(f"Tax (GST {normalized_po.tax_percentage:g}%): {fmt(calc_tax)}", right_style),
         Paragraph(f"Freight: {fmt(calc_freight)}", right_style),
         Paragraph(f"Additional charges: {fmt(calc_additional)}", right_style),
         Spacer(1, 2 * mm),
@@ -1766,6 +1773,30 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
     except Exception as e:
         logger.warning(f"Could not load rfq_number for PO {po.id}: {e}")
 
+    subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
+    discount_amount = Decimal(str(getattr(po, "discount_amount", 0) or 0))
+    stored_subtotal = Decimal(str(getattr(po, "subtotal", 0) or 0))
+    stored_tax = Decimal(str(getattr(po, "tax_amount", 0) or 0))
+    if abs(stored_subtotal - subtotal) > Decimal("0.01") and Decimal("0") <= stored_tax <= Decimal("100"):
+        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+        tax_percentage = stored_tax
+        tax_amount = taxable_amount * tax_percentage / Decimal("100")
+        total_amount = (
+            taxable_amount
+            + tax_amount
+            + Decimal(str(getattr(po, "freight_charges", 0) or 0))
+            + Decimal(str(getattr(po, "additional_charges", 0) or 0))
+        )
+    else:
+        tax_amount = stored_tax
+        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+        tax_percentage = (
+            (tax_amount * Decimal("100") / taxable_amount).quantize(Decimal("0.01"))
+            if taxable_amount > 0
+            else Decimal("0.0")
+        )
+        total_amount = Decimal(str(po.total_amount or 0))
+
     return PurchaseOrderResponse(
         id=str(po.id),
         po_number=po.po_number,
@@ -1785,10 +1816,11 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         delivery_warehouse_name=getattr(po, "delivery_warehouse_name", None),
         delivery_address=getattr(po, "delivery_address", None),
         department=getattr(po, "department", None),
-        total_amount=po.total_amount or Decimal("0.0"),
-        subtotal=getattr(po, "subtotal", Decimal("0.0")),
-        discount_amount=getattr(po, "discount_amount", Decimal("0.0")),
-        tax_amount=getattr(po, "tax_amount", Decimal("0.0")),
+        total_amount=total_amount,
+        subtotal=subtotal,
+        discount_amount=discount_amount,
+        tax_amount=tax_amount,
+        tax_percentage=tax_percentage,
         freight_charges=getattr(po, "freight_charges", Decimal("0.0")),
         additional_charges=getattr(po, "additional_charges", Decimal("0.0")),
         expected_delivery_date=po.expected_delivery_date,
@@ -1920,6 +1952,74 @@ def _to_rfq_response(rfq) -> RfqResponse:
     )
 
 
+
+
+@router.post("/rfqs/{id}/decline", response_model=QuotationResponse)
+async def decline_rfq_invitation(
+    id: str,
+    request: dict,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> QuotationResponse:
+    """Allow an invited supplier to decline an RFQ with a required reason."""
+    reason = str(request.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A decline reason is required")
+
+    supplier_id = user.raw_claims.get("supplier_id")
+    if "SUPPLIER" not in user.roles or not supplier_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only suppliers can decline RFQs")
+
+    try:
+        rfq_id = uuid.UUID(id)
+        supplier_uuid = uuid.UUID(str(supplier_id))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid RFQ or supplier ID") from exc
+
+    invitation = await uow.session.execute(
+        select(rfq_supplier_link).where(
+            rfq_supplier_link.c.rfq_id == rfq_id,
+            rfq_supplier_link.c.supplier_id == supplier_uuid,
+        )
+    )
+    if invitation.first() is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This supplier was not invited to the RFQ")
+
+    result = await uow.session.execute(
+        select(QuotationModel).options(
+            selectinload(QuotationModel.lines),
+            selectinload(QuotationModel.documents),
+        ).where(
+            QuotationModel.rfq_id == rfq_id,
+            QuotationModel.supplier_id == supplier_uuid,
+        )
+    )
+    quotation = result.scalars().first()
+    if quotation and str(quotation.status).upper() in {"SUBMITTED", "SELECTED"}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A submitted quotation cannot be declined")
+
+    decline_note = f"Declined by supplier: {reason}"
+    if quotation:
+        quotation.status = "Declined"
+        quotation.remarks = decline_note
+    else:
+        quotation = QuotationModel(
+            rfq_id=rfq_id,
+            supplier_id=supplier_uuid,
+            status="Declined",
+            total_amount=Decimal("0"),
+            remarks=decline_note,
+        )
+        uow.session.add(quotation)
+
+    await uow.commit()
+    saved_result = await uow.session.execute(
+        select(QuotationModel).options(
+            selectinload(QuotationModel.lines),
+            selectinload(QuotationModel.documents),
+        ).where(QuotationModel.id == quotation.id)
+    )
+    return _to_quotation_response(saved_result.scalar_one())
 
 
 @router.post("/quotations/documents")

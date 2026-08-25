@@ -230,7 +230,11 @@ function PurchaseOrder() {
               <div className="ml-auto max-w-xs space-y-3">
                 <SummaryRow label="Subtotal" value={poData.subtotal} />
                 <SummaryRow label="Discount" value={poData.discountAmount} isNegative />
-                <SummaryRow label="Tax (GST)" value={poData.taxAmount} />
+                <SummaryRow
+                  label={`Tax (GST ${parseFloat(poData.taxPercentage || 0).toLocaleString()}%)`}
+                  value={poData.taxAmount}
+                />
+                <SummaryRow label="Freight Charges" value={poData.freightCharges} />
                 <SummaryRow label="Additional Charges" value={poData.additionalCharges} />
                 <div className="pt-3 border-t border-primary/20 flex items-center justify-between">
                   <span className="text-sm font-black text-foreground uppercase">Grand Total</span>

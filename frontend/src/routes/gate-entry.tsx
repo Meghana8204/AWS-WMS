@@ -50,15 +50,21 @@ async function compressFileForUpload(file: File): Promise<File> {
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(file); return; }
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
       ctx.drawImage(img, 0, 0, w, h);
       canvas.toBlob(
         (blob) => {
-          if (!blob) { resolve(file); return; }
+          if (!blob) {
+            resolve(file);
+            return;
+          }
           resolve(new File([blob], file.name, { type: "image/jpeg" }));
         },
         "image/jpeg",
-        0.82
+        0.82,
       );
     };
     img.onerror = () => {
@@ -234,7 +240,15 @@ function GateEntry() {
         confidence: result.confidence,
         verified_against_backend: result.verified ?? false,
       });
-      const detectedPo = result.po_number || fields.po_number || fields.purchase_order_number;
+      const detectedPo =
+        result.po_number ||
+        result.poNumber ||
+        result.purchase_order_number ||
+        result.purchaseOrderNumber ||
+        fields.po_number ||
+        fields.poNumber ||
+        fields.purchase_order_number ||
+        fields.purchaseOrderNumber;
       const detectedVehicle =
         result.vehicle_number ||
         fields.vehicle_number ||
@@ -328,22 +342,34 @@ function GateEntry() {
       confidence: result.confidence,
     });
 
-    const detectedPo = result.po_number || fields.po_number;
+    const detectedPo =
+      result.po_number ||
+      result.poNumber ||
+      result.purchase_order_number ||
+      result.purchaseOrderNumber ||
+      fields.po_number ||
+      fields.poNumber ||
+      fields.purchase_order_number ||
+      fields.purchaseOrderNumber;
     const detectedSupplier = result.supplier_name || fields.supplier_name;
     const detectedMaterial = result.material_description || fields.material_description;
-    const detectedQty = result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
+    const detectedQty =
+      result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
     const detectedPoDate = result.po_date || fields.po_date;
     const detectedDeliveryDate = result.delivery_date || fields.delivery_date;
 
     if (detectedPo) {
       setPoNumber(detectedPo);
       const previewStatus = data.computedStatus || data.computed_status || data.status;
-      setPoVerificationStatus(previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL");
+      setPoVerificationStatus(
+        previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
+      );
       void fetchPoDetails(detectedPo, true);
     }
     if (detectedSupplier) setSupplierName(detectedSupplier);
     if (detectedMaterial) setMaterialDescription(detectedMaterial);
-    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "") setTotalQuantity(String(detectedQty));
+    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "")
+      setTotalQuantity(String(detectedQty));
     if (detectedPoDate) setPoDate(detectedPoDate);
     if (detectedDeliveryDate) setDeliveryDate(detectedDeliveryDate);
 
@@ -403,7 +429,10 @@ function GateEntry() {
       setPoDate((prev) => prev || po.poDate || po.po_date || "");
       setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
 
-      const systemMat = items.map((i: any) => i.materialName || i.material_name).filter(Boolean).join(", ");
+      const systemMat = items
+        .map((i: any) => i.materialName || i.material_name)
+        .filter(Boolean)
+        .join(", ");
       if (systemMat) setMaterialDescription((prev) => prev || systemMat);
 
       const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
@@ -1318,6 +1347,7 @@ function ScanCard({
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onUpload(file);
+          e.target.value = "";
         }}
       />
     </div>

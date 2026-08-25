@@ -24,6 +24,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 type QuotationsSearch = {
@@ -87,6 +94,15 @@ function Quotations() {
   };
   const handleAction = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    const actionReason = reason.trim();
+    if (!actionReason) {
+      toast.error(
+        modalMode === "REJECT"
+          ? "Please provide a reason for rejecting the quotation."
+          : "Please provide a selection reason.",
+      );
+      return;
+    }
     const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
     if (!targetQuotationId) {
       toast.error("Required selection IDs are missing.");
@@ -101,7 +117,7 @@ function Quotations() {
         }
         const result = await api.selectSupplier(effectiveRfqId, {
           supplier_id: targetSupplierId,
-          selection_reason: reason,
+          selection_reason: actionReason,
           selection_comments: procurementComments,
         });
         toast.success(
@@ -110,7 +126,7 @@ function Quotations() {
             : "Supplier selected and PO proposal generated",
         );
       } else {
-        await api.rejectQuotation(targetQuotationId, reason);
+        await api.rejectQuotation(targetQuotationId, actionReason);
         toast.success("Quotation rejected");
       }
       setIsModalOpen(false);
@@ -515,16 +531,22 @@ function Quotations() {
                               Saved for Finance review
                             </p>
                           </div>
-                        ) : q.status === "Rejected" ? (
+                        ) : q.status === "Rejected" || q.status === "Declined" ? (
                           <div className="space-y-2">
                             <Button
                               size="sm"
                               className="w-full rounded-xl bg-destructive/20 text-destructive border-destructive/30 font-bold text-xs"
                               disabled
                             >
-                              <X className="size-3.5 mr-1.5" /> Rejected
+                              <X className="size-3.5 mr-1.5" />
+                              {q.status === "Declined" ? "Declined by Supplier" : "Rejected"}
                             </Button>
-                            {!selectionFinalized && (
+                            {q.remarks && (
+                              <p className="rounded-lg bg-destructive/10 px-2 py-1.5 text-[10px] leading-relaxed text-destructive">
+                                {q.remarks.split("\n").at(-1)}
+                              </p>
+                            )}
+                            {q.status === "Rejected" && !selectionFinalized && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -583,102 +605,97 @@ function Quotations() {
         </div>
       )}
 
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <Card className="w-full max-w-md border-border/40 bg-card p-6 shadow-glow relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-border/40 bg-card p-6 shadow-glow animate-in zoom-in-95 duration-200">
+          <DialogHeader className="p-0 mb-4 text-left">
+            <div
+              className={cn(
+                "flex items-center gap-2 mb-1",
+                modalMode === "SELECT" ? "text-primary" : "text-destructive",
+              )}
             >
-              <X className="size-5" />
-            </button>
-            <CardHeader className="p-0 mb-4">
-              <div
-                className={cn(
-                  "flex items-center gap-2",
-                  modalMode === "SELECT" ? "text-primary" : "text-destructive",
-                )}
-              >
-                {modalMode === "SELECT" ? (
-                  <FileCheck2 className="size-5" />
-                ) : (
-                  <XCircle className="size-5" />
-                )}
-                <CardTitle className="text-base font-bold">
-                  {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
-                </CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                {modalMode === "SELECT"
-                  ? "Log the supplier selection reasoning to finalize the evaluation process."
-                  : "Provide a reason for rejecting this quotation."}
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleAction} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">
-                  {modalMode === "SELECT" ? "Selection Reason*" : "Rejection Reason*"}
+              {modalMode === "SELECT" ? (
+                <FileCheck2 className="size-5" />
+              ) : (
+                <XCircle className="size-5" />
+              )}
+              <DialogTitle className="text-lg font-bold">
+                {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {modalMode === "SELECT"
+                ? "Log the supplier selection reasoning to finalize the evaluation process."
+                : "Provide a reason for rejecting this quotation."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAction} className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {modalMode === "SELECT" ? "Selection Reason*" : "Rejection Reason*"}
+              </Label>
+              <Input
+                placeholder={
+                  modalMode === "SELECT"
+                    ? "e.g. L1 Price / Technical Fit"
+                    : "e.g. High price / Poor delivery terms"
+                }
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required
+                className="rounded-2xl h-12 border-border/60 focus:ring-primary/20"
+              />
+            </div>
+
+            {modalMode === "SELECT" && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Procurement Evaluation Comments
                 </Label>
-                <Input
-                  placeholder={
-                    modalMode === "SELECT"
-                      ? "e.g. L1 Price / Technical Fit"
-                      : "e.g. High price / Poor delivery terms"
-                  }
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  required
-                  className="rounded-xl h-10"
+                <Textarea
+                  placeholder="Write selection notes or evaluations details..."
+                  className="min-h-[100px] rounded-2xl text-sm border-border/60 focus:ring-primary/20 p-4"
+                  value={procurementComments}
+                  onChange={(e) => setProcurementComments(e.target.value)}
                 />
               </div>
+            )}
 
-              {modalMode === "SELECT" && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Procurement Evaluation Comments</Label>
-                  <Textarea
-                    placeholder="Write selection notes or evaluations details..."
-                    className="min-h-[90px] rounded-xl text-xs"
-                    value={procurementComments}
-                    onChange={(e) => setProcurementComments(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsModalOpen(false)}
-                  className="rounded-xl"
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className={cn(
-                    "rounded-xl shadow-glow min-w-[140px] font-bold",
-                    modalMode === "SELECT"
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-                  )}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
-                    </>
-                  ) : modalMode === "SELECT" ? (
-                    "Finalize & Select"
-                  ) : (
-                    "Confirm Rejection"
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsModalOpen(false)}
+                className="rounded-full px-6 h-11 border-border/60 hover:bg-muted font-bold"
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className={cn(
+                  "rounded-full px-8 h-11 shadow-glow font-extrabold tracking-wide",
+                  modalMode === "SELECT"
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                )}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+                  </>
+                ) : modalMode === "SELECT" ? (
+                  "Finalize & Select"
+                ) : (
+                  "Confirm Rejection"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

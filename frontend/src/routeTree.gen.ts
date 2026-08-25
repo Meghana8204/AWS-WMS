@@ -16,6 +16,7 @@ import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DockManagementRouteImport } from './routes/dock-management'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
+import { Route as GateDashboardRouteImport } from './routes/gate-dashboard'
 import { Route as GateEntryRouteImport } from './routes/gate-entry'
 import { Route as GrnRouteImport } from './routes/grn'
 import { Route as InventoryRouteImport } from './routes/inventory'
@@ -84,6 +85,11 @@ const DriverVerificationRoute = DriverVerificationRouteImport.update({
 const FinanceDashboardRoute = FinanceDashboardRouteImport.update({
   id: '/finance-dashboard',
   path: '/finance-dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GateDashboardRoute = GateDashboardRouteImport.update({
+  id: '/gate-dashboard',
+  path: '/gate-dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GateEntryRoute = GateEntryRouteImport.update({
@@ -270,6 +276,7 @@ export interface FileRoutesByFullPath {
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
+  '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
@@ -313,6 +320,7 @@ export interface FileRoutesByTo {
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
+  '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
@@ -355,6 +363,7 @@ export interface FileRoutesById {
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
+  '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
   '/grn': typeof GrnRoute
   '/inventory': typeof InventoryRoute
@@ -400,6 +409,7 @@ export interface FileRouteTypes {
     | '/dock-management'
     | '/driver-verification'
     | '/finance-dashboard'
+    | '/gate-dashboard'
     | '/gate-entry'
     | '/grn'
     | '/inventory'
@@ -443,6 +453,7 @@ export interface FileRouteTypes {
     | '/dock-management'
     | '/driver-verification'
     | '/finance-dashboard'
+    | '/gate-dashboard'
     | '/gate-entry'
     | '/grn'
     | '/inventory'
@@ -484,6 +495,7 @@ export interface FileRouteTypes {
     | '/dock-management'
     | '/driver-verification'
     | '/finance-dashboard'
+    | '/gate-dashboard'
     | '/gate-entry'
     | '/grn'
     | '/inventory'
@@ -528,6 +540,7 @@ export interface RootRouteChildren {
   DockManagementRoute: typeof DockManagementRoute
   DriverVerificationRoute: typeof DriverVerificationRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
+  GateDashboardRoute: typeof GateDashboardRoute
   GateEntryRoute: typeof GateEntryRoute
   GrnRoute: typeof GrnRoute
   InventoryRoute: typeof InventoryRoute
@@ -608,6 +621,13 @@ declare module '@tanstack/react-router' {
       path: '/finance-dashboard'
       fullPath: '/finance-dashboard'
       preLoaderRoute: typeof FinanceDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/gate-dashboard': {
+      id: '/gate-dashboard'
+      path: '/gate-dashboard'
+      fullPath: '/gate-dashboard'
+      preLoaderRoute: typeof GateDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gate-entry': {
@@ -888,6 +908,7 @@ const rootRouteChildren: RootRouteChildren = {
   DockManagementRoute: DockManagementRoute,
   DriverVerificationRoute: DriverVerificationRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
+  GateDashboardRoute: GateDashboardRoute,
   GateEntryRoute: GateEntryRoute,
   GrnRoute: GrnRoute,
   InventoryRoute: InventoryRoute,

@@ -16,7 +16,7 @@ export const Route = createFileRoute("/login")({
       let target = "/warehouse-dashboard";
       if (user?.roles.includes("FINANCE")) target = "/finance-dashboard";
       else if (user?.roles.includes("PROCUREMENT")) target = "/procurement-dashboard";
-      else if (user?.roles.includes("GATE_SECURITY")) target = "/gate-entry";
+      else if (user?.roles.includes("GATE_SECURITY")) target = "/gate-dashboard";
       else if (user?.roles.includes("SUPPLIER")) target = "/submit-quotation";
       throw redirect({ to: target as any });
     }
@@ -62,7 +62,7 @@ function LoginPage() {
     } else if (isFinance) {
       targetPath = redirect || "/finance-dashboard";
     } else if (isGate) {
-      targetPath = redirect || "/gate-entry";
+      targetPath = redirect || "/gate-dashboard";
     } else {
       targetPath = redirect || "/warehouse-dashboard";
     }

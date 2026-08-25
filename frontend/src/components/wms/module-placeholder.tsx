@@ -22,9 +22,6 @@ export function ModulePlaceholder({
         <Button variant="outline" className="rounded-xl" asChild>
           <Link to="/warehouse-dashboard">Back to dashboard</Link>
         </Button>
-        <Button className="rounded-xl shadow-glow" asChild>
-          <Link to="/notifications">Go to arrivals</Link>
-        </Button>
       </div>
     </Card>
   );

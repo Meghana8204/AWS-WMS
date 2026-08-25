@@ -1,23 +1,9 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import {
-  Bell,
-  Truck,
-  CheckCircle2,
-  XCircle,
-  Eye,
-  Filter,
-  Inbox,
-  Loader2,
-  Calendar,
-  FileText,
-  ArrowRight,
-} from "lucide-react";
-import { AppShell, StatusBadge } from "@/components/wms/app-shell";
-import { Button } from "@/components/ui/button";
+import { Truck, Inbox, Loader2, FileText } from "lucide-react";
+import { AppShell } from "@/components/wms/app-shell";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-utils";
@@ -26,7 +12,6 @@ export const Route = createFileRoute("/notifications")({
   component: Notifications,
 });
 function Notifications() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
@@ -68,7 +53,6 @@ function Notifications() {
             `Truck ${n.vehicleNumber || n.vehicle_number || "not assigned"} from ${n.supplierName || n.supplier_name || "supplier not available"} is arriving.`,
           created_at:
             n.createdAt || n.created_at || n.expectedArrivalTime || n.expected_arrival_time,
-          link: n.asnId || n.asn_id ? `/procurement/asns/${n.asnId || n.asn_id}` : "/notifications",
           type: "arrival",
           is_read: (n.status || "").toUpperCase() === "ACKNOWLEDGED",
           po_number: n.poNumber || n.po_number,
@@ -92,47 +76,10 @@ function Notifications() {
       if (!quiet) setLoading(false);
     }
   };
-  const handleMarkRead = async (id: string) => {
-    try {
-      const notification = notifications.find((n) => n.id === id);
-      if (userRole === "WAREHOUSE" && notification?.type === "arrival")
-        await api.markArrivalNotificationRead(id);
-      else await api.markNotificationRead(id);
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-      window.dispatchEvent(new Event("notifications:refresh"));
-    } catch (e) {
-      toast.error("Unable to mark notification as read");
-    }
-  };
-  const handleMarkAllRead = async () => {
-    try {
-      if (userRole === "WAREHOUSE") {
-        await Promise.all([
-          api.markAllArrivalNotificationsRead(),
-          api.markAllNotificationsRead(userRole),
-        ]);
-      } else await api.markAllNotificationsRead(userRole);
-      setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })));
-      window.dispatchEvent(new Event("notifications:refresh"));
-      toast.success("All notifications marked as read");
-    } catch (error) {
-      toast.error("Unable to mark all notifications as read");
-    }
-  };
   return (
     <AppShell
       title="Notification centre"
       subtitle="Stay updated with procurement and supply chain alerts"
-      actions={
-        <Button
-          variant="outline"
-          className="rounded-xl"
-          onClick={handleMarkAllRead}
-          disabled={!notifications.some((notification) => !notification.is_read)}
-        >
-          Mark all read
-        </Button>
-      }
     >
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -154,7 +101,7 @@ function Notifications() {
             <Card
               key={n.id}
               className={cn(
-                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
+                "relative overflow-hidden border-border/50 p-5",
                 !n.is_read && "bg-primary-soft/5 border-primary/20",
               )}
             >
@@ -189,7 +136,7 @@ function Notifications() {
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{n.message}</p>
 
-                  {n.link && (
+                  {(n.po_number || n.supplier_name) && (
                     <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
                       <div className="flex gap-2">
                         {n.po_number && (
@@ -203,17 +150,6 @@ function Notifications() {
                           </span>
                         )}
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8 rounded-lg text-xs font-bold text-primary hover:bg-primary-soft"
-                        asChild
-                        onClick={() => handleMarkRead(n.id)}
-                      >
-                        <Link to={n.link as any}>
-                          View Details <ArrowRight className="ml-1.5 size-3.5" />
-                        </Link>
-                      </Button>
                     </div>
                   )}
                 </div>
