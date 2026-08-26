@@ -713,11 +713,15 @@ async def list_suppliers(
     _user: CurrentUser = Depends(get_current_user),
 ) -> List[SupplierResponse]:
     try:
-        stmt = select(SupplierModel).options(
-            selectinload(SupplierModel.address),
-            selectinload(SupplierModel.contact),
-            selectinload(SupplierModel.bank_info),
-            selectinload(SupplierModel.documents),
+        stmt = (
+            select(SupplierModel)
+            .options(
+                joinedload(SupplierModel.address),
+                joinedload(SupplierModel.contact),
+                joinedload(SupplierModel.bank_info),
+                joinedload(SupplierModel.documents),
+            )
+            .execution_options(populate_existing=True)
         )
         if search:
             search_term = f"%{search}%"
@@ -738,7 +742,7 @@ async def list_suppliers(
             stmt = stmt.where(func.lower(SupplierModel.status) == status_filter.strip().lower())
 
         result = await uow.session.execute(stmt.order_by(SupplierModel.supplier_name))
-        entities = result.scalars().all()
+        entities = result.scalars().unique().all()
 
         responses = []
         for e in entities:
