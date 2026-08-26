@@ -33,7 +33,10 @@ export const Route = createFileRoute("/procurement-dashboard")({
   head: () => ({
     meta: [
       { title: "Procurement Dashboard · NexusWMS" },
-      { name: "description", content: "Manage suppliers, purchase orders, and procurement workflows." },
+      {
+        name: "description",
+        content: "Manage suppliers, purchase orders, and procurement workflows.",
+      },
     ],
   }),
   component: ProcurementDashboard,
@@ -49,7 +52,7 @@ function ProcurementDashboard() {
     openPos: 0,
     complianceRate: 100,
     totalPoValue: 0,
-    trend: []
+    trend: [],
   });
 
   // Search states
@@ -67,7 +70,7 @@ function ProcurementDashboard() {
         api.getSuppliers(),
         api.getNotifications("PROCUREMENT"),
         api.getPurchaseOrders(),
-        api.getProcurementStats()
+        api.getProcurementStats(),
       ]);
       setSuppliers(sData);
       setNotifications(nData);
@@ -128,12 +131,16 @@ function ProcurementDashboard() {
     return () => clearTimeout(handler);
   }, [poQuery]);
 
-  const activityItems = notifications.map(n => ({
-    time: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  const activityItems = notifications.map((n) => ({
+    time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     title: n.title,
     detail: n.message,
-    tone: n.title.includes("Approved") ? "success" : (n.title.includes("Rejected") ? "danger" : "primary"),
-    link: n.link
+    tone: n.title.includes("Approved")
+      ? "success"
+      : n.title.includes("Rejected")
+        ? "danger"
+        : "primary",
+    link: n.link,
   }));
 
   return (
@@ -154,10 +161,37 @@ function ProcurementDashboard() {
       }
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active suppliers" value={loading ? "..." : String(stats.activeSuppliers)} delta="+3 this month" icon={Building2} tone="primary" to="/master-data" />
-        <StatCard label="Supplier master" value={loading ? "..." : String(stats.activeSuppliers)} delta="Available for procurement" icon={Building2} tone="success" to="/master-data" />
-        <StatCard label="Open POs" value={loading ? "..." : String(stats.openPos)} delta={`Value: ₹${parseFloat(stats.totalPoValue || 0).toLocaleString()}`} icon={FileText} tone="teal" to="/procurement/purchase-orders" />
-        <StatCard label="Compliance rate" value={loading ? "..." : `${stats.complianceRate}%`} delta="Target: 99%" icon={ShieldCheck} tone="success" />
+        <StatCard
+          label="Active suppliers"
+          value={loading ? "..." : String(stats.activeSuppliers)}
+          delta="+3 this month"
+          icon={Building2}
+          tone="primary"
+          to="/master-data"
+        />
+        <StatCard
+          label="Supplier master"
+          value={loading ? "..." : String(stats.activeSuppliers)}
+          delta="Available for procurement"
+          icon={Building2}
+          tone="success"
+          to="/master-data"
+        />
+        <StatCard
+          label="Open POs"
+          value={loading ? "..." : String(stats.openPos)}
+          delta={`Value: ₹${parseFloat(stats.totalPoValue || 0).toLocaleString()}`}
+          icon={FileText}
+          tone="teal"
+          to="/procurement/purchase-orders"
+        />
+        <StatCard
+          label="Compliance rate"
+          value={loading ? "..." : `${stats.complianceRate}%`}
+          delta="Target: 99%"
+          icon={ShieldCheck}
+          tone="success"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -170,9 +204,24 @@ function ProcurementDashboard() {
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.trend} margin={{ left: -20, right: 10, top: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
-                <XAxis dataKey="month" tickLine={false} axisLine={false} fontSize={12} stroke="var(--color-muted-foreground)" />
-                <YAxis tickLine={false} axisLine={false} fontSize={12} stroke="var(--color-muted-foreground)" />
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="var(--color-border)"
+                />
+                <XAxis
+                  dataKey="month"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={12}
+                  stroke="var(--color-muted-foreground)"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={12}
+                  stroke="var(--color-muted-foreground)"
+                />
                 <RTooltip
                   cursor={{ fill: "var(--color-muted)", opacity: 0.4 }}
                   contentStyle={{
@@ -191,7 +240,9 @@ function ProcurementDashboard() {
         <SectionCard title="Quick Search" description="Find vendor or order" icon={Search}>
           <div className="space-y-4">
             <div className="relative space-y-2">
-              <label className="text-xs font-medium uppercase text-muted-foreground">Search Suppliers</label>
+              <label className="text-xs font-medium uppercase text-muted-foreground">
+                Search Suppliers
+              </label>
               <div className="relative">
                 <Input
                   placeholder="Enter vendor name or ID..."
@@ -199,12 +250,14 @@ function ProcurementDashboard() {
                   value={supplierQuery}
                   onChange={(e) => setSupplierQuery(e.target.value)}
                 />
-                {isSearchingSuppliers && <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />}
+                {isSearchingSuppliers && (
+                  <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />
+                )}
               </div>
 
               {supplierResults.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                  {supplierResults.slice(0, 5).map(s => (
+                  {supplierResults.slice(0, 5).map((s) => (
                     <Link
                       key={s.supplierId}
                       to="/supplier/$supplierId"
@@ -214,7 +267,9 @@ function ProcurementDashboard() {
                       <Building2 className="size-4 text-primary" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{s.supplierName}</p>
-                        <p className="text-[10px] text-muted-foreground">{s.supplierId.substring(0, 8)}...</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {s.supplierId.substring(0, 8)}...
+                        </p>
                       </div>
                     </Link>
                   ))}
@@ -223,7 +278,9 @@ function ProcurementDashboard() {
             </div>
 
             <div className="relative space-y-2">
-              <label className="text-xs font-medium uppercase text-muted-foreground">Search Purchase Orders</label>
+              <label className="text-xs font-medium uppercase text-muted-foreground">
+                Search Purchase Orders
+              </label>
               <div className="relative">
                 <Input
                   placeholder="Enter PO number..."
@@ -231,12 +288,14 @@ function ProcurementDashboard() {
                   value={poQuery}
                   onChange={(e) => setPoQuery(e.target.value)}
                 />
-                {isSearchingPOs && <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />}
+                {isSearchingPOs && (
+                  <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />
+                )}
               </div>
 
               {poResults.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                  {poResults.slice(0, 5).map(po => (
+                  {poResults.slice(0, 5).map((po) => (
                     <Link
                       key={po.id}
                       to="/purchase-order"
@@ -254,7 +313,9 @@ function ProcurementDashboard() {
                 </div>
               )}
             </div>
-            <p className="text-[10px] text-muted-foreground italic text-center">Results appear automatically as you type</p>
+            <p className="text-[10px] text-muted-foreground italic text-center">
+              Results appear automatically as you type
+            </p>
           </div>
         </SectionCard>
       </div>
@@ -297,8 +358,16 @@ function ProcurementDashboard() {
                   {suppliers.slice(0, 5).map((s) => (
                     <tr key={s.supplierId} className="border-b border-border/60 last:border-0">
                       <td className="py-3">
-                        <Link to="/supplier/$supplierId" params={{ supplierId: s.supplierId }} className="font-semibold text-primary hover:underline">{s.supplierName}</Link>
-                        <p className="text-[11px] text-muted-foreground">{s.supplierId.substring(0, 8)}...</p>
+                        <Link
+                          to="/supplier/$supplierId"
+                          params={{ supplierId: s.supplierId }}
+                          className="font-semibold text-primary hover:underline"
+                        >
+                          {s.supplierName}
+                        </Link>
+                        <p className="text-[11px] text-muted-foreground">
+                          {s.supplierId.substring(0, 8)}...
+                        </p>
                       </td>
                       <td className="py-3 text-muted-foreground">{s.category}</td>
                       <td className="py-3 font-mono text-xs">{s.gstin}</td>
@@ -313,12 +382,16 @@ function ProcurementDashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Recent Activity" description="Updates from finance and team" icon={CheckCircle2}>
+        <SectionCard
+          title="Recent Activity"
+          description="Updates from finance and team"
+          icon={CheckCircle2}
+        >
           {activityItems.length > 0 ? (
             <Timeline items={activityItems} />
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground italic">
-               No recent notifications.
+              No recent notifications.
             </div>
           )}
         </SectionCard>

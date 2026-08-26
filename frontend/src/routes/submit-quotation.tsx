@@ -16,7 +16,7 @@ import {
   Upload,
   Lock,
   ArrowLeft,
-  X
+  X,
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -49,7 +49,9 @@ function SubmitQuotation() {
   const [username, setUsername] = useState("");
 
   // Bid form state
-  const [itemsData, setItemsData] = useState<Record<string, { unitPrice: string; availableQty: string }>>({});
+  const [itemsData, setItemsData] = useState<
+    Record<string, { unitPrice: string; availableQty: string }>
+  >({});
   const [metaData, setMetaData] = useState({
     discount: "0",
     tax: "18",
@@ -61,7 +63,9 @@ function SubmitQuotation() {
   });
 
   // Document Upload state
-  const [uploadedDocs, setUploadedDocs] = useState<Array<{ document_type: string; file_name: string; file_url: string }>>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<
+    Array<{ document_type: string; file_name: string; file_url: string }>
+  >([]);
 
   useEffect(() => {
     // Check if supplier is logged in
@@ -94,7 +98,7 @@ function SubmitQuotation() {
         const sid = userInfo.supplierId || "";
         const [rfqData, quotesList] = await Promise.all([
           api.getRfq(rfqId),
-          api.getQuotations(rfqId, sid)
+          api.getQuotations(rfqId, sid),
         ]);
 
         setRfq(rfqData);
@@ -121,9 +125,12 @@ function SubmitQuotation() {
           setMetaData({
             discount: String(Math.floor(parseFloat(existing.discount || "0"))),
             tax: String(Math.floor(parseFloat(existing.tax || "0"))),
-            freightCharges: String(Math.floor(parseFloat(existing.freightCharges || existing.freight_charges || "0"))),
+            freightCharges: String(
+              Math.floor(parseFloat(existing.freightCharges || existing.freight_charges || "0")),
+            ),
             deliveryTime: existing.deliveryTime || existing.delivery_time || "",
-            expectedDeliveryDate: existing.expectedDeliveryDate || existing.expected_delivery_date || "",
+            expectedDeliveryDate:
+              existing.expectedDeliveryDate || existing.expected_delivery_date || "",
             paymentTerms: existing.paymentTerms || existing.payment_terms || "",
             remarks: existing.remarks || "",
           });
@@ -141,7 +148,6 @@ function SubmitQuotation() {
           });
           setItemsData(initialItems);
         }
-
       } catch (error: any) {
         toast.error("Failed to load workspace: " + error.message);
       } finally {
@@ -152,14 +158,20 @@ function SubmitQuotation() {
     fetchRfqAndQuotation();
   }, [rfqId]);
 
-  const handleItemChange = (itemCode: string, field: "unitPrice" | "availableQty", value: string) => {
+  const handleItemChange = (
+    itemCode: string,
+    field: "unitPrice" | "availableQty",
+    value: string,
+  ) => {
     if (isLocked) return;
 
     let finalValue = value;
 
     // Enforce that Quoted Quantity (availableQty) does not exceed Requested Qty
     if (field === "availableQty" && rfq) {
-      const item = rfq.items.find((it: any) => it.materialCode === itemCode || it.material_code === itemCode);
+      const item = rfq.items.find(
+        (it: any) => it.materialCode === itemCode || it.material_code === itemCode,
+      );
       if (item) {
         const requestedQty = Math.floor(item.quantity);
         const enteredQty = parseInt(value, 10);
@@ -220,7 +232,7 @@ function SubmitQuotation() {
           document_type: documentType,
           file_name: response.file_name,
           file_url: response.file_url,
-        }
+        },
       ]);
       toast.success(`${file.name} uploaded successfully!`, { id: toastId });
     } catch (error: any) {
@@ -282,7 +294,11 @@ function SubmitQuotation() {
 
     // Validation for submission
     const lineCodes = Object.keys(itemsData);
-    if (lineCodes.some((code) => !itemsData[code].unitPrice || parseFloat(itemsData[code].unitPrice) <= 0)) {
+    if (
+      lineCodes.some(
+        (code) => !itemsData[code].unitPrice || parseFloat(itemsData[code].unitPrice) <= 0,
+      )
+    ) {
       toast.error("Please enter a valid unit price for all items before submitting");
       return;
     }
@@ -292,7 +308,9 @@ function SubmitQuotation() {
       const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
       const requested = Math.floor(item.quantity);
       if (quoted < requested) {
-        toast.error(`Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`);
+        toast.error(
+          `Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`,
+        );
         return;
       }
     }
@@ -352,7 +370,8 @@ function SubmitQuotation() {
           <AlertTriangle className="mx-auto size-10 text-destructive" />
           <h2 className="mt-4 text-lg font-bold">Invalid RFQ Reference</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            No valid RFQ identifier was found in your request link. Please check the URL sent in your email invitation.
+            No valid RFQ identifier was found in your request link. Please check the URL sent in
+            your email invitation.
           </p>
         </div>
       </AppShell>
@@ -364,7 +383,12 @@ function SubmitQuotation() {
       title="RFQ Response Workspace"
       subtitle={`RFQ Number: ${rfq.rfqNumber}`}
       actions={
-        <Button variant="outline" size="sm" onClick={() => navigate({ to: "/supplier-dashboard" })} className="rounded-xl">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate({ to: "/supplier-dashboard" })}
+          className="rounded-xl"
+        >
           <ArrowLeft className="mr-2 size-4" /> Back to Dashboard
         </Button>
       }
@@ -379,32 +403,52 @@ function SubmitQuotation() {
         )}
 
         {/* RFQ Details Summary (Read-Only) */}
-        <SectionCard title="RFQ Information (Read-Only)" description="Reference details for this request" icon={FileText}>
+        <SectionCard
+          title="RFQ Information (Read-Only)"
+          description="Reference details for this request"
+          icon={FileText}
+        >
           <div className="grid gap-6 sm:grid-cols-3 lg:grid-cols-5">
             <div>
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">RFQ Number</Label>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
+                RFQ Number
+              </Label>
               <span className="font-bold text-sm block mt-1">{rfq.rfqNumber}</span>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">Request Date</Label>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
+                Request Date
+              </Label>
               <span className="font-bold text-sm block mt-1">{rfq.rfqDate || "—"}</span>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">Required Delivery Date</Label>
-              <span className="font-bold text-sm block mt-1">{rfq.requiredDeliveryDate || "—"}</span>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
+                Required Delivery Date
+              </Label>
+              <span className="font-bold text-sm block mt-1">
+                {rfq.requiredDeliveryDate || "—"}
+              </span>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">Warehouse Location</Label>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
+                Warehouse Location
+              </Label>
               <span className="font-bold text-sm block mt-1">{rfq.warehouse}</span>
             </div>
             <div>
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">Procurement Officer</Label>
-              <span className="font-bold text-sm block mt-1 uppercase tracking-wider text-primary">{rfq.procurementOfficer}</span>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
+                Procurement Officer
+              </Label>
+              <span className="font-bold text-sm block mt-1 uppercase tracking-wider text-primary">
+                {rfq.procurementOfficer}
+              </span>
             </div>
           </div>
           {rfq.remarks && (
             <div className="mt-4 pt-4 border-t border-border/50">
-              <Label className="text-muted-foreground text-xs uppercase tracking-wider">Remarks / Instructions</Label>
+              <Label className="text-muted-foreground text-xs uppercase tracking-wider">
+                Remarks / Instructions
+              </Label>
               <p className="text-xs text-foreground/80 mt-1.5 leading-relaxed bg-muted/20 p-3 rounded-lg border border-border/40">
                 {rfq.remarks}
               </p>
@@ -413,14 +457,20 @@ function SubmitQuotation() {
         </SectionCard>
 
         {/* Required Materials Bidding Form */}
-        <SectionCard title="Material Response" description="Enter pricing and available quantity for each material requirement" icon={Package}>
+        <SectionCard
+          title="Material Response"
+          description="Enter pricing and available quantity for each material requirement"
+          icon={Package}
+        >
           <div className="space-y-6">
             {rfq.items?.map((item: any, idx: number) => (
               <div key={idx} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <h4 className="text-sm font-bold text-foreground">{item.materialName}</h4>
-                    <span className="text-[10px] font-mono text-muted-foreground uppercase">{item.materialCode} · {item.category}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground uppercase">
+                      {item.materialCode} · {item.category}
+                    </span>
                   </div>
                   <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
                     Requested: {Math.floor(item.quantity)} {item.uom}
@@ -439,7 +489,9 @@ function SubmitQuotation() {
                         className="rounded-xl h-10 font-mono"
                         disabled={isLocked}
                         value={itemsData[item.materialCode]?.unitPrice || ""}
-                        onChange={(e) => handleItemChange(item.materialCode, "unitPrice", e.target.value)}
+                        onChange={(e) =>
+                          handleItemChange(item.materialCode, "unitPrice", e.target.value)
+                        }
                         required
                       />
                     </div>
@@ -467,7 +519,9 @@ function SubmitQuotation() {
                       className="rounded-xl h-10 font-mono"
                       disabled={isLocked}
                       value={itemsData[item.materialCode]?.availableQty || ""}
-                      onChange={(e) => handleItemChange(item.materialCode, "availableQty", e.target.value)}
+                      onChange={(e) =>
+                        handleItemChange(item.materialCode, "availableQty", e.target.value)
+                      }
                       required
                     />
                   </div>
@@ -478,7 +532,11 @@ function SubmitQuotation() {
         </SectionCard>
 
         {/* Commercial & Logistical Details */}
-        <SectionCard title="Logistics & Commercials" description="Bidding parameters, terms, and conditions" icon={Truck}>
+        <SectionCard
+          title="Logistics & Commercials"
+          description="Bidding parameters, terms, and conditions"
+          icon={Truck}
+        >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Discount (INR)</Label>
@@ -581,7 +639,11 @@ function SubmitQuotation() {
         </SectionCard>
 
         {/* Document Uploads section */}
-        <SectionCard title="Quotation Supporting Documents" description="Upload PDF or compliance certification" icon={Upload}>
+        <SectionCard
+          title="Quotation Supporting Documents"
+          description="Upload PDF or compliance certification"
+          icon={Upload}
+        >
           <div className="grid gap-4 sm:grid-cols-1">
             {(() => {
               const docType = { label: "Upload Document", key: "QUOTATION_DOC" };
@@ -593,7 +655,9 @@ function SubmitQuotation() {
                     <div className="flex items-center justify-between gap-2 rounded-xl bg-success-soft/20 px-3 py-2 text-xs text-success-foreground border border-success/20">
                       <div className="flex items-center gap-2">
                         <FileCheck className="size-4" />
-                        <span className="truncate max-w-[300px] font-mono">{uploaded.file_name}</span>
+                        <span className="truncate max-w-[300px] font-mono">
+                          {uploaded.file_name}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] uppercase font-bold">Uploaded</span>
@@ -622,12 +686,14 @@ function SubmitQuotation() {
                         htmlFor={`file-${docType.key}`}
                         className={cn(
                           "flex items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 hover:border-primary/80 py-6 text-sm font-medium cursor-pointer transition-colors",
-                          isLocked && "opacity-50 cursor-not-allowed hover:border-border/80"
+                          isLocked && "opacity-50 cursor-not-allowed hover:border-border/80",
                         )}
                       >
                         <Upload className="size-5 text-muted-foreground" />
                         <span>Click to browse or drag and drop your quotation file</span>
-                        <span className="text-xs text-muted-foreground font-normal">(PDF, JPG, PNG up to 10MB)</span>
+                        <span className="text-xs text-muted-foreground font-normal">
+                          (PDF, JPG, PNG up to 10MB)
+                        </span>
                       </Label>
                     </div>
                   )}
@@ -641,7 +707,8 @@ function SubmitQuotation() {
         {!isLocked && (
           <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/60 p-6 shadow-soft">
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-              <ShieldCheck className="size-4 text-success" /> Click Submit to finalize and lock this bid proposal.
+              <ShieldCheck className="size-4 text-success" /> Click Submit to finalize and lock this
+              bid proposal.
             </div>
             <div className="flex items-center gap-3">
               <Button
@@ -651,9 +718,13 @@ function SubmitQuotation() {
                 onClick={() => handleSave("SUBMITTED")}
               >
                 {submitting ? (
-                  <><Loader2 className="mr-2 size-4 animate-spin" /> Processing...</>
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+                  </>
                 ) : (
-                  <><FileCheck className="mr-2 size-4" /> Submit Quotation</>
+                  <>
+                    <FileCheck className="mr-2 size-4" /> Submit Quotation
+                  </>
                 )}
               </Button>
             </div>

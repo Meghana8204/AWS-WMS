@@ -1,11 +1,5 @@
 export type ArrivalStatus =
-  | "Waiting"
-  | "Approved"
-  | "Dock Assigned"
-  | "Receiving"
-  | "Completed"
-  | "Rejected"
-  | "Hold";
+  "Waiting" | "Approved" | "Dock Assigned" | "Receiving" | "Completed" | "Rejected" | "Hold";
 
 export interface Arrival {
   id: string;
@@ -172,23 +166,109 @@ export const arrivals: Arrival[] = [
 export const activeArrival = arrivals[0]!;
 
 export const docks = [
-  { id: "D-01", zone: "Zone A — Bulk", status: "Occupied", vehicle: "TN 09 BK 5560", eta: "Free in 42 min", type: "Bulk / Crane" },
-  { id: "D-02", zone: "Zone A — Bulk", status: "Available", vehicle: null, eta: "Ready now", type: "Bulk / Crane" },
-  { id: "D-03", zone: "Zone B — Palletised", status: "Reserved", vehicle: "KA 51 MD 7702", eta: "Docking 09:55", type: "Forklift" },
-  { id: "D-04", zone: "Zone B — Palletised", status: "Available", vehicle: null, eta: "Ready now", type: "Forklift" },
-  { id: "D-05", zone: "Zone B — Palletised", status: "Cleaning", vehicle: null, eta: "Free in 12 min", type: "Forklift" },
-  { id: "D-06", zone: "Zone C — Cold Chain", status: "Available", vehicle: null, eta: "Ready now", type: "Reefer" },
-  { id: "D-07", zone: "Zone C — Cold Chain", status: "Occupied", vehicle: "MP 09 TG 2210", eta: "Free in 1h 05m", type: "Reefer" },
-  { id: "D-08", zone: "Zone D — Hazmat", status: "Available", vehicle: null, eta: "Ready now", type: "Hazmat certified" },
+  {
+    id: "D-01",
+    zone: "Zone A — Bulk",
+    status: "Occupied",
+    vehicle: "TN 09 BK 5560",
+    eta: "Free in 42 min",
+    type: "Bulk / Crane",
+  },
+  {
+    id: "D-02",
+    zone: "Zone A — Bulk",
+    status: "Available",
+    vehicle: null,
+    eta: "Ready now",
+    type: "Bulk / Crane",
+  },
+  {
+    id: "D-03",
+    zone: "Zone B — Palletised",
+    status: "Reserved",
+    vehicle: "KA 51 MD 7702",
+    eta: "Docking 09:55",
+    type: "Forklift",
+  },
+  {
+    id: "D-04",
+    zone: "Zone B — Palletised",
+    status: "Available",
+    vehicle: null,
+    eta: "Ready now",
+    type: "Forklift",
+  },
+  {
+    id: "D-05",
+    zone: "Zone B — Palletised",
+    status: "Cleaning",
+    vehicle: null,
+    eta: "Free in 12 min",
+    type: "Forklift",
+  },
+  {
+    id: "D-06",
+    zone: "Zone C — Cold Chain",
+    status: "Available",
+    vehicle: null,
+    eta: "Ready now",
+    type: "Reefer",
+  },
+  {
+    id: "D-07",
+    zone: "Zone C — Cold Chain",
+    status: "Occupied",
+    vehicle: "MP 09 TG 2210",
+    eta: "Free in 1h 05m",
+    type: "Reefer",
+  },
+  {
+    id: "D-08",
+    zone: "Zone D — Hazmat",
+    status: "Available",
+    vehicle: null,
+    eta: "Ready now",
+    type: "Hazmat certified",
+  },
 ] as const;
 
 export const activity = [
-  { time: "09:38", title: "Gate pass approved by Security", detail: "GJ 05 AW 1123 · Gate 1 · S. Patil", tone: "primary" },
-  { time: "09:12", title: "New arrival notification raised", detail: "MH 12 QT 4489 · Hindustan Polymers Ltd.", tone: "primary" },
-  { time: "08:56", title: "Dock D-03 reserved", detail: "KA 51 MD 7702 · Sundaram Fasteners", tone: "teal" },
-  { time: "08:41", title: "GRN 2026/GRN/9911 posted", detail: "DL 01 LX 3391 · 8 pallets accepted", tone: "success" },
-  { time: "08:20", title: "Arrival placed on hold", detail: "RJ 14 PC 8890 · MSDS document missing", tone: "warning" },
-  { time: "07:52", title: "Receiving started at D-01", detail: "TN 09 BK 5560 · Team Alpha (4 members)", tone: "teal" },
+  {
+    time: "09:38",
+    title: "Gate pass approved by Security",
+    detail: "GJ 05 AW 1123 · Gate 1 · S. Patil",
+    tone: "primary",
+  },
+  {
+    time: "09:12",
+    title: "New arrival notification raised",
+    detail: "MH 12 QT 4489 · Hindustan Polymers Ltd.",
+    tone: "primary",
+  },
+  {
+    time: "08:56",
+    title: "Dock D-03 reserved",
+    detail: "KA 51 MD 7702 · Sundaram Fasteners",
+    tone: "teal",
+  },
+  {
+    time: "08:41",
+    title: "GRN 2026/GRN/9911 posted",
+    detail: "DL 01 LX 3391 · 8 pallets accepted",
+    tone: "success",
+  },
+  {
+    time: "08:20",
+    title: "Arrival placed on hold",
+    detail: "RJ 14 PC 8890 · MSDS document missing",
+    tone: "warning",
+  },
+  {
+    time: "07:52",
+    title: "Receiving started at D-01",
+    detail: "TN 09 BK 5560 · Team Alpha (4 members)",
+    tone: "teal",
+  },
 ];
 
 export const arrivalTrend = [
@@ -202,9 +282,30 @@ export const arrivalTrend = [
 ];
 
 export const poLines = [
-  { code: "RM-HDPE-04", desc: "HDPE Granules Grade 5502 — 25kg bag", uom: "BAG", ordered: 960, pending: 960, rate: "₹ 2,180" },
-  { code: "RM-HDPE-09", desc: "HDPE Granules Grade 6070 — 25kg bag", uom: "BAG", ordered: 240, pending: 240, rate: "₹ 2,410" },
-  { code: "PK-LIN-02", desc: "LDPE Liner Sheet 1200mm", uom: "ROLL", ordered: 40, pending: 18, rate: "₹ 3,050" },
+  {
+    code: "RM-HDPE-04",
+    desc: "HDPE Granules Grade 5502 — 25kg bag",
+    uom: "BAG",
+    ordered: 960,
+    pending: 960,
+    rate: "₹ 2,180",
+  },
+  {
+    code: "RM-HDPE-09",
+    desc: "HDPE Granules Grade 6070 — 25kg bag",
+    uom: "BAG",
+    ordered: 240,
+    pending: 240,
+    rate: "₹ 2,410",
+  },
+  {
+    code: "PK-LIN-02",
+    desc: "LDPE Liner Sheet 1200mm",
+    uom: "ROLL",
+    ordered: 40,
+    pending: 18,
+    rate: "₹ 3,050",
+  },
 ];
 
 export const receivingTeam = [

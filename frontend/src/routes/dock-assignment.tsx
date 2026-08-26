@@ -22,9 +22,16 @@ export const Route = createFileRoute("/dock-assignment")({
   head: () => ({
     meta: [
       { title: "Dock Assignment · NexusWMS" },
-      { name: "description", content: "Warehouse dock map with live availability, occupancy and ETA to assign an unloading bay to the accepted truck." },
+      {
+        name: "description",
+        content:
+          "Warehouse dock map with live availability, occupancy and ETA to assign an unloading bay to the accepted truck.",
+      },
       { property: "og:title", content: "Dock Assignment · NexusWMS" },
-      { property: "og:description", content: "Assign an unloading dock from the live warehouse map." },
+      {
+        property: "og:description",
+        content: "Assign an unloading dock from the live warehouse map.",
+      },
     ],
   }),
   component: DockAssignment,
@@ -41,7 +48,11 @@ function DockAssignment() {
       title="Assign unloading dock"
       subtitle={`${activeArrival.truckNo} · ${activeArrival.pallets} pallets · palletised forklift unloading`}
       actions={
-        <Button className="rounded-xl shadow-glow" disabled={!selected} onClick={() => setConfirm(true)}>
+        <Button
+          className="rounded-xl shadow-glow"
+          disabled={!selected}
+          onClick={() => setConfirm(true)}
+        >
           <Warehouse className="size-4" /> Assign {selected ?? "dock"}
         </Button>
       }
@@ -49,7 +60,12 @@ function DockAssignment() {
       <StepRail current={6} />
 
       <div className="grid gap-4 xl:grid-cols-3">
-        <SectionCard title="Warehouse dock map" description="Pune DC · inbound face" icon={MapPin} className="xl:col-span-2">
+        <SectionCard
+          title="Warehouse dock map"
+          description="Pune DC · inbound face"
+          icon={MapPin}
+          className="xl:col-span-2"
+        >
           <div className="rounded-2xl border border-border/70 bg-muted/40 p-5">
             <div className="mb-4 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
               {[
@@ -74,7 +90,9 @@ function DockAssignment() {
                     onClick={() => setSelected(d.id)}
                     className={cn(
                       "rounded-xl border-2 p-3 text-left transition-all",
-                      free ? "border-success/40 bg-card hover:-translate-y-0.5 hover:shadow-soft" : "cursor-not-allowed border-border bg-muted/60 opacity-70",
+                      free
+                        ? "border-success/40 bg-card hover:-translate-y-0.5 hover:shadow-soft"
+                        : "cursor-not-allowed border-border bg-muted/60 opacity-70",
                       active && "border-primary bg-primary-soft shadow-glow",
                     )}
                   >
@@ -99,7 +117,11 @@ function DockAssignment() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Dock availability" description="Live occupancy and ETA" icon={Warehouse}>
+        <SectionCard
+          title="Dock availability"
+          description="Live occupancy and ETA"
+          icon={Warehouse}
+        >
           <div className="space-y-2.5">
             {docks.map((d) => (
               <button
@@ -115,7 +137,9 @@ function DockAssignment() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium">{d.zone}</span>
-                  <span className="block text-[11px] text-muted-foreground">{d.vehicle ?? d.eta}</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {d.vehicle ?? d.eta}
+                  </span>
                 </span>
                 <StatusBadge status={d.status} />
               </button>
@@ -129,7 +153,8 @@ function DockAssignment() {
           <AlertDialogHeader>
             <AlertDialogTitle>Assign dock {selected}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {activeArrival.truckNo} will be called forward from the yard and the receiving team for Zone B will be notified.
+              {activeArrival.truckNo} will be called forward from the yard and the receiving team
+              for Zone B will be notified.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -142,7 +167,9 @@ function DockAssignment() {
                 setBusy(true);
                 setTimeout(() => {
                   setBusy(false);
-                  toast.success(`Dock ${selected} assigned`, { description: "Driver notified via SMS. Team Bravo alerted." });
+                  toast.success(`Dock ${selected} assigned`, {
+                    description: "Driver notified via SMS. Team Bravo alerted.",
+                  });
                   navigate({ to: "/arrival-success" });
                 }, 900);
               }}

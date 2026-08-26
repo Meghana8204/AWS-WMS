@@ -72,22 +72,20 @@ class MockOcrService(OcrService):
             return OcrResult(
                 po_number=po_num,
                 supplier_name="Acme Corp",
-                product_material="ITEM-A",
-                quantity=Decimal("100"),
-                po_date=date(2026, 8, 1),
-                expected_delivery_date=date(2026, 8, 15),
+                material_description="ITEM-A",
+                total_quantity=100.0,
+                po_date="2026-08-01",
+                delivery_date="2026-08-15",
                 confidence=0.98,
-                raw_text=key,
             )
 
         # Default fallback mock result
         return OcrResult(
             po_number="PO-1001",
             supplier_name="Acme Corp",
-            product_material="ITEM-A",
-            quantity=Decimal("100"),
-            po_date=date(2026, 8, 1),
-            expected_delivery_date=date(2026, 8, 15),
+            material_description="ITEM-A",
+            total_quantity=100.0,
+            po_date="2026-08-01",
+            delivery_date="2026-08-15",
             confidence=0.95,
-            raw_text="Mock PO document scan content for PO-1001",
         )

@@ -27,7 +27,7 @@ async def test_mock_ocr_service():
 
     assert res.po_number == "PO-1001"
     assert res.supplier_name == "Acme Corp"
-    assert res.quantity == Decimal("100")
+    assert res.total_quantity == 100.0
 
 
 def test_file_storage_validation(tmp_path):

@@ -1,13 +1,6 @@
 import * as React from "react";
-import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  Warehouse,
-  Loader2,
-  Eye,
-  EyeOff,
-  ShieldCheck,
-  Lock
-} from "lucide-react";
+import { createFileRoute, useNavigate, useSearch, redirect } from "@tanstack/react-router";
+import { Warehouse, Loader2, Eye, EyeOff, ShieldCheck, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api-client";
@@ -120,8 +113,8 @@ function LoginPage() {
               Warehouse Management <br /> Simplified.
             </h1>
             <p className="mt-6 text-xl text-primary-foreground/80 max-w-lg">
-              Optimizing your supply chain with real-time tracking,
-              intelligent dock management, and seamless arrival workflows.
+              Optimizing your supply chain with real-time tracking, intelligent dock management, and
+              seamless arrival workflows.
             </p>
           </div>
         </div>
@@ -166,9 +159,7 @@ function LoginPage() {
                 <span>NexusWMS</span>
               </div>
             </div>
-            <h2 className="text-3xl font-bold tracking-tight">
-              Staff Login
-            </h2>
+            <h2 className="text-3xl font-bold tracking-tight">Staff Login</h2>
             <p className="text-sm text-muted-foreground">
               Enter your credentials to access the management console.
             </p>

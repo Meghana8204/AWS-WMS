@@ -8,7 +8,7 @@ import uuid
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, select, func, cast, String, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, joinedload
 
@@ -74,7 +74,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
                 selectinload(SupplierModel.bank_info),
                 selectinload(SupplierModel.documents),
             )
-            .where(SupplierModel.id == supplier_id.value)
+            .where(SupplierModel.id == str(supplier_id.value))
         )
         entity = result.scalar_one_or_none()
         if entity is None:

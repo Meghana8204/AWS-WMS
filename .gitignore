@@ -1,0 +1,4 @@
+# Media Uploads & Temp files
+media_uploads/
+*.log
+.DS_Store

@@ -12,7 +12,7 @@ import {
   CreditCard,
   ArrowUpRight,
   Package,
-  History
+  History,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,9 @@ function PurchaseOrders() {
         <Card className="flex h-64 flex-col items-center justify-center p-6 text-center border-dashed border-border/50 bg-muted/20">
           <FileText className="size-12 text-muted-foreground/30 mb-4" />
           <h3 className="text-lg font-semibold text-muted-foreground">No purchase orders found</h3>
-          <p className="text-sm text-muted-foreground/70">Start by finalizing a supplier selection from the quotations comparison matrix.</p>
+          <p className="text-sm text-muted-foreground/70">
+            Start by finalizing a supplier selection from the quotations comparison matrix.
+          </p>
           <Button variant="outline" className="mt-4 rounded-xl" asChild>
             <Link to="/procurement/rfqs">View active RFQs</Link>
           </Button>
@@ -83,7 +85,10 @@ function PurchaseOrders() {
       ) : (
         <div className="grid gap-4">
           {orders.map((po) => (
-            <Card key={po.id} className="overflow-hidden border-border/50 transition-all hover:border-primary/30 hover:shadow-soft">
+            <Card
+              key={po.id}
+              className="overflow-hidden border-border/50 transition-all hover:border-primary/30 hover:shadow-soft"
+            >
               <div className="flex flex-col p-5 md:flex-row md:items-center">
                 <div className="mb-4 flex flex-1 items-start gap-4 md:mb-0">
                   <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-teal-soft/30 text-teal-600">
@@ -118,13 +123,16 @@ function PurchaseOrders() {
                       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
                         <Calendar className="size-3" /> Delivery Date
                       </div>
-                      <p className="text-sm font-semibold">{po.expectedDeliveryDate || po.expected_delivery_date || "—"}</p>
+                      <p className="text-sm font-semibold">
+                        {po.expectedDeliveryDate || po.expected_delivery_date || "—"}
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" className="rounded-xl h-9" asChild>
                       <Link to="/purchase-order" search={{ poId: po.id }}>
-                        <Eye className="mr-1.5 size-3.5" /> {po.status === "REJECTED" ? "View Details" : "View"}
+                        <Eye className="mr-1.5 size-3.5" />{" "}
+                        {po.status === "REJECTED" ? "View Details" : "View"}
                       </Link>
                     </Button>
                     {po.status === "APPROVED" && (
@@ -144,7 +152,11 @@ function PurchaseOrders() {
                           }
                         }}
                       >
-                        {downloadingId === po.id ? <Loader2 className="size-3.5 animate-spin mr-1.5" /> : <Download className="mr-1.5 size-3.5" />}
+                        {downloadingId === po.id ? (
+                          <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Download className="mr-1.5 size-3.5" />
+                        )}
                         PDF
                       </Button>
                     )}

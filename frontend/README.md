@@ -78,7 +78,7 @@ Status animations
 
 Toast notifications
 
---------------------------------------------------
+---
 
 PROJECT
 
@@ -88,13 +88,13 @@ This module starts when Security approves a truck.
 
 This module ends when the Warehouse Manager accepts the truck and starts receiving.
 
---------------------------------------------------
+---
 
 ROLE
 
 Warehouse Manager
 
---------------------------------------------------
+---
 
 OBJECTIVE
 
@@ -108,7 +108,7 @@ Notify warehouse staff.
 
 Start receiving process.
 
---------------------------------------------------
+---
 
 COMPLETE USER FLOW
 
@@ -182,7 +182,7 @@ Receiving In Progress
 
 Waiting for GRN
 
---------------------------------------------------
+---
 
 SCREEN 1
 
@@ -198,7 +198,7 @@ Version
 
 Background illustration
 
---------------------------------------------------
+---
 
 SCREEN 2
 
@@ -216,7 +216,7 @@ Sign In
 
 Background warehouse illustration
 
---------------------------------------------------
+---
 
 SCREEN 3
 
@@ -256,7 +256,7 @@ Recent Activity Timeline
 
 Live Vehicle Queue
 
---------------------------------------------------
+---
 
 SCREEN 4
 
@@ -284,7 +284,7 @@ Accept
 
 Reject
 
---------------------------------------------------
+---
 
 SCREEN 5
 
@@ -316,7 +316,7 @@ Reject
 
 Hold
 
---------------------------------------------------
+---
 
 SCREEN 6
 
@@ -338,7 +338,7 @@ Verified
 
 Report Issue
 
---------------------------------------------------
+---
 
 SCREEN 7
 
@@ -360,7 +360,7 @@ Approve
 
 Reject
 
---------------------------------------------------
+---
 
 SCREEN 8
 
@@ -384,7 +384,7 @@ Verified
 
 Mismatch
 
---------------------------------------------------
+---
 
 SCREEN 9
 
@@ -408,7 +408,7 @@ Accept Arrival
 
 Reject
 
---------------------------------------------------
+---
 
 SCREEN 10
 
@@ -426,7 +426,7 @@ ETA.
 
 Assign button.
 
---------------------------------------------------
+---
 
 SCREEN 11
 
@@ -444,7 +444,7 @@ Completed
 
 Drag and Drop support.
 
---------------------------------------------------
+---
 
 SCREEN 12
 
@@ -466,7 +466,7 @@ Start Receiving
 
 View Details
 
---------------------------------------------------
+---
 
 SCREEN 13
 
@@ -486,7 +486,7 @@ Buttons
 
 Continue
 
---------------------------------------------------
+---
 
 SIDEBAR
 
@@ -512,7 +512,7 @@ Master Data
 
 Settings
 
---------------------------------------------------
+---
 
 HEADER
 
@@ -526,7 +526,7 @@ Dark Mode Toggle
 
 Language
 
---------------------------------------------------
+---
 
 STATUS BADGES
 
@@ -544,7 +544,7 @@ Rejected
 
 Hold
 
---------------------------------------------------
+---
 
 COMPONENTS
 
@@ -582,7 +582,7 @@ Confirmation Dialogs
 
 Toasts
 
---------------------------------------------------
+---
 
 INTERACTIONS
 
@@ -600,7 +600,7 @@ Show success pages.
 
 Show error pages.
 
---------------------------------------------------
+---
 
 OUTPUT
 

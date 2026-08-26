@@ -147,6 +147,7 @@ class UpdateSupplierRequest(ApiModel):
     address: Optional[AddressRequest] = None
     contact: Optional[ContactRequest] = None
     bank_info: Optional[BankInfoRequest] = None
+    documents: Optional[List[DocumentRequest]] = None
     remarks: Optional[str] = None
 
 

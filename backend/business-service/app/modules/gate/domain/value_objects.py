@@ -4,7 +4,7 @@ Refactored for PO Document OCR Scanning & Manual Vehicle Plate Entry.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
@@ -47,7 +47,10 @@ class OcrResult:
 class AnprResult:
     detected_vehicle_number: str
     confidence: float
-    raw_metadata: dict[str, Any]
+    raw_metadata: dict[str, Any] = field(default_factory=dict)
+
+    def is_high_confidence(self, threshold: float = 0.85) -> bool:
+        return self.confidence >= threshold
 
 
 @dataclass(frozen=True)

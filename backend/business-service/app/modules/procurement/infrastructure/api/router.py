@@ -647,12 +647,22 @@ async def upload_supplier_document(
     import shutil
     from pathlib import Path
 
-    # Create directory if not exists
     upload_dir = Path("media_uploads/suppliers")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
+    # Validate file type (PDF or JPEG only)
+    allowed_exts = {".pdf", ".jpeg", ".jpg"}
+    allowed_types = {"application/pdf", "image/jpeg", "image/jpg"}
+    file_ext = Path(file.filename or "").suffix.lower()
+    content_type = (file.content_type or "").lower()
+
+    if file_ext not in allowed_exts and content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF (.pdf) and JPEG (.jpeg, .jpg) files are allowed."
+        )
+
     # Unique file name to prevent collisions
-    file_ext = Path(file.filename).suffix
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     dest_path = upload_dir / unique_filename
 
@@ -661,8 +671,8 @@ async def upload_supplier_document(
         with dest_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
-        logger.error(f"Failed to save uploaded document: {e}")
-        raise HTTPException(status_code=500, detail="Could not save file")
+        logger.error(f"Failed to save uploaded document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Could not save file: {e}")
 
     # Return metadata as expected by CreateSupplierRequest
     return {
@@ -799,7 +809,7 @@ async def get_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
 
         result = await uow.session.execute(stmt)
         entity = result.scalar_one_or_none()
@@ -829,6 +839,7 @@ async def update_supplier(
         address_cmd = AddressCommand(**request.address.model_dump()) if request.address else None
         contact_cmd = ContactCommand(**request.contact.model_dump()) if request.contact else None
         bank_info_cmd = BankInfoCommand(**request.bank_info.model_dump()) if request.bank_info else None
+        doc_cmds = [DocumentCommand(**d.model_dump()) for d in request.documents] if request.documents is not None else None
 
         command = UpdateSupplierCommand(
             supplier_id=id,
@@ -842,6 +853,7 @@ async def update_supplier(
             address=address_cmd,
             contact=contact_cmd,
             bank_info=bank_info_cmd,
+            documents=doc_cmds,
             remarks=request.remarks,
             updated_by=_user.username,
         )
@@ -854,7 +866,7 @@ async def update_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -881,7 +893,7 @@ async def block_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -908,7 +920,7 @@ async def unblock_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 

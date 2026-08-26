@@ -15,8 +15,8 @@ import {
   Bell,
   Moon,
   Sun,
-  PanelLeftClose,
-  PanelLeft,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Building2,
   FileText,
@@ -31,7 +31,9 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 
-const warehouseNav = [
+type NavItem = { label: string; to: string; icon: any; badge?: number | string };
+
+const warehouseNav: NavItem[] = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
@@ -43,7 +45,7 @@ const warehouseNav = [
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
-const procurementNav = [
+const procurementNav: NavItem[] = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
@@ -53,19 +55,19 @@ const procurementNav = [
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
 
-const supplierNav = [
+const supplierNav: NavItem[] = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
 
-const financeNav = [
+const financeNav: NavItem[] = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
-const gateSecurityNav = [
+const gateSecurityNav: NavItem[] = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
@@ -125,7 +127,7 @@ export function AppShell({
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
 
-    // Load user only on client side to prevent hydration mismatch
+    let cleanup: (() => void) | undefined;
     try {
       const savedUser = localStorage.getItem("user_info");
       if (savedUser) {
@@ -133,18 +135,23 @@ export function AppShell({
         setUser(u);
 
         // Fetch notifications for the user's role
-        const role = u.roles?.includes("SUPPLIER") ? "SUPPLIER"
-          : u.roles?.includes("FINANCE") ? "FINANCE"
-          : u.roles?.includes("PROCUREMENT") ? "PROCUREMENT"
-          : "WAREHOUSE";
+        const role = u.roles?.includes("SUPPLIER")
+          ? "SUPPLIER"
+          : u.roles?.includes("FINANCE")
+            ? "FINANCE"
+            : u.roles?.includes("PROCUREMENT")
+              ? "PROCUREMENT"
+              : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE") {
               const data = await api.getArrivalNotifications();
-              setUnreadNotifications(data.filter(n => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length);
+              setUnreadNotifications(
+                data.filter((n) => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length,
+              );
             } else {
               const data = await api.getNotifications(role);
-              setUnreadNotifications(data.filter(n => !(n.is_read ?? n.isRead)).length);
+              setUnreadNotifications(data.filter((n) => !(n.is_read ?? n.isRead)).length);
             }
           } catch (e) {
             console.error("Failed to fetch notifications", e);
@@ -154,7 +161,7 @@ export function AppShell({
         const interval = window.setInterval(fetchNotifications, 2000);
         window.addEventListener("notifications:refresh", fetchNotifications);
         window.addEventListener("focus", fetchNotifications);
-        return () => {
+        cleanup = () => {
           window.clearInterval(interval);
           window.removeEventListener("notifications:refresh", fetchNotifications);
           window.removeEventListener("focus", fetchNotifications);
@@ -163,6 +170,9 @@ export function AppShell({
     } catch (e) {
       console.error("Failed to parse user info", e);
     }
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [dark]);
 
   // The current route is available during server rendering, so procurement/supplier/finance
@@ -171,19 +181,28 @@ export function AppShell({
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
-  const isWarehouseRoute = path === "/warehouse-dashboard" || [
-    "/inventory", "/warehouse/material-requests", "/gate-entry", "/notifications", "/vehicle-queue", "/receiving", "/reports"
-  ].some(p => path.startsWith(p));
+  const isWarehouseRoute =
+    path === "/warehouse-dashboard" ||
+    [
+      "/inventory",
+      "/warehouse/material-requests",
+      "/gate-entry",
+      "/notifications",
+      "/vehicle-queue",
+      "/receiving",
+      "/reports",
+    ].some((p) => path.startsWith(p));
 
-  const nav = isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
-    ? supplierNav
-    : (isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
-      ? financeNav
-      : (isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
+  const nav =
+    isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
+      ? supplierNav
+      : isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
+        ? financeNav
+        : isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
           ? procurementNav
-          : (mounted && user?.roles?.includes("GATE_SECURITY")
-              ? gateSecurityNav
-              : warehouseNav)));
+          : mounted && user?.roles?.includes("GATE_SECURITY")
+            ? gateSecurityNav
+            : warehouseNav;
 
   const handleLogout = () => {
     api.logout();
@@ -199,21 +218,46 @@ export function AppShell({
           collapsed ? "w-[76px]" : "w-[264px]",
         )}
       >
-        <div className="flex h-16 items-center gap-3 px-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
-            <Warehouse className="size-5" />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
-              <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
-            </div>
+        <div
+          className={cn(
+            "flex h-16 items-center border-b border-sidebar-border/40 transition-all",
+            collapsed ? "justify-center px-2" : "justify-between gap-2 px-4",
+          )}
+        >
+          {!collapsed ? (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+                  <Warehouse className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
+                  <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCollapsed(true)}
+                title="Collapse sidebar"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setCollapsed(false)}
+              title="Expand sidebar"
+              className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-all hover:bg-primary hover:text-primary-foreground shadow-soft"
+            >
+              <ChevronRight className="size-5" />
+            </button>
           )}
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {nav.map((item) => {
-            const active = path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
+            const active =
+              path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
             return (
               <Link
                 key={item.to}
@@ -236,29 +280,15 @@ export function AppShell({
             );
           })}
         </nav>
-
-        <div className="border-t border-sidebar-border p-3 space-y-1">
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
-          >
-            {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
-            {!collapsed && <span>Collapse</span>}
-          </button>
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
-          >
-            <LogOut className="size-[18px]" />
-            {!collapsed && <span>Logout</span>}
-          </button>
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-            <Link to={nav[0].to} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden">
+            <Link
+              to={nav[0]?.to || "/"}
+              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
+            >
               <Warehouse className="size-4" />
             </Link>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
@@ -277,10 +307,7 @@ export function AppShell({
               {/* Search Results Dropdown */}
               {showSearch && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowSearch(false)}
-                  />
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
                   <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] max-h-[480px] overflow-y-auto z-50 rounded-2xl border border-border bg-card shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="p-2">
                       {searchResults.length > 0 ? (
@@ -296,12 +323,19 @@ export function AppShell({
                               className="flex flex-col gap-0.5 rounded-xl px-4 py-2.5 transition-colors hover:bg-accent"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold tracking-tight">{result.title}</span>
-                                <Badge variant="outline" className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30">
+                                <span className="text-sm font-bold tracking-tight">
+                                  {result.title}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30"
+                                >
                                   {result.type.replace("_", " ")}
                                 </Badge>
                               </div>
-                              <span className="text-[11px] text-muted-foreground line-clamp-1">{result.subtitle}</span>
+                              <span className="text-[11px] text-muted-foreground line-clamp-1">
+                                {result.subtitle}
+                              </span>
                             </Link>
                           ))}
                         </div>
@@ -345,9 +379,13 @@ export function AppShell({
                 <div className="hidden leading-tight lg:block">
                   <p className="text-xs font-semibold">{user?.username || "Rohit Sharma"}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
-                     user?.roles?.includes("FINANCE") ? "Finance Manager" :
-                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Warehouse Manager"}
+                    {user?.roles?.includes("PROCUREMENT")
+                      ? "Procurement Manager"
+                      : user?.roles?.includes("FINANCE")
+                        ? "Finance Manager"
+                        : user?.roles?.includes("GATE_SECURITY")
+                          ? "Security Officer"
+                          : "Warehouse Manager"}
                   </p>
                 </div>
                 <button
@@ -398,7 +436,7 @@ export function AppShell({
   );
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, className }: { status: string; className?: string }) {
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
     Active: "bg-success-soft text-success border-success/30",
@@ -458,7 +496,8 @@ export function StatusBadge({ status }: { status: string }) {
       className={cn(
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map["Hold"],
-        isLive && "pl-5"
+        isLive && "pl-5",
+        className,
       )}
     >
       {isLive && (

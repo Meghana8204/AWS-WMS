@@ -825,7 +825,7 @@ export const api = {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`);
   },
 
-  async getPurchaseOrderByNumber(poNumber: str): Promise<any> {
+  async getPurchaseOrderByNumber(poNumber: string): Promise<any> {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`,
     );

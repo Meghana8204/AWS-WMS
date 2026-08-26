@@ -80,6 +80,7 @@ class UpdateSupplierCommand:
     address: Optional[AddressCommand] = None
     contact: Optional[ContactCommand] = None
     bank_info: Optional[BankInfoCommand] = None
+    documents: Optional[List[DocumentCommand]] = None
     remarks: Optional[str] = None
     updated_by: Optional[str] = None
 
