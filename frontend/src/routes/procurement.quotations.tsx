@@ -24,13 +24,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-
 type QuotationsSearch = {
   rfqId?: string;
 };
-
 export const Route = createFileRoute("/procurement/quotations")({
   component: Quotations,
   validateSearch: (search: Record<string, unknown>): QuotationsSearch => {
@@ -39,18 +44,13 @@ export const Route = createFileRoute("/procurement/quotations")({
     };
   },
 });
-
 function Quotations() {
   const navigate = useNavigate();
   const { rfqId } = Route.useSearch();
   const [quotations, setQuotations] = useState<any[]>([]);
   const [rfq, setRfq] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Comments state
   const [evalComments, setEvalComments] = useState<Record<string, string>>({});
-
-  // Selection Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"SELECT" | "REJECT">("SELECT");
   const [submitting, setSubmitting] = useState(false);
@@ -58,7 +58,6 @@ function Quotations() {
   const [targetSupplierId, setTargetSupplierId] = useState("");
   const [reason, setReason] = useState("");
   const [procurementComments, setProcurementComments] = useState("");
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -66,11 +65,8 @@ function Quotations() {
         api.getQuotations(rfqId),
         rfqId ? api.getRfq(rfqId) : Promise.resolve(null),
       ]);
-
       setQuotations(quotesData);
       setRfq(rfqData);
-
-      // Initialize comments
       const comments: Record<string, string> = {};
       quotesData.forEach((q: any) => {
         comments[q.id] = q.remarks || "";
@@ -83,48 +79,55 @@ function Quotations() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, [rfqId]);
-
   const selectionFinalized = quotations.some((quotation) => quotation.status === "Selected");
-
   const handleOpenModal = (quotationId: string, supplierId: string, mode: "SELECT" | "REJECT") => {
     setTargetQuotationId(quotationId);
     setTargetSupplierId(supplierId);
     setModalMode(mode);
     setReason(mode === "SELECT" ? "L1 Cost Effective Bid" : "");
-
     if (mode === "SELECT") {
-      // No longer automatically rejecting others
     }
-
     setIsModalOpen(true);
   };
-
   const handleAction = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+<<<<<<< HEAD
 
     const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
 
+=======
+    const actionReason = reason.trim();
+    if (!actionReason) {
+      toast.error(
+        modalMode === "REJECT"
+          ? "Please provide a reason for rejecting the quotation."
+          : "Please provide a selection reason.",
+      );
+      return;
+    }
+    const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
+>>>>>>> origin/main
     if (!targetQuotationId) {
       toast.error("Required selection IDs are missing.");
       return;
     }
-
     try {
       setSubmitting(true);
-
       if (modalMode === "SELECT") {
         if (!effectiveRfqId || !targetSupplierId) {
           toast.error("Missing RFQ or Supplier ID for selection");
           return;
         }
-
         const result = await api.selectSupplier(effectiveRfqId, {
           supplier_id: targetSupplierId,
+<<<<<<< HEAD
           selection_reason: reason,
+=======
+          selection_reason: actionReason,
+>>>>>>> origin/main
           selection_comments: procurementComments,
         });
         toast.success(
@@ -133,14 +136,11 @@ function Quotations() {
             : "Supplier selected and PO proposal generated",
         );
       } else {
-        await api.rejectQuotation(targetQuotationId, reason);
+        await api.rejectQuotation(targetQuotationId, actionReason);
         toast.success("Quotation rejected");
       }
-
       setIsModalOpen(false);
-      fetchData(); // Refresh to show updated statuses
-
-      // Reset form
+      fetchData();
       setReason("");
       setProcurementComments("");
     } catch (error: any) {
@@ -149,7 +149,6 @@ function Quotations() {
       setSubmitting(false);
     }
   };
-
   const handleSaveComment = async (id: string) => {
     try {
       await api.updateQuotation(id, { remarks: evalComments[id] });
@@ -158,12 +157,9 @@ function Quotations() {
       toast.error("Failed to save evaluation comment: " + error.message);
     }
   };
-
-  // Group line items by code to compare pricing
   const uniqueItemCodes = Array.from(
     new Set(quotations.flatMap((q) => q.lines?.map((l: any) => l.itemCode || l.item_code) || [])),
   ).filter(Boolean);
-
   return (
     <AppShell
       title="Quotation Comparison Matrix"
@@ -198,7 +194,6 @@ function Quotations() {
         </Card>
       ) : (
         <div className="space-y-6">
-          {/* Side-by-side parameters matrix */}
           <Card className="border-border/40 shadow-soft overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
@@ -249,7 +244,6 @@ function Quotations() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {/* Item Rates and Qty */}
                   {uniqueItemCodes.map((code) => (
                     <tr key={`row-item-${code}`} className="hover:bg-muted/5 transition-colors">
                       <td
@@ -297,7 +291,6 @@ function Quotations() {
                     </tr>
                   ))}
 
-                  {/* Discount */}
                   <tr key="row-discount" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-discount"
@@ -318,7 +311,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Tax */}
                   <tr key="row-tax" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-tax"
@@ -339,7 +331,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Freight */}
                   <tr key="row-freight" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-freight"
@@ -360,7 +351,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Delivery Time */}
                   <tr key="row-delivery-time" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-del-time"
@@ -381,7 +371,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Expected Delivery Date */}
                   <tr key="row-expected-delivery" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-exp-del"
@@ -402,7 +391,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Payment Terms */}
                   <tr key="row-payment-terms" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-payment"
@@ -423,7 +411,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Total Amount */}
                   <tr key="row-total-amount" className="bg-muted/20">
                     <td
                       key="param-total"
@@ -432,7 +419,6 @@ function Quotations() {
                       Total Net Amount
                     </td>
                     {quotations.map((q, idx) => {
-                      // Logic to calculate total if it's 0 or missing
                       let total = parseFloat(q.totalAmount || q.total_amount || 0);
                       if (total === 0 && q.lines && q.lines.length > 0) {
                         const lineTotal = q.lines.reduce(
@@ -447,7 +433,6 @@ function Quotations() {
                         const base = lineTotal - disc;
                         total = base + base * (tx / 100) + fr;
                       }
-
                       return (
                         <td
                           key={q.id || `q-total-${idx}`}
@@ -462,7 +447,6 @@ function Quotations() {
                     })}
                   </tr>
 
-                  {/* Documents */}
                   <tr key="row-documents" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-docs"
@@ -499,7 +483,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Evaluation Comments */}
                   <tr key="row-comments" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-comments"
@@ -535,7 +518,6 @@ function Quotations() {
                     ))}
                   </tr>
 
-                  {/* Selection Actions */}
                   <tr key="row-actions" className="bg-muted/10">
                     <td key="param-actions" className="p-4 border-r border-border/60"></td>
                     {quotations.map((q, idx) => (
@@ -559,16 +541,28 @@ function Quotations() {
                               Saved for Finance review
                             </p>
                           </div>
-                        ) : q.status === "Rejected" ? (
+                        ) : q.status === "Rejected" || q.status === "Declined" ? (
                           <div className="space-y-2">
                             <Button
                               size="sm"
                               className="w-full rounded-xl bg-destructive/20 text-destructive border-destructive/30 font-bold text-xs"
                               disabled
                             >
+<<<<<<< HEAD
                               <X className="size-3.5 mr-1.5" /> Rejected
                             </Button>
                             {!selectionFinalized && (
+=======
+                              <X className="size-3.5 mr-1.5" />
+                              {q.status === "Declined" ? "Declined by Supplier" : "Rejected"}
+                            </Button>
+                            {q.remarks && (
+                              <p className="rounded-lg bg-destructive/10 px-2 py-1.5 text-[10px] leading-relaxed text-destructive">
+                                {q.remarks.split("\n").at(-1)}
+                              </p>
+                            )}
+                            {q.status === "Rejected" && !selectionFinalized && (
+>>>>>>> origin/main
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -627,14 +621,16 @@ function Quotations() {
         </div>
       )}
 
-      {/* Selection/Rejection Overlay Dialog Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <Card className="w-full max-w-md border-border/40 bg-card p-6 shadow-glow relative animate-in zoom-in-95 duration-200">
-            <button
-              onClick={() => setIsModalOpen(false)}
-              className="absolute right-4 top-4 text-muted-foreground hover:text-foreground"
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="max-w-md rounded-3xl border-border/40 bg-card p-6 shadow-glow animate-in zoom-in-95 duration-200">
+          <DialogHeader className="p-0 mb-4 text-left">
+            <div
+              className={cn(
+                "flex items-center gap-2 mb-1",
+                modalMode === "SELECT" ? "text-primary" : "text-destructive",
+              )}
             >
+<<<<<<< HEAD
               <X className="size-5" />
             </button>
             <CardHeader className="p-0 mb-4">
@@ -674,9 +670,57 @@ function Quotations() {
                   onChange={(e) => setReason(e.target.value)}
                   required
                   className="rounded-xl h-10"
+=======
+              {modalMode === "SELECT" ? (
+                <FileCheck2 className="size-5" />
+              ) : (
+                <XCircle className="size-5" />
+              )}
+              <DialogTitle className="text-lg font-bold">
+                {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
+              </DialogTitle>
+            </div>
+            <DialogDescription className="text-sm text-muted-foreground">
+              {modalMode === "SELECT"
+                ? "Log the supplier selection reasoning to finalize the evaluation process."
+                : "Provide a reason for rejecting this quotation."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAction} className="space-y-5">
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                {modalMode === "SELECT" ? "Selection Reason*" : "Rejection Reason*"}
+              </Label>
+              <Input
+                placeholder={
+                  modalMode === "SELECT"
+                    ? "e.g. L1 Price / Technical Fit"
+                    : "e.g. High price / Poor delivery terms"
+                }
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required
+                className="rounded-2xl h-12 border-border/60 focus:ring-primary/20"
+              />
+            </div>
+
+            {modalMode === "SELECT" && (
+              <div className="space-y-2">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Procurement Evaluation Comments
+                </Label>
+                <Textarea
+                  placeholder="Write selection notes or evaluations details..."
+                  className="min-h-[100px] rounded-2xl text-sm border-border/60 focus:ring-primary/20 p-4"
+                  value={procurementComments}
+                  onChange={(e) => setProcurementComments(e.target.value)}
+>>>>>>> origin/main
                 />
               </div>
+            )}
 
+<<<<<<< HEAD
               {modalMode === "SELECT" && (
                 <div className="space-y-1.5">
                   <Label className="text-xs">Procurement Evaluation Comments</Label>
@@ -724,6 +768,42 @@ function Quotations() {
           </Card>
         </div>
       )}
+=======
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsModalOpen(false)}
+                className="rounded-full px-6 h-11 border-border/60 hover:bg-muted font-bold"
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className={cn(
+                  "rounded-full px-8 h-11 shadow-glow font-extrabold tracking-wide",
+                  modalMode === "SELECT"
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                )}
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+                  </>
+                ) : modalMode === "SELECT" ? (
+                  "Finalize & Select"
+                ) : (
+                  "Confirm Rejection"
+                )}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+>>>>>>> origin/main
     </AppShell>
   );
 }

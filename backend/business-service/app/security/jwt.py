@@ -49,7 +49,7 @@ async def _find_key(kid: str) -> dict | None:
     for key in jwks.get("keys", []):
         if key.get("kid") == kid:
             return key
-    # Key-id miss: force a refresh once (covers rotation) before giving up.
+
     _jwks_cache["fetched_at"] = 0.0
     jwks = await _get_jwks()
     for key in jwks.get("keys", []):

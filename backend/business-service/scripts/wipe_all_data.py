@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 async def try_connect(base_url, ports=[5432, 5433]):
     last_error = None
     for port in ports:
-        # Replace port in URL
+
         url = re.sub(r':\d+/', f':{port}/', base_url)
         if ':' not in base_url.split('@')[1].split('/')[0]:
-             # If no port specified in base_url, add it
+
              url = base_url.replace('/localhost/', f'/localhost:{port}/').replace('/127.0.0.1/', f'/127.0.0.1:{port}/')
 
         engine = create_async_engine(url)
@@ -40,12 +40,12 @@ async def wipe_business(engine):
             return
 
         print(f"Found {len(tables)} tables. Truncating...")
-        # TRUNCATE TABLE T1, T2, ... CASCADE;
+
         await conn.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE;"))
 
-        # Verification
+
         print("Verifying ams_business wipe...")
-        for table in tables[:5]: # Check first 5 tables
+        for table in tables[:5]:
             count_res = await conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
             count = count_res.scalar()
             print(f"  Table {table}: {count} rows")
@@ -65,7 +65,7 @@ async def wipe_auth(engine):
         print("Ensuring admin user is enabled...")
         await conn.execute(text("UPDATE app_user SET enabled = TRUE WHERE id = 'c1000000-0000-0000-0000-000000000001';"))
 
-        # Verification
+
         user_count = await conn.execute(text("SELECT COUNT(*) FROM app_user"))
         log_count = await conn.execute(text("SELECT COUNT(*) FROM audit_log"))
         print(f"  Users remaining: {user_count.scalar()}")

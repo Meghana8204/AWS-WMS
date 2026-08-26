@@ -3,10 +3,10 @@ SQLAlchemy ORM models for the receiving module.
 """
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+import uuid
 
 from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -62,19 +62,22 @@ class InventoryReceiptPostingModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     grn_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("grn.id", ondelete="RESTRICT"), nullable=False, index=True)
     grn_number: Mapped[str] = mapped_column(String(64), nullable=False)
-    po_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False)
-    po_number: Mapped[str] = mapped_column(String(64), nullable=False)
-    asn_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False)
-    asn_number: Mapped[str] = mapped_column(String(64), nullable=False)
-    supplier_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    item_code: Mapped[str] = mapped_column(String(64), nullable=False)
-    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
-    uom: Mapped[str] = mapped_column(String(32), nullable=False)
-    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    po_id: Mapped[uuid.UUID | None] = mapped_column(GUID, nullable=True)
+    po_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    asn_id: Mapped[uuid.UUID | None] = mapped_column(GUID, nullable=True)
+    asn_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    supplier_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    item_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    material_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    uom: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    warehouse_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     posted_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     on_hand_before: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     on_hand_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     posted_by: Mapped[str] = mapped_column(String(128), nullable=False)
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> origin/main

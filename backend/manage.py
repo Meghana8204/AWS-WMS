@@ -16,7 +16,7 @@ def main():
 
     if command in ("runserver", "server"):
         port = 8000
-        host = "127.0.0.1"
+        host = "0.0.0.0"
 
         for idx, arg in enumerate(sys.argv):
             if arg == "--port" and idx + 1 < len(sys.argv):
@@ -24,7 +24,7 @@ def main():
             elif arg == "--host" and idx + 1 < len(sys.argv):
                 host = sys.argv[idx + 1]
             elif ":" in arg and not arg.startswith("-"):
-                # e.g. python manage.py runserver 8000 or 127.0.0.1:8000
+
                 parts = arg.split(":")
                 if len(parts) == 2:
                     host, port = parts[0], int(parts[1])
@@ -43,7 +43,8 @@ def main():
 
     elif command in ("migrate", "makemigrations"):
         print("Running Alembic migrations...")
-        cmd = [sys.executable, "-m", "alembic", "-c", os.path.join(business_service_dir, "alembic.ini"), "upgrade", "head"]
+        ini_path = os.path.join(business_service_dir, "alembic.ini")
+        cmd = [sys.executable, "-c", f"import sys; from alembic.config import main; sys.exit(main(argv=['-c', r'{ini_path}', 'upgrade', 'head']))"]
         subprocess.run(cmd, cwd=business_service_dir)
 
     elif command in ("test", "pytest"):

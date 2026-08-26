@@ -17,10 +17,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Remove old column
-    op.drop_column('supplier', 'main_material')
-    # Add new JSON column
-    op.add_column('supplier', sa.Column('main_materials', sa.JSON(), nullable=True))
+    conn = op.get_bind()
+    conn.execute(sa.text("ALTER TABLE supplier DROP COLUMN IF EXISTS main_material"))
+    conn.execute(sa.text("ALTER TABLE supplier ADD COLUMN IF NOT EXISTS main_materials JSON"))
 
 
 def downgrade() -> None:

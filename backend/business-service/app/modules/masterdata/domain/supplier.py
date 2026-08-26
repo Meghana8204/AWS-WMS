@@ -15,8 +15,8 @@ class SupplierStatus(str, Enum):
 
 @dataclass
 class SupplierRating:
-    on_time_delivery_rate: float = 100.0  # percentage
-    quality_score: float = 5.0  # 1.0 - 5.0
+    on_time_delivery_rate: float = 100.0
+    quality_score: float = 5.0
     total_orders_fulfilled: int = 0
 
     @property

@@ -37,13 +37,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
 });
+<<<<<<< HEAD
 
 const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
 
+=======
+const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
+>>>>>>> origin/main
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,12 +54,9 @@ function WarehouseMaterialRequests() {
   const [submitting, setSubmitting] = useState(false);
   const [nextRequestNumber, setNextRequestNumber] = useState("");
   const [baseMaterialSequence, setBaseMaterialSequence] = useState(1);
-
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [isViewing, setIsRequestModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-
-  // Form State
   const [formData, setFormData] = useState({
     request_number: "",
     warehouse_id: "Main Warehouse",
@@ -65,16 +65,13 @@ function WarehouseMaterialRequests() {
     required_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     remarks: "",
   });
-
   const [items, setItems] = useState<any[]>([
     { material_code: "", material_name: "", quantity: 1, uom: "PCS" },
   ]);
-
   const fetchData = async () => {
     try {
       setLoading(true);
       const data = await api.getMaterialRequests();
-      // Filter for this warehouse's requests in a real app
       setRequests(data);
     } catch (error) {
       toast.error("Failed to load requests");
@@ -82,7 +79,6 @@ function WarehouseMaterialRequests() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
     const info = localStorage.getItem("user_info");
@@ -91,29 +87,24 @@ function WarehouseMaterialRequests() {
       setFormData((prev) => ({ ...prev, requested_by: user.username || "Warehouse Manager" }));
     }
   }, []);
-
   const addItem = () => {
     const nextSeq = baseMaterialSequence + items.length;
     const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
     setItems([...items, { material_code: code, material_name: "", quantity: 1, uom: "PCS" }]);
   };
-
   const removeItem = (idx: number) => {
     if (items.length === 1) return;
     setItems(items.filter((_, i) => i !== idx));
   };
-
   const handleItemChange = (idx: number, field: string, value: any) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
   };
-
   const handleEditItemChange = (idx: number, field: string, value: any) => {
     if (!selectedRequest) return;
     const newItems = [...selectedRequest.items];
     newItems[idx] = { ...newItems[idx], [field]: value };
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
-
   const addEditItem = () => {
     if (!selectedRequest) return;
     const nextSeq = baseMaterialSequence + selectedRequest.items.length;
@@ -121,20 +112,17 @@ function WarehouseMaterialRequests() {
     const newItem = { materialCode: code, materialName: "", quantity: 1, uom: "PCS" };
     setSelectedRequest({ ...selectedRequest, items: [...selectedRequest.items, newItem] });
   };
-
   const removeEditItem = (idx: number) => {
     if (!selectedRequest || selectedRequest.items.length <= 1) return;
     const newItems = selectedRequest.items.filter((_: any, i: number) => i !== idx);
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.some((it) => !it.material_name?.trim() || !it.quantity)) {
       toast.error("Please fill in material description and quantity for all items");
       return;
     }
-
     setSubmitting(true);
     try {
       await api.createMaterialRequest({ ...formData, items });
@@ -149,14 +137,16 @@ function WarehouseMaterialRequests() {
       setSubmitting(false);
     }
   };
-
   const startCreating = async () => {
     try {
       const { requestNumber, nextMaterialSequence } =
         (await api.getNextMaterialRequestNumber()) as any;
       setNextRequestNumber(requestNumber);
       setBaseMaterialSequence(nextMaterialSequence || 1);
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(4, "0")}`;
       setFormData((prev) => ({ ...prev, request_number: requestNumber }));
       setItems([{ material_code: initialCode, material_name: "", quantity: 1, uom: "PCS" }]);
@@ -165,13 +155,11 @@ function WarehouseMaterialRequests() {
       toast.error("Failed to generate request number");
     }
   };
-
   const handleRequestClick = (req: any) => {
     setSelectedRequest(JSON.parse(JSON.stringify(req)));
     setIsRequestModalOpen(true);
     setIsEditing(false);
   };
-
   const handleUpdate = async () => {
     if (!selectedRequest) return;
     setSubmitting(true);
@@ -201,7 +189,6 @@ function WarehouseMaterialRequests() {
       setSubmitting(false);
     }
   };
-
   return (
     <AppShell
       title="Warehouse Material Requests"
@@ -455,12 +442,14 @@ function WarehouseMaterialRequests() {
         </div>
       )}
 
-      {/* View/Edit Modal */}
       <Dialog open={isViewing} onOpenChange={setIsRequestModalOpen}>
         <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
+<<<<<<< HEAD
               {/* Header */}
+=======
+>>>>>>> origin/main
               <div className={cn("p-6 text-white flex justify-between items-start", "bg-blue-600")}>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -475,9 +464,7 @@ function WarehouseMaterialRequests() {
                 </div>
               </div>
 
-              {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                {/* Basic Info */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
@@ -529,7 +516,6 @@ function WarehouseMaterialRequests() {
                   </div>
                 </div>
 
-                {/* Items Table */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
@@ -664,7 +650,6 @@ function WarehouseMaterialRequests() {
                   </div>
                 </div>
 
-                {/* Remarks */}
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Remarks / Justification
@@ -685,7 +670,6 @@ function WarehouseMaterialRequests() {
                 </div>
               </div>
 
-              {/* Footer Actions */}
               <div className="p-6 bg-muted/10 border-t border-border/60 flex items-center justify-end">
                 <div className="flex items-center gap-3">
                   {isEditing ? (

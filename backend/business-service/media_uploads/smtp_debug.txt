@@ -202,3 +202,33 @@ SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
 SMTP Success: harshavardhandevang@gmail.com via port 587
 SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
 SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327c3fc6675sm38663829eec.13 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bf175399sm45408529eec.26 - gsmtp')
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Error: port 587: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 5a478bee46e88-327bef6ec40sm28296757eec.7 - gsmtp'); port 465: (535, b'5.7.8 Username and Password not accepted. For more information, go to\n5.7.8  https://support.google.com/mail/?p=BadCredentials 41be03b00d2f7-cc15543d0d2sm2822505a12.8 - gsmtp')
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Start: likhithaj06@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Success: likhithaj06@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 587
+SMTP Start: vardha2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardha2008@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
+SMTP Start: vardh2008@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: vardh2008@gmail.com via port 587
+SMTP Start: harshavardhandevang@gmail.com via harshavardhandevang@gmail.com
+SMTP Success: harshavardhandevang@gmail.com via port 465

@@ -25,7 +25,7 @@ public class Role {
     private Set<Permission> permissions = new HashSet<>();
 
     protected Role() {
-        // required by JPA
+
     }
 
     public Role(String name) {

@@ -16,10 +16,13 @@ import {
   X,
   AlertCircle,
   ChevronRight,
+<<<<<<< HEAD
   CheckCircle2,
   Plus,
   FileIcon,
   Eye,
+=======
+>>>>>>> origin/main
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Field, SectionCard } from "@/components/wms/primitives";
@@ -50,11 +53,9 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { INDIAN_STATES, TDS_SECTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/supplier/$supplierId")({
   component: SupplierProfile,
 });
-
 function SupplierProfile() {
   const { supplierId } = Route.useParams();
   const [supplier, setSupplier] = useState<any>(null);
@@ -65,17 +66,21 @@ function SupplierProfile() {
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [form, setForm] = useState<any>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+<<<<<<< HEAD
   const [vendorTypes, setVendorTypes] = useState<string[]>([
     "Manufacturer",
     "Distributor",
     "Service Provider",
   ]);
+=======
+>>>>>>> origin/main
   const [categories, setCategories] = useState<string[]>([
     "Raw Materials",
     "Packaging",
     "Finished Goods",
     "Consumables",
   ]);
+<<<<<<< HEAD
   const [rawMaterials, setRawMaterials] = useState<string[]>([
     "Steel",
     "Aluminum",
@@ -139,6 +144,8 @@ function SupplierProfile() {
     });
   };
 
+=======
+>>>>>>> origin/main
   useEffect(() => {
     api
       .getSupplier(supplierId)
@@ -146,6 +153,7 @@ function SupplierProfile() {
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Unable to load supplier profile."),
       );
+<<<<<<< HEAD
 
     Promise.all([
       api.getVendorTypes().catch(() => []),
@@ -156,8 +164,15 @@ function SupplierProfile() {
       if (cats.length > 0) setCategories(cats.map((c: any) => c.name));
       if (materials.length > 0) setRawMaterials(materials.map((m: any) => m.name));
     });
+=======
+    api
+      .getSupplierCategories()
+      .then((cats) => {
+        if (cats.length > 0) setCategories(cats.map((c: any) => c.name));
+      })
+      .catch((err) => console.warn("Failed to fetch categories", err));
+>>>>>>> origin/main
   }, [supplierId]);
-
   const title = supplier?.supplierName || "Supplier profile";
   const openEditor = () => {
     setForm(JSON.parse(JSON.stringify(supplier)));
@@ -169,8 +184,11 @@ function SupplierProfile() {
         ? { ...current, [field]: value }
         : { ...current, [section]: { ...current[section], [field]: value } },
     );
+<<<<<<< HEAD
 
     // Clear inline error
+=======
+>>>>>>> origin/main
     const errorKey = section === "root" ? field : `${section}.${field}`;
     if (errors[errorKey]) {
       setErrors((prev) => {
@@ -180,13 +198,13 @@ function SupplierProfile() {
       });
     }
   };
-
   const validate = () => {
     const newErrors: Record<string, string> = {};
     const name = (form.supplierName || "").trim();
     const regName = (form.registeredCompanyName || "").trim();
     const industry = (form.industry || "").trim();
     const gstin = (form.gstin || "").trim();
+<<<<<<< HEAD
     const mainMaterials = Array.isArray(form.mainMaterials) ? form.mainMaterials : [];
 
     if (!name) newErrors.supplierName = "Supplier Display Name is required";
@@ -212,31 +230,62 @@ function SupplierProfile() {
       !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase())
     ) {
       newErrors.gstin = "Invalid GSTIN format (e.g. 29ABCDE1234F1Z5)";
+=======
+    const mainMaterials = form.mainMaterials || [];
+    if (!name) newErrors.supplierName = "Supplier name is required";
+    else if (name.length < 2 || name.length > 100)
+      newErrors.supplierName = "Must be between 2 and 100 characters";
+    if (!regName) newErrors.registeredCompanyName = "Registered company name is required";
+    else if (regName.length < 2 || regName.length > 200)
+      newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+    if (!form.vendorType) newErrors.vendorType = "Vendor type is required";
+    if (!form.category || form.category.length === 0)
+      newErrors.category = "At least one category is required";
+    if (mainMaterials.length === 0) newErrors.mainMaterials = "Select at least one material";
+    if (!industry) newErrors.industry = "Industry is required";
+    else if (industry.length < 2 || industry.length > 100)
+      newErrors.industry = "Must be between 2 and 100 characters";
+    if (!gstin) newErrors.gstin = "GSTIN is required";
+    else if (gstin.length !== 15) newErrors.gstin = "Exactly 15 characters";
+    else if (
+      !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase())
+    ) {
+      newErrors.gstin = "Invalid format (e.g. 29ABCDE1234F1Z5)";
+>>>>>>> origin/main
     }
-
-    // Address & Contact Validation
     if (form.address) {
       const addr = (form.address.registeredAddress || "").trim();
       const city = (form.address.city || "").trim();
       const pincode = (form.address.pincode || "").trim();
       const state = (form.address.state || "").trim();
+<<<<<<< HEAD
 
       if (addr && addr.length > 500)
         newErrors["address.registeredAddress"] = "Must be under 500 characters";
 
+=======
+      if (!addr) newErrors["address.registeredAddress"] = "Address is required";
+      else if (addr.length < 10 || addr.length > 300)
+        newErrors["address.registeredAddress"] = "Must be between 10 and 300 characters";
+>>>>>>> origin/main
       if (!city) newErrors["address.city"] = "City is required";
       else if (city.length < 2 || city.length > 100)
         newErrors["address.city"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s-]+$/.test(city))
+<<<<<<< HEAD
         newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
 
       if (state && (state.length < 2 || state.length > 100))
         newErrors["address.state"] = "Must be between 2 and 100 characters";
 
+=======
+        newErrors["address.city"] = "Letters/spaces/hyphen only";
+      if (state && (state.length < 2 || state.length > 100))
+        newErrors["address.state"] = "Must be 2-100 characters";
+>>>>>>> origin/main
       if (!pincode) newErrors["address.pincode"] = "Pincode is required";
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
     }
-
     if (form.contact) {
       const contactName = (form.contact.primaryContactName || "").trim();
       const phone = (form.contact.phone || "").trim();
@@ -244,6 +293,7 @@ function SupplierProfile() {
       const secondaryEmail = (form.contact.secondaryEmail || "").trim();
       const website = (form.contact.website || "").trim();
       const designation = (form.contact.designation || "").trim();
+<<<<<<< HEAD
 
       if (!contactName)
         newErrors["contact.primaryContactName"] = "Primary Contact Name is required";
@@ -267,6 +317,23 @@ function SupplierProfile() {
       if (designation && (designation.length < 2 || designation.length > 100))
         newErrors["contact.designation"] = "Must be between 2 and 100 characters";
 
+=======
+      if (!contactName) newErrors["contact.primaryContactName"] = "Name is required";
+      else if (contactName.length < 2 || contactName.length > 100)
+        newErrors["contact.primaryContactName"] = "Must be 2-100 characters";
+      else if (!/^[a-zA-Z\s]+$/.test(contactName))
+        newErrors["contact.primaryContactName"] = "Letters and spaces only";
+      if (!phone) newErrors["contact.phone"] = "Phone is required";
+      else if (!/^[6-9]\d{9}$/.test(phone))
+        newErrors["contact.phone"] = "Must be 10-digit mobile number";
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!primaryEmail) newErrors["contact.primaryEmail"] = "Email is required";
+      else if (!emailRegex.test(primaryEmail)) newErrors["contact.primaryEmail"] = "Invalid email";
+      if (secondaryEmail && !emailRegex.test(secondaryEmail))
+        newErrors["contact.secondaryEmail"] = "Invalid email";
+      if (designation && (designation.length < 2 || designation.length > 100))
+        newErrors["contact.designation"] = "Must be 2-100 characters";
+>>>>>>> origin/main
       if (website) {
         try {
           new URL(website.startsWith("http") ? website : `https://${website}`);
@@ -275,7 +342,6 @@ function SupplierProfile() {
         }
       }
     }
-
     if (form.bankInfo) {
       const bankName = (form.bankInfo.bankName || "").trim();
       const accNo = (form.bankInfo.accountNumber || "").trim();
@@ -283,19 +349,23 @@ function SupplierProfile() {
       const holder = (form.bankInfo.accountHolderName || "").trim();
       const branch = (form.bankInfo.branch || "").trim();
       const swift = (form.bankInfo.swiftBic || "").trim();
-
       if (!bankName) newErrors["bankInfo.bankName"] = "Bank name is required";
-
       if (!accNo) newErrors["bankInfo.accountNumber"] = "Account number is required";
       else if (accNo.length < 9 || accNo.length > 18)
+<<<<<<< HEAD
         newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
       else if (!/^\d+$/.test(accNo))
         newErrors["bankInfo.accountNumber"] = "Must contain only digits";
 
+=======
+        newErrors["bankInfo.accountNumber"] = "9-18 digits required";
+      else if (!/^\d+$/.test(accNo)) newErrors["bankInfo.accountNumber"] = "Digits only";
+>>>>>>> origin/main
       if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
       else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
         newErrors["bankInfo.ifsc"] = "Invalid IFSC format (e.g. SBIN0012345)";
       }
+<<<<<<< HEAD
 
       if (!holder) newErrors["bankInfo.accountHolderName"] = "Account holder name is required";
       else if (!/^[a-zA-Z\s.]+$/.test(holder))
@@ -303,15 +373,17 @@ function SupplierProfile() {
 
       if (!branch) newErrors["bankInfo.branch"] = "Branch name is required";
 
+=======
+      if (!holder) newErrors["bankInfo.accountHolderName"] = "Holder name is required";
+      if (!branch) newErrors["bankInfo.branch"] = "Branch is required";
+>>>>>>> origin/main
       if (swift && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.toUpperCase())) {
         newErrors["bankInfo.swiftBic"] = "Invalid SWIFT/BIC format";
       }
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   const saveChanges = async () => {
     if (!validate()) {
       toast.error("Validation Error", {
@@ -319,12 +391,10 @@ function SupplierProfile() {
       });
       return;
     }
-
     const name = (form.supplierName || "").trim();
     const regName = (form.registeredCompanyName || "").trim();
     const industry = (form.industry || "").trim();
     const gstin = (form.gstin || "").trim();
-
     setSaving(true);
     try {
       const docPayload = Array.isArray(form.documents)
@@ -417,7 +487,6 @@ function SupplierProfile() {
     const previousSupplier = supplier;
     setSupplier((prev: any) => ({ ...prev, status: "Blocked" }));
     setBlocking(true);
-
     try {
       const updated = await api.blockSupplier(supplierId);
       setSupplier(updated);
@@ -436,7 +505,6 @@ function SupplierProfile() {
     const previousSupplier = supplier;
     setSupplier((prev: any) => ({ ...prev, status: "Active" }));
     setBlocking(true);
-
     try {
       const updated = await api.unblockSupplier(supplierId);
       setSupplier(updated);
@@ -450,10 +518,10 @@ function SupplierProfile() {
       setBlocking(false);
     }
   };
-
   return (
     <AppShell
       title={title}
+<<<<<<< HEAD
       subtitle={supplier?.registeredCompanyName}
       actions={
         supplier && (
@@ -466,6 +534,26 @@ function SupplierProfile() {
             {supplier.status === "Blocked" ? (
               <Button variant="outline" className="rounded-xl border-success text-success" disabled>
                 Blocked
+=======
+      subtitle={
+        supplier
+          ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierId}`
+          : "Loading supplier master record"
+      }
+      actions={
+        supplier && (
+          <>
+            <Button variant="outline" className="rounded-xl" onClick={openEditor}>
+              <Pencil /> Edit
+            </Button>
+            {supplier.status === "Blocked" ? (
+              <Button
+                className="rounded-xl bg-success hover:bg-success/90"
+                disabled={blocking}
+                onClick={unblockSupplier}
+              >
+                <ShieldCheck /> {blocking ? "Unblocking…" : "Unblock"}
+>>>>>>> origin/main
               </Button>
             ) : (
               <Button
@@ -520,6 +608,7 @@ function SupplierProfile() {
       {supplier && (
         <div className="space-y-4">
           {editing && form && (
+<<<<<<< HEAD
             <div className="space-y-4">
               <SectionCard
                 title="Edit supplier"
@@ -1046,6 +1135,400 @@ function SupplierProfile() {
                 )}
               </SectionCard>
             </div>
+=======
+            <SectionCard
+              title="Edit supplier"
+              description="Changes are saved immediately to the supplier master"
+              icon={Pencil}
+              actions={
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(false)}
+                    disabled={saving}
+                  >
+                    <X /> Cancel
+                  </Button>
+                  <Button size="sm" onClick={saveChanges} disabled={saving}>
+                    <Save /> {saving ? "Saving…" : "Save changes"}
+                  </Button>
+                </>
+              }
+            >
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <ValidatedEditField
+                  label="Supplier name"
+                  value={form.supplierName}
+                  error={errors.supplierName}
+                  onChange={(value) => {
+                    const sanitized = value.replace(/[^a-zA-Z\s]/g, "");
+                    updateForm("root", "supplierName", sanitized);
+                  }}
+                />
+                <ValidatedEditField
+                  label="Registered company"
+                  value={form.registeredCompanyName}
+                  error={errors.registeredCompanyName}
+                  onChange={(value) => {
+                    const sanitized = value.replace(/[^a-zA-Z\s]/g, "");
+                    updateForm("root", "registeredCompanyName", sanitized);
+                  }}
+                />
+                <div className="space-y-1.5">
+                  <Label>Vendor type</Label>
+                  <Select
+                    onValueChange={(v) => updateForm("root", "vendorType", v)}
+                    value={form.vendorType}
+                  >
+                    <SelectTrigger
+                      className={cn(
+                        errors.vendorType && "border-destructive focus:ring-destructive",
+                      )}
+                    >
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {["Manufacturer", "Distributor", "Service Provider"].map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.vendorType && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.vendorType}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Category</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        className={cn(
+                          "w-full justify-between rounded-xl h-10 px-3 font-normal",
+                          errors.category && "border-destructive",
+                        )}
+                      >
+                        <span className="truncate">
+                          {Array.isArray(form.category) && form.category.length > 0
+                            ? form.category.join(", ")
+                            : "Select categories"}
+                        </span>
+                        <ChevronRight className="ml-2 h-4 w-4 shrink-0 opacity-50 rotate-90" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[300px] p-0 rounded-xl" align="start">
+                      <div className="p-2 space-y-1 max-h-[300px] overflow-y-auto">
+                        {categories.map((cat) => (
+                          <div
+                            key={cat}
+                            className="flex items-center space-x-2 p-2 hover:bg-muted rounded-lg cursor-pointer"
+                            onClick={() => {
+                              const current = Array.isArray(form.category) ? form.category : [];
+                              const updated = current.includes(cat)
+                                ? current.filter((c: string) => c !== cat)
+                                : [...current, cat];
+                              updateForm("root", "category", updated);
+                            }}
+                          >
+                            <Checkbox
+                              id={`edit-cat-${cat}`}
+                              checked={Array.isArray(form.category) && form.category.includes(cat)}
+                              onCheckedChange={() => {
+                                const current = Array.isArray(form.category) ? form.category : [];
+                                const updated = current.includes(cat)
+                                  ? current.filter((c: string) => c !== cat)
+                                  : [...current, cat];
+                                updateForm("root", "category", updated);
+                              }}
+                            />
+                            <Label
+                              htmlFor={`edit-cat-${cat}`}
+                              className="text-sm cursor-pointer w-full"
+                            >
+                              {cat}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  {errors.category && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.category}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label>Main materials</Label>
+                  <Input
+                    value={
+                      Array.isArray(form.mainMaterials)
+                        ? form.mainMaterials.join(", ")
+                        : form.mainMaterial || ""
+                    }
+                    onChange={(event) =>
+                      updateForm(
+                        "root",
+                        "mainMaterials",
+                        event.target.value
+                          .split(",")
+                          .map((s) => s.trim())
+                          .filter(Boolean),
+                      )
+                    }
+                    placeholder="Comma separated list"
+                    className={cn(
+                      errors.mainMaterials && "border-destructive focus-visible:ring-destructive",
+                    )}
+                  />
+                  {errors.mainMaterials && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.mainMaterials}
+                    </p>
+                  )}
+                </div>
+                <ValidatedEditField
+                  label="Industry"
+                  value={form.industry}
+                  error={errors.industry}
+                  onChange={(value) => updateForm("root", "industry", value)}
+                />
+                <ValidatedEditField
+                  label="GSTIN"
+                  value={form.gstin}
+                  error={errors.gstin}
+                  maxLength={15}
+                  onChange={(value) => updateForm("root", "gstin", value.substring(0, 15))}
+                />
+                {form.address && (
+                  <>
+                    <ValidatedEditField
+                      label="Address"
+                      value={form.address.registeredAddress}
+                      error={errors["address.registeredAddress"]}
+                      onChange={(value) => updateForm("address", "registeredAddress", value)}
+                    />
+                    <ValidatedEditField
+                      label="City"
+                      value={form.address.city}
+                      error={errors["address.city"]}
+                      onChange={(value) => updateForm("address", "city", value)}
+                    />
+                    <div className="space-y-1.5">
+                      <Label>State</Label>
+                      <Select
+                        onValueChange={(v) => updateForm("address", "state", v)}
+                        value={form.address.state}
+                      >
+                        <SelectTrigger
+                          className={cn(
+                            errors["address.state"] && "border-destructive focus:ring-destructive",
+                          )}
+                        >
+                          <SelectValue placeholder="Select state" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INDIAN_STATES.map((state) => (
+                            <SelectItem key={state} value={state}>
+                              {state}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors["address.state"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["address.state"]}
+                        </p>
+                      )}
+                    </div>
+                    <EditField
+                      label="Country"
+                      value={form.address.country}
+                      onChange={(value) => updateForm("address", "country", value)}
+                    />
+                    <ValidatedEditField
+                      label="Pincode"
+                      value={form.address.pincode}
+                      error={errors["address.pincode"]}
+                      maxLength={6}
+                      onChange={(value) => {
+                        const sanitized = value.replace(/\D/g, "").substring(0, 6);
+                        updateForm("address", "pincode", sanitized);
+                      }}
+                    />
+                  </>
+                )}
+                {form.contact && (
+                  <>
+                    <ValidatedEditField
+                      label="Primary contact"
+                      value={form.contact.primaryContactName}
+                      error={errors["contact.primaryContactName"]}
+                      onChange={(value) => updateForm("contact", "primaryContactName", value)}
+                    />
+                    <ValidatedEditField
+                      label="Primary Email"
+                      value={form.contact.primaryEmail}
+                      error={errors["contact.primaryEmail"]}
+                      maxLength={128}
+                      onChange={(value) => {
+                        const sanitized = value.replace(/\s/g, "").substring(0, 128);
+                        updateForm("contact", "primaryEmail", sanitized);
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (sanitized && !emailRegex.test(sanitized)) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            ["contact.primaryEmail"]: "Invalid email format",
+                          }));
+                        } else {
+                          setErrors((prev) => {
+                            const next = { ...prev };
+                            delete next["contact.primaryEmail"];
+                            return next;
+                          });
+                        }
+                      }}
+                    />
+                    <ValidatedEditField
+                      label="Secondary Email"
+                      value={form.contact.secondaryEmail}
+                      error={errors["contact.secondaryEmail"]}
+                      maxLength={128}
+                      onChange={(value) => {
+                        const sanitized = value.replace(/\s/g, "").substring(0, 128);
+                        updateForm("contact", "secondaryEmail", sanitized);
+                        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                        if (sanitized && !emailRegex.test(sanitized)) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            ["contact.secondaryEmail"]: "Invalid email format",
+                          }));
+                        } else {
+                          setErrors((prev) => {
+                            const next = { ...prev };
+                            delete next["contact.secondaryEmail"];
+                            return next;
+                          });
+                        }
+                      }}
+                    />
+                    <ValidatedEditField
+                      label="Phone"
+                      value={form.contact.phone}
+                      error={errors["contact.phone"]}
+                      maxLength={10}
+                      onChange={(value) => {
+                        const sanitized = value.replace(/\D/g, "").substring(0, 10);
+                        updateForm("contact", "phone", sanitized);
+                      }}
+                    />
+                  </>
+                )}
+                {form.bankInfo && (
+                  <>
+                    <ValidatedEditField
+                      label="Bank Name"
+                      value={form.bankInfo.bankName}
+                      error={errors["bankInfo.bankName"]}
+                      onChange={(value) => updateForm("bankInfo", "bankName", value)}
+                    />
+                    <ValidatedEditField
+                      label="Account Number"
+                      value={form.bankInfo.accountNumber}
+                      error={errors["bankInfo.accountNumber"]}
+                      maxLength={18}
+                      onChange={(value) =>
+                        updateForm(
+                          "bankInfo",
+                          "accountNumber",
+                          value.replace(/\D/g, "").substring(0, 18),
+                        )
+                      }
+                    />
+                    <ValidatedEditField
+                      label="IFSC Code"
+                      value={form.bankInfo.ifsc}
+                      error={errors["bankInfo.ifsc"]}
+                      maxLength={11}
+                      onChange={(value) =>
+                        updateForm(
+                          "bankInfo",
+                          "ifsc",
+                          value
+                            .replace(/[^a-zA-Z0-9]/g, "")
+                            .substring(0, 11)
+                            .toUpperCase(),
+                        )
+                      }
+                    />
+                    <ValidatedEditField
+                      label="Account Holder"
+                      value={form.bankInfo.accountHolderName}
+                      error={errors["bankInfo.accountHolderName"]}
+                      onChange={(value) => updateForm("bankInfo", "accountHolderName", value)}
+                    />
+                    <ValidatedEditField
+                      label="Branch"
+                      value={form.bankInfo.branch}
+                      error={errors["bankInfo.branch"]}
+                      onChange={(value) => updateForm("bankInfo", "branch", value)}
+                    />
+                    <ValidatedEditField
+                      label="SWIFT / BIC"
+                      value={form.bankInfo.swiftBic}
+                      error={errors["bankInfo.swiftBic"]}
+                      maxLength={11}
+                      onChange={(value) =>
+                        updateForm(
+                          "bankInfo",
+                          "swiftBic",
+                          value
+                            .replace(/[^a-zA-Z0-9]/g, "")
+                            .substring(0, 11)
+                            .toUpperCase(),
+                        )
+                      }
+                    />
+                    <div className="space-y-1.5">
+                      <Label>TDS Section</Label>
+                      <Select
+                        onValueChange={(v) => updateForm("bankInfo", "tdsSection", v)}
+                        value={form.bankInfo.tdsSection}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select TDS section" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TDS_SECTIONS.map((section) => (
+                            <SelectItem key={section} value={section}>
+                              {section}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="mt-4">
+                <Label htmlFor="remarks">Remarks</Label>
+                <Textarea
+                  id="remarks"
+                  value={form.remarks || ""}
+                  onChange={(event) => updateForm("root", "remarks", event.target.value)}
+                  className="mt-2"
+                />
+              </div>
+            </SectionCard>
+>>>>>>> origin/main
           )}
           <SectionCard
             title="Supplier overview"
@@ -1212,6 +1695,7 @@ function SupplierProfile() {
             >
               {supplier.documents?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+<<<<<<< HEAD
                   {supplier.documents.map((document: any) => {
                     const rawPath = document.storagePath || document.storage_path || "";
                     const docUrl = rawPath
@@ -1251,6 +1735,22 @@ function SupplierProfile() {
                       </div>
                     );
                   })}
+=======
+                  {supplier.documents.map((document: any) => (
+                    <div
+                      key={document.uploadId}
+                      className="flex items-center justify-between rounded-xl border border-border/70 p-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{document.fileName}</p>
+                        <p className="text-xs text-muted-foreground">{document.documentType}</p>
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {Math.ceil((document.fileSize || 0) / 1024)} KB
+                      </span>
+                    </div>
+                  ))}
+>>>>>>> origin/main
                 </div>
               ) : (
                 <EmptySection text="No documents have been attached." />
@@ -1267,18 +1767,24 @@ function SupplierProfile() {
     </AppShell>
   );
 }
-
 function EmptySection({ text }: { text: string }) {
   return <p className="py-4 text-sm text-muted-foreground">{text}</p>;
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function EditField({
   label,
   value,
   onChange,
 }: {
   label: string;
+<<<<<<< HEAD
   value?: string | undefined;
+=======
+  value?: string;
+>>>>>>> origin/main
   onChange: (value: string) => void;
 }) {
   return (
@@ -1288,7 +1794,6 @@ function EditField({
     </div>
   );
 }
-
 function ValidatedEditField({
   label,
   value,

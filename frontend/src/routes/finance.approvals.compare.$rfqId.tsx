@@ -22,24 +22,19 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
-
 export const Route = createFileRoute("/finance/approvals/compare/$rfqId")({
   beforeLoad: () => requireRole("FINANCE"),
   component: FinanceComparison,
 });
-
 function FinanceComparison() {
   const navigate = useNavigate();
   const { rfqId } = Route.useParams();
   const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  // Rejection Modal state
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [targetPoId, setTargetPoId] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -53,11 +48,9 @@ function FinanceComparison() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, [rfqId]);
-
   const handleApprove = async (poId: string) => {
     try {
       setSubmitting(true);
@@ -70,12 +63,10 @@ function FinanceComparison() {
       setSubmitting(false);
     }
   };
-
   const handleOpenRejectModal = (poId: string) => {
     setTargetPoId(poId);
     setIsRejectModalOpen(true);
   };
-
   const handleConfirmReject = async () => {
     if (!rejectionReason) {
       toast.error("Please provide a reason for rejection");
@@ -94,14 +85,11 @@ function FinanceComparison() {
       setSubmitting(false);
     }
   };
-
-  // Group items for comparison
   const uniqueItemCodes = Array.from(
     new Set(
       approvals.flatMap((po) => po.items?.map((l: any) => l.materialCode || l.item_code) || []),
     ),
   ).filter(Boolean);
-
   return (
     <AppShell
       title="Finance Comparison Matrix"
@@ -175,7 +163,6 @@ function FinanceComparison() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {/* Items comparison */}
                   {uniqueItemCodes.map((code) => (
                     <tr key={code} className="hover:bg-muted/5 transition-colors">
                       <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">
@@ -212,7 +199,6 @@ function FinanceComparison() {
                     </tr>
                   ))}
 
-                  {/* Financials */}
                   <tr className="hover:bg-muted/5 transition-colors">
                     <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">
                       Discount
@@ -232,7 +218,8 @@ function FinanceComparison() {
                     </td>
                     {approvals.map((po) => (
                       <td key={`${po.id}-tax`} className="p-4 border-r border-border/60 font-mono">
-                        ₹ {parseFloat(po.taxAmount || 0).toLocaleString()}
+                        ₹ {parseFloat(po.taxAmount || 0).toLocaleString()} (
+                        {parseFloat(po.taxPercentage || 0).toLocaleString()}%)
                       </td>
                     ))}
                   </tr>
@@ -250,7 +237,6 @@ function FinanceComparison() {
                     ))}
                   </tr>
 
-                  {/* Logistics */}
                   <tr className="hover:bg-muted/5 transition-colors">
                     <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">
                       Exp. Delivery
@@ -278,7 +264,6 @@ function FinanceComparison() {
                     ))}
                   </tr>
 
-                  {/* Procurement Logic */}
                   <tr className="hover:bg-muted/5 transition-colors">
                     <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider bg-primary-soft/5">
                       Selection Reason
@@ -306,7 +291,6 @@ function FinanceComparison() {
                     ))}
                   </tr>
 
-                  {/* Totals */}
                   <tr className="bg-primary/5">
                     <td className="p-4 font-extrabold border-r border-border/60 text-primary uppercase text-[10px] tracking-wider">
                       Grand Total
@@ -321,7 +305,6 @@ function FinanceComparison() {
                     ))}
                   </tr>
 
-                  {/* Action Row */}
                   <tr className="bg-muted/10">
                     <td className="p-4 border-r border-border/60"></td>
                     {approvals.map((po) => (
@@ -368,7 +351,6 @@ function FinanceComparison() {
         </div>
       )}
 
-      {/* Rejection Modal */}
       {isRejectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <Card className="w-full max-w-md border-border/40 bg-card p-6 shadow-glow relative animate-in zoom-in-95 duration-200">

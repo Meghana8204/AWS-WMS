@@ -78,7 +78,7 @@ class SupplierId:
 
     @staticmethod
     def new_id(sequence: int) -> SupplierId:
-        return SupplierId(f"SUP-{sequence:05d}")
+        return SupplierId(str(uuid.uuid4()))
 
     @staticmethod
     def of(value: str) -> SupplierId:

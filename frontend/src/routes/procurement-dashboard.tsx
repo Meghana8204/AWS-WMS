@@ -25,8 +25,19 @@ import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/lib/api-client";
 import { requireRole } from "@/lib/auth-utils";
+
+type ProcurementStats = {
+  activeSuppliers: number;
+  totalSuppliers: number;
+  openPos: number;
+  complianceRate: number | null;
+  complianceTarget: number;
+  totalPoValue: number;
+  trend: Array<{ month: string; pos: number }>;
+};
 
 export const Route = createFileRoute("/procurement-dashboard")({
   beforeLoad: () => requireRole("PROCUREMENT"),
@@ -41,28 +52,27 @@ export const Route = createFileRoute("/procurement-dashboard")({
   }),
   component: ProcurementDashboard,
 });
-
 function ProcurementDashboard() {
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [pos, setPos] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>({
+  const [stats, setStats] = useState<ProcurementStats>({
     activeSuppliers: 0,
+    totalSuppliers: 0,
     openPos: 0,
-    complianceRate: 100,
+    complianceRate: null,
+    complianceTarget: 99,
     totalPoValue: 0,
     trend: [],
   });
-
-  // Search states
   const [supplierQuery, setSupplierQuery] = useState("");
   const [poQuery, setPoQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState<any[]>([]);
   const [poResults, setPoResults] = useState<any[]>([]);
   const [isSearchingSuppliers, setIsSearchingSuppliers] = useState(false);
   const [isSearchingPOs, setIsSearchingPOs] = useState(false);
-
+  const [poSearchOpen, setPoSearchOpen] = useState(false);
   const loadData = async () => {
     try {
       setLoading(true);
@@ -82,18 +92,29 @@ function ProcurementDashboard() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     loadData();
   }, []);
-
-  // Real-time Supplier Search
+  useEffect(() => {
+    const refreshStats = async () => {
+      try {
+        setStats(await api.getProcurementStats());
+      } catch (err) {
+        console.error("Failed to refresh procurement stats", err);
+      }
+    };
+    const intervalId = window.setInterval(refreshStats, 15_000);
+    window.addEventListener("focus", refreshStats);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshStats);
+    };
+  }, []);
   useEffect(() => {
     if (!supplierQuery.trim()) {
       setSupplierResults([]);
       return;
     }
-
     const handler = setTimeout(async () => {
       setIsSearchingSuppliers(true);
       try {
@@ -105,17 +126,13 @@ function ProcurementDashboard() {
         setIsSearchingSuppliers(false);
       }
     }, 300);
-
     return () => clearTimeout(handler);
   }, [supplierQuery]);
-
-  // Real-time PO Search
   useEffect(() => {
     if (!poQuery.trim()) {
       setPoResults([]);
       return;
     }
-
     const handler = setTimeout(async () => {
       setIsSearchingPOs(true);
       try {
@@ -127,10 +144,12 @@ function ProcurementDashboard() {
         setIsSearchingPOs(false);
       }
     }, 300);
-
     return () => clearTimeout(handler);
   }, [poQuery]);
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
   const activityItems = notifications.map((n) => ({
     time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     title: n.title,
@@ -142,16 +161,76 @@ function ProcurementDashboard() {
         : "primary",
     link: n.link,
   }));
-
   return (
     <AppShell
       title="Procurement Management"
       subtitle="Manage your vendor ecosystem and purchase operations"
       actions={
         <>
-          <Button variant="outline" className="rounded-xl">
-            <Search className="size-4" /> Find PO
-          </Button>
+          <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="rounded-xl">
+                <Search className="size-4" /> Find PO
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[360px] rounded-xl p-3" align="end">
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-semibold">Find a purchase order</p>
+                  <p className="text-xs text-muted-foreground">
+                    Search by PO number, supplier, or department
+                  </p>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                  <Input
+                    autoFocus
+                    placeholder="Start typing to search..."
+                    className="rounded-xl pl-9 pr-9"
+                    value={poQuery}
+                    onChange={(event) => setPoQuery(event.target.value)}
+                  />
+                  {isSearchingPOs && (
+                    <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                {poQuery.trim() ? (
+                  isSearchingPOs && poResults.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-muted-foreground">Searching...</p>
+                  ) : poResults.length > 0 ? (
+                    <div className="max-h-72 space-y-1 overflow-y-auto">
+                      {poResults.slice(0, 8).map((po) => (
+                        <Link
+                          key={po.id}
+                          to="/purchase-order"
+                          search={{ poId: po.id }}
+                          onClick={() => setPoSearchOpen(false)}
+                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
+                        >
+                          <FileText className="size-4 shrink-0 text-teal" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium">{po.po_number}</p>
+                            <p className="truncate text-[10px] text-muted-foreground">
+                              {po.supplier_name || po.department || "Supplier unavailable"}
+                            </p>
+                          </div>
+                          <StatusBadge status={po.status} />
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-4 text-center text-xs text-muted-foreground">
+                      No purchase orders match “{poQuery}”.
+                    </p>
+                  )
+                ) : (
+                  <p className="py-4 text-center text-xs text-muted-foreground">
+                    Results update automatically as you type.
+                  </p>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button className="rounded-xl shadow-glow" asChild>
             <Link to="/new-supplier">
               <Plus className="size-4" /> New Supplier
@@ -170,9 +249,15 @@ function ProcurementDashboard() {
           to="/master-data"
         />
         <StatCard
+<<<<<<< HEAD
           label="Supplier master"
           value={loading ? "..." : String(stats.activeSuppliers)}
           delta="Available for procurement"
+=======
+          label="Total suppliers"
+          value={loading ? "..." : String(stats.totalSuppliers)}
+          delta="All registered suppliers"
+>>>>>>> origin/main
           icon={Building2}
           tone="success"
           to="/master-data"
@@ -187,8 +272,15 @@ function ProcurementDashboard() {
         />
         <StatCard
           label="Compliance rate"
+<<<<<<< HEAD
           value={loading ? "..." : `${stats.complianceRate}%`}
           delta="Target: 99%"
+=======
+          value={
+            loading ? "..." : stats.complianceRate === null ? "No data" : `${stats.complianceRate}%`
+          }
+          delta={`Target: ${stats.complianceTarget}%`}
+>>>>>>> origin/main
           icon={ShieldCheck}
           tone="success"
         />

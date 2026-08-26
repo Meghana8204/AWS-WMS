@@ -1,7 +1,6 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
-  DoorOpen,
   Truck,
   ListOrdered,
   Warehouse,
@@ -24,16 +23,21 @@ import {
   FileQuestion,
   FileBadge,
   Loader2,
+  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+<<<<<<< HEAD
 
 type NavItem = { label: string; to: string; icon: any; badge?: number | string };
 
 const warehouseNav: NavItem[] = [
+=======
+const warehouseNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
@@ -44,8 +48,12 @@ const warehouseNav: NavItem[] = [
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+<<<<<<< HEAD
 
 const procurementNav: NavItem[] = [
+=======
+const procurementNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
@@ -54,28 +62,40 @@ const procurementNav: NavItem[] = [
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
+<<<<<<< HEAD
 
 const supplierNav: NavItem[] = [
+=======
+const supplierNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
+<<<<<<< HEAD
 
 const financeNav: NavItem[] = [
+=======
+const financeNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+<<<<<<< HEAD
 
 const gateSecurityNav: NavItem[] = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
+=======
+const gateSecurityNav = [
+  { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
+  { label: "Gate Entry", to: "/gate-entry", icon: ShieldCheck },
+>>>>>>> origin/main
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
-  { label: "Gate Exit Mgmt", to: "/gate-exit-management", icon: DoorOpen },
 ];
-
 export function AppShell({
   children,
   title,
@@ -92,15 +112,15 @@ export function AppShell({
   const [mounted, setMounted] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
+  const [user, setUser] = useState<{
+    username?: string;
+    roles?: string[];
+  } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-
-  // Global Search State
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (searchTerm.length >= 2) {
@@ -119,22 +139,26 @@ export function AppShell({
         setShowSearch(false);
       }
     }, 300);
-
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
-
   useEffect(() => {
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
+<<<<<<< HEAD
 
     let cleanup: (() => void) | undefined;
+=======
+>>>>>>> origin/main
     try {
       const savedUser = localStorage.getItem("user_info");
       if (savedUser) {
         const u = JSON.parse(savedUser);
         setUser(u);
+<<<<<<< HEAD
 
         // Fetch notifications for the user's role
+=======
+>>>>>>> origin/main
         const role = u.roles?.includes("SUPPLIER")
           ? "SUPPLIER"
           : u.roles?.includes("FINANCE")
@@ -174,12 +198,14 @@ export function AppShell({
       if (cleanup) cleanup();
     };
   }, [dark]);
-
-  // The current route is available during server rendering, so procurement/supplier/finance
-  // pages can select their sidebar immediately rather than waiting for the
-  // client-side localStorage role lookup.
-  const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
+  const isProcurementRoute =
+    path === "/procurement-dashboard" ||
+    path.startsWith("/procurement/") ||
+    path === "/master-data" ||
+    path === "/new-supplier" ||
+    (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
+<<<<<<< HEAD
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
   const isWarehouseRoute =
     path === "/warehouse-dashboard" ||
@@ -204,12 +230,66 @@ export function AppShell({
             ? gateSecurityNav
             : warehouseNav;
 
+=======
+  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
+  const isSharedFinanceRoute = path.startsWith("/reports");
+  const isFinanceRoute =
+    path === "/finance-dashboard" ||
+    path.startsWith("/finance/") ||
+    (isFinanceUser && isSharedFinanceRoute);
+  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
+  const isNotificationsRoute = path.startsWith("/notifications");
+  const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
+    (route) => path.startsWith(route),
+  );
+  const isWarehouseRoute =
+    isSharedOperationsRoute ||
+    [
+      "/inventory",
+      "/warehouse/material-requests",
+      "/dock-management",
+      "/receiving",
+      "/putaway-tasks",
+      "/reports",
+    ].some((p) => path.startsWith(p));
+  const isGateSecurityRoute =
+    [
+      "/gate-entry",
+      "/gate-dashboard",
+      "/accept-arrival",
+      "/driver-verification",
+      "/vehicle-verification",
+      "/dock-assignment",
+      "/arrival-success",
+    ].some((route) => path.startsWith(route)) ||
+    (isGateSecurityUser && (isSharedOperationsRoute || isNotificationsRoute));
+  const resolvedNav = isSupplierRoute
+    ? supplierNav
+    : isFinanceRoute
+      ? financeNav
+      : isProcurementRoute
+        ? procurementNav
+        : isGateSecurityRoute
+          ? gateSecurityNav
+          : isWarehouseRoute
+            ? warehouseNav
+            : mounted && user?.roles?.includes("SUPPLIER")
+              ? supplierNav
+              : mounted && user?.roles?.includes("FINANCE")
+                ? financeNav
+                : mounted && user?.roles?.includes("PROCUREMENT")
+                  ? procurementNav
+                  : isGateSecurityUser
+                    ? gateSecurityNav
+                    : warehouseNav;
+  const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
+  const nav = navigationPending ? [] : resolvedNav;
+>>>>>>> origin/main
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
     navigate({ to: "/login" });
   };
-
   return (
     <div className="flex min-h-screen w-full bg-background">
       <aside
@@ -255,6 +335,10 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+          {navigationPending &&
+            Array.from({ length: 5 }).map((_, index) => (
+              <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
+            ))}
           {nav.map((item) => {
             const active =
               path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
@@ -280,13 +364,43 @@ export function AppShell({
             );
           })}
         </nav>
+<<<<<<< HEAD
+=======
+
+        <div className="border-t border-sidebar-border p-3 space-y-1">
+          <button
+            suppressHydrationWarning
+            onClick={() => setCollapsed((c) => !c)}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
+          >
+            {collapsed ? (
+              <PanelLeft className="size-[18px]" />
+            ) : (
+              <PanelLeftClose className="size-[18px]" />
+            )}
+            {!collapsed && <span>Collapse</span>}
+          </button>
+          <button
+            suppressHydrationWarning
+            onClick={handleLogout}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
+          >
+            <LogOut className="size-[18px]" />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        </div>
+>>>>>>> origin/main
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
             <Link
+<<<<<<< HEAD
               to={nav[0]?.to || "/"}
+=======
+              to={nav[0]?.to ?? "/warehouse-dashboard"}
+>>>>>>> origin/main
               className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
             >
               <Warehouse className="size-4" />
@@ -294,6 +408,7 @@ export function AppShell({
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
+                suppressHydrationWarning
                 placeholder="Search truck no, PO, vendor, gate entry…"
                 className="h-10 w-full rounded-xl border border-border bg-muted/60 pl-9 pr-16 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:bg-card focus:ring-2 focus:ring-ring/40"
                 value={searchTerm}
@@ -304,7 +419,6 @@ export function AppShell({
                 {isSearching ? <Loader2 className="size-3 animate-spin" /> : "⌘K"}
               </kbd>
 
-              {/* Search Results Dropdown */}
               {showSearch && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
@@ -354,6 +468,7 @@ export function AppShell({
 
             <div className="ml-auto flex items-center gap-1.5">
               <button
+                suppressHydrationWarning
                 onClick={() => setDark((d) => !d)}
                 aria-label="Toggle dark mode"
                 className="grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -374,10 +489,10 @@ export function AppShell({
               </Link>
               <div className="group relative ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3 transition-colors hover:bg-accent/50">
                 <span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-                  {user?.username?.substring(0, 2).toUpperCase() || "RS"}
+                  {user?.username?.substring(0, 2).toUpperCase() || "AO"}
                 </span>
                 <div className="hidden leading-tight lg:block">
-                  <p className="text-xs font-semibold">{user?.username || "Rohit Sharma"}</p>
+                  <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {user?.roles?.includes("PROCUREMENT")
                       ? "Procurement Manager"
@@ -385,10 +500,15 @@ export function AppShell({
                         ? "Finance Manager"
                         : user?.roles?.includes("GATE_SECURITY")
                           ? "Security Officer"
+<<<<<<< HEAD
                           : "Warehouse Manager"}
+=======
+                          : "Operations Manager"}
+>>>>>>> origin/main
                   </p>
                 </div>
                 <button
+                  suppressHydrationWarning
                   onClick={handleLogout}
                   className="ml-2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   title="Logout"
@@ -435,8 +555,12 @@ export function AppShell({
     </div>
   );
 }
+<<<<<<< HEAD
 
 export function StatusBadge({ status, className }: { status: string; className?: string }) {
+=======
+export function StatusBadge({ status }: { status: string }) {
+>>>>>>> origin/main
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
     Active: "bg-success-soft text-success border-success/30",
@@ -487,9 +611,7 @@ export function StatusBadge({ status, className }: { status: string; className?:
     SHIPPED: "bg-teal-soft text-teal border-teal/30",
     DISPATCHED: "bg-teal-soft text-teal border-teal/30",
   };
-
   const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
-
   return (
     <Badge
       variant="outline"
@@ -497,7 +619,10 @@ export function StatusBadge({ status, className }: { status: string; className?:
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map["Hold"],
         isLive && "pl-5",
+<<<<<<< HEAD
         className,
+=======
+>>>>>>> origin/main
       )}
     >
       {isLive && (

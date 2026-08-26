@@ -51,7 +51,7 @@ class CreateSupplierUseCase:
         self._supplier_repository = supplier_repository
 
     async def handle(self, command: CreateSupplierCommand) -> SupplierId:
-        # Check for duplicates
+
         if await self._supplier_repository.exists_by_company_name(command.registered_company_name):
             raise DomainRuleViolationException(f"Supplier with company name '{command.registered_company_name}' already exists")
         if await self._supplier_repository.exists_by_gstin(command.gstin):
@@ -117,6 +117,7 @@ class CreateSupplierUseCase:
 
         supplier = Supplier.create(
             supplier_id=supplier_id,
+            supplier_code=f"SUP-{seq:05d}",
             supplier_name=command.supplier_name,
             registered_company_name=command.registered_company_name,
             vendor_type=command.vendor_type,
@@ -163,7 +164,7 @@ class UpdateSupplierUseCase:
         if not supplier:
             raise NotFoundException(f"Supplier not found: {command.supplier_id}")
 
-        # Check for duplicates (excluding current supplier)
+
         if command.registered_company_name and await self._supplier_repository.exists_by_company_name(command.registered_company_name, exclude_id=command.supplier_id):
             raise DomainRuleViolationException(f"Another supplier with company name '{command.registered_company_name}' already exists")
         if command.gstin and await self._supplier_repository.exists_by_gstin(command.gstin, exclude_id=command.supplier_id):
@@ -266,7 +267,7 @@ class UnblockSupplierUseCase:
         await self._supplier_repository.save(supplier)
 
 
-# --- RFQ ---
+
 
 class CreateRfqUseCase:
     def __init__(self, repository: RfqRepository) -> None:
@@ -318,7 +319,7 @@ class SendRfqUseCase:
         await self._repository.save(rfq)
 
 
-# --- Quotation ---
+
 
 class SubmitQuotationUseCase:
     def __init__(self, repository: QuotationRepository, rfq_repository: RfqRepository) -> None:
@@ -370,7 +371,7 @@ class SubmitQuotationUseCase:
         return q.id
 
 
-# --- ASN ---
+
 
 class CreateAsnUseCase:
     def __init__(
@@ -384,8 +385,8 @@ class CreateAsnUseCase:
         self._notification_repository = notification_repository
 
     async def handle(self, command: CreateAsnCommand) -> AsnId:
-        # ASNs are now independent of Purchase Orders.
-        # po_id is optional, po_number is for reference.
+
+
 
         lines = [
             AsnLine(
@@ -429,7 +430,7 @@ class CreateAsnUseCase:
 
         await self._repository.save(asn)
 
-        # Create Arrival Notification for Warehouse
+
         if command.status == "SUBMITTED" and self._notification_repository:
             from app.modules.procurement.domain.arrival_notification import ArrivalNotification
 
@@ -439,7 +440,7 @@ class CreateAsnUseCase:
                 po_id=command.po_id,
                 po_number=asn.po_number or "N/A",
                 warehouse_id=asn.warehouse_id or "MAIN",
-                supplier_name="Supplier", # Simplified for now to avoid infra dependencies
+                supplier_name="Supplier",
                 vehicle_number=asn.vehicle_number or "Unknown",
                 expected_arrival_time=asn.expected_arrival_at or datetime.now(),
                 driver_phone=asn.driver_contact,
@@ -477,4 +478,3 @@ class GetNextMaterialRequestNumberUseCase:
             seq = 1
 
         return f"MR-{year_month}-{seq:04d}"
-

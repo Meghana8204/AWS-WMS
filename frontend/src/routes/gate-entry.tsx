@@ -21,16 +21,63 @@ import { SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
 
+async function compressFileForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let w = img.width;
+      let h = img.height;
+      const maxDim = 1024;
+      if (w > maxDim || h > maxDim) {
+        if (w > h) {
+          h = Math.round((h * maxDim) / w);
+          w = maxDim;
+        } else {
+          w = Math.round((w * maxDim) / h);
+          h = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          resolve(new File([blob], file.name, { type: "image/jpeg" }));
+        },
+        "image/jpeg",
+        0.82,
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
   component: GateEntry,
 });
-
 type GateEntryRecord = {
   id: string;
   gate_entry_number?: string;
@@ -42,7 +89,13 @@ type GateEntryRecord = {
   driverName: string;
   status: string;
   truckPhotoBase64?: string | null;
+<<<<<<< HEAD
   verificationResult?: { reasons?: string[] } | null;
+=======
+  verificationResult?: {
+    reasons?: string[];
+  } | null;
+>>>>>>> origin/main
 };
 type CaptureKind = "po" | "vehicle";
 type ArrivalLineItem = {
@@ -52,7 +105,6 @@ type ArrivalLineItem = {
   uom: string;
 };
 const inputClass = "mt-1.5 h-10 rounded-xl border-border/80 bg-background";
-
 function formatVehicleNumber(value: string): string {
   const compact = value
     .toUpperCase()
@@ -65,12 +117,10 @@ function formatVehicleNumber(value: string): string {
     return `${standard[1]}-${standard[2].padStart(2, "0")}-${standard[3]}-${standard[4]}`;
   return compact;
 }
-
 function isValidVehicleNumber(value: string): boolean {
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return /^(?:[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|\d{2}BH\d{4}[A-Z]{2})$/.test(compact);
 }
-
 function GateEntry() {
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,11 +148,9 @@ function GateEntry() {
   const [driverPhone, setDriverPhone] = useState("");
   const [extractedDetails, setExtractedDetails] = useState<Record<string, unknown> | null>(null);
   const [lastCreatedEntry, setLastCreatedEntry] = useState<GateEntryRecord | null>(null);
-
   const handleVehicleNumberChange = (rawVal: string) => {
     setVehicleNumber(formatVehicleNumber(rawVal));
   };
-
   const applyLineItems = (rawItems: unknown): boolean => {
     if (!Array.isArray(rawItems) || rawItems.length === 0) return false;
     const items = rawItems
@@ -130,7 +178,6 @@ function GateEntry() {
     setTotalQuantity(String(items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)));
     return true;
   };
-
   const updateLineItem = (index: number, field: keyof ArrivalLineItem, value: string) => {
     const items = arrivalLineItems.map((item, itemIndex) =>
       itemIndex === index ? { ...item, [field]: value } : item,
@@ -144,7 +191,6 @@ function GateEntry() {
     );
     setTotalQuantity(String(items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)));
   };
-
   const loadEntries = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -158,13 +204,11 @@ function GateEntry() {
       if (!quiet) setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     void loadEntries();
     const timer = window.setInterval(() => void loadEntries(true), 2000);
     return () => window.clearInterval(timer);
   }, [loadEntries]);
-
   useEffect(() => {
     if (poDocument) {
       const url = URL.createObjectURL(poDocument);
@@ -173,7 +217,6 @@ function GateEntry() {
     }
     setPoPreview(null);
   }, [poDocument]);
-
   useEffect(() => {
     if (vehiclePhoto) {
       const url = URL.createObjectURL(vehiclePhoto);
@@ -182,20 +225,17 @@ function GateEntry() {
     }
     setVehiclePreview(null);
   }, [vehiclePhoto]);
-
   async function scanCapture(kind: CaptureKind, file: File) {
     console.log(`Starting scanCapture for kind: ${kind}`, file);
     setScanning(null);
     if (kind === "po") setPoDocument(file);
     if (kind === "vehicle") setVehiclePhoto(file);
-
     const toastId = toast.loading(`OCR is analyzing ${kind === "po" ? "document" : "vehicle"}...`);
-
     try {
       console.log(`Calling api.scanOcr for ${kind}...`);
-      const result = await api.scanOcr(file, kind);
+      const uploadFile = await compressFileForUpload(file);
+      const result = await api.scanOcr(uploadFile, kind);
       console.log("OCR scan result:", result);
-
       const extraction = result.extraction || result;
       const fields = extraction.fields || {};
       setExtractedDetails({
@@ -204,9 +244,21 @@ function GateEntry() {
         confidence: result.confidence,
         verified_against_backend: result.verified ?? false,
       });
+<<<<<<< HEAD
 
       // Greedy extraction: if we find these core fields in ANY scan, fill them
       const detectedPo = result.po_number || fields.po_number || fields.purchase_order_number;
+=======
+      const detectedPo =
+        result.po_number ||
+        result.poNumber ||
+        result.purchase_order_number ||
+        result.purchaseOrderNumber ||
+        fields.po_number ||
+        fields.poNumber ||
+        fields.purchase_order_number ||
+        fields.purchaseOrderNumber;
+>>>>>>> origin/main
       const detectedVehicle =
         result.vehicle_number ||
         fields.vehicle_number ||
@@ -215,7 +267,6 @@ function GateEntry() {
         fields.license_plate_number;
       const detectedDriver = result.driver_name || fields.driver_name || fields.full_name;
       const detectedLicense = result.license_number || fields.license_number || fields.dl_number;
-
       if (detectedPo) {
         setPoNumber(detectedPo);
         if (kind === "po")
@@ -243,7 +294,6 @@ function GateEntry() {
       }
       if (detectedDriver) setDriverName(detectedDriver);
       if (detectedLicense) setLicenseNumber(detectedLicense);
-
       if (kind === "po") {
         const missing = [
           ["supplier name", result.supplier_name || fields.supplier_name],
@@ -291,10 +341,10 @@ function GateEntry() {
       });
     }
   }
-
   async function handlePoScannerSuccess(data: any, file: File) {
     setPoDocument(file);
     const result = data.ocr_result || data;
+    const fields = data.extraction?.fields || result.extraction?.fields || {};
 
     setExtractedDetails({
       ...data,
@@ -302,6 +352,7 @@ function GateEntry() {
       confidence: result.confidence,
     });
 
+<<<<<<< HEAD
     if (result.po_number) {
       setPoNumber(result.po_number);
       const previewStatus = data.computedStatus || data.computed_status;
@@ -309,21 +360,47 @@ function GateEntry() {
         previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
       );
       void fetchPoDetails(result.po_number, true);
+=======
+    const detectedPo =
+      result.po_number ||
+      result.poNumber ||
+      result.purchase_order_number ||
+      result.purchaseOrderNumber ||
+      fields.po_number ||
+      fields.poNumber ||
+      fields.purchase_order_number ||
+      fields.purchaseOrderNumber;
+    const detectedSupplier = result.supplier_name || fields.supplier_name;
+    const detectedMaterial = result.material_description || fields.material_description;
+    const detectedQty =
+      result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
+    const detectedPoDate = result.po_date || fields.po_date;
+    const detectedDeliveryDate = result.delivery_date || fields.delivery_date;
+
+    if (detectedPo) {
+      setPoNumber(detectedPo);
+      const previewStatus = data.computedStatus || data.computed_status || data.status;
+      setPoVerificationStatus(
+        previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
+      );
+      void fetchPoDetails(detectedPo, true);
+>>>>>>> origin/main
     }
-    if (result.supplier_name) setSupplierName(result.supplier_name);
-    const foundLineItems = applyLineItems(result.line_items || result.lineItems);
-    if (!foundLineItems) {
-      setArrivalLineItems([]);
-      if (result.material_description) setMaterialDescription(result.material_description);
-      if (result.total_quantity) setTotalQuantity(String(result.total_quantity));
+    if (detectedSupplier) setSupplierName(detectedSupplier);
+    if (detectedMaterial) setMaterialDescription(detectedMaterial);
+    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "")
+      setTotalQuantity(String(detectedQty));
+    if (detectedPoDate) setPoDate(detectedPoDate);
+    if (detectedDeliveryDate) setDeliveryDate(detectedDeliveryDate);
+
+    const lineItems = result.line_items || result.lineItems || fields.line_items || [];
+    if (lineItems.length) {
+      applyLineItems(lineItems);
     }
-    if (result.po_date) setPoDate(result.po_date);
-    if (result.delivery_date) setDeliveryDate(result.delivery_date);
   }
 
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
     if (!number || number.length < 5) return;
-
     const toastId = toast.loading(`Fetching details for PO: ${number}...`);
     try {
       const [purchaseOrders, asns] = await Promise.all([api.getPurchaseOrders(), api.getAsns()]);
@@ -337,8 +414,11 @@ function GateEntry() {
           .toUpperCase()
           .startsWith(`${lookup}-`),
       );
+<<<<<<< HEAD
       // OCR can read only "PO-2026" from a complete "PO-2026-0001".
       // Prefer a shipment with an ASN when resolving that partial prefix.
+=======
+>>>>>>> origin/main
       const po =
         exactPo ||
         prefixMatches.find((candidate: any) => {
@@ -350,7 +430,10 @@ function GateEntry() {
           );
         }) ||
         (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       if (!po) {
         if (preserveScannedFields) {
           setPoVerificationStatus("UNSCHEDULED_ARRIVAL");
@@ -363,27 +446,33 @@ function GateEntry() {
         }
         throw new Error(`Complete purchase order not found for ${number}`);
       }
-
       const resolvedPoNumber = String(po.poNumber || po.po_number || number);
       setPoNumber(resolvedPoNumber);
       setPoVerificationStatus("PO_VERIFIED");
-
-      // Once OCR identifies a real PO, use its complete line-item data to
-      // populate the editable material inputs. This is more reliable than
-      // expecting OCR to reconstruct every cell in a photographed table.
       const items = po.items || [];
-      if (items.length) applyLineItems(items);
-
-      if (!preserveScannedFields) {
-        setSupplierName(po.supplierName || "");
-
-        setPoDate(po.poDate || "");
-        setDeliveryDate(po.expectedDeliveryDate || "");
+      if (items.length) {
+        applyLineItems(items);
       }
 
+<<<<<<< HEAD
       // Vehicle and driver details belong to the supplier's ASN, not the PO.
       // The ASN list is newest-first, so the first PO match is the current
       // shipment after a supplier edits and re-submits it.
+=======
+      setSupplierName((prev) => prev || po.supplierName || po.supplier_name || "");
+      setPoDate((prev) => prev || po.poDate || po.po_date || "");
+      setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
+
+      const systemMat = items
+        .map((i: any) => i.materialName || i.material_name)
+        .filter(Boolean)
+        .join(", ");
+      if (systemMat) setMaterialDescription((prev) => prev || systemMat);
+
+      const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
+      if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
+
+>>>>>>> origin/main
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
@@ -396,14 +485,20 @@ function GateEntry() {
       if (shipment?.driverContact || shipment?.driver_contact) {
         setDriverPhone(shipment.driverContact || shipment.driver_contact);
       }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
           ? "PO and vehicle details fetched from system"
           : "PO details fetched; no submitted ASN vehicle found",
         { id: toastId },
       );
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
@@ -412,7 +507,6 @@ function GateEntry() {
       toast.error(error.message || "PO not found in system", { id: toastId });
     }
   }
-
   async function fetchAsnDetails(reference: string) {
     if (!reference.trim()) return;
     const toastId = toast.loading(`Loading ASN ${reference}...`);
@@ -448,24 +542,40 @@ function GateEntry() {
       });
     }
   }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    // React does not guarantee that currentTarget remains available after an
-    // await. Keep the concrete form element before starting the API request.
     const formElement = event.currentTarget;
-
+    if (!vehiclePhoto) {
+      return toast.error("Vehicle photo is required", {
+        description: "Please capture or upload a vehicle photo before creating the entry.",
+      });
+    }
+    if (!poNumber.trim()) {
+      return toast.error("Purchase order number is required");
+    }
+    if (!supplierName.trim()) {
+      return toast.error("Supplier name is required");
+    }
+    const parsedQty = parseFloat(totalQuantity);
+    if (!totalQuantity || isNaN(parsedQty) || parsedQty <= 0) {
+      return toast.error("Total quantity is required and must be greater than 0");
+    }
+    if (!vehicleNumber.trim()) {
+      return toast.error("Vehicle number is required");
+    }
     const isVehicleValid = isValidVehicleNumber(vehicleNumber);
     if (!isVehicleValid) {
       return toast.error("Invalid Vehicle Number format", {
         description: "Use a valid format such as MH-12-AB-1234 or 22-BH-1234-AA.",
       });
     }
+<<<<<<< HEAD
 
     if (!asnReference.trim())
       return toast.error("Enter the ASN reference before approving gate entry");
+=======
+>>>>>>> origin/main
     const form = new FormData(formElement);
-    form.set("asn_reference", asnReference.trim());
     if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
     setSubmitting(true);
@@ -480,8 +590,11 @@ function GateEntry() {
       const createdPo = entry.poNumber || entry.po_number || poNumber;
       const createdGateNumber = entry.gateEntryNumber || entry.gate_entry_number;
       const createdDriver = entry.driverName || entry.driver_name || driverName;
+<<<<<<< HEAD
       // Temporary handoff to the receiving workflow until arrivals are shared
       // through a dedicated backend endpoint.
+=======
+>>>>>>> origin/main
       localStorage.setItem(
         "verified_gate_po",
         JSON.stringify({
@@ -499,8 +612,11 @@ function GateEntry() {
       toast.success("Gate entry approved", {
         description: "The Warehouse Manager has been notified.",
       });
+<<<<<<< HEAD
 
       // Show the created pass card instead of auto-downloading
+=======
+>>>>>>> origin/main
       setLastCreatedEntry({
         id: entry.id,
         gate_entry_number: createdGateNumber,
@@ -512,7 +628,6 @@ function GateEntry() {
         driverName: createdDriver,
         status: entry.status,
       });
-
       formElement.reset();
       setPoDocument(null);
       setVehiclePhoto(null);
@@ -538,7 +653,6 @@ function GateEntry() {
       setSubmitting(false);
     }
   }
-
   const handleClearAll = async () => {
     if (!confirm("Are you sure you want to delete all gate entry data? This cannot be undone."))
       return;
@@ -550,11 +664,18 @@ function GateEntry() {
       toast.error("Failed to delete data");
     }
   };
+<<<<<<< HEAD
 
   return (
     <AppShell
       title="Gate entry"
       subtitle="Complete security approval from the existing ASN reference."
+=======
+  return (
+    <AppShell
+      title="Gate Entry"
+      subtitle="Security verification, vehicle photo capture, and arrival queue management."
+>>>>>>> origin/main
       actions={
         <div className="flex gap-2">
           <Button
@@ -578,6 +699,7 @@ function GateEntry() {
       <div className="grid gap-4 xl:grid-cols-3">
         <form onSubmit={submit} className="space-y-4 xl:col-span-2">
           <SectionCard
+<<<<<<< HEAD
             title="ASN gate entry"
             description="Reference the submitted ASN; shipment data is not entered again"
             icon={ScanLine}
@@ -586,34 +708,84 @@ function GateEntry() {
               <Label htmlFor="asn_reference">ASN reference</Label>
               <div className="relative">
                 <Input
+=======
+            title="ASN Reference Lookup (Optional)"
+            description="Enter an ASN reference to quickly auto-populate PO, supplier, vehicle, and item details"
+            icon={ScanLine}
+          >
+            <div className="w-full">
+              <Label htmlFor="asn_reference">ASN Reference</Label>
+              <div className="relative mt-1.5">
+                <Input
+                  suppressHydrationWarning
+>>>>>>> origin/main
                   id="asn_reference"
                   name="asn_reference"
                   value={asnReference}
                   onChange={(e) => setAsnReference(e.target.value)}
                   onBlur={() => void fetchAsnDetails(asnReference)}
+<<<<<<< HEAD
                   placeholder="ASN-2026-0001"
+=======
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void fetchAsnDetails(asnReference);
+                    }
+                  }}
+                  placeholder="e.g. ASN-2026-0001 (Press Enter or click refresh to load)"
+>>>>>>> origin/main
                   className={cn(inputClass, "pr-10")}
                   required
                 />
                 <button
+                  suppressHydrationWarning
                   type="button"
                   onClick={() => void fetchAsnDetails(asnReference)}
+<<<<<<< HEAD
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
                   title="Load ASN"
+=======
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  title="Load ASN Details"
+>>>>>>> origin/main
                 >
                   <RefreshCw className="size-4" />
                 </button>
               </div>
             </div>
+<<<<<<< HEAD
             <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
               <ScanCard
                 label="Vehicle photo"
                 detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"}
+=======
+          </SectionCard>
+
+          <SectionCard
+            title="Arrival scanning & upload"
+            description="Capture from camera or upload an image—OCR/ANPR will process either"
+            icon={ScanLine}
+          >
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full">
+              <ScanCard
+                label="PO document"
+                detail={poDocument ? "PO document ready" : "Optional (Scan/Upload)"}
+                kind="po"
+                captured={!!poDocument}
+                onOpen={() => setPoScannerOpen(true)}
+                onUpload={(f) => void scanCapture("po", f)}
+              />
+              <ScanCard
+                label="Vehicle photo"
+                detail={vehiclePhoto ? "Vehicle photo ready" : "Required"}
+>>>>>>> origin/main
                 kind="vehicle"
                 captured={!!vehiclePhoto}
                 onOpen={setScanning}
                 onUpload={(f) => void scanCapture("vehicle", f)}
               />
+<<<<<<< HEAD
               <ScanCard
                 label="PO document"
                 detail={poDocument ? "PO document ready" : "Optional"}
@@ -626,6 +798,12 @@ function GateEntry() {
 
             {(poPreview || vehiclePreview) && (
               <div className="mt-6 grid gap-4 grid-cols-2 max-w-xl">
+=======
+            </div>
+
+            {(poPreview || vehiclePreview) && (
+              <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 w-full">
+>>>>>>> origin/main
                 {poPreview && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -654,7 +832,11 @@ function GateEntry() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">
+<<<<<<< HEAD
                         Vehicle Photo
+=======
+                        Vehicle Photo <span className="text-destructive">*</span>
+>>>>>>> origin/main
                       </Label>
                       <Button
                         variant="ghost"
@@ -690,11 +872,21 @@ function GateEntry() {
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="relative">
+<<<<<<< HEAD
                 <Label htmlFor="po_number">Purchase order number</Label>
+=======
+                <Label htmlFor="po_number">
+                  Purchase order number <span className="text-destructive">*</span>
+                </Label>
+>>>>>>> origin/main
                 <div className="relative">
                   <Input
                     id="po_number"
                     name="po_number"
+<<<<<<< HEAD
+=======
+                    required
+>>>>>>> origin/main
                     value={poNumber}
                     onChange={(e) => {
                       setPoNumber(e.target.value);
@@ -705,6 +897,10 @@ function GateEntry() {
                     className={cn(inputClass, "pr-10")}
                   />
                   <button
+<<<<<<< HEAD
+=======
+                    suppressHydrationWarning
+>>>>>>> origin/main
                     type="button"
                     onClick={() => fetchPoDetails(poNumber)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
@@ -725,10 +921,20 @@ function GateEntry() {
                 )}
               </div>
               <div>
+<<<<<<< HEAD
                 <Label htmlFor="supplier_name">Supplier name</Label>
                 <Input
                   id="supplier_name"
                   name="supplier_name"
+=======
+                <Label htmlFor="supplier_name">
+                  Supplier name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="supplier_name"
+                  name="supplier_name"
+                  required
+>>>>>>> origin/main
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
                   placeholder="Auto-filled from PO"
@@ -809,13 +1015,25 @@ function GateEntry() {
                     />
                   </div>
                   <div>
+<<<<<<< HEAD
                     <Label htmlFor="total_quantity">Total quantity</Label>
+=======
+                    <Label htmlFor="total_quantity">
+                      Total quantity <span className="text-destructive">*</span>
+                    </Label>
+>>>>>>> origin/main
                     <Input
                       id="total_quantity"
                       name="total_quantity"
                       type="number"
+<<<<<<< HEAD
                       min="0"
                       step="any"
+=======
+                      min="0.01"
+                      step="any"
+                      required
+>>>>>>> origin/main
                       value={totalQuantity}
                       onChange={(e) => setTotalQuantity(e.target.value)}
                       placeholder="Auto-filled from PO"
@@ -849,10 +1067,20 @@ function GateEntry() {
                 />
               </div>
               <div className="relative">
+<<<<<<< HEAD
                 <Label htmlFor="vehicle_number">Vehicle number</Label>
                 <Input
                   id="vehicle_number"
                   name="vehicle_number"
+=======
+                <Label htmlFor="vehicle_number">
+                  Vehicle number <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="vehicle_number"
+                  name="vehicle_number"
+                  required
+>>>>>>> origin/main
                   value={vehicleNumber}
                   onChange={(e) => handleVehicleNumberChange(e.target.value)}
                   placeholder="MH-12-AB-1234"
@@ -917,19 +1145,40 @@ function GateEntry() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4">
             <p className="text-sm text-muted-foreground">
+<<<<<<< HEAD
               Approval sets GATE_ENTRY_APPROVED and notifies the Warehouse Manager.
+=======
+              Creating the entry publishes the verified arrival to the yard in real time.
+>>>>>>> origin/main
             </p>
             <Button
               type="submit"
               className="rounded-xl shadow-glow"
+<<<<<<< HEAD
               disabled={submitting || !asnReference.trim()}
+=======
+              disabled={
+                submitting ||
+                !vehiclePhoto ||
+                !poNumber.trim() ||
+                !supplierName.trim() ||
+                !totalQuantity ||
+                parseFloat(totalQuantity) <= 0 ||
+                !vehicleNumber.trim() ||
+                !isValidVehicleNumber(vehicleNumber)
+              }
+>>>>>>> origin/main
             >
               {submitting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <ClipboardCheck className="size-4" />
               )}
+<<<<<<< HEAD
               {submitting ? "Approving…" : "Approve gate entry"}
+=======
+              {submitting ? "Creating entry…" : "Create gate entry"}
+>>>>>>> origin/main
             </Button>
           </div>
         </form>
@@ -951,10 +1200,14 @@ function GateEntry() {
             <div className="space-y-3">
               {entries.slice(0, 8).map((entry) => (
                 <div key={entry.id} className="relative group">
+<<<<<<< HEAD
                   <Link
                     to="/vehicle-queue"
                     className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft"
                   >
+=======
+                  <div className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft">
+>>>>>>> origin/main
                     {entry.truckPhotoBase64 ? (
                       <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border/40">
                         <img
@@ -970,9 +1223,18 @@ function GateEntry() {
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
+<<<<<<< HEAD
                         <p className="font-mono text-sm font-semibold text-primary truncate">
                           {entry.vehiclePlate || "NO PLATE"}
                         </p>
+=======
+                        <Link
+                          to="/vehicle-queue"
+                          className="truncate font-mono text-sm font-semibold text-primary hover:underline"
+                        >
+                          {entry.vehiclePlate || "NO PLATE"}
+                        </Link>
+>>>>>>> origin/main
                         <StatusBadge status={entry.status} />
                       </div>
                       <p className="mt-0.5 truncate text-sm font-medium">{entry.driverName}</p>
@@ -990,7 +1252,11 @@ function GateEntry() {
                         </p>
                       )}
                     </div>
+<<<<<<< HEAD
                   </Link>
+=======
+                  </div>
+>>>>>>> origin/main
                   <Button
                     variant="ghost"
                     size="icon"
@@ -1137,7 +1403,10 @@ function GateEntry() {
     </AppShell>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function ScanCard({
   label,
   detail,
@@ -1156,8 +1425,9 @@ function ScanCard({
   hideCamera?: boolean;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-
+  const isRequired = detail.toLowerCase().includes("required");
   return (
+<<<<<<< HEAD
     <div className="relative flex flex-col gap-2">
       <button
         type="button"
@@ -1178,46 +1448,114 @@ function ScanCard({
         <p className="mt-3 text-sm font-semibold">{label}</p>
         <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
       </button>
+=======
+    <div
+      suppressHydrationWarning
+      className={cn(
+        "relative flex flex-col justify-between rounded-2xl border p-4 transition-all duration-200",
+        captured
+          ? "border-success/40 bg-success-soft/20 shadow-sm"
+          : isRequired
+            ? "border-primary/30 bg-card hover:border-primary/50 hover:shadow-md"
+            : "border-border bg-card hover:border-primary/30 hover:shadow-sm",
+      )}
+    >
+      <div
+        suppressHydrationWarning
+        role="button"
+        tabIndex={0}
+        onClick={() => (hideCamera ? fileInput.current?.click() : onOpen(kind))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            hideCamera ? fileInput.current?.click() : onOpen(kind);
+          }
+        }}
+        className="cursor-pointer space-y-3"
+      >
+        <div className="flex items-center justify-between">
+          <span
+            className={cn(
+              "grid size-10 place-items-center rounded-xl transition-colors",
+              captured
+                ? "bg-success text-success-foreground shadow-sm"
+                : "bg-primary/10 text-primary",
+            )}
+          >
+            {captured ? (
+              <CheckCircle2 className="size-5" />
+            ) : hideCamera ? (
+              <Upload className="size-5" />
+            ) : (
+              <Camera className="size-5" />
+            )}
+          </span>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px] font-bold uppercase tracking-wider",
+              captured
+                ? "border-success/30 bg-success-soft text-success"
+                : isRequired
+                  ? "border-destructive/30 bg-destructive/10 text-destructive"
+                  : "border-border text-muted-foreground",
+            )}
+          >
+            {captured ? "Attached" : isRequired ? "Required *" : "Optional"}
+          </Badge>
+        </div>
+>>>>>>> origin/main
 
-      <div className="flex gap-2">
+        <div>
+          <p className="text-sm font-semibold text-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">{detail}</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2 pt-3 border-t border-border/50">
         {!hideCamera && (
           <Button
+            suppressHydrationWarning
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 w-full rounded-lg text-[10px]"
+            className="h-8 w-full rounded-xl text-xs font-semibold bg-background hover:bg-primary-soft hover:text-primary hover:border-primary/40 transition-colors"
             onClick={() => onOpen(kind)}
           >
-            <Camera className="mr-1 size-3" /> Camera
+            <Camera className="mr-1.5 size-3.5" /> Camera
           </Button>
         )}
         <Button
+          suppressHydrationWarning
           type="button"
           variant="outline"
           size="sm"
-          className={`h-8 w-full rounded-lg text-[10px] ${hideCamera ? "bg-primary text-white hover:bg-primary/90" : ""}`}
+          className={cn(
+            "h-8 w-full rounded-xl text-xs font-semibold transition-colors",
+            hideCamera
+              ? "col-span-2 bg-primary text-primary-foreground hover:bg-primary/90"
+              : "bg-background hover:bg-primary-soft hover:text-primary hover:border-primary/40",
+          )}
           onClick={() => fileInput.current?.click()}
         >
-          <Upload className="mr-1 size-3" /> Upload
+          <Upload className="mr-1.5 size-3.5" /> Upload
         </Button>
       </div>
 
       <input
+        suppressHydrationWarning
         type="file"
         ref={fileInput}
         className="hidden"
         accept="image/*"
-        capture="environment"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onUpload(file);
-          e.target.value = ""; // Reset for same file re-upload
+          e.target.value = "";
         }}
       />
     </div>
   );
 }
-
 function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
   const fields =
     details.fields && typeof details.fields === "object" && !Array.isArray(details.fields)
@@ -1227,7 +1565,10 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     ([, value]) => value !== null && value !== "" && typeof value !== "object",
   );
   const rawText = typeof details.raw_text === "string" ? details.raw_text : "";
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
   return (
     <div className="space-y-4">
       {entries.length > 0 ? (
@@ -1257,7 +1598,10 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     </div>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function CameraScanner({
   kind,
   onClose,
@@ -1270,7 +1614,6 @@ function CameraScanner({
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const [error, setError] = useState("");
-
   useEffect(() => {
     let mounted = true;
     if (navigator.mediaDevices?.getUserMedia) {
@@ -1293,7 +1636,6 @@ function CameraScanner({
     } else {
       setError("Camera not supported on this browser.");
     }
-
     return () => {
       mounted = false;
       if (stream.current) {
@@ -1301,16 +1643,13 @@ function CameraScanner({
       }
     };
   }, []);
-
   function capture() {
     const element = video.current;
     if (!element || !element.videoWidth) return;
-
     const canvas = document.createElement("canvas");
     const maxDim = 2000;
     let width = element.videoWidth;
     let height = element.videoHeight;
-
     if (width > height) {
       if (width > maxDim) {
         height *= maxDim / width;
@@ -1322,7 +1661,6 @@ function CameraScanner({
         height = maxDim;
       }
     }
-
     canvas.width = width;
     canvas.height = height;
     canvas.getContext("2d")?.drawImage(element, 0, 0, width, height);
@@ -1336,13 +1674,10 @@ function CameraScanner({
       0.95,
     );
   }
-
   const title = kind === "po" ? "Scan purchase order" : "Capture vehicle photo";
-
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-foreground/80 p-4 backdrop-blur-sm">
       <div className="flex max-h-full w-full max-w-2xl flex-col rounded-3xl bg-card shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-border/50 p-5">
           <div>
             <h3 className="text-lg font-bold tracking-tight">{title}</h3>
@@ -1361,7 +1696,6 @@ function CameraScanner({
           </Button>
         </div>
 
-        {/* Camera Feed Container */}
         <div className="relative flex-1 overflow-hidden bg-black/5 p-2">
           {error ? (
             <div className="flex h-64 flex-col items-center justify-center p-8 text-center">
@@ -1382,7 +1716,6 @@ function CameraScanner({
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 border-t border-border/50 p-5">
           <Button
             type="button"

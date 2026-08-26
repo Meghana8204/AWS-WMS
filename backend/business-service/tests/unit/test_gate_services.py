@@ -33,18 +33,18 @@ async def test_mock_ocr_service():
 def test_file_storage_validation(tmp_path):
     storage = FileStorageService(storage_dir=str(tmp_path))
 
-    # Valid JPEG image
+
     storage.validate_file(b"fake_jpeg_content", "photo.jpg", "image/jpeg")
 
-    # Empty file error
+
     with pytest.raises(InvalidFileException, match="empty"):
         storage.validate_file(b"", "empty.jpg", "image/jpeg")
 
-    # Oversized file error (>10MB)
+
     large_bytes = b"x" * (11 * 1024 * 1024)
     with pytest.raises(InvalidFileException, match="exceeds maximum allowed size"):
         storage.validate_file(large_bytes, "huge.jpg", "image/jpeg")
 
-    # Invalid MIME type / extension
+
     with pytest.raises(InvalidFileException, match="Unsupported file type"):
         storage.validate_file(b"script", "hack.exe", "application/x-msdownload")

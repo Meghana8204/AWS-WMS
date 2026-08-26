@@ -22,12 +22,10 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
-
 export const Route = createFileRoute("/finance-dashboard")({
   beforeLoad: () => requireRole("FINANCE"),
   component: FinanceDashboard,
 });
-
 function FinanceDashboard() {
   const [stats, setStats] = useState({
     pending: 0,
@@ -37,12 +35,10 @@ function FinanceDashboard() {
   });
   const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
   const loadData = async (quiet = false) => {
     try {
       if (!quiet) setLoading(true);
       const allPos = await api.getPurchaseOrders();
-
       const pending = allPos.filter((p: any) => p.status === "PENDING_FINANCE");
       const approved = allPos.filter((p: any) => p.status === "APPROVED" || p.status === "SENT");
       const rejected = allPos.filter((p: any) => p.status === "REJECTED");
@@ -50,14 +46,16 @@ function FinanceDashboard() {
         (sum: number, p: any) => sum + parseFloat(p.totalAmount || 0),
         0,
       );
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       setStats({
         pending: pending.length,
         approved: approved.length,
         rejected: rejected.length,
         totalValue,
       });
-
       setApprovals(pending);
     } catch (e) {
       if (!quiet) toast.error("Failed to load dashboard data");
@@ -65,21 +63,17 @@ function FinanceDashboard() {
       if (!quiet) setLoading(false);
     }
   };
-
   useEffect(() => {
     loadData();
     const interval = setInterval(() => loadData(true), 10000);
     return () => clearInterval(interval);
   }, []);
-
-  // Group pending by RFQ
   const groupedByRfq = approvals.reduce((acc: any, po: any) => {
     const rfqId = po.rfqId || "no-rfq";
     if (!acc[rfqId]) acc[rfqId] = [];
     acc[rfqId].push(po);
     return acc;
   }, {});
-
   return (
     <AppShell title="Finance Dashboard" subtitle="Overview of procurement financial authorizations">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -118,7 +112,6 @@ function FinanceDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Comparison Matrix Area */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -157,6 +150,7 @@ function FinanceDashboard() {
                           : "/finance/approvals/compare/$rfqId"
                       }
                       params={rfqId === "no-rfq" ? {} : { rfqId }}
+<<<<<<< HEAD
                       className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 hover:shadow-glow transition-all bg-card/50 group"
                     >
                       <div className="flex items-center gap-4">
@@ -171,12 +165,35 @@ function FinanceDashboard() {
                           </p>
                           <p className="text-[11px] text-muted-foreground">
                             {rfqApprovals.length} Proposal(s) awaiting signature ·{" "}
+=======
+                      className="group grid gap-4 rounded-lg border border-border/60 bg-card/50 p-4 transition-all hover:border-primary/30 hover:shadow-glow sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <div className="flex min-w-0 items-center gap-4">
+                        <div className="size-10 rounded-xl bg-primary-soft/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                          <TableIcon className="size-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold">
+                            {rfqId === "no-rfq"
+                              ? "Direct Purchase Orders"
+                              : rfqApprovals[0]?.rfqNumber || `RFQ ${rfqId.slice(0, 8)}`}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {rfqApprovals.length}{" "}
+                            {rfqApprovals.length === 1 ? "proposal" : "proposals"} awaiting approval
+                            {" · "}
+>>>>>>> origin/main
                             {rfqApprovals.map((p: any) => p.supplierName).join(", ")}
                           </p>
                         </div>
                       </div>
+<<<<<<< HEAD
                       <div className="text-right flex items-center gap-6">
                         <div className="hidden sm:block">
+=======
+                      <div className="flex items-center justify-between gap-4 sm:justify-end sm:text-right">
+                        <div>
+>>>>>>> origin/main
                           <p className="text-sm font-black text-primary">
                             ₹
                             {rfqApprovals
@@ -193,7 +210,11 @@ function FinanceDashboard() {
                         <Button
                           variant="outline"
                           size="sm"
+<<<<<<< HEAD
                           className="rounded-xl h-8 text-xs font-bold pointer-events-none group-hover:bg-primary group-hover:text-white transition-colors"
+=======
+                          className="pointer-events-none h-8 rounded-lg text-xs font-bold transition-colors group-hover:bg-primary group-hover:text-white"
+>>>>>>> origin/main
                         >
                           Review Comparison
                         </Button>
@@ -206,7 +227,6 @@ function FinanceDashboard() {
           </Card>
         </div>
 
-        {/* Finance Policy */}
         <Card className="border-border/40 shadow-soft self-start">
           <CardHeader>
             <CardTitle className="text-lg font-bold tracking-tight">Finance Controls</CardTitle>
@@ -247,7 +267,6 @@ function FinanceDashboard() {
     </AppShell>
   );
 }
-
 function StatsCard({ title, value, icon: Icon, color, bg, to }: any) {
   const content = (
     <CardContent className="p-6">
@@ -264,7 +283,6 @@ function StatsCard({ title, value, icon: Icon, color, bg, to }: any) {
       </div>
     </CardContent>
   );
-
   return (
     <Card
       className={cn(
@@ -276,7 +294,6 @@ function StatsCard({ title, value, icon: Icon, color, bg, to }: any) {
     </Card>
   );
 }
-
 function PolicyItem({ title, desc, status }: any) {
   return (
     <div className="space-y-1">

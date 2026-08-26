@@ -7,7 +7,6 @@ import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { activeArrival } from "@/lib/wms-data";
-
 export const Route = createFileRoute("/accept-arrival")({
   head: () => ({
     meta: [
@@ -26,12 +25,10 @@ export const Route = createFileRoute("/accept-arrival")({
   }),
   component: AcceptArrival,
 });
-
 function AcceptArrival() {
   const a = activeArrival;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-
   return (
     <AppShell
       title="Accept arrival"
@@ -110,7 +107,7 @@ function AcceptArrival() {
               className="h-11 rounded-xl border-destructive/30 text-destructive hover:bg-danger-soft hover:text-destructive"
               onClick={() => {
                 toast.error("Arrival rejected");
-                navigate({ to: "/notifications" });
+                navigate({ to: "/gate-entry" });
               }}
             >
               <XCircle className="size-4" /> Reject

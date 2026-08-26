@@ -36,7 +36,6 @@ export const INDIAN_STATES = [
   "Lakshadweep",
   "Puducherry",
 ];
-
 export const TDS_SECTIONS = [
   "194C (Contractors)",
   "194J (Professional Services)",

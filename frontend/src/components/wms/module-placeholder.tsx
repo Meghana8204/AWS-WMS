@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import type { LucideIcon } from "lucide-react";
-
 export function ModulePlaceholder({
   icon: Icon,
   title,
@@ -22,9 +21,6 @@ export function ModulePlaceholder({
       <div className="mt-6 flex flex-wrap justify-center gap-2">
         <Button variant="outline" className="rounded-xl" asChild>
           <Link to="/warehouse-dashboard">Back to dashboard</Link>
-        </Button>
-        <Button className="rounded-xl shadow-glow" asChild>
-          <Link to="/notifications">Go to arrivals</Link>
         </Button>
       </div>
     </Card>

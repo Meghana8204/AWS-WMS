@@ -13,7 +13,7 @@ async def check_db(dbname):
             if 'app_user' in tables or 'auth_user' in tables:
                 print(f"*** FOUND AUTH TABLES IN {dbname} ***")
     except Exception as e:
-        # print(f"Failed to connect to {dbname}: {e}")
+
         pass
     finally:
         await engine.dispose()

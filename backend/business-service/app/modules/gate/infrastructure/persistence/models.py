@@ -147,12 +147,12 @@ class GateEntryModel(Base):
     mismatched_fields: Mapped[dict | list | None] = mapped_column(JSONType, nullable=True)
     reasons: Mapped[dict | list | None] = mapped_column(JSONType, nullable=True)
 
-    # ANPR results
+
     anpr_detected_vehicle: Mapped[str | None] = mapped_column(String(32), nullable=True)
     anpr_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     anpr_metadata: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
 
-    # OCR results
+
     ocr_po_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ocr_supplier_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ocr_product_material: Mapped[str | None] = mapped_column(String(128), nullable=True)
@@ -163,7 +163,7 @@ class GateEntryModel(Base):
     ocr_raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_line_items: Mapped[list | None] = mapped_column(JSONType, nullable=True)
 
-    # User & audit fields
+
     security_officer_id: Mapped[str] = mapped_column(String(64), nullable=False)
     verified_by_user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     manual_verification_notes: Mapped[str | None] = mapped_column(Text, nullable=True)

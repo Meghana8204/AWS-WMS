@@ -29,14 +29,23 @@ class GoodsReceivedEvent(DomainEvent):
 class PostedInventoryLine:
     item_code: str
     material_name: str
+<<<<<<< HEAD
     quantity: float | Decimal
     uom: str = "PCS"
+=======
+    quantity: Decimal | float | int
+    uom: str
+>>>>>>> origin/main
 
 
 @dataclass(frozen=True, kw_only=True)
 class GrnPostedEvent(DomainEvent):
     grn_id: str
+<<<<<<< HEAD
     grn_number: str
+=======
+    grn_number: str | None = None
+>>>>>>> origin/main
     po_number: str | None = None
     asn_number: str | None = None
     supplier_name: str | None = None

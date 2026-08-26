@@ -47,7 +47,7 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ValueError)
     async def handle_value_error(request: Request, exc: ValueError):
-        # Many domain rules use ValueError; treat them as 400 Bad Request
+
         return JSONResponse(status_code=400, content=_error_body(str(exc)), headers=_cors_headers(request))
 
     @app.exception_handler(NotFoundException)

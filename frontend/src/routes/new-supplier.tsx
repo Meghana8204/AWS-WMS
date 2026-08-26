@@ -17,7 +17,6 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-
 import { AppShell } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,11 +42,10 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api-client";
 import { INDIAN_STATES, TDS_SECTIONS } from "@/lib/constants";
-
+import { Certificate } from "crypto";
 export const Route = createFileRoute("/new-supplier")({
   component: NewSupplier,
 });
-
 const steps = [
   { id: 1, name: "Company Profile", icon: Building2 },
   { id: 2, name: "Address & Contact", icon: FileText },
@@ -55,6 +53,7 @@ const steps = [
   { id: 4, name: "Documents", icon: Upload },
   { id: 5, name: "Remarks", icon: MessageSquare },
 ];
+<<<<<<< HEAD
 
 const DRAFT_STORAGE_KEY = "new_supplier_form_draft";
 
@@ -94,6 +93,8 @@ const defaultFormState = {
   remarks: "",
 };
 
+=======
+>>>>>>> origin/main
 function NewSupplier() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = React.useState(() => {
@@ -111,8 +112,8 @@ function NewSupplier() {
 
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
-
-  // Vendor Types state
+  const [isLookingUpState, setIsLookingUpState] = React.useState(false);
+  const [stateLookupMessage, setStateLookupMessage] = React.useState("");
   const [vendorTypes, setVendorTypes] = React.useState([
     "Manufacturer",
     "Distributor",
@@ -136,7 +137,6 @@ function NewSupplier() {
   const [newVendorType, setNewVendorType] = React.useState("");
   const [newCategory, setNewCategory] = React.useState("");
   const [newRawMaterial, setNewRawMaterial] = React.useState("");
-
   React.useEffect(() => {
     const fetchMasterData = async () => {
       try {
@@ -154,6 +154,7 @@ function NewSupplier() {
     };
     fetchMasterData();
   }, []);
+<<<<<<< HEAD
 
   // Form State initialized from localStorage draft
   const [formData, setFormData] = React.useState(() => {
@@ -186,12 +187,112 @@ function NewSupplier() {
     } catch (_) {}
   }, [formData, currentStep]);
 
+=======
+  const [formData, setFormData] = React.useState({
+    supplierName: "",
+    registeredCompanyName: "",
+    vendorType: "",
+    category: [] as string[],
+    mainMaterials: [] as string[],
+    industry: "",
+    gstin: "",
+    address: {
+      registeredAddress: "",
+      city: "",
+      country: "India",
+      state: "",
+      pincode: "",
+    },
+    contact: {
+      primaryContactName: "",
+      primaryEmail: "",
+      secondaryEmail: "",
+      designation: "",
+      phone: "",
+      website: "",
+    },
+    bankInfo: {
+      bankName: "",
+      accountNumber: "",
+      accountHolderName: "",
+      ifsc: "",
+      branch: "",
+      swiftBic: "",
+      tdsSection: "",
+    },
+    documents: [] as any[],
+    remarks: "",
+  });
+>>>>>>> origin/main
   const [isUploading, setIsUploading] = React.useState(false);
+  React.useEffect(() => {
+    const pincode = formData.address.pincode;
+
+    if (!/^\d{6}$/.test(pincode)) {
+      setIsLookingUpState(false);
+      setStateLookupMessage("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const lookupTimer = window.setTimeout(async () => {
+      setIsLookingUpState(true);
+      setStateLookupMessage("");
+      try {
+        const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("PIN lookup failed");
+
+        const payload = await response.json();
+        const postOffices = payload?.[0]?.PostOffice;
+        const postalState = Array.isArray(postOffices) ? postOffices[0]?.State : "";
+        const postalCity = Array.isArray(postOffices)
+          ? postOffices[0]?.District || postOffices[0]?.Block || postOffices[0]?.Name
+          : "";
+        const stateAliases: Record<string, string> = {
+          "Andaman & Nicobar Islands": "Andaman and Nicobar Islands",
+          "Dadra & Nagar Haveli": "Dadra and Nagar Haveli and Daman and Diu",
+          "Daman & Diu": "Dadra and Nagar Haveli and Daman and Diu",
+          "Jammu & Kashmir": "Jammu and Kashmir",
+          "NCT of Delhi": "Delhi",
+          Orissa: "Odisha",
+          Pondicherry: "Puducherry",
+        };
+        const resolvedState = stateAliases[postalState] || postalState;
+
+        if (!postalCity || !resolvedState || !INDIAN_STATES.includes(resolvedState)) {
+          throw new Error("No address found for this PIN code");
+        }
+
+        setFormData((previous) => ({
+          ...previous,
+          address: { ...previous.address, city: postalCity, state: resolvedState },
+        }));
+        setErrors((previous) => {
+          const nextErrors = { ...previous };
+          delete nextErrors["address.city"];
+          delete nextErrors["address.state"];
+          return nextErrors;
+        });
+        setStateLookupMessage(`City and state selected from PIN ${pincode}`);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setStateLookupMessage("City and state could not be detected. Please enter them manually.");
+      } finally {
+        if (!controller.signal.aborted) setIsLookingUpState(false);
+      }
+    }, 400);
+
+    return () => {
+      window.clearTimeout(lookupTimer);
+      controller.abort();
+    };
+  }, [formData.address.pincode]);
 
   const updateFormData = (section: string, field: string, value: string) => {
     if (section === "root") {
       setFormData((prev) => ({ ...prev, [field]: value }));
-      // Clear error when user types
       if (errors[field]) {
         setErrors((prev) => {
           const newErrors = { ...prev };
@@ -217,34 +318,43 @@ function NewSupplier() {
       }
     }
   };
-
   const validateStep = async (step: number) => {
     const newErrors: Record<string, string> = {};
-
     if (step === 1) {
       const name = formData.supplierName.trim();
       const regName = formData.registeredCompanyName.trim();
       const industry = formData.industry.trim();
       const gstin = formData.gstin.trim();
-
       if (!name) newErrors.supplierName = "Supplier Display Name is required";
       else if (name.length < 2 || name.length > 100)
         newErrors.supplierName = "Must be between 2 and 100 characters";
+<<<<<<< HEAD
 
       if (!regName) newErrors.registeredCompanyName = "Registered Company Name is required";
       else if (regName.length < 2 || regName.length > 200)
         newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
 
+=======
+      if (!regName) newErrors.registeredCompanyName = "Registered Company Name is required";
+      else if (regName.length < 2 || regName.length > 200)
+        newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+>>>>>>> origin/main
       if (!formData.vendorType) newErrors.vendorType = "Please select a Vendor Type";
       if (formData.category.length === 0)
         newErrors.category = "Please select at least one Category";
       if (formData.mainMaterials.length === 0)
         newErrors.mainMaterials = "Please select at least one material";
+<<<<<<< HEAD
 
       if (!industry) newErrors.industry = "Industry is required";
       else if (industry.length < 2 || industry.length > 100)
         newErrors.industry = "Must be between 2 and 100 characters";
 
+=======
+      if (!industry) newErrors.industry = "Industry is required";
+      else if (industry.length < 2 || industry.length > 100)
+        newErrors.industry = "Must be between 2 and 100 characters";
+>>>>>>> origin/main
       if (!gstin) newErrors.gstin = "GSTIN is required";
       else if (gstin.length !== 15) newErrors.gstin = "Must be exactly 15 characters";
       else if (
@@ -252,8 +362,6 @@ function NewSupplier() {
       ) {
         newErrors.gstin = "Invalid GSTIN format (e.g. 29ABCDE1234F1Z5)";
       }
-
-      // Backend Duplicate Check
       if (Object.keys(newErrors).length === 0) {
         try {
           const existence = await api.checkSupplierExistence({
@@ -268,7 +376,6 @@ function NewSupplier() {
         }
       }
     }
-
     if (step === 2) {
       const addr = formData.address.registeredAddress.trim();
       const city = formData.address.city.trim();
@@ -280,16 +387,22 @@ function NewSupplier() {
       const website = formData.contact.website.trim();
       const primaryEmail = formData.contact.primaryEmail.trim();
       const secondaryEmail = formData.contact.secondaryEmail.trim();
+<<<<<<< HEAD
 
       // Address Validation (Strict validation removed for registered address)
       if (addr && addr.length > 500)
         newErrors["address.registeredAddress"] = "Must be under 500 characters";
 
+=======
+      if (addr && addr.length > 500)
+        newErrors["address.registeredAddress"] = "Must be under 500 characters";
+>>>>>>> origin/main
       if (!city) newErrors["address.city"] = "City is required";
       else if (city.length < 2 || city.length > 100)
         newErrors["address.city"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s-]+$/.test(city))
         newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
+<<<<<<< HEAD
 
       if (state && (state.length < 2 || state.length > 100))
         newErrors["address.state"] = "Must be between 2 and 100 characters";
@@ -298,12 +411,20 @@ function NewSupplier() {
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
 
       // Contact Validation
+=======
+      if (!state) newErrors["address.state"] = "State is required";
+      else if (state.length < 2 || state.length > 100)
+        newErrors["address.state"] = "Must be between 2 and 100 characters";
+      if (!pincode) newErrors["address.pincode"] = "Pincode is required";
+      else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
+>>>>>>> origin/main
       if (!contactName)
         newErrors["contact.primaryContactName"] = "Primary Contact Name is required";
       else if (contactName.length < 2 || contactName.length > 100)
         newErrors["contact.primaryContactName"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s]+$/.test(contactName))
         newErrors["contact.primaryContactName"] = "Only letters and spaces allowed";
+<<<<<<< HEAD
 
       if (designation && (designation.length < 2 || designation.length > 100))
         newErrors["contact.designation"] = "Must be between 2 and 100 characters";
@@ -312,6 +433,13 @@ function NewSupplier() {
       else if (!/^[6-9]\d{9}$/.test(phone))
         newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
 
+=======
+      if (designation && (designation.length < 2 || designation.length > 100))
+        newErrors["contact.designation"] = "Must be between 2 and 100 characters";
+      if (!phone) newErrors["contact.phone"] = "Phone number is required";
+      else if (!/^[6-9]\d{9}$/.test(phone))
+        newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
+>>>>>>> origin/main
       if (website) {
         try {
           new URL(website.startsWith("http") ? website : `https://${website}`);
@@ -319,16 +447,20 @@ function NewSupplier() {
           newErrors["contact.website"] = "Please enter a valid URL";
         }
       }
-
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!primaryEmail) newErrors["contact.primaryEmail"] = "Primary Email is required";
       else if (!emailRegex.test(primaryEmail))
         newErrors["contact.primaryEmail"] = "Invalid email format";
+<<<<<<< HEAD
 
       if (secondaryEmail && !emailRegex.test(secondaryEmail))
         newErrors["contact.secondaryEmail"] = "Invalid email format";
 
       // Backend Duplicate Check
+=======
+      if (secondaryEmail && !emailRegex.test(secondaryEmail))
+        newErrors["contact.secondaryEmail"] = "Invalid email format";
+>>>>>>> origin/main
       if (Object.keys(newErrors).length === 0) {
         try {
           const existence = await api.checkSupplierExistence({
@@ -342,7 +474,6 @@ function NewSupplier() {
         }
       }
     }
-
     if (step === 3) {
       const bankName = formData.bankInfo.bankName.trim();
       const accNo = formData.bankInfo.accountNumber.trim();
@@ -350,31 +481,31 @@ function NewSupplier() {
       const holder = formData.bankInfo.accountHolderName.trim();
       const branch = formData.bankInfo.branch.trim();
       const swift = formData.bankInfo.swiftBic.trim();
-
       if (!bankName) newErrors["bankInfo.bankName"] = "Bank name is required";
-
       if (!accNo) newErrors["bankInfo.accountNumber"] = "Account number is required";
       else if (accNo.length < 9 || accNo.length > 18)
         newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
       else if (!/^\d+$/.test(accNo))
         newErrors["bankInfo.accountNumber"] = "Must contain only digits";
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
       else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
         newErrors["bankInfo.ifsc"] = "Invalid IFSC format (e.g. SBIN0012345)";
       }
-
       if (!holder) newErrors["bankInfo.accountHolderName"] = "Account holder name is required";
       else if (!/^[a-zA-Z\s.]+$/.test(holder))
         newErrors["bankInfo.accountHolderName"] = "Invalid characters in name";
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
       if (!branch) newErrors["bankInfo.branch"] = "Branch name is required";
-
       if (swift && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.toUpperCase())) {
         newErrors["bankInfo.swiftBic"] = "Invalid SWIFT/BIC format";
       }
-
-      // Backend Duplicate Check for Account Number
       if (Object.keys(newErrors).length === 0) {
         try {
           const existence = await api.checkSupplierExistence({
@@ -389,7 +520,6 @@ function NewSupplier() {
         }
       }
     }
-
     if (step === 4) {
       const hasCancelledCheque = formData.documents.some(
         (d) => d.document_type === "Cancelled Cheque",
@@ -398,12 +528,17 @@ function NewSupplier() {
         newErrors["documents"] = "Cancelled Cheque is mandatory";
         toast.error("Cancelled Cheque is mandatory for registration");
       }
+      const hasGSTCertificate = formData.documents.some(
+        (d) => d.document_type === "GST Certificate",
+      );
+      if (!hasGSTCertificate) {
+        newErrors["documents"] = "GST Certificate is mandatory";
+        toast.error("GST Certificate is mandatory for registration");
+      }
     }
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
   const handleNext = async () => {
     setIsSubmitting(true);
     const isValid = await validateStep(currentStep);
@@ -412,14 +547,13 @@ function NewSupplier() {
       if (currentStep < 5) setCurrentStep(currentStep + 1);
     }
   };
-
   const handleBack = () => {
     if (currentStep > 1) setCurrentStep(currentStep - 1);
   };
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
+<<<<<<< HEAD
 
     // Validate file type (Only PDF or JPEG allowed)
     const allowedTypes = ["application/pdf", "image/jpeg", "image/jpg"];
@@ -432,10 +566,11 @@ function NewSupplier() {
       return;
     }
 
+=======
+>>>>>>> origin/main
     setIsUploading(true);
     try {
       const response = await api.uploadSupplierDocument(type, file);
-      // Keep all metadata returned from server to satisfy CreateSupplierRequest schema
       const newDoc = {
         document_type: response.document_type,
         file_name: response.file_name,
@@ -446,8 +581,12 @@ function NewSupplier() {
       };
       setFormData((prev) => ({
         ...prev,
+<<<<<<< HEAD
         // Replace existing document of the same type so only ONE document is kept per type
         documents: [...prev.documents.filter((d) => d.document_type !== type), newDoc],
+=======
+        documents: [...prev.documents, newDoc],
+>>>>>>> origin/main
       }));
       toast.success(`${type} uploaded successfully`);
     } catch (e: any) {
@@ -457,14 +596,12 @@ function NewSupplier() {
       e.target.value = "";
     }
   };
-
   const removeDocument = (index: number) => {
     setFormData((prev) => ({
       ...prev,
       documents: prev.documents.filter((_, i) => i !== index),
     }));
   };
-
   const toggleMainMaterial = (material: string) => {
     setFormData((prev) => {
       const current = prev.mainMaterials || [];
@@ -474,7 +611,6 @@ function NewSupplier() {
       return { ...prev, mainMaterials: updated };
     });
   };
-
   const toggleCategory = (cat: string) => {
     setFormData((prev) => {
       const current = prev.category || [];
@@ -482,7 +618,6 @@ function NewSupplier() {
       return { ...prev, category: updated };
     });
   };
-
   const handleAddVendorType = async () => {
     if (!newVendorType.trim()) {
       toast.error("Please enter a vendor type name");
@@ -492,7 +627,6 @@ function NewSupplier() {
       toast.error("This vendor type already exists");
       return;
     }
-
     try {
       await api.createVendorType(newVendorType.trim());
       setVendorTypes((prev) => [...prev, newVendorType.trim()]);
@@ -506,7 +640,6 @@ function NewSupplier() {
       toast.error("Failed to save vendor type: " + e.message);
     }
   };
-
   const handleAddCategory = async () => {
     if (!newCategory.trim()) {
       toast.error("Please enter a category name");
@@ -516,7 +649,6 @@ function NewSupplier() {
       toast.error("This category already exists");
       return;
     }
-
     try {
       await api.createSupplierCategory(newCategory.trim());
       setCategories((prev) => [...prev, newCategory.trim()]);
@@ -530,7 +662,6 @@ function NewSupplier() {
       toast.error("Failed to save category: " + e.message);
     }
   };
-
   const handleAddRawMaterial = async () => {
     if (!newRawMaterial.trim()) {
       toast.error("Please enter a material name");
@@ -540,7 +671,6 @@ function NewSupplier() {
       toast.error("This material already exists");
       return;
     }
-
     try {
       await api.createRawMaterial(newRawMaterial.trim());
       setRawMaterials((prev) => [...prev, newRawMaterial.trim()]);
@@ -554,26 +684,21 @@ function NewSupplier() {
       toast.error("Failed to save material: " + e.message);
     }
   };
-
   const handleSubmit = async () => {
-    // Final validation before submission
     setIsSubmitting(true);
     const step1Valid = await validateStep(1);
     const step2Valid = await validateStep(2);
     const step3Valid = await validateStep(3);
     const step4Valid = await validateStep(4);
     setIsSubmitting(false);
-
     if (!step1Valid || !step2Valid || !step3Valid || !step4Valid) {
       toast.error("Please fix errors in previous steps before submitting.");
       return;
     }
-
     const name = formData.supplierName.trim();
     const regName = formData.registeredCompanyName.trim();
     const industry = formData.industry.trim();
     const gstin = formData.gstin.trim();
-
     setIsSubmitting(true);
     try {
       const finalData = {
@@ -613,14 +738,12 @@ function NewSupplier() {
       setIsSubmitting(false);
     }
   };
-
   return (
     <AppShell
       title="Register New Supplier"
       subtitle="Complete the 5-step onboarding process to add a new vendor."
     >
       <div className="mx-auto max-w-4xl">
-        {/* Step Indicator */}
         <div className="mb-8 flex items-center justify-between">
           {steps.map((step, idx) => (
             <React.Fragment key={step.id}>
@@ -663,7 +786,6 @@ function NewSupplier() {
         </div>
 
         <Card className="p-6 shadow-soft">
-          {/* Step 1: Company Profile */}
           {currentStep === 1 && (
             <div className="space-y-4 animate-fade-in">
               <h3 className="text-lg font-semibold">Company Profile</h3>
@@ -926,7 +1048,6 @@ function NewSupplier() {
             </div>
           )}
 
-          {/* Step 2: Address & Contact */}
           {currentStep === 2 && (
             <div className="space-y-4 animate-fade-in">
               <h3 className="text-lg font-semibold">Address & Primary Contact</h3>
@@ -970,7 +1091,12 @@ function NewSupplier() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="state">State</Label>
+                    <Label htmlFor="state" className="flex items-center gap-2">
+                      State <span className="text-destructive">*</span>
+                      {isLookingUpState && (
+                        <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                      )}
+                    </Label>
                     <Select
                       onValueChange={(v) => updateFormData("address", "state", v)}
                       value={formData.address.state}
@@ -995,6 +1121,26 @@ function NewSupplier() {
                         <AlertCircle className="size-3" /> {errors["address.state"]}
                       </p>
                     )}
+<<<<<<< HEAD
+=======
+                    {stateLookupMessage && !errors["address.state"] && (
+                      <p
+                        className={cn(
+                          "flex items-center gap-1 text-[11px] font-medium",
+                          stateLookupMessage.startsWith("City and state selected")
+                            ? "text-success"
+                            : "text-muted-foreground",
+                        )}
+                      >
+                        {stateLookupMessage.startsWith("City and state selected") ? (
+                          <CheckCircle2 className="size-3" />
+                        ) : (
+                          <AlertCircle className="size-3" />
+                        )}
+                        {stateLookupMessage}
+                      </p>
+                    )}
+>>>>>>> origin/main
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="pincode">
@@ -1116,8 +1262,6 @@ function NewSupplier() {
                         onChange={(e) => {
                           const val = e.target.value.replace(/\s/g, "").substring(0, 128);
                           updateFormData("contact", "primaryEmail", val);
-
-                          // Run-time validation
                           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                           if (val && !emailRegex.test(val)) {
                             setErrors((prev) => ({
@@ -1154,8 +1298,6 @@ function NewSupplier() {
                         onChange={(e) => {
                           const val = e.target.value.replace(/\s/g, "").substring(0, 128);
                           updateFormData("contact", "secondaryEmail", val);
-
-                          // Run-time validation
                           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                           if (val && !emailRegex.test(val)) {
                             setErrors((prev) => ({
@@ -1188,7 +1330,6 @@ function NewSupplier() {
             </div>
           )}
 
-          {/* Step 3: Banking Information */}
           {currentStep === 3 && (
             <div className="space-y-4 animate-fade-in">
               <h3 className="text-lg font-semibold">Banking Information</h3>
@@ -1223,8 +1364,6 @@ function NewSupplier() {
                     onChange={async (e) => {
                       const val = e.target.value.replace(/\D/g, "").substring(0, 18);
                       updateFormData("bankInfo", "accountNumber", val);
-
-                      // Run-time validation for duplicates
                       if (val.length >= 9) {
                         try {
                           const existence = await api.checkSupplierExistence({
@@ -1373,7 +1512,6 @@ function NewSupplier() {
             </div>
           )}
 
-          {/* Step 4: Documents */}
           {currentStep === 4 && (
             <div className="space-y-4 animate-fade-in">
               <h3 className="text-lg font-semibold">Supporting Documents</h3>
@@ -1429,6 +1567,7 @@ function NewSupplier() {
                 <div className="mt-8 space-y-2">
                   <Label className="text-xs text-muted-foreground">Uploaded Documents</Label>
                   <div className="grid gap-2">
+<<<<<<< HEAD
                     {formData.documents.map((doc, idx) => {
                       const rawPath = doc.storage_path || doc.storagePath || "";
                       const docUrl = rawPath
@@ -1477,6 +1616,22 @@ function NewSupplier() {
                             >
                               <X className="size-4" />
                             </Button>
+=======
+                    {formData.documents.map((doc, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                            <FileIcon className="size-4" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium">{doc.file_name}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase">
+                              {doc.document_type}
+                            </div>
+>>>>>>> origin/main
                           </div>
                         </div>
                       );
@@ -1487,7 +1642,6 @@ function NewSupplier() {
             </div>
           )}
 
-          {/* Step 5: Remarks */}
           {currentStep === 5 && (
             <div className="space-y-6 animate-fade-in">
               <div className="space-y-4">

@@ -77,7 +77,7 @@ def test_field_mismatch_detection():
     po_repo = MockPoRepository()
     po_record = po_repo.find_po_by_number("PO-1001")
 
-    # Mismatched supplier name and total quantity
+
     ocr_res = OcrResult(
         po_number="PO-1001",
         supplier_name="Wrong Supplier Inc",
@@ -130,7 +130,7 @@ def test_unscheduled_arrival_missing_po():
 
 
 def test_active_duplicate_entry_prevention():
-    """Should reject duplicate active gate entry for same vehicle plate or PO number."""
+    """Should reject duplicate active gate entry for same PO number, but allow same vehicle with different PO."""
     repo = InMemoryGateEntryRepository()
 
     existing_entry = GateEntry.create(
@@ -145,12 +145,17 @@ def test_active_duplicate_entry_prevention():
         po_number="PO-1001", vehicle_plate="MH-12-AB-1234"
     )
 
+
     with pytest.raises(DomainRuleViolationException) as exc_info:
         GateVerificationService.check_duplicate_active_entry(
-            active_entries, po_number="PO-1001", vehicle_plate="MH-12-AB-1234"
+            active_entries, po_number="PO-1001"
         )
-
     assert "Active gate entry attempt" in str(exc_info.value)
+
+
+    GateVerificationService.check_duplicate_active_entry(
+        active_entries, po_number="PO-9999", vehicle_plate="MH-12-AB-1234"
+    )
 
 
 def test_outbox_event_emitted_on_approval():
@@ -181,7 +186,7 @@ def test_po_ocr_pipeline_image_validation():
     """Test image byte length and format validation."""
     engine = EnterprisePoOcrEngine()
 
-    # Image too small (< 50 bytes)
+
     with pytest.raises(DomainRuleViolationException) as exc1:
         engine.preprocess_image(b"tiny")
     assert "too small" in str(exc1.value).lower()
@@ -202,5 +207,3 @@ def test_mark_entry_as_unscheduled_arrival():
 
     assert entry.status == GateEntryStatus.UNSCHEDULED_ARRIVAL
     assert entry.verified_by == "supervisor1"
-
-

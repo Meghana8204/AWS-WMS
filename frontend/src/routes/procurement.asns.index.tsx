@@ -23,16 +23,13 @@ import {
 import { api } from "@/lib/api-client";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
 export const Route = createFileRoute("/procurement/asns/")({
   component: Asns,
 });
-
 function Asns() {
   const [asns, setAsns] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const fetchData = useCallback(async (showLoader = false) => {
     try {
       if (showLoader) setRefreshing(true);
@@ -46,24 +43,20 @@ function Asns() {
       setRefreshing(false);
     }
   }, []);
-
   useEffect(() => {
     fetchData();
-
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") fetchData();
     };
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     const refreshTimer = window.setInterval(() => fetchData(), 15000);
-
     return () => {
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.clearInterval(refreshTimer);
     };
   }, [fetchData]);
-
   return (
     <AppShell
       title="Advanced Shipping Notices"
@@ -118,7 +111,7 @@ function Asns() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-bold text-foreground tracking-tight">{asn.asnNumber}</h3>
-                      <StatusBadge status={asn.status} />
+                      <StatusBadge status={asn.warehouseStatus || asn.status} />
                     </div>
                     <p className="mt-1 text-sm font-semibold text-foreground/80">
                       {asn.supplierName || "Independent Supplier"}

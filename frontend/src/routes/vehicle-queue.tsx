@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ArrowRight, Boxes, Eye, Loader2, RefreshCw, Truck, Warehouse } from "lucide-react";
@@ -6,12 +6,10 @@ import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
-
 export const Route = createFileRoute("/vehicle-queue")({
   head: () => ({ meta: [{ title: "Inbound Arrivals · NexusWMS" }] }),
   component: InboundArrivals,
 });
-
 type Arrival = {
   id: string;
   gate_entry_number: string;
@@ -53,7 +51,10 @@ type Dock = {
   status: "AVAILABLE" | "OCCUPIED";
   vehicle_number?: string;
 };
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function InboundArrivals() {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
@@ -61,7 +62,6 @@ function InboundArrivals() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedDock, setSelectedDock] = useState<Record<string, string>>({});
   const [assigning, setAssigning] = useState<string | null>(null);
-
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -77,13 +77,11 @@ function InboundArrivals() {
       if (!quiet) setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(true), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
-
   async function assignDock(arrival: Arrival) {
     const dockId = selectedDock[arrival.id];
     if (!dockId) {
@@ -106,7 +104,6 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
-
   async function startMovement(arrival: Arrival) {
     setAssigning(arrival.id);
     try {
@@ -123,7 +120,6 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
-
   async function confirmDockArrival(arrival: Arrival) {
     setAssigning(arrival.id);
     try {
@@ -140,7 +136,10 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
   return (
     <AppShell
       title="Inbound arrivals"
@@ -221,7 +220,10 @@ function InboundArrivals() {
     </AppShell>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function ArrivalRows({
   arrival,
   expanded,
@@ -263,12 +265,16 @@ function ArrivalRows({
           </button>
         </td>
         <td className="px-4 py-4">
+<<<<<<< HEAD
           <Link
             to="/procurement/purchase-orders"
             className="font-mono text-primary hover:underline"
           >
             {arrival.po_number}
           </Link>
+=======
+          <span className="font-mono">{arrival.po_number}</span>
+>>>>>>> origin/main
         </td>
         <td className="px-4 py-4 font-medium">{arrival.supplier_name || "—"}</td>
         <td className="px-4 py-4">
@@ -312,7 +318,10 @@ function ArrivalRows({
     </>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function Summary({ label, value }: { label: string; value: number }) {
   return (
     <Card className="rounded-2xl p-4">
@@ -321,7 +330,10 @@ function Summary({ label, value }: { label: string; value: number }) {
     </Card>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function ArrivalDetails({
   arrival,
   docks,
@@ -497,20 +509,32 @@ function ArrivalDetails({
     </div>
   );
 }
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/main
 function Detail({
   label,
   value,
   mono = false,
 }: {
   label: string;
+<<<<<<< HEAD
   value?: string | null | undefined;
+=======
+  value?: string | null;
+>>>>>>> origin/main
   mono?: boolean;
 }) {
   return (
     <div>
+<<<<<<< HEAD
       <dt className="text-xs text-muted-foreground uppercase">{label}</dt>
       <dd className={`mt-0.5 font-medium ${mono ? "font-mono" : ""}`}>{value || "—"}</dd>
+=======
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className={`mt-1 font-semibold ${mono ? "font-mono" : ""}`}>{value || "—"}</dd>
+>>>>>>> origin/main
     </div>
   );
 }

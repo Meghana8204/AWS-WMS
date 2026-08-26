@@ -12,7 +12,7 @@ import logging
 import uuid
 from typing import Optional
 
-# pyrefly: ignore [missing-import]
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
@@ -79,7 +79,7 @@ async def _get_quantity_policy(session) -> QuantityVerificationPolicyModel:
         await session.flush()
     return policy
 
-# Shared persistence components
+
 _gate_repo = InMemoryGateEntryRepository()
 _po_ocr_engine = EnterprisePoOcrEngine()
 
@@ -130,8 +130,8 @@ async def _lookup_database_po(
     if not allow_partial:
         return None
 
-    # OCR commonly sees PO-2026 from PO-2026-0001. Resolve a partial prefix
-    # only when it is unambiguous or is linked to the current ASN shipment.
+
+
     candidates_result = await session.execute(
         select(PurchaseOrderModel)
         .options(selectinload(PurchaseOrderModel.items))
@@ -193,10 +193,10 @@ async def scan_with_local_ocr(
                     detail="No readable purchase-order details were found. Use a clearer document image or enter the details manually.",
                 )
 
-            # The uploaded image is always the source of extracted form values.
-            # PostgreSQL is used only for verification/comparison; never replace
-            # OCR output with a stored record because that makes scans of altered
-            # or unrelated documents appear to contain fixed data.
+
+
+
+
             po_record = await _lookup_database_po(uow.session, result.po_number)
             po_number = result.po_number
             supplier_name = result.supplier_name
@@ -258,8 +258,8 @@ async def scan_with_local_ocr(
                     "extraction": {"fields": {"vehicle_number": "NOT_FOUND"}},
                 }
 
-        # Licence/document extraction is optional; returning a stable response
-        # lets the UI fall back to manual entry when no specialised extractor exists.
+
+
         return {"extraction": {"fields": {}}}
     except HTTPException:
         raise
@@ -473,7 +473,7 @@ async def preview_po_ocr(
     po_num_override = request.po_number_override.strip().upper() if request.po_number_override else ""
     ocr_res: Optional[OcrResult] = None
 
-    # 1. Real Dynamic OCR Extraction from Image Bytes if payload provided
+
     if request.document_image_base64:
         try:
             doc_bytes = base64.b64decode(request.document_image_base64, validate=True)
@@ -481,22 +481,22 @@ async def preview_po_ocr(
         except Exception as err:
             raise DomainRuleViolationException(f"Failed to process PO image frame: {str(err)}")
 
-    # 2. Use override PO Number if OCR image did not yield PO Number
+
     target_po_number = (ocr_res.po_number if ocr_res and ocr_res.po_number else po_num_override).strip().upper()
 
-    # 3. Lookup the canonical record only in the real procurement database.
+
     po_record = await _lookup_database_po(uow.session, target_po_number)
 
-    # Keep image extraction independent. The canonical record is returned
-    # separately for verification and must not overwrite what OCR observed.
+
+
     if po_record:
         target_po_number = po_record.po_number
 
-    # 4. Complete fields from the matching canonical record only. Unknown
-    # documents must remain blank instead of being populated with fabricated
-    # supplier, quantity, or date values.
-    # Database fallback is allowed only for a manual PO-number lookup with no
-    # uploaded document. An actual scan never receives substituted values.
+
+
+
+
+
     has_scanned_image = bool(request.document_image_base64)
     fallback_supplier = po_record.supplier_name if po_record and not has_scanned_image else ""
     fallback_material = po_record.material_description if po_record and not has_scanned_image else ""
@@ -525,7 +525,7 @@ async def preview_po_ocr(
             confidence=ocr_res.confidence,
         )
 
-    # 5. Dynamic Cross-Verification against database PO record
+
     computed_status, mismatches = EnterprisePoOcrEngine.cross_verify_against_db(ocr_res, po_record)
 
     po_dto = (
@@ -588,8 +588,8 @@ async def _read_gate_entry_request(http_request: Request) -> CreateGateEntryRequ
 
     try:
         return CreateGateEntryRequest(
-            # The pre-existing UI uses vehicle_number; the Gate Entry API uses
-            # vehicle_plate.  Support both during the transition.
+
+
             vehicle_plate=str(form.get("vehicle_plate") or form.get("vehicle_number") or ""),
             po_number=str(form.get("po_number") or ""),
             asn_reference=str(form.get("asn_reference") or "") or None,
@@ -619,11 +619,6 @@ async def create_gate_entry(
     """
     request = await _read_gate_entry_request(http_request)
     from app.modules.gate.infrastructure.services.ocr_service import normalize_vehicle_registration
-    if not request.asn_reference:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="ASN reference is required; PO, supplier and vehicle data are resolved from the ASN.",
-        )
     asn = None
     if request.asn_reference:
         reference = request.asn_reference.strip()
@@ -646,21 +641,27 @@ async def create_gate_entry(
     po_num = ((asn.po_number if asn else request.po_number) or "").strip().upper()
 
     if not plate:
-        raise DomainRuleViolationException("The referenced ASN must contain a vehicle number.")
+        raise DomainRuleViolationException("Vehicle number is mandatory.")
     if not po_num:
         raise DomainRuleViolationException("Purchase order number is mandatory.")
+    if not request.truck_photo_base64:
+        raise DomainRuleViolationException("Vehicle photo is mandatory.")
+    if not (request.supplier_name and request.supplier_name.strip()):
+        raise DomainRuleViolationException("Supplier name is mandatory.")
+    if request.total_quantity is None or request.total_quantity <= 0:
+        raise DomainRuleViolationException("Total quantity is mandatory and must be greater than 0.")
 
-    # 1. Active duplicate check
+
     active_result = await uow.session.execute(
         select(GateEntryModel).where(
-            or_(GateEntryModel.po_number == po_num, GateEntryModel.vehicle_number == plate),
+            GateEntryModel.po_number == po_num,
             GateEntryModel.status.notin_([GateEntryStatus.REJECTED.value]),
         )
     )
     active_entries = [_gate_entry_from_model(model) for model in active_result.scalars().all()]
-    GateVerificationService.check_duplicate_active_entry(active_entries, po_num, plate)
+    GateVerificationService.check_duplicate_active_entry(active_entries, po_num)
 
-    # 2. Dynamic OCR processing or extraction
+
     ocr_res: Optional[OcrResult] = None
     if request.document_image_base64:
         try:
@@ -671,9 +672,9 @@ async def create_gate_entry(
 
     po_record = await _lookup_database_po(uow.session, po_num)
 
-    # The scan preview has already populated the submitted form. Do not run a
-    # second OCR pass and overwrite those verified values with logo/header
-    # text. Master PO data is authoritative whenever it is available.
+
+
+
     if asn:
         ocr_res = OcrResult(
             po_number=po_num,
@@ -706,13 +707,13 @@ async def create_gate_entry(
             confidence=ocr_res.confidence if ocr_res else 0.0,
         )
 
-    # 3. Cross-verify 6 fields
+
     computed_status, mismatches = EnterprisePoOcrEngine.cross_verify_against_db(ocr_res, po_record)
 
-    # 4. Generate sequential Gate Entry Pass Number
+
     gate_entry_num = _generate_gate_entry_number()
 
-    # 5. Create GateEntry aggregate & save persistently
+
     entry = GateEntry.create(
         vehicle_plate=plate,
         created_by=user.username,
@@ -1417,9 +1418,9 @@ async def complete_receiving(
         for line in lines
     ]
     uow.session.add(grn)
-    # The assignment references this new GRN. Flush the parent first because
-    # assignment is an existing row and SQLAlchemy may otherwise schedule its
-    # UPDATE ahead of the unrelated GRN INSERT, violating the foreign key.
+
+
+
     await uow.session.flush()
     receiving_by_code = {line.item_code: line for line in lines}
     units_result = await uow.session.execute(select(HandlingUnitModel).where(HandlingUnitModel.receiving_line_id.in_([line.id for line in lines])))

@@ -83,12 +83,12 @@ class SupplierDocument:
             raise DomainRuleViolationException("Document Type is mandatory")
         if not self.file_name or not str(self.file_name).strip():
             raise DomainRuleViolationException("File Name is mandatory")
-        # Validate format
+
         allowed_exts = (".pdf", ".jpg", ".jpeg")
         lower_name = self.file_name.lower()
         if not any(lower_name.endswith(ext) for ext in allowed_exts):
             raise DomainRuleViolationException("Invalid document format. Only PDF and JPG files are allowed.")
-        # Validate size (max 10MB)
+
         max_size_bytes = 10 * 1024 * 1024
         if self.file_size is not None and self.file_size > max_size_bytes:
             raise DomainRuleViolationException("Document size exceeds maximum limit of 10 MB.")
@@ -230,7 +230,7 @@ class Supplier(AggregateRoot):
         if not category:
             raise DomainRuleViolationException("At least one Category is mandatory")
 
-        # Enforce Cancelled Cheque
+
         has_cheque = any(d.document_type == "Cancelled Cheque" for d in (documents or []))
         if not has_cheque:
             raise DomainRuleViolationException("Cancelled Cheque is a mandatory document for registration")

@@ -13,11 +13,9 @@ import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-
 export const Route = createFileRoute("/reports")({
   component: Reports,
 });
-
 function Reports() {
   const reportTypes = [
     {
@@ -39,7 +37,6 @@ function Reports() {
       icon: TrendingUp,
     },
   ];
-
   return (
     <AppShell
       title="Analytical Reports"
@@ -113,7 +110,6 @@ function Reports() {
     </AppShell>
   );
 }
-
 function ScheduledItem({ title, recipients, frequency }: any) {
   return (
     <div className="flex items-center justify-between p-4 rounded-xl border border-border/60 bg-muted/20">

@@ -19,17 +19,14 @@ import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/inventory")({
   component: Inventory,
 });
-
 function Inventory() {
   const [stock, setStock] = useState<any[]>([]);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [locationBalances, setLocationBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -47,11 +44,9 @@ function Inventory() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     fetchData();
   }, []);
-
   return (
     <AppShell
       title="Warehouse Inventory"
@@ -192,7 +187,11 @@ function Inventory() {
                     </td>
                     <td className="px-6 py-4">
                       {parseFloat(s.onHand) < parseFloat(s.reorderPoint) ? (
+<<<<<<< HEAD
                         <StatusBadge status="Waiting" /> // Reuse "Waiting" for low stock warning
+=======
+                        <StatusBadge status="Waiting" />
+>>>>>>> origin/main
                       ) : (
                         <StatusBadge status="Active" />
                       )}
@@ -284,7 +283,6 @@ function Inventory() {
     </AppShell>
   );
 }
-
 function InventoryStat({ label, value, icon: Icon, color, bg }: any) {
   return (
     <Card className="border-border/40 shadow-soft overflow-hidden">

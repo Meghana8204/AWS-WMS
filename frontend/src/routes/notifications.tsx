@@ -1,6 +1,7 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+<<<<<<< HEAD
 import {
   Bell,
   Truck,
@@ -16,23 +17,22 @@ import {
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
+=======
+import { Truck, Inbox, Loader2, FileText } from "lucide-react";
+import { AppShell } from "@/components/wms/app-shell";
+>>>>>>> origin/main
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-utils";
-
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
   component: Notifications,
 });
-
 function Notifications() {
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
-
   useEffect(() => {
     const info = localStorage.getItem("user_info");
     const roles = info ? JSON.parse(info).roles || [] : [];
@@ -55,7 +55,6 @@ function Notifications() {
       window.removeEventListener("notifications:refresh", refresh);
     };
   }, []);
-
   const fetchData = async (role: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -72,7 +71,10 @@ function Notifications() {
             `Truck ${n.vehicleNumber || n.vehicle_number || "not assigned"} from ${n.supplierName || n.supplier_name || "supplier not available"} is arriving.`,
           created_at:
             n.createdAt || n.created_at || n.expectedArrivalTime || n.expected_arrival_time,
+<<<<<<< HEAD
           link: n.asnId || n.asn_id ? `/procurement/asns/${n.asnId || n.asn_id}` : "/notifications",
+=======
+>>>>>>> origin/main
           type: "arrival",
           is_read: (n.status || "").toUpperCase() === "ACKNOWLEDGED",
           po_number: n.poNumber || n.po_number,
@@ -96,6 +98,7 @@ function Notifications() {
       if (!quiet) setLoading(false);
     }
   };
+<<<<<<< HEAD
 
   const handleMarkRead = async (id: string) => {
     try {
@@ -126,10 +129,13 @@ function Notifications() {
     }
   };
 
+=======
+>>>>>>> origin/main
   return (
     <AppShell
       title="Notification centre"
       subtitle="Stay updated with procurement and supply chain alerts"
+<<<<<<< HEAD
       actions={
         <Button
           variant="outline"
@@ -140,6 +146,8 @@ function Notifications() {
           Mark all read
         </Button>
       }
+=======
+>>>>>>> origin/main
     >
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -161,7 +169,11 @@ function Notifications() {
             <Card
               key={n.id}
               className={cn(
+<<<<<<< HEAD
                 "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
+=======
+                "relative overflow-hidden border-border/50 p-5",
+>>>>>>> origin/main
                 !n.is_read && "bg-primary-soft/5 border-primary/20",
               )}
             >
@@ -196,7 +208,7 @@ function Notifications() {
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{n.message}</p>
 
-                  {n.link && (
+                  {(n.po_number || n.supplier_name) && (
                     <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
                       <div className="flex gap-2">
                         {n.po_number && (
@@ -210,6 +222,7 @@ function Notifications() {
                           </span>
                         )}
                       </div>
+<<<<<<< HEAD
                       <Button
                         variant="ghost"
                         size="sm"
@@ -221,6 +234,8 @@ function Notifications() {
                           View Details <ArrowRight className="ml-1.5 size-3.5" />
                         </Link>
                       </Button>
+=======
+>>>>>>> origin/main
                     </div>
                   )}
                 </div>
