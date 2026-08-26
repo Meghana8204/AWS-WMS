@@ -36,6 +36,10 @@ type Draft = {
   official_record?: boolean;
   inventory_updated?: boolean;
 };
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function Grn() {
   const [drafts, setDrafts] = useState<Draft[]>([]),
     [loading, setLoading] = useState(true);

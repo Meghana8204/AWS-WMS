@@ -187,7 +187,11 @@ function Inventory() {
                     </td>
                     <td className="px-6 py-4">
                       {parseFloat(s.onHand) < parseFloat(s.reorderPoint) ? (
+<<<<<<< HEAD
+                        <StatusBadge status="Waiting" /> // Reuse "Waiting" for low stock warning
+=======
                         <StatusBadge status="Waiting" />
+>>>>>>> origin/main
                       ) : (
                         <StatusBadge status="Active" />
                       )}

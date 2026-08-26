@@ -43,6 +43,12 @@ function SubmitQuotation() {
   const [isLocked, setIsLocked] = useState(false);
   const [supplierId, setSupplierId] = useState("");
   const [username, setUsername] = useState("");
+<<<<<<< HEAD
+
+  // Bid form state
+  const [itemsData, setItemsData] = useState<
+    Record<string, { unitPrice: string; availableQty: string }>
+=======
   const [itemsData, setItemsData] = useState<
     Record<
       string,
@@ -51,6 +57,7 @@ function SubmitQuotation() {
         availableQty: string;
       }
     >
+>>>>>>> origin/main
   >({});
   const [metaData, setMetaData] = useState({
     discount: "0",
@@ -61,6 +68,14 @@ function SubmitQuotation() {
     paymentTerms: "Net 30",
     remarks: "",
   });
+<<<<<<< HEAD
+
+  // Document Upload state
+  const [uploadedDocs, setUploadedDocs] = useState<
+    Array<{ document_type: string; file_name: string; file_url: string }>
+  >([]);
+
+=======
   const [uploadedDocs, setUploadedDocs] = useState<
     Array<{
       document_type: string;
@@ -68,6 +83,7 @@ function SubmitQuotation() {
       file_url: string;
     }>
   >([]);
+>>>>>>> origin/main
   useEffect(() => {
     const userInfoStr = localStorage.getItem("user_info");
     if (!userInfoStr) {
@@ -150,6 +166,10 @@ function SubmitQuotation() {
     };
     fetchRfqAndQuotation();
   }, [rfqId]);
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   const handleItemChange = (
     itemCode: string,
     field: "unitPrice" | "availableQty",
@@ -390,6 +410,10 @@ function SubmitQuotation() {
           </div>
         )}
 
+<<<<<<< HEAD
+        {/* RFQ Details Summary (Read-Only) */}
+=======
+>>>>>>> origin/main
         <SectionCard
           title="RFQ Information (Read-Only)"
           description="Reference details for this request"
@@ -443,6 +467,10 @@ function SubmitQuotation() {
           )}
         </SectionCard>
 
+<<<<<<< HEAD
+        {/* Required Materials Bidding Form */}
+=======
+>>>>>>> origin/main
         <SectionCard
           title="Material Response"
           description="Enter pricing and available quantity for each material requirement"
@@ -517,6 +545,10 @@ function SubmitQuotation() {
           </div>
         </SectionCard>
 
+<<<<<<< HEAD
+        {/* Commercial & Logistical Details */}
+=======
+>>>>>>> origin/main
         <SectionCard
           title="Logistics & Commercials"
           description="Bidding parameters, terms, and conditions"
@@ -640,6 +672,10 @@ function SubmitQuotation() {
           </div>
         </SectionCard>
 
+<<<<<<< HEAD
+        {/* Document Uploads section */}
+=======
+>>>>>>> origin/main
         <SectionCard
           title="Quotation Supporting Documents"
           description="Upload PDF or compliance certification"

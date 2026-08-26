@@ -14,8 +14,8 @@ import {
   Bell,
   Moon,
   Sun,
-  PanelLeftClose,
-  PanelLeft,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Building2,
   FileText,
@@ -30,7 +30,14 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+<<<<<<< HEAD
+
+type NavItem = { label: string; to: string; icon: any; badge?: number | string };
+
+const warehouseNav: NavItem[] = [
+=======
 const warehouseNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
@@ -41,7 +48,12 @@ const warehouseNav = [
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+<<<<<<< HEAD
+
+const procurementNav: NavItem[] = [
+=======
 const procurementNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
@@ -50,19 +62,37 @@ const procurementNav = [
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
+<<<<<<< HEAD
+
+const supplierNav: NavItem[] = [
+=======
 const supplierNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
+<<<<<<< HEAD
+
+const financeNav: NavItem[] = [
+=======
 const financeNav = [
+>>>>>>> origin/main
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+<<<<<<< HEAD
+
+const gateSecurityNav: NavItem[] = [
+  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
+  { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
+=======
 const gateSecurityNav = [
   { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: ShieldCheck },
+>>>>>>> origin/main
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
 ];
@@ -114,11 +144,21 @@ export function AppShell({
   useEffect(() => {
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
+<<<<<<< HEAD
+
+    let cleanup: (() => void) | undefined;
+=======
+>>>>>>> origin/main
     try {
       const savedUser = localStorage.getItem("user_info");
       if (savedUser) {
         const u = JSON.parse(savedUser);
         setUser(u);
+<<<<<<< HEAD
+
+        // Fetch notifications for the user's role
+=======
+>>>>>>> origin/main
         const role = u.roles?.includes("SUPPLIER")
           ? "SUPPLIER"
           : u.roles?.includes("FINANCE")
@@ -145,7 +185,7 @@ export function AppShell({
         const interval = window.setInterval(fetchNotifications, 2000);
         window.addEventListener("notifications:refresh", fetchNotifications);
         window.addEventListener("focus", fetchNotifications);
-        return () => {
+        cleanup = () => {
           window.clearInterval(interval);
           window.removeEventListener("notifications:refresh", fetchNotifications);
           window.removeEventListener("focus", fetchNotifications);
@@ -154,6 +194,9 @@ export function AppShell({
     } catch (e) {
       console.error("Failed to parse user info", e);
     }
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [dark]);
   const isProcurementRoute =
     path === "/procurement-dashboard" ||
@@ -162,6 +205,32 @@ export function AppShell({
     path === "/new-supplier" ||
     (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
+<<<<<<< HEAD
+  const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isWarehouseRoute =
+    path === "/warehouse-dashboard" ||
+    [
+      "/inventory",
+      "/warehouse/material-requests",
+      "/gate-entry",
+      "/notifications",
+      "/vehicle-queue",
+      "/receiving",
+      "/reports",
+    ].some((p) => path.startsWith(p));
+
+  const nav =
+    isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
+      ? supplierNav
+      : isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
+        ? financeNav
+        : isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
+          ? procurementNav
+          : mounted && user?.roles?.includes("GATE_SECURITY")
+            ? gateSecurityNav
+            : warehouseNav;
+
+=======
   const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
   const isSharedFinanceRoute = path.startsWith("/reports");
   const isFinanceRoute =
@@ -215,6 +284,7 @@ export function AppShell({
                     : warehouseNav;
   const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
   const nav = navigationPending ? [] : resolvedNav;
+>>>>>>> origin/main
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
@@ -228,15 +298,39 @@ export function AppShell({
           collapsed ? "w-[76px]" : "w-[264px]",
         )}
       >
-        <div className="flex h-16 items-center gap-3 px-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
-            <Warehouse className="size-5" />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
-              <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
-            </div>
+        <div
+          className={cn(
+            "flex h-16 items-center border-b border-sidebar-border/40 transition-all",
+            collapsed ? "justify-center px-2" : "justify-between gap-2 px-4",
+          )}
+        >
+          {!collapsed ? (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+                  <Warehouse className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
+                  <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCollapsed(true)}
+                title="Collapse sidebar"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+              >
+                <ChevronLeft className="size-5" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setCollapsed(false)}
+              title="Expand sidebar"
+              className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary transition-all hover:bg-primary hover:text-primary-foreground shadow-soft"
+            >
+              <ChevronRight className="size-5" />
+            </button>
           )}
         </div>
 
@@ -270,6 +364,8 @@ export function AppShell({
             );
           })}
         </nav>
+<<<<<<< HEAD
+=======
 
         <div className="border-t border-sidebar-border p-3 space-y-1">
           <button
@@ -293,13 +389,18 @@ export function AppShell({
             {!collapsed && <span>Logout</span>}
           </button>
         </div>
+>>>>>>> origin/main
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
             <Link
+<<<<<<< HEAD
+              to={nav[0]?.to || "/"}
+=======
               to={nav[0]?.to ?? "/warehouse-dashboard"}
+>>>>>>> origin/main
               className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
             >
               <Warehouse className="size-4" />
@@ -399,7 +500,11 @@ export function AppShell({
                         ? "Finance Manager"
                         : user?.roles?.includes("GATE_SECURITY")
                           ? "Security Officer"
+<<<<<<< HEAD
+                          : "Warehouse Manager"}
+=======
                           : "Operations Manager"}
+>>>>>>> origin/main
                   </p>
                 </div>
                 <button
@@ -450,7 +555,12 @@ export function AppShell({
     </div>
   );
 }
+<<<<<<< HEAD
+
+export function StatusBadge({ status, className }: { status: string; className?: string }) {
+=======
 export function StatusBadge({ status }: { status: string }) {
+>>>>>>> origin/main
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
     Active: "bg-success-soft text-success border-success/30",
@@ -509,6 +619,10 @@ export function StatusBadge({ status }: { status: string }) {
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map["Hold"],
         isLive && "pl-5",
+<<<<<<< HEAD
+        className,
+=======
+>>>>>>> origin/main
       )}
     >
       {isLive && (

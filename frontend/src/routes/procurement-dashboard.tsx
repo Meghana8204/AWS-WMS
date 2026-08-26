@@ -146,6 +146,10 @@ function ProcurementDashboard() {
     }, 300);
     return () => clearTimeout(handler);
   }, [poQuery]);
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   const activityItems = notifications.map((n) => ({
     time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     title: n.title,
@@ -245,9 +249,15 @@ function ProcurementDashboard() {
           to="/master-data"
         />
         <StatCard
+<<<<<<< HEAD
+          label="Supplier master"
+          value={loading ? "..." : String(stats.activeSuppliers)}
+          delta="Available for procurement"
+=======
           label="Total suppliers"
           value={loading ? "..." : String(stats.totalSuppliers)}
           delta="All registered suppliers"
+>>>>>>> origin/main
           icon={Building2}
           tone="success"
           to="/master-data"
@@ -262,10 +272,15 @@ function ProcurementDashboard() {
         />
         <StatCard
           label="Compliance rate"
+<<<<<<< HEAD
+          value={loading ? "..." : `${stats.complianceRate}%`}
+          delta="Target: 99%"
+=======
           value={
             loading ? "..." : stats.complianceRate === null ? "No data" : `${stats.complianceRate}%`
           }
           delta={`Target: ${stats.complianceTarget}%`}
+>>>>>>> origin/main
           icon={ShieldCheck}
           tone="success"
         />

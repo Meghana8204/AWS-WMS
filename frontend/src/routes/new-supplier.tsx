@@ -12,6 +12,7 @@ import {
   Upload,
   MessageSquare,
   FileIcon,
+  Eye,
   X,
   AlertCircle,
 } from "lucide-react";
@@ -52,9 +53,63 @@ const steps = [
   { id: 4, name: "Documents", icon: Upload },
   { id: 5, name: "Remarks", icon: MessageSquare },
 ];
+<<<<<<< HEAD
+
+const DRAFT_STORAGE_KEY = "new_supplier_form_draft";
+
+const defaultFormState = {
+  supplierName: "",
+  registeredCompanyName: "",
+  vendorType: "",
+  category: [] as string[],
+  mainMaterials: [] as string[],
+  industry: "",
+  gstin: "",
+  address: {
+    registeredAddress: "",
+    city: "",
+    country: "India",
+    state: "",
+    pincode: "",
+  },
+  contact: {
+    primaryContactName: "",
+    primaryEmail: "",
+    secondaryEmail: "",
+    designation: "",
+    phone: "",
+    website: "",
+  },
+  bankInfo: {
+    bankName: "",
+    accountNumber: "",
+    accountHolderName: "",
+    ifsc: "",
+    branch: "",
+    swiftBic: "",
+    tdsSection: "",
+  },
+  documents: [] as any[],
+  remarks: "",
+};
+
+=======
+>>>>>>> origin/main
 function NewSupplier() {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = React.useState(1);
+  const [currentStep, setCurrentStep] = React.useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.currentStep) return Number(parsed.currentStep);
+        }
+      }
+    } catch (_) {}
+    return 1;
+  });
+
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [isLookingUpState, setIsLookingUpState] = React.useState(false);
@@ -99,6 +154,40 @@ function NewSupplier() {
     };
     fetchMasterData();
   }, []);
+<<<<<<< HEAD
+
+  // Form State initialized from localStorage draft
+  const [formData, setFormData] = React.useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.formData) {
+            return {
+              ...defaultFormState,
+              ...parsed.formData,
+              address: { ...defaultFormState.address, ...(parsed.formData.address || {}) },
+              contact: { ...defaultFormState.contact, ...(parsed.formData.contact || {}) },
+              bankInfo: { ...defaultFormState.bankInfo, ...(parsed.formData.bankInfo || {}) },
+            };
+          }
+        }
+      }
+    } catch (_) {}
+    return defaultFormState;
+  });
+
+  // Automatically save form data and current step to localStorage on change
+  React.useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ formData, currentStep }));
+      }
+    } catch (_) {}
+  }, [formData, currentStep]);
+
+=======
   const [formData, setFormData] = React.useState({
     supplierName: "",
     registeredCompanyName: "",
@@ -134,6 +223,7 @@ function NewSupplier() {
     documents: [] as any[],
     remarks: "",
   });
+>>>>>>> origin/main
   const [isUploading, setIsUploading] = React.useState(false);
   React.useEffect(() => {
     const pincode = formData.address.pincode;
@@ -238,17 +328,33 @@ function NewSupplier() {
       if (!name) newErrors.supplierName = "Supplier Display Name is required";
       else if (name.length < 2 || name.length > 100)
         newErrors.supplierName = "Must be between 2 and 100 characters";
+<<<<<<< HEAD
+
       if (!regName) newErrors.registeredCompanyName = "Registered Company Name is required";
       else if (regName.length < 2 || regName.length > 200)
         newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+
+=======
+      if (!regName) newErrors.registeredCompanyName = "Registered Company Name is required";
+      else if (regName.length < 2 || regName.length > 200)
+        newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+>>>>>>> origin/main
       if (!formData.vendorType) newErrors.vendorType = "Please select a Vendor Type";
       if (formData.category.length === 0)
         newErrors.category = "Please select at least one Category";
       if (formData.mainMaterials.length === 0)
         newErrors.mainMaterials = "Please select at least one material";
+<<<<<<< HEAD
+
       if (!industry) newErrors.industry = "Industry is required";
       else if (industry.length < 2 || industry.length > 100)
         newErrors.industry = "Must be between 2 and 100 characters";
+
+=======
+      if (!industry) newErrors.industry = "Industry is required";
+      else if (industry.length < 2 || industry.length > 100)
+        newErrors.industry = "Must be between 2 and 100 characters";
+>>>>>>> origin/main
       if (!gstin) newErrors.gstin = "GSTIN is required";
       else if (gstin.length !== 15) newErrors.gstin = "Must be exactly 15 characters";
       else if (
@@ -281,29 +387,59 @@ function NewSupplier() {
       const website = formData.contact.website.trim();
       const primaryEmail = formData.contact.primaryEmail.trim();
       const secondaryEmail = formData.contact.secondaryEmail.trim();
+<<<<<<< HEAD
+
+      // Address Validation (Strict validation removed for registered address)
       if (addr && addr.length > 500)
         newErrors["address.registeredAddress"] = "Must be under 500 characters";
+
+=======
+      if (addr && addr.length > 500)
+        newErrors["address.registeredAddress"] = "Must be under 500 characters";
+>>>>>>> origin/main
       if (!city) newErrors["address.city"] = "City is required";
       else if (city.length < 2 || city.length > 100)
         newErrors["address.city"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s-]+$/.test(city))
         newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
+<<<<<<< HEAD
+
+      if (state && (state.length < 2 || state.length > 100))
+        newErrors["address.state"] = "Must be between 2 and 100 characters";
+
+      if (!pincode) newErrors["address.pincode"] = "Pincode is required";
+      else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
+
+      // Contact Validation
+=======
       if (!state) newErrors["address.state"] = "State is required";
       else if (state.length < 2 || state.length > 100)
         newErrors["address.state"] = "Must be between 2 and 100 characters";
       if (!pincode) newErrors["address.pincode"] = "Pincode is required";
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
+>>>>>>> origin/main
       if (!contactName)
         newErrors["contact.primaryContactName"] = "Primary Contact Name is required";
       else if (contactName.length < 2 || contactName.length > 100)
         newErrors["contact.primaryContactName"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s]+$/.test(contactName))
         newErrors["contact.primaryContactName"] = "Only letters and spaces allowed";
+<<<<<<< HEAD
+
+      if (designation && (designation.length < 2 || designation.length > 100))
+        newErrors["contact.designation"] = "Must be between 2 and 100 characters";
+
+      if (!phone) newErrors["contact.phone"] = "Phone number is required";
+      else if (!/^[6-9]\d{9}$/.test(phone))
+        newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
+
+=======
       if (designation && (designation.length < 2 || designation.length > 100))
         newErrors["contact.designation"] = "Must be between 2 and 100 characters";
       if (!phone) newErrors["contact.phone"] = "Phone number is required";
       else if (!/^[6-9]\d{9}$/.test(phone))
         newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
+>>>>>>> origin/main
       if (website) {
         try {
           new URL(website.startsWith("http") ? website : `https://${website}`);
@@ -315,8 +451,16 @@ function NewSupplier() {
       if (!primaryEmail) newErrors["contact.primaryEmail"] = "Primary Email is required";
       else if (!emailRegex.test(primaryEmail))
         newErrors["contact.primaryEmail"] = "Invalid email format";
+<<<<<<< HEAD
+
       if (secondaryEmail && !emailRegex.test(secondaryEmail))
         newErrors["contact.secondaryEmail"] = "Invalid email format";
+
+      // Backend Duplicate Check
+=======
+      if (secondaryEmail && !emailRegex.test(secondaryEmail))
+        newErrors["contact.secondaryEmail"] = "Invalid email format";
+>>>>>>> origin/main
       if (Object.keys(newErrors).length === 0) {
         try {
           const existence = await api.checkSupplierExistence({
@@ -343,6 +487,10 @@ function NewSupplier() {
         newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
       else if (!/^\d+$/.test(accNo))
         newErrors["bankInfo.accountNumber"] = "Must contain only digits";
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
       if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
       else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
         newErrors["bankInfo.ifsc"] = "Invalid IFSC format (e.g. SBIN0012345)";
@@ -350,6 +498,10 @@ function NewSupplier() {
       if (!holder) newErrors["bankInfo.accountHolderName"] = "Account holder name is required";
       else if (!/^[a-zA-Z\s.]+$/.test(holder))
         newErrors["bankInfo.accountHolderName"] = "Invalid characters in name";
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
       if (!branch) newErrors["bankInfo.branch"] = "Branch name is required";
       if (swift && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.toUpperCase())) {
         newErrors["bankInfo.swiftBic"] = "Invalid SWIFT/BIC format";
@@ -401,6 +553,21 @@ function NewSupplier() {
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
+<<<<<<< HEAD
+
+    // Validate file type (Only PDF or JPEG allowed)
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/jpg"];
+    const allowedExts = [".pdf", ".jpeg", ".jpg"];
+    const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
+
+    if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(fileExt)) {
+      toast.error("Only PDF (.pdf) and JPEG (.jpeg, .jpg) files are allowed");
+      e.target.value = "";
+      return;
+    }
+
+=======
+>>>>>>> origin/main
     setIsUploading(true);
     try {
       const response = await api.uploadSupplierDocument(type, file);
@@ -414,14 +581,19 @@ function NewSupplier() {
       };
       setFormData((prev) => ({
         ...prev,
+<<<<<<< HEAD
+        // Replace existing document of the same type so only ONE document is kept per type
+        documents: [...prev.documents.filter((d) => d.document_type !== type), newDoc],
+=======
         documents: [...prev.documents, newDoc],
+>>>>>>> origin/main
       }));
       toast.success(`${type} uploaded successfully`);
     } catch (e: any) {
       toast.error("Upload failed: " + e.message);
     } finally {
-      setIsUploading(true);
       setIsUploading(false);
+      e.target.value = "";
     }
   };
   const removeDocument = (index: number) => {
@@ -461,7 +633,9 @@ function NewSupplier() {
       updateFormData("root", "vendorType", newVendorType.trim());
       setNewVendorType("");
       setShowAddVendorType(false);
-      toast.success("New vendor type added to database!");
+      toast.success("Vendor type created", {
+        description: `"${newVendorType.trim()}" has been added and selected.`,
+      });
     } catch (e: any) {
       toast.error("Failed to save vendor type: " + e.message);
     }
@@ -481,7 +655,9 @@ function NewSupplier() {
       toggleCategory(newCategory.trim());
       setNewCategory("");
       setShowAddCategory(false);
-      toast.success("New category added to database!");
+      toast.success("Category created", {
+        description: `"${newCategory.trim()}" has been added to categories.`,
+      });
     } catch (e: any) {
       toast.error("Failed to save category: " + e.message);
     }
@@ -501,7 +677,9 @@ function NewSupplier() {
       toggleMainMaterial(newRawMaterial.trim());
       setNewRawMaterial("");
       setShowAddRawMaterial(false);
-      toast.success("New raw material added to database!");
+      toast.success("Material created", {
+        description: `"${newRawMaterial.trim()}" has been added to materials.`,
+      });
     } catch (e: any) {
       toast.error("Failed to save material: " + e.message);
     }
@@ -543,8 +721,13 @@ function NewSupplier() {
         },
       };
       await api.createSupplier(finalData);
-      toast.success("Supplier registered successfully", {
-        description: `${name} has been added to the system.`,
+      try {
+        if (typeof window !== "undefined") {
+          localStorage.removeItem(DRAFT_STORAGE_KEY);
+        }
+      } catch (_) {}
+      toast.success("Company Profile Registered", {
+        description: `Company profile for "${name}" registered successfully.`,
       });
       navigate({ to: "/procurement-dashboard" });
     } catch (error: any) {
@@ -938,6 +1121,8 @@ function NewSupplier() {
                         <AlertCircle className="size-3" /> {errors["address.state"]}
                       </p>
                     )}
+<<<<<<< HEAD
+=======
                     {stateLookupMessage && !errors["address.state"] && (
                       <p
                         className={cn(
@@ -955,6 +1140,7 @@ function NewSupplier() {
                         {stateLookupMessage}
                       </p>
                     )}
+>>>>>>> origin/main
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="pincode">
@@ -1344,6 +1530,7 @@ function NewSupplier() {
                     <input
                       type="file"
                       id={`file-${doc.name}`}
+                      accept=".pdf,.jpeg,.jpg,application/pdf,image/jpeg"
                       className="hidden"
                       onChange={(e) => handleFileUpload(e, doc.name)}
                       disabled={isUploading}
@@ -1380,6 +1567,56 @@ function NewSupplier() {
                 <div className="mt-8 space-y-2">
                   <Label className="text-xs text-muted-foreground">Uploaded Documents</Label>
                   <div className="grid gap-2">
+<<<<<<< HEAD
+                    {formData.documents.map((doc, idx) => {
+                      const rawPath = doc.storage_path || doc.storagePath || "";
+                      const docUrl = rawPath
+                        ? rawPath.startsWith("http") || rawPath.startsWith("data:")
+                          ? rawPath
+                          : `http://localhost:8000${rawPath.startsWith("/") ? "" : "/"}${rawPath}`
+                        : null;
+
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="size-8 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                              <FileIcon className="size-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{doc.file_name}</div>
+                              <div className="text-[10px] text-muted-foreground uppercase">
+                                {doc.document_type}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {docUrl && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 gap-1.5 px-2.5 text-xs text-primary hover:bg-primary/10 rounded-lg"
+                                onClick={() => window.open(docUrl, "_blank", "noopener,noreferrer")}
+                                title="View Document"
+                              >
+                                <Eye className="size-3.5" />
+                                <span>View</span>
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
+                              onClick={() => removeDocument(idx)}
+                              title="Delete Document"
+                            >
+                              <X className="size-4" />
+                            </Button>
+=======
                     {formData.documents.map((doc, idx) => (
                       <div
                         key={idx}
@@ -1394,18 +1631,11 @@ function NewSupplier() {
                             <div className="text-[10px] text-muted-foreground uppercase">
                               {doc.document_type}
                             </div>
+>>>>>>> origin/main
                           </div>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-8 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg"
-                          onClick={() => removeDocument(idx)}
-                        >
-                          <X className="size-4" />
-                        </Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

@@ -159,6 +159,7 @@ class Supplier(AggregateRoot):
         address: Optional[SupplierAddress] = None,
         contact: Optional[SupplierContact] = None,
         bank_info: Optional[SupplierBankInfo] = None,
+        documents: Optional[List[SupplierDocument]] = None,
         remarks: Optional[str] = None,
         updated_by: Optional[str] = None,
     ) -> None:
@@ -182,6 +183,8 @@ class Supplier(AggregateRoot):
             self.contact = contact
         if bank_info is not None:
             self.bank_info = bank_info
+        if documents is not None:
+            self.documents = documents
         if remarks is not None:
             self.remarks = remarks.strip() if remarks else None
 

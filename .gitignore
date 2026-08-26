@@ -1,3 +1,9 @@
+<<<<<<< HEAD
+# Media Uploads & Temp files
+media_uploads/
+*.log
+.DS_Store
+=======
 # Environment variables & Secrets
 .env
 .env.*
@@ -51,3 +57,4 @@ uploads/
 .artifacts/
 WMS/
 *.log
+>>>>>>> origin/main

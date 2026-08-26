@@ -40,7 +40,13 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
 });
+<<<<<<< HEAD
+
 const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
+
+=======
+const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
+>>>>>>> origin/main
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +143,10 @@ function WarehouseMaterialRequests() {
         (await api.getNextMaterialRequestNumber()) as any;
       setNextRequestNumber(requestNumber);
       setBaseMaterialSequence(nextMaterialSequence || 1);
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
       const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(4, "0")}`;
       setFormData((prev) => ({ ...prev, request_number: requestNumber }));
       setItems([{ material_code: initialCode, material_name: "", quantity: 1, uom: "PCS" }]);
@@ -436,6 +446,10 @@ function WarehouseMaterialRequests() {
         <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
+<<<<<<< HEAD
+              {/* Header */}
+=======
+>>>>>>> origin/main
               <div className={cn("p-6 text-white flex justify-between items-start", "bg-blue-600")}>
                 <div>
                   <div className="flex items-center gap-2 mb-1">

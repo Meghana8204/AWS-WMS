@@ -1,5 +1,9 @@
 export type ArrivalStatus =
   "Waiting" | "Approved" | "Dock Assigned" | "Receiving" | "Completed" | "Rejected" | "Hold";
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 export interface Arrival {
   id: string;
   gateEntryNo: string;

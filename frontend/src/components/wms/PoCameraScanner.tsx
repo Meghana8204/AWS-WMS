@@ -75,7 +75,13 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
+<<<<<<< HEAD
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            facingMode: "environment",
+=======
             facingMode: { ideal: "environment" },
+>>>>>>> origin/main
           },
           audio: false,
         });
@@ -91,7 +97,11 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         console.error("Camera access error:", err);
         if (mounted) {
           setError(
+<<<<<<< HEAD
+            "Camera access was blocked or is not available. Please allow camera permissions.",
+=======
             "Camera access is blocked or unavailable over HTTP. Use 'Take Photo / Upload Image' below to snap a picture with your camera app.",
+>>>>>>> origin/main
           );
         }
       }
@@ -153,19 +163,39 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
         }
       }
 
+<<<<<<< HEAD
+=======
       canvas.width = w;
       canvas.height = h;
 
+>>>>>>> origin/main
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Could not initialize canvas context");
 
       ctx.drawImage(video, 0, 0, w, h);
 
+<<<<<<< HEAD
+      // Get base64 JPEG
+      // Preserve small table text and punctuation (especially the final PO
+      // sequence and date separators) for the local OCR engines.
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      const base64Image = dataUrl.split(",")[1] ?? "";
+
+      // Call API
+      const { api } = await import("@/lib/api-client");
+      const data = await api.previewPoOcr(base64Image);
+
+      // Create a File object from the blob for consistency with existing state
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: "image/jpeg" });
+
+=======
       const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
       const { api } = await import("@/lib/api-client");
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], `po-scan-${Date.now()}.jpg`, { type: "image/jpeg" });
       const data = await api.scanOcr(file, "po");
+>>>>>>> origin/main
       toast.success("OCR Extraction Complete", { id: toastId });
       onOcrSuccess(data, file);
       onClose();
@@ -247,6 +277,23 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
           <Button variant="outline" className="rounded-xl" onClick={onClose} disabled={scanning}>
             Cancel
           </Button>
+<<<<<<< HEAD
+          <Button
+            className="rounded-xl px-8 font-bold shadow-glow"
+            disabled={!!error || scanning}
+            onClick={captureAndScanFrame}
+          >
+            {scanning ? (
+              <>
+                <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+              </>
+            ) : (
+              <>
+                <Camera className="mr-2 size-4" /> Capture & Analyze
+              </>
+            )}
+          </Button>
+=======
           {!error && (
             <Button
               className="rounded-xl px-8 font-bold shadow-glow"
@@ -264,6 +311,7 @@ export function PoCameraScanner({ onOcrSuccess, onClose }: PoCameraScannerProps)
               )}
             </Button>
           )}
+>>>>>>> origin/main
         </div>
       </div>
     </div>

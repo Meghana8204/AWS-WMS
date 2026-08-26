@@ -2,7 +2,12 @@ import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+<<<<<<< HEAD
+import type { LucideIcon } from "lucide-react";
+
+=======
 import { ArrowRight, type LucideIcon } from "lucide-react";
+>>>>>>> origin/main
 export function StatCard({
   label,
   value,
@@ -16,7 +21,7 @@ export function StatCard({
   delta?: string;
   icon: LucideIcon;
   tone?: "primary" | "teal" | "success" | "warning" | "danger";
-  to: string;
+  to?: string;
 }) {
   const tones: Record<string, string> = {
     primary: "bg-primary-soft text-primary",
@@ -25,6 +30,22 @@ export function StatCard({
     warning: "bg-warning-soft text-warning-foreground",
     danger: "bg-danger-soft text-destructive",
   };
+<<<<<<< HEAD
+
+  const cardContent = (
+    <Card className="gap-0 rounded-2xl border-border/70 p-4 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
+      <div className="flex items-center justify-between">
+        <span className={cn("grid size-9 place-items-center rounded-xl", tones[tone])}>
+          <Icon className="size-4" />
+        </span>
+      </div>
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
+      {delta && (
+        <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">{delta}</p>
+      )}
+    </Card>
+=======
   return (
     <Link to={to} className="group block">
       <Card className="gap-0 rounded-2xl border-border/70 p-4 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
@@ -41,9 +62,34 @@ export function StatCard({
         )}
       </Card>
     </Link>
+>>>>>>> origin/main
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="group block">
+        {cardContent}
+      </Link>
+    );
+  }
+  return <div className="group block">{cardContent}</div>;
 }
+<<<<<<< HEAD
+
+export function Field({
+  label,
+  value,
+  mono,
+  icon,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+  icon?: any;
+}) {
+=======
 export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+>>>>>>> origin/main
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

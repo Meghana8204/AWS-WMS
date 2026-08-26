@@ -51,6 +51,10 @@ type Dock = {
   status: "AVAILABLE" | "OCCUPIED";
   vehicle_number?: string;
 };
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function InboundArrivals() {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
@@ -80,7 +84,10 @@ function InboundArrivals() {
   }, [load]);
   async function assignDock(arrival: Arrival) {
     const dockId = selectedDock[arrival.id];
-    if (!dockId) return toast.error("Select an available dock");
+    if (!dockId) {
+      toast.error("Select an available dock");
+      return;
+    }
     setAssigning(arrival.id);
     try {
       await api.assignDock(arrival.id, dockId);
@@ -129,6 +136,10 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   return (
     <AppShell
       title="Inbound arrivals"
@@ -209,6 +220,10 @@ function InboundArrivals() {
     </AppShell>
   );
 }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function ArrivalRows({
   arrival,
   expanded,
@@ -250,7 +265,16 @@ function ArrivalRows({
           </button>
         </td>
         <td className="px-4 py-4">
+<<<<<<< HEAD
+          <Link
+            to="/procurement/purchase-orders"
+            className="font-mono text-primary hover:underline"
+          >
+            {arrival.po_number}
+          </Link>
+=======
           <span className="font-mono">{arrival.po_number}</span>
+>>>>>>> origin/main
         </td>
         <td className="px-4 py-4 font-medium">{arrival.supplier_name || "—"}</td>
         <td className="px-4 py-4">
@@ -294,6 +318,10 @@ function ArrivalRows({
     </>
   );
 }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function Summary({ label, value }: { label: string; value: number }) {
   return (
     <Card className="rounded-2xl p-4">
@@ -302,6 +330,10 @@ function Summary({ label, value }: { label: string; value: number }) {
     </Card>
   );
 }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function ArrivalDetails({
   arrival,
   docks,
@@ -477,19 +509,32 @@ function ArrivalDetails({
     </div>
   );
 }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function Detail({
   label,
   value,
   mono = false,
 }: {
   label: string;
+<<<<<<< HEAD
+  value?: string | null | undefined;
+=======
   value?: string | null;
+>>>>>>> origin/main
   mono?: boolean;
 }) {
   return (
     <div>
+<<<<<<< HEAD
+      <dt className="text-xs text-muted-foreground uppercase">{label}</dt>
+      <dd className={`mt-0.5 font-medium ${mono ? "font-mono" : ""}`}>{value || "—"}</dd>
+=======
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className={`mt-1 font-semibold ${mono ? "font-mono" : ""}`}>{value || "—"}</dd>
+>>>>>>> origin/main
     </div>
   );
 }

@@ -760,7 +760,12 @@ export const api = {
   async getPurchaseOrder(id: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`);
   },
+<<<<<<< HEAD
+
+  async getPurchaseOrderByNumber(poNumber: string): Promise<any> {
+=======
   async getPurchaseOrderByNumber(poNumber: str): Promise<any> {
+>>>>>>> origin/main
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`,
     );

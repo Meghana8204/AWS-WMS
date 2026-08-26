@@ -93,6 +93,10 @@ function WarehouseDashboard() {
       activeFilter === "ALL" ||
       (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
       (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
     if (!matchesFilter) return false;
     if (!searchTerm) return true;
     const s = searchTerm.toLowerCase();

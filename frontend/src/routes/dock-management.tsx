@@ -9,6 +9,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 export const Route = createFileRoute("/dock-management")({ component: DockManagement });
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 type Dock = {
   dock_number: string;
   warehouse_id: string;
@@ -22,6 +26,10 @@ type Dock = {
   assigned_by?: string;
   assigned_at?: string;
 };
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
 function DockManagement() {
   const [docks, setDocks] = useState<Dock[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,9 +47,17 @@ function DockManagement() {
       setLoading(false);
     }
   }, []);
+<<<<<<< HEAD
+
   useEffect(() => {
     void load();
   }, [load]);
+
+=======
+  useEffect(() => {
+    void load();
+  }, [load]);
+>>>>>>> origin/main
   async function createDock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
@@ -77,6 +93,10 @@ function DockManagement() {
       });
     }
   }
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   return (
     <AppShell
       title="Dock management"
@@ -208,6 +228,36 @@ function DockManagement() {
       </Card>
     </AppShell>
   );
+<<<<<<< HEAD
+}
+
+function Field({
+  name,
+  label,
+  placeholder,
+  type = "text",
+}: {
+  name: string;
+  label: string;
+  placeholder: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <Label htmlFor={name}>{label}</Label>
+      <Input
+        id={name}
+        name={name}
+        type={type}
+        min={type === "number" ? 1 : undefined}
+        placeholder={placeholder}
+        className="mt-1.5 rounded-xl"
+        required
+      />
+    </div>
+  );
+}
+=======
 }
 function Field({
   name,
@@ -235,3 +285,4 @@ function Field({
     </div>
   );
 }
+>>>>>>> origin/main

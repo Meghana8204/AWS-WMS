@@ -40,6 +40,10 @@ function AsnTracking() {
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [editData, setEditData] = useState<any>(null);
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   const refreshAsn = useCallback(
     async (showLoader = false) => {
       try {
@@ -55,6 +59,10 @@ function AsnTracking() {
     },
     [asnId],
   );
+<<<<<<< HEAD
+
+=======
+>>>>>>> origin/main
   const beginEditing = () => {
     setEditData({
       shipment_date: asn.shipmentDate || "",
@@ -161,6 +169,9 @@ function AsnTracking() {
   const eta = asn.expectedArrivalAt ? new Date(asn.expectedArrivalAt) : null;
   const isNear =
     eta && eta.getTime() - Date.now() < 12 * 60 * 60 * 1000 && eta.getTime() - Date.now() > 0;
+<<<<<<< HEAD
+
+=======
   const operationalStatus = asn.warehouseStatus || asn.status;
   const statusOrder = [
     "SUBMITTED",
@@ -181,15 +192,47 @@ function AsnTracking() {
     const completedIndex = statusOrder.indexOf(completedAt);
     return currentStatusIndex > completedIndex ? "Completed" : "Pending";
   };
+>>>>>>> origin/main
   const steps = [
     { label: "Shipment Dispatched", status: "Completed", date: asn.shipmentDate },
     {
       label: "Real-time Tracking",
+<<<<<<< HEAD
+      status:
+        asn.status === "SUBMITTED" || asn.status === "DISPATCHED"
+          ? "Active"
+          : ["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status)
+            ? "Completed"
+            : "Pending",
+=======
       status: stepStatus(["SUBMITTED", "DISPATCHED"], "DISPATCHED"),
+>>>>>>> origin/main
       date: isNear ? "Nearing Warehouse" : "GPS Signal Online",
       icon: <Navigation className="size-3.5 fill-current" />,
     },
     {
+<<<<<<< HEAD
+      label: "In Transit",
+      status: asn.status === "SUBMITTED" || asn.status === "DISPATCHED" ? "Active" : "Completed",
+      date: "Ongoing",
+    },
+    {
+      label: "At Warehouse Gate",
+      status:
+        asn.status === "GATE_CHECKED_IN"
+          ? "Active"
+          : ["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status)
+            ? "Completed"
+            : "Pending",
+      date: asn.expectedArrivalAt,
+    },
+    { label: "Unloading", status: asn.status === "RECEIVED" ? "Active" : "Pending", date: "-" },
+    {
+      label: "Goods Received",
+      status: asn.status === "RECEIVED" ? "Completed" : "Pending",
+      date: "-",
+    },
+=======
       label: "At Warehouse Gate",
       status: stepStatus(["GATE_ENTRY_APPROVED", "AWAITING_DOCK"], "AWAITING_DOCK"),
       date: asn.warehouseStatusUpdatedAt,
@@ -217,6 +260,7 @@ function AsnTracking() {
       status: operationalStatus === "RECEIVING_COMPLETED" ? "Completed" : "Pending",
       date: operationalStatus === "RECEIVING_COMPLETED" ? asn.warehouseStatusUpdatedAt : "-",
     },
+>>>>>>> origin/main
   ];
   const isSupplier = user?.roles?.includes("SUPPLIER");
   return (
@@ -393,6 +437,18 @@ function AsnTracking() {
         <div className="space-y-6">
           <SectionCard title="Logistics Carrier" icon={Truck}>
             <div className="space-y-4">
+<<<<<<< HEAD
+              {editing ? (
+                <>
+                  {(
+                    [
+                      ["Transporter Name", "transporter", "text"],
+                      ["Vehicle Plate Number", "vehicle_number", "text"],
+                      ["Package Count", "number_of_packages", "number"],
+                      ["Package Type", "package_type", "text"],
+                    ] as const
+                  ).map(([label, field, type]) => (
+=======
               {!editing && asn.warehouseStatus && (
                 <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
                   <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -421,11 +477,16 @@ function AsnTracking() {
                     ["Package Count", "number_of_packages", "number"],
                     ["Package Type", "package_type", "text"],
                   ].map(([label, field, type]) => (
+>>>>>>> origin/main
                     <div className="space-y-1.5" key={field}>
                       <Label>{label}</Label>
                       <Input
                         type={type}
+<<<<<<< HEAD
+                        value={(editData as Record<string, any>)[field] ?? ""}
+=======
                         value={editData[field]}
+>>>>>>> origin/main
                         onChange={(event) =>
                           setEditData({ ...editData, [field]: event.target.value })
                         }

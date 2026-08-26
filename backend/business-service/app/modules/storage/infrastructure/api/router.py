@@ -260,3 +260,4 @@ async def complete_putaway(
     response["inventory_available_after"] = float(stock.available)
     response["location_occupied_quantity"] = float(location.occupied_quantity)
     return response
+

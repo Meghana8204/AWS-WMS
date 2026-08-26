@@ -211,6 +211,20 @@ class UpdateSupplierUseCase:
                 tds_section=command.bank_info.tds_section,
             )
 
+        doc_cmds = None
+        if command.documents is not None:
+            doc_cmds = [
+                SupplierDocument(
+                    document_type=doc.document_type,
+                    file_name=doc.file_name,
+                    file_type=doc.file_type,
+                    file_size=doc.file_size,
+                    storage_path=doc.storage_path,
+                    upload_id=doc.upload_id,
+                )
+                for doc in command.documents
+            ]
+
         supplier.update(
             supplier_name=command.supplier_name,
             registered_company_name=command.registered_company_name,
@@ -222,6 +236,7 @@ class UpdateSupplierUseCase:
             address=address,
             contact=contact,
             bank_info=bank_info,
+            documents=doc_cmds,
             remarks=command.remarks,
             updated_by=command.updated_by,
         )

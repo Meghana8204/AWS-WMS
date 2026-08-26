@@ -224,13 +224,20 @@ function SupplierDashboard() {
                               <span
                                 className={cn(
                                   "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+<<<<<<< HEAD
+                                  hasBid
+=======
                                   isRejected || isDeclined
                                     ? "bg-destructive/10 text-destructive"
                                     : hasBid
+>>>>>>> origin/main
                                     ? "bg-success-soft/30 text-success"
                                     : "bg-amber-soft/30 text-amber-500 animate-pulse",
                                 )}
                               >
+<<<<<<< HEAD
+                                {hasBid ? "Submitted" : "Pending Bid"}
+=======
                                 {isRejected
                                   ? "Revision Required"
                                   : isDeclined
@@ -238,6 +245,7 @@ function SupplierDashboard() {
                                     : hasBid
                                       ? "Submitted"
                                       : "Pending Bid"}
+>>>>>>> origin/main
                               </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -254,6 +262,9 @@ function SupplierDashboard() {
                             </div>
                           </div>
                           <div>
+<<<<<<< HEAD
+                            {hasBid ? (
+=======
                             {isRejected ? (
                               <Button
                                 asChild
@@ -269,6 +280,7 @@ function SupplierDashboard() {
                                 RFQ Declined
                               </Button>
                             ) : hasBid ? (
+>>>>>>> origin/main
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -278,6 +290,17 @@ function SupplierDashboard() {
                                 Bid Submitted
                               </Button>
                             ) : (
+<<<<<<< HEAD
+                              <Button
+                                asChild
+                                size="sm"
+                                className="rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-glow"
+                              >
+                                <Link to="/submit-quotation" search={{ rfqId: rfq.id }}>
+                                  Submit Bid <ChevronRight className="ml-1.5 size-3.5" />
+                                </Link>
+                              </Button>
+=======
                               <div className="flex gap-2">
                                 <Button
                                   variant="outline"
@@ -300,6 +323,7 @@ function SupplierDashboard() {
                                   </Link>
                                 </Button>
                               </div>
+>>>>>>> origin/main
                             )}
                           </div>
                         </div>
@@ -326,6 +350,9 @@ function SupplierDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
+<<<<<<< HEAD
+                    {quotations.map((q, idx) => (
+=======
                     {quotations.map((q, idx) => {
                       const isRejected = String(q.status || "").toUpperCase() === "REJECTED";
                       const isDeclined = String(q.status || "").toUpperCase() === "DECLINED";
@@ -334,15 +361,23 @@ function SupplierDashboard() {
                         .findLast((line) => line.startsWith("Rejected by "));
                       const quotationRfqId = q.rfqId || q.rfq_id;
                       return (
+>>>>>>> origin/main
                       <div
                         key={q.id || `quo-${idx}`}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
                       >
+<<<<<<< HEAD
+                        <div className="space-y-1">
+=======
                         <div className="space-y-2">
+>>>>>>> origin/main
                           <div className="flex items-center gap-2">
                             <h4 className="text-sm font-bold">
                               Quote Reference: {q.id.substring(0, 8).toUpperCase()}
                             </h4>
+<<<<<<< HEAD
+                            <span className="rounded-full bg-success-soft/30 text-success px-2 py-0.5 text-[10px] font-bold uppercase">
+=======
                             <span
                               className={cn(
                                 "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
@@ -351,6 +386,7 @@ function SupplierDashboard() {
                                   : "bg-success-soft/30 text-success",
                               )}
                             >
+>>>>>>> origin/main
                               {q.status}
                             </span>
                           </div>
@@ -377,6 +413,8 @@ function SupplierDashboard() {
                           <span className="block text-[10px] text-muted-foreground mt-0.5">
                             {q.lines?.length || 0} items quoted
                           </span>
+<<<<<<< HEAD
+=======
                           {isRejected && quotationRfqId && (
                             <Button asChild size="sm" className="mt-3 rounded-xl text-xs">
                               <Link to="/submit-quotation" search={{ rfqId: quotationRfqId }}>
@@ -384,6 +422,7 @@ function SupplierDashboard() {
                               </Link>
                             </Button>
                           )}
+>>>>>>> origin/main
                         </div>
                       </div>
                       );

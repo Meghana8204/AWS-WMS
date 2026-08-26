@@ -27,7 +27,7 @@ class Settings(BaseSettings):
 
 
     database_url: str = Field(
-        default="postgresql+asyncpg://ams_business:ams_business@localhost:5433/ams_business",
+        default="postgresql+asyncpg://ams_business:ams_business@localhost:5432/ams_business",
         description="Async SQLAlchemy URL for the business database (one DB per deployable unit).",
     )
     database_pool_size: int = 10

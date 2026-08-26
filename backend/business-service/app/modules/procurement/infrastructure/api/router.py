@@ -71,6 +71,8 @@ from app.modules.procurement.infrastructure.api.schemas import (
     UpdateSupplierRequest,
     DocumentRequest,
     MasterDataCreate,
+    MasterDataResponse,
+    NotificationResponse,
     SupplierResponse,
     SupplierAddressResponse,
     SupplierContactResponse,
@@ -237,46 +239,77 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
         raise HTTPException(status_code=500, detail="Unable to load procurement statistics") from e
 
 
-@router.get("/vendor-types")
+@router.get("/vendor-types", response_model=List[MasterDataResponse])
 async def list_vendor_types(uow: UnitOfWork = Depends(get_uow)):
     result = await uow.session.execute(select(VendorTypeModel).order_by(VendorTypeModel.name))
-    return result.scalars().all()
+    return [MasterDataResponse(id=v.id, name=v.name) for v in result.scalars().all()]
 
 
-@router.post("/vendor-types", status_code=status.HTTP_201_CREATED)
+@router.post("/vendor-types", response_model=MasterDataResponse, status_code=status.HTTP_201_CREATED)
 async def create_vendor_type(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
-    new_type = VendorTypeModel(name=request.name)
+    clean_name = request.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    stmt = select(VendorTypeModel).where(func.lower(VendorTypeModel.name) == clean_name.lower())
+    res = await uow.session.execute(stmt)
+    existing = res.scalar_one_or_none()
+    if existing:
+        return MasterDataResponse(id=existing.id, name=existing.name)
+
+    new_type = VendorTypeModel(name=clean_name)
     uow.session.add(new_type)
     await uow.commit()
-    return new_type
+    await uow.session.refresh(new_type)
+    return MasterDataResponse(id=new_type.id, name=new_type.name)
 
 
-@router.get("/supplier-categories")
+@router.get("/supplier-categories", response_model=List[MasterDataResponse])
 async def list_supplier_categories(uow: UnitOfWork = Depends(get_uow)):
     result = await uow.session.execute(select(SupplierCategoryModel).order_by(SupplierCategoryModel.name))
-    return result.scalars().all()
+    return [MasterDataResponse(id=c.id, name=c.name) for c in result.scalars().all()]
 
 
-@router.post("/supplier-categories", status_code=status.HTTP_201_CREATED)
+@router.post("/supplier-categories", response_model=MasterDataResponse, status_code=status.HTTP_201_CREATED)
 async def create_supplier_category(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
-    new_cat = SupplierCategoryModel(name=request.name)
+    clean_name = request.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    stmt = select(SupplierCategoryModel).where(func.lower(SupplierCategoryModel.name) == clean_name.lower())
+    res = await uow.session.execute(stmt)
+    existing = res.scalar_one_or_none()
+    if existing:
+        return MasterDataResponse(id=existing.id, name=existing.name)
+
+    new_cat = SupplierCategoryModel(name=clean_name)
     uow.session.add(new_cat)
     await uow.commit()
-    return new_cat
+    await uow.session.refresh(new_cat)
+    return MasterDataResponse(id=new_cat.id, name=new_cat.name)
 
 
-@router.get("/raw-materials")
+@router.get("/raw-materials", response_model=List[MasterDataResponse])
 async def list_raw_materials(uow: UnitOfWork = Depends(get_uow)):
     result = await uow.session.execute(select(RawMaterialMasterModel).order_by(RawMaterialMasterModel.name))
-    return result.scalars().all()
+    return [MasterDataResponse(id=m.id, name=m.name) for m in result.scalars().all()]
 
 
-@router.post("/raw-materials", status_code=status.HTTP_201_CREATED)
+@router.post("/raw-materials", response_model=MasterDataResponse, status_code=status.HTTP_201_CREATED)
 async def create_raw_material(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
-    new_mat = RawMaterialMasterModel(name=request.name)
+    clean_name = request.name.strip()
+    if not clean_name:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    stmt = select(RawMaterialMasterModel).where(func.lower(RawMaterialMasterModel.name) == clean_name.lower())
+    res = await uow.session.execute(stmt)
+    existing = res.scalar_one_or_none()
+    if existing:
+        return MasterDataResponse(id=existing.id, name=existing.name)
+
+    new_mat = RawMaterialMasterModel(name=clean_name)
     uow.session.add(new_mat)
     await uow.commit()
-    return new_mat
+    await uow.session.refresh(new_mat)
+    return MasterDataResponse(id=new_mat.id, name=new_mat.name)
+
 
 
 
@@ -613,12 +646,31 @@ async def upload_supplier_document(
     import shutil
     from pathlib import Path
 
+<<<<<<< HEAD
+    upload_dir = Path("media_uploads/suppliers")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    # Validate file type (PDF or JPEG only)
+    allowed_exts = {".pdf", ".jpeg", ".jpg"}
+    allowed_types = {"application/pdf", "image/jpeg", "image/jpg"}
+    file_ext = Path(file.filename or "").suffix.lower()
+    content_type = (file.content_type or "").lower()
+
+    if file_ext not in allowed_exts and content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF (.pdf) and JPEG (.jpeg, .jpg) files are allowed."
+        )
+
+    # Unique file name to prevent collisions
+=======
 
     upload_dir = Path("media_uploads/suppliers")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
 
     file_ext = Path(file.filename).suffix
+>>>>>>> origin/main
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     dest_path = upload_dir / unique_filename
 
@@ -627,8 +679,8 @@ async def upload_supplier_document(
         with dest_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
     except Exception as e:
-        logger.error(f"Failed to save uploaded document: {e}")
-        raise HTTPException(status_code=500, detail="Could not save file")
+        logger.error(f"Failed to save uploaded document: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Could not save file: {e}")
 
 
     return {
@@ -769,7 +821,7 @@ async def get_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
 
         result = await uow.session.execute(stmt)
         entity = result.scalar_one_or_none()
@@ -799,6 +851,7 @@ async def update_supplier(
         address_cmd = AddressCommand(**request.address.model_dump()) if request.address else None
         contact_cmd = ContactCommand(**request.contact.model_dump()) if request.contact else None
         bank_info_cmd = BankInfoCommand(**request.bank_info.model_dump()) if request.bank_info else None
+        doc_cmds = [DocumentCommand(**d.model_dump()) for d in request.documents] if request.documents is not None else None
 
         command = UpdateSupplierCommand(
             supplier_id=id,
@@ -812,6 +865,7 @@ async def update_supplier(
             address=address_cmd,
             contact=contact_cmd,
             bank_info=bank_info_cmd,
+            documents=doc_cmds,
             remarks=request.remarks,
             updated_by=_user.username,
         )
@@ -824,7 +878,7 @@ async def update_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -851,7 +905,7 @@ async def block_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -878,7 +932,7 @@ async def unblock_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == id)
+        ).where(SupplierModel.id == str(id))
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -2800,12 +2854,25 @@ async def list_arrival_notifications(uow: UnitOfWork = Depends(get_uow)):
 
 
 
-@router.get("/notifications")
+@router.get("/notifications", response_model=List[NotificationResponse])
 async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
     normalized_role = role.strip().upper()
     stmt = select(NotificationModel).where(NotificationModel.user_role == normalized_role).order_by(NotificationModel.created_at.desc())
     res = await uow.session.execute(stmt)
-    return res.scalars().all()
+    notifications = res.scalars().all()
+    return [
+        NotificationResponse(
+            id=str(n.id),
+            user_role=n.user_role,
+            title=n.title,
+            message=n.message,
+            link=n.link,
+            is_read=n.is_read,
+            created_at=n.created_at,
+        )
+        for n in notifications
+    ]
+
 
 
 @router.post("/notifications/{id}/read")
