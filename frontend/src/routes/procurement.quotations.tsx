@@ -28,14 +28,17 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
 type QuotationsSearch = {
   rfqId?: string;
 };
+
 export const Route = createFileRoute("/procurement/quotations")({
   component: Quotations,
   validateSearch: (search: Record<string, unknown>): QuotationsSearch => {
@@ -44,13 +47,18 @@ export const Route = createFileRoute("/procurement/quotations")({
     };
   },
 });
+
 function Quotations() {
   const navigate = useNavigate();
   const { rfqId } = Route.useSearch();
   const [quotations, setQuotations] = useState<any[]>([]);
   const [rfq, setRfq] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Comments state
   const [evalComments, setEvalComments] = useState<Record<string, string>>({});
+
+  // Selection Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"SELECT" | "REJECT">("SELECT");
   const [submitting, setSubmitting] = useState(false);
@@ -58,6 +66,7 @@ function Quotations() {
   const [targetSupplierId, setTargetSupplierId] = useState("");
   const [reason, setReason] = useState("");
   const [procurementComments, setProcurementComments] = useState("");
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -65,8 +74,11 @@ function Quotations() {
         api.getQuotations(rfqId),
         rfqId ? api.getRfq(rfqId) : Promise.resolve(null),
       ]);
+
       setQuotations(quotesData);
       setRfq(rfqData);
+
+      // Initialize comments
       const comments: Record<string, string> = {};
       quotesData.forEach((q: any) => {
         comments[q.id] = q.remarks || "";
@@ -79,45 +91,48 @@ function Quotations() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, [rfqId]);
+
   const selectionFinalized = quotations.some((quotation) => quotation.status === "Selected");
+
   const handleOpenModal = (quotationId: string, supplierId: string, mode: "SELECT" | "REJECT") => {
     setTargetQuotationId(quotationId);
     setTargetSupplierId(supplierId);
     setModalMode(mode);
     setReason(mode === "SELECT" ? "L1 Cost Effective Bid" : "");
+
     if (mode === "SELECT") {
+      // No longer automatically rejecting others
     }
+
     setIsModalOpen(true);
   };
+
   const handleAction = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const actionReason = reason.trim();
-    if (!actionReason) {
-      toast.error(
-        modalMode === "REJECT"
-          ? "Please provide a reason for rejecting the quotation."
-          : "Please provide a selection reason.",
-      );
-      return;
-    }
+
     const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
+
     if (!targetQuotationId) {
       toast.error("Required selection IDs are missing.");
       return;
     }
+
     try {
       setSubmitting(true);
+
       if (modalMode === "SELECT") {
         if (!effectiveRfqId || !targetSupplierId) {
           toast.error("Missing RFQ or Supplier ID for selection");
           return;
         }
+
         const result = await api.selectSupplier(effectiveRfqId, {
           supplier_id: targetSupplierId,
-          selection_reason: actionReason,
+          selection_reason: reason,
           selection_comments: procurementComments,
         });
         toast.success(
@@ -126,11 +141,14 @@ function Quotations() {
             : "Supplier selected and PO proposal generated",
         );
       } else {
-        await api.rejectQuotation(targetQuotationId, actionReason);
+        await api.rejectQuotation(targetQuotationId, reason);
         toast.success("Quotation rejected");
       }
+
       setIsModalOpen(false);
-      fetchData();
+      fetchData(); // Refresh to show updated statuses
+
+      // Reset form
       setReason("");
       setProcurementComments("");
     } catch (error: any) {
@@ -139,6 +157,7 @@ function Quotations() {
       setSubmitting(false);
     }
   };
+
   const handleSaveComment = async (id: string) => {
     try {
       await api.updateQuotation(id, { remarks: evalComments[id] });
@@ -147,9 +166,12 @@ function Quotations() {
       toast.error("Failed to save evaluation comment: " + error.message);
     }
   };
+
+  // Group line items by code to compare pricing
   const uniqueItemCodes = Array.from(
     new Set(quotations.flatMap((q) => q.lines?.map((l: any) => l.itemCode || l.item_code) || [])),
   ).filter(Boolean);
+
   return (
     <AppShell
       title="Quotation Comparison Matrix"
@@ -184,6 +206,7 @@ function Quotations() {
         </Card>
       ) : (
         <div className="space-y-6">
+          {/* Side-by-side parameters matrix */}
           <Card className="border-border/40 shadow-soft overflow-hidden">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
@@ -234,6 +257,7 @@ function Quotations() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
+                  {/* Item Rates and Qty */}
                   {uniqueItemCodes.map((code) => (
                     <tr key={`row-item-${code}`} className="hover:bg-muted/5 transition-colors">
                       <td
@@ -281,6 +305,7 @@ function Quotations() {
                     </tr>
                   ))}
 
+                  {/* Discount */}
                   <tr key="row-discount" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-discount"
@@ -301,6 +326,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Tax */}
                   <tr key="row-tax" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-tax"
@@ -321,6 +347,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Freight */}
                   <tr key="row-freight" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-freight"
@@ -341,6 +368,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Delivery Time */}
                   <tr key="row-delivery-time" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-del-time"
@@ -361,6 +389,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Expected Delivery Date */}
                   <tr key="row-expected-delivery" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-exp-del"
@@ -381,6 +410,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Payment Terms */}
                   <tr key="row-payment-terms" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-payment"
@@ -401,6 +431,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Total Amount */}
                   <tr key="row-total-amount" className="bg-muted/20">
                     <td
                       key="param-total"
@@ -409,6 +440,7 @@ function Quotations() {
                       Total Net Amount
                     </td>
                     {quotations.map((q, idx) => {
+                      // Logic to calculate total if it's 0 or missing
                       let total = parseFloat(q.totalAmount || q.total_amount || 0);
                       if (total === 0 && q.lines && q.lines.length > 0) {
                         const lineTotal = q.lines.reduce(
@@ -423,6 +455,7 @@ function Quotations() {
                         const base = lineTotal - disc;
                         total = base + base * (tx / 100) + fr;
                       }
+
                       return (
                         <td
                           key={q.id || `q-total-${idx}`}
@@ -437,6 +470,7 @@ function Quotations() {
                     })}
                   </tr>
 
+                  {/* Documents */}
                   <tr key="row-documents" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-docs"
@@ -473,6 +507,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Evaluation Comments */}
                   <tr key="row-comments" className="hover:bg-muted/5 transition-colors">
                     <td
                       key="param-comments"
@@ -508,6 +543,7 @@ function Quotations() {
                     ))}
                   </tr>
 
+                  {/* Selection Actions */}
                   <tr key="row-actions" className="bg-muted/10">
                     <td key="param-actions" className="p-4 border-r border-border/60"></td>
                     {quotations.map((q, idx) => (
@@ -531,22 +567,16 @@ function Quotations() {
                               Saved for Finance review
                             </p>
                           </div>
-                        ) : q.status === "Rejected" || q.status === "Declined" ? (
+                        ) : q.status === "Rejected" ? (
                           <div className="space-y-2">
                             <Button
                               size="sm"
                               className="w-full rounded-xl bg-destructive/20 text-destructive border-destructive/30 font-bold text-xs"
                               disabled
                             >
-                              <X className="size-3.5 mr-1.5" />
-                              {q.status === "Declined" ? "Declined by Supplier" : "Rejected"}
+                              <X className="size-3.5 mr-1.5" /> Rejected
                             </Button>
-                            {q.remarks && (
-                              <p className="rounded-lg bg-destructive/10 px-2 py-1.5 text-[10px] leading-relaxed text-destructive">
-                                {q.remarks.split("\n").at(-1)}
-                              </p>
-                            )}
-                            {q.status === "Rejected" && !selectionFinalized && (
+                            {!selectionFinalized && (
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -605,94 +635,99 @@ function Quotations() {
         </div>
       )}
 
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-md rounded-3xl border-border/40 bg-card p-6 shadow-glow animate-in zoom-in-95 duration-200">
-          <DialogHeader className="p-0 mb-4 text-left">
-            <div
-              className={cn(
-                "flex items-center gap-2 mb-1",
-                modalMode === "SELECT" ? "text-primary" : "text-destructive",
-              )}
-            >
-              {modalMode === "SELECT" ? (
-                <FileCheck2 className="size-5" />
-              ) : (
-                <XCircle className="size-5" />
-              )}
-              <DialogTitle className="text-lg font-bold">
-                {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
-              </DialogTitle>
+      <Dialog open={isModalOpen} onOpenChange={(open) => !submitting && setIsModalOpen(open)}>
+        <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] max-w-xl overflow-hidden rounded-2xl border-border/60 p-0 shadow-2xl">
+          <DialogHeader className="border-b border-border/60 bg-muted/20 px-6 py-5 pr-12 text-left">
+            <div className="flex items-center gap-3">
+              <div className={cn(
+                "grid size-10 shrink-0 place-items-center rounded-xl",
+                modalMode === "SELECT" ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive",
+              )}>
+                {modalMode === "SELECT" ? <FileCheck2 className="size-5" /> : <XCircle className="size-5" />}
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-lg font-bold">
+                  {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs leading-5">
+                  {modalMode === "SELECT"
+                    ? "Confirm the winning supplier and record the evaluation before generating the PO proposal."
+                    : "Provide a reason for rejecting this quotation."}
+                </DialogDescription>
+              </div>
             </div>
-            <DialogDescription className="text-sm text-muted-foreground">
-              {modalMode === "SELECT"
-                ? "Log the supplier selection reasoning to finalize the evaluation process."
-                : "Provide a reason for rejecting this quotation."}
-            </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleAction} className="space-y-5">
-            <div className="space-y-2">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                {modalMode === "SELECT" ? "Selection Reason*" : "Rejection Reason*"}
-              </Label>
-              <Input
-                placeholder={
-                  modalMode === "SELECT"
-                    ? "e.g. L1 Price / Technical Fit"
-                    : "e.g. High price / Poor delivery terms"
-                }
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                required
-                className="rounded-2xl h-12 border-border/60 focus:ring-primary/20"
-              />
-            </div>
+          <form onSubmit={handleAction} className="flex min-h-0 flex-col">
+            <div className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5">
+              {(() => {
+                const quotation = quotations.find((entry) => entry.id === targetQuotationId);
+                if (!quotation) return null;
+                const quotationReference = `QTN-${String(
+                  quotations.findIndex((entry) => entry.id === targetQuotationId) + 1,
+                ).padStart(4, "0")}`;
+                return (
+                  <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 sm:grid-cols-2">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Selected supplier</p>
+                      <p className="mt-1 truncate text-sm font-semibold">
+                        {quotation.supplierInfo?.supplierName || quotation.supplierName || "Supplier"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Quotation</p>
+                      <p className="mt-1 font-mono text-sm font-semibold">
+                        {quotation.quotationNumber || quotationReference}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
 
-            {modalMode === "SELECT" && (
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Procurement Evaluation Comments
+                <Label htmlFor="selection-reason" className="text-xs font-semibold">
+                  {modalMode === "SELECT" ? "Selection reason" : "Rejection reason"}
+                  <span className="ml-1 text-destructive">*</span>
                 </Label>
-                <Textarea
-                  placeholder="Write selection notes or evaluations details..."
-                  className="min-h-[100px] rounded-2xl text-sm border-border/60 focus:ring-primary/20 p-4"
-                  value={procurementComments}
-                  onChange={(e) => setProcurementComments(e.target.value)}
+                <Input
+                  id="selection-reason"
+                  autoFocus
+                  placeholder={modalMode === "SELECT" ? "e.g. Best price and technical fit" : "e.g. Price exceeds approved budget"}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  required
+                  className="h-11 rounded-xl"
                 />
               </div>
-            )}
 
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsModalOpen(false)}
-                className="rounded-full px-6 h-11 border-border/60 hover:bg-muted font-bold"
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
+              {modalMode === "SELECT" && (
+                <div className="space-y-2">
+                  <Label htmlFor="evaluation-comments" className="text-xs font-semibold">Procurement evaluation comments</Label>
+                  <Textarea
+                    id="evaluation-comments"
+                    placeholder="Add commercial, technical, delivery, or compliance notes..."
+                    className="min-h-28 resize-y rounded-xl text-sm"
+                    value={procurementComments}
+                    onChange={(e) => setProcurementComments(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">These comments will be included in the finance approval record.</p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="border-t border-border/60 bg-muted/10 px-6 py-4 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)} className="rounded-xl" disabled={submitting}>Cancel</Button>
               <Button
                 type="submit"
                 className={cn(
-                  "rounded-full px-8 h-11 shadow-glow font-extrabold tracking-wide",
-                  modalMode === "SELECT"
-                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                    : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+                  "min-w-44 rounded-xl font-bold shadow-glow",
+                  modalMode === "REJECT" && "bg-destructive text-destructive-foreground hover:bg-destructive/90",
                 )}
                 disabled={submitting}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
-                  </>
-                ) : modalMode === "SELECT" ? (
-                  "Finalize & Select"
-                ) : (
-                  "Confirm Rejection"
-                )}
+                {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" /> Processing...</> : modalMode === "SELECT" ? <><FileCheck2 className="mr-2 size-4" /> Generate PO Proposal</> : "Confirm Rejection"}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

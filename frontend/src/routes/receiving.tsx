@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+
 export const Route = createFileRoute("/receiving")({ component: Receiving });
 type Material = {
   item_code: string;
@@ -70,6 +71,7 @@ type Shipment = {
   dock_released_by?: string;
   dock_released_at?: string;
 };
+
 function Receiving() {
   const [shipments, setShipments] = useState<Shipment[]>([]),
     [quantities, setQuantities] = useState<Record<string, string>>({});
@@ -77,27 +79,14 @@ function Receiving() {
     [busy, setBusy] = useState<string | null>(null);
   const [policy, setPolicy] = useState({ shortage_tolerance: "0", excess_tolerance: "0" });
   const [conditions, setConditions] = useState<
-    Record<
-      string,
-      {
-        good: string;
-        damaged: string;
-        rejected: string;
-        inspect: boolean;
-      }
-    >
+    Record<string, { good: string; damaged: string; rejected: string; inspect: boolean }>
   >({});
   const [labelShipment, setLabelShipment] = useState<Shipment | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, rule]: [
-        Shipment[],
-        {
-          shortage_tolerance: number;
-          excess_tolerance: number;
-        },
-      ] = await Promise.all([api.getInboundArrivals(), api.getQuantityVerificationPolicy()]);
+      const [rows, rule]: [Shipment[], { shortage_tolerance: number; excess_tolerance: number }] =
+        await Promise.all([api.getInboundArrivals(), api.getQuantityVerificationPolicy()]);
       const receiving = rows.filter((row) =>
         [
           "AT_DOCK",
@@ -271,7 +260,9 @@ function Receiving() {
     setBusy(`complete:${s.id}`);
     try {
       const result = await api.completeReceiving(s.id);
-      toast.success("Receiving completed", { description: `GRN ${result.grn_id} prepared.` });
+      toast.success("Receiving completed", {
+        description: `GRN ${result.grn_number || result.grn_id} prepared · ${result.putaway_tasks_created || 0} putaway task(s) awaiting putaway.`,
+      });
       await load();
     } catch (e) {
       toast.error("Unable to complete receiving", {
@@ -720,6 +711,7 @@ function Receiving() {
     </AppShell>
   );
 }
+
 type HandlingUnit = {
   id: string;
   hu_number: string;
@@ -737,11 +729,8 @@ type HandlingUnit = {
   current_location: string;
   status: string;
 };
-type GeneratedLabel = {
-  unit: HandlingUnit;
-  qr: string;
-  barcode: string;
-};
+type GeneratedLabel = { unit: HandlingUnit; qr: string; barcode: string };
+
 function MaterialLabelsDialog({
   shipment,
   onOpenChange,
@@ -751,6 +740,7 @@ function MaterialLabelsDialog({
 }) {
   const [labels, setLabels] = useState<GeneratedLabel[]>([]);
   const [generating, setGenerating] = useState(false);
+
   useEffect(() => {
     if (!shipment) {
       setLabels([]);
@@ -811,6 +801,7 @@ function MaterialLabelsDialog({
       active = false;
     };
   }, [shipment]);
+
   function printLabels() {
     if (!shipment) return;
     const escape = (value: unknown) =>
@@ -836,6 +827,7 @@ function MaterialLabelsDialog({
     );
     popup.document.close();
   }
+
   return (
     <Dialog open={Boolean(shipment)} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">

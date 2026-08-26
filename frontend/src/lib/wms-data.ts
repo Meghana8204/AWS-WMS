@@ -1,5 +1,6 @@
 export type ArrivalStatus =
   "Waiting" | "Approved" | "Dock Assigned" | "Receiving" | "Completed" | "Rejected" | "Hold";
+
 export interface Arrival {
   id: string;
   gateEntryNo: string;
@@ -23,6 +24,7 @@ export interface Arrival {
   remarks: string;
   priority: "High" | "Normal" | "Low";
 }
+
 export const arrivals: Arrival[] = [
   {
     id: "GE-4821",
@@ -160,7 +162,9 @@ export const arrivals: Arrival[] = [
     priority: "High",
   },
 ];
+
 export const activeArrival = arrivals[0]!;
+
 export const docks = [
   {
     id: "D-01",
@@ -227,6 +231,7 @@ export const docks = [
     type: "Hazmat certified",
   },
 ] as const;
+
 export const activity = [
   {
     time: "09:38",
@@ -265,6 +270,7 @@ export const activity = [
     tone: "teal",
   },
 ];
+
 export const arrivalTrend = [
   { hour: "06:00", arrivals: 2, received: 1 },
   { hour: "07:00", arrivals: 5, received: 3 },
@@ -274,6 +280,7 @@ export const arrivalTrend = [
   { hour: "11:00", arrivals: 12, received: 9 },
   { hour: "12:00", arrivals: 7, received: 6 },
 ];
+
 export const poLines = [
   {
     code: "RM-HDPE-04",
@@ -300,12 +307,14 @@ export const poLines = [
     rate: "₹ 3,050",
   },
 ];
+
 export const receivingTeam = [
   { name: "Anil Verma", role: "Receiving Lead", initials: "AV" },
   { name: "Pooja Nair", role: "QC Inspector", initials: "PN" },
   { name: "Sanjay Rao", role: "Forklift Operator", initials: "SR" },
   { name: "Farid Khan", role: "Material Handler", initials: "FK" },
 ];
+
 export const receivingChecklist = [
   { label: "Vehicle positioned & wheel chocks placed", done: true },
   { label: "Seal number verified against gate entry", done: true },

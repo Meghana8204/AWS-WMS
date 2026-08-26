@@ -13,7 +13,6 @@ import {
   Package,
   Calendar,
   AlertCircle,
-  XCircle,
   Truck,
   Plus,
   Loader2,
@@ -25,24 +24,23 @@ import { AppShell } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+
 export const Route = createFileRoute("/supplier-dashboard")({
   beforeLoad: () => requireRole("SUPPLIER"),
   component: SupplierDashboard,
 });
+
 function SupplierDashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [supplierId, setSupplierId] = useState("");
   const [username, setUsername] = useState("");
+
+  // Lists
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
   const [asns, setAsns] = useState<any[]>([]);
-  const [declineRfqId, setDeclineRfqId] = useState("");
-  const [declineReason, setDeclineReason] = useState("");
-  const [declining, setDeclining] = useState(false);
+
   useEffect(() => {
     const userInfoStr = localStorage.getItem("user_info");
     if (!userInfoStr) {
@@ -50,14 +48,17 @@ function SupplierDashboard() {
       navigate({ to: "/login" });
       return;
     }
+
     const userInfo = JSON.parse(userInfoStr);
     if (!userInfo.roles?.includes("SUPPLIER")) {
       toast.error("Unauthorized. Access restricted to supplier accounts.");
       navigate({ to: "/login" });
       return;
     }
+
     setSupplierId(userInfo.supplierId || "");
     setUsername(userInfo.username || "");
+
     const fetchAllData = async () => {
       try {
         const sid = userInfo.supplierId || "";
@@ -66,6 +67,7 @@ function SupplierDashboard() {
           api.getQuotations(undefined, sid),
           api.getAsns(sid),
         ]);
+
         setRfqs(fetchedRfqs);
         setQuotations(fetchedQuotes);
         setAsns(fetchedAsns);
@@ -75,30 +77,10 @@ function SupplierDashboard() {
         setLoading(false);
       }
     };
+
     fetchAllData();
   }, []);
-  const handleDeclineRfq = async () => {
-    const reason = declineReason.trim();
-    if (!reason) {
-      toast.error("Please provide a reason for declining this RFQ.");
-      return;
-    }
-    try {
-      setDeclining(true);
-      const declinedQuotation = await api.declineRfq(declineRfqId, reason);
-      setQuotations((previous) => [
-        declinedQuotation,
-        ...previous.filter((quotation) => quotation.id !== declinedQuotation.id),
-      ]);
-      setDeclineRfqId("");
-      setDeclineReason("");
-      toast.success("RFQ declined and procurement has been notified.");
-    } catch (error: any) {
-      toast.error("Unable to decline RFQ: " + error.message);
-    } finally {
-      setDeclining(false);
-    }
-  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center gap-3 bg-background">
@@ -107,17 +89,18 @@ function SupplierDashboard() {
       </div>
     );
   }
+
+  // Calculated stats
   const rfqsReceived = rfqs.length;
-  const quotationByRfq = new Map(
-    quotations.map((quotation) => [quotation.rfqId || quotation.rfq_id, quotation]),
-  );
-  const bidRfqIds = new Set(quotationByRfq.keys());
+  const bidRfqIds = new Set(quotations.map((q) => q.rfq_id));
   const rfqsPending = rfqs.filter((r) => !bidRfqIds.has(r.id)).length;
   const quotesSubmitted = quotations.length;
   const asnsDispatched = asns.length;
+
   return (
     <AppShell title="Supplier Portal" subtitle={`Welcome back, ${username}`}>
       <div className="space-y-8">
+        {/* KPI Grid */}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Card className="border-border/40 bg-card/60 backdrop-blur-md shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -178,6 +161,7 @@ function SupplierDashboard() {
           </Card>
         </div>
 
+        {/* Tabular Lists */}
         <Tabs defaultValue="rfqs" className="w-full space-y-4">
           <TabsList className="bg-muted/40 p-1 rounded-xl">
             <TabsTrigger value="rfqs" className="rounded-lg px-4 py-2 text-xs font-bold">
@@ -191,6 +175,7 @@ function SupplierDashboard() {
             </TabsTrigger>
           </TabsList>
 
+          {/* RFQs tab */}
           <TabsContent value="rfqs">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
@@ -207,12 +192,7 @@ function SupplierDashboard() {
                 ) : (
                   <div className="divide-y divide-border/60">
                     {rfqs.map((rfq, idx) => {
-                      const quotation = quotationByRfq.get(rfq.id);
-                      const hasBid = Boolean(quotation);
-                      const isRejected =
-                        String(quotation?.status || "").toUpperCase() === "REJECTED";
-                      const isDeclined =
-                        String(quotation?.status || "").toUpperCase() === "DECLINED";
+                      const hasBid = bidRfqIds.has(rfq.id);
                       return (
                         <div
                           key={rfq.id || `rfq-${idx}`}
@@ -224,20 +204,12 @@ function SupplierDashboard() {
                               <span
                                 className={cn(
                                   "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-                                  isRejected || isDeclined
-                                    ? "bg-destructive/10 text-destructive"
-                                    : hasBid
+                                  hasBid
                                     ? "bg-success-soft/30 text-success"
                                     : "bg-amber-soft/30 text-amber-500 animate-pulse",
                                 )}
                               >
-                                {isRejected
-                                  ? "Revision Required"
-                                  : isDeclined
-                                    ? "Declined"
-                                    : hasBid
-                                      ? "Submitted"
-                                      : "Pending Bid"}
+                                {hasBid ? "Submitted" : "Pending Bid"}
                               </span>
                             </div>
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
@@ -254,21 +226,7 @@ function SupplierDashboard() {
                             </div>
                           </div>
                           <div>
-                            {isRejected ? (
-                              <Button
-                                asChild
-                                size="sm"
-                                className="rounded-xl bg-destructive text-xs text-destructive-foreground hover:bg-destructive/90"
-                              >
-                                <Link to="/submit-quotation" search={{ rfqId: rfq.id }}>
-                                  Revise Quotation <ChevronRight className="ml-1.5 size-3.5" />
-                                </Link>
-                              </Button>
-                            ) : isDeclined ? (
-                              <Button variant="outline" size="sm" className="rounded-xl text-xs" disabled>
-                                RFQ Declined
-                              </Button>
-                            ) : hasBid ? (
+                            {hasBid ? (
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -278,28 +236,15 @@ function SupplierDashboard() {
                                 Bid Submitted
                               </Button>
                             ) : (
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="rounded-xl border-destructive/40 text-xs text-destructive hover:bg-destructive/10"
-                                  onClick={() => {
-                                    setDeclineRfqId(rfq.id);
-                                    setDeclineReason("");
-                                  }}
-                                >
-                                  <XCircle className="mr-1.5 size-3.5" /> Decline
-                                </Button>
-                                <Button
-                                  asChild
-                                  size="sm"
-                                  className="rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-glow"
-                                >
-                                  <Link to="/submit-quotation" search={{ rfqId: rfq.id }}>
-                                    Submit Bid <ChevronRight className="ml-1.5 size-3.5" />
-                                  </Link>
-                                </Button>
-                              </div>
+                              <Button
+                                asChild
+                                size="sm"
+                                className="rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-glow"
+                              >
+                                <Link to="/submit-quotation" search={{ rfqId: rfq.id }}>
+                                  Submit Bid <ChevronRight className="ml-1.5 size-3.5" />
+                                </Link>
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -311,6 +256,7 @@ function SupplierDashboard() {
             </Card>
           </TabsContent>
 
+          {/* Quotations tab */}
           <TabsContent value="quotations">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
@@ -326,49 +272,24 @@ function SupplierDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
-                    {quotations.map((q, idx) => {
-                      const isRejected = String(q.status || "").toUpperCase() === "REJECTED";
-                      const isDeclined = String(q.status || "").toUpperCase() === "DECLINED";
-                      const rejectionReason = String(q.remarks || "")
-                        .split("\n")
-                        .findLast((line) => line.startsWith("Rejected by "));
-                      const quotationRfqId = q.rfqId || q.rfq_id;
-                      return (
+                    {quotations.map((q, idx) => (
                       <div
                         key={q.id || `quo-${idx}`}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
                       >
-                        <div className="space-y-2">
+                        <div className="space-y-1">
                           <div className="flex items-center gap-2">
                             <h4 className="text-sm font-bold">
                               Quote Reference: {q.id.substring(0, 8).toUpperCase()}
                             </h4>
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-                                isRejected || isDeclined
-                                  ? "bg-destructive/10 text-destructive"
-                                  : "bg-success-soft/30 text-success",
-                              )}
-                            >
+                            <span className="rounded-full bg-success-soft/30 text-success px-2 py-0.5 text-[10px] font-bold uppercase">
                               {q.status}
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>RFQ ID: {quotationRfqId}</span>
+                            <span>RFQ ID: {q.rfq_id}</span>
                             <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
                           </div>
-                          {(isRejected || isDeclined) && (
-                            <div className="max-w-xl rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs">
-                              <p className="flex items-center gap-1.5 font-bold text-destructive">
-                                <AlertCircle className="size-3.5" />
-                                {isDeclined ? "Your decline reason" : "Rejection reason"}
-                              </p>
-                              <p className="mt-1 text-muted-foreground">
-                                {rejectionReason || q.remarks || "Please contact procurement for more details."}
-                              </p>
-                            </div>
-                          )}
                         </div>
                         <div className="text-right">
                           <span className="text-sm font-extrabold text-foreground">
@@ -377,23 +298,16 @@ function SupplierDashboard() {
                           <span className="block text-[10px] text-muted-foreground mt-0.5">
                             {q.lines?.length || 0} items quoted
                           </span>
-                          {isRejected && quotationRfqId && (
-                            <Button asChild size="sm" className="mt-3 rounded-xl text-xs">
-                              <Link to="/submit-quotation" search={{ rfqId: quotationRfqId }}>
-                                Revise & Resubmit
-                              </Link>
-                            </Button>
-                          )}
                         </div>
                       </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
+          {/* ASNs tab */}
           <TabsContent value="asns">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
@@ -465,38 +379,6 @@ function SupplierDashboard() {
           </TabsContent>
         </Tabs>
       </div>
-      <Dialog open={Boolean(declineRfqId)} onOpenChange={(open) => !open && setDeclineRfqId("")}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-destructive">
-              <XCircle className="size-5" /> Decline RFQ
-            </DialogTitle>
-            <DialogDescription>
-              Procurement will see this reason. This response applies only to your supplier account.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="decline-reason">Reason for declining *</Label>
-            <Textarea
-              id="decline-reason"
-              value={declineReason}
-              onChange={(event) => setDeclineReason(event.target.value)}
-              placeholder="For example: unable to meet the required delivery date"
-              className="min-h-28 rounded-xl"
-              maxLength={500}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDeclineRfqId("")} disabled={declining}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDeclineRfq} disabled={declining}>
-              {declining && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Confirm Decline
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 }

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, type LucideIcon } from "lucide-react";
+
 export function StatCard({
   label,
   value,
@@ -43,6 +44,7 @@ export function StatCard({
     </Link>
   );
 }
+
 export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="min-w-0">
@@ -55,6 +57,7 @@ export function Field({ label, value, mono }: { label: string; value: ReactNode;
     </div>
   );
 }
+
 export function SectionCard({
   title,
   description,
@@ -88,15 +91,11 @@ export function SectionCard({
     </Card>
   );
 }
+
 export function Timeline({
   items,
 }: {
-  items: {
-    time: string;
-    title: string;
-    detail: string;
-    tone?: string;
-  }[];
+  items: { time: string; title: string; detail: string; tone?: string }[];
 }) {
   const tones: Record<string, string> = {
     primary: "bg-primary",
@@ -125,6 +124,7 @@ export function Timeline({
     </ol>
   );
 }
+
 export function StepRail({ current }: { current: number }) {
   const steps = [
     { n: 1, label: "Gate Entry", to: "/gate-entry" },

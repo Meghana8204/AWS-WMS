@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import {
   Truck,
@@ -31,13 +31,8 @@ import { api } from "@/lib/api-client";
 import { activity, arrivalTrend, docks } from "@/lib/wms-data";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { getUserInfo } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/warehouse-dashboard")({
-  beforeLoad: () => {
-    if (getUserInfo()?.roles.includes("GATE_SECURITY")) {
-      throw redirect({ to: "/gate-dashboard" });
-    }
-  },
   head: () => ({
     meta: [
       { title: "Warehouse Dashboard · NexusWMS Pune DC" },
@@ -56,15 +51,18 @@ export const Route = createFileRoute("/warehouse-dashboard")({
   }),
   component: WarehouseDashboard,
 });
+
 const quickActions = [
   { label: "Receiving", to: "/receiving", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+
 function WarehouseDashboard() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("ALL");
+
   async function fetchDashboardData() {
     try {
       const data = await api.getDashboardStats();
@@ -75,11 +73,13 @@ function WarehouseDashboard() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     fetchDashboardData();
     const timer = window.setInterval(fetchDashboardData, 10000);
     return () => window.clearInterval(timer);
   }, []);
+
   const stats = dashboardData?.stats || {
     totalArrivals: 0,
     verifiedArrivals: 0,
@@ -87,14 +87,20 @@ function WarehouseDashboard() {
     occupiedDocks: "0/8",
     vehiclesWaiting: 0,
   };
+
   const rawItems = dashboardData?.gateEntries || [];
+
+  // Filter items based on status toggle and search term
   const filteredItems = rawItems.filter((item: any) => {
     const matchesFilter =
       activeFilter === "ALL" ||
       (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
       (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
+
     if (!matchesFilter) return false;
+
     if (!searchTerm) return true;
+
     const s = searchTerm.toLowerCase();
     return (
       item.vehicle_number?.toLowerCase().includes(s) ||
@@ -104,13 +110,15 @@ function WarehouseDashboard() {
       item.material?.toLowerCase().includes(s)
     );
   });
+
   const activeTrend = dashboardData?.arrivalTrend || [];
   const activeActivity = dashboardData?.activity || [];
   const targetProgress = dashboardData?.targetProgress || { current: 0, target: 10, percentage: 0 };
+
   return (
     <AppShell
       title="Warehouse Dashboard"
-      subtitle="Warehouse Operations · Live arrivals, receiving and inventory overview"
+      subtitle="Pune Distribution Centre · Real-time Inbound & Operations Overview"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>
@@ -412,6 +420,7 @@ function WarehouseDashboard() {
     </AppShell>
   );
 }
+
 function FilterButton({
   label,
   count,
@@ -430,11 +439,13 @@ function FilterButton({
     success: "bg-success text-success-foreground border-success",
     warning: "bg-warning text-warning-foreground border-warning",
   };
+
   const inactiveTones = {
     primary: "hover:bg-primary-soft hover:text-primary border-border/60",
     success: "hover:bg-success-soft hover:text-success border-border/60",
     warning: "hover:bg-warning-soft hover:text-warning border-border/60",
   };
+
   return (
     <button
       onClick={onClick}

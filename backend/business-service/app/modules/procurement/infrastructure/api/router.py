@@ -21,7 +21,6 @@ from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_, select, cast, String, update, func, Date
 from sqlalchemy.orm import aliased, selectinload, joinedload
-from app.modules.gate.infrastructure.persistence.models import GateEntryModel
 
 from app.common.domain.exceptions import NotFoundException
 from app.logging.logger import get_logger
@@ -126,9 +125,11 @@ from app.modules.procurement.infrastructure.persistence.models import (
     MaterialRequestModel,
     MaterialRequestItemModel,
     MaterialStockModel,
+    StockReservationModel,
+    PickTaskModel,
+    MaterialIssueModel,
     POApprovalHistoryModel,
     NotificationModel,
-    rfq_supplier_link,
 )
 from app.modules.procurement.infrastructure.persistence.repository_impl import (
     SqlAlchemySupplierRepository,
@@ -140,10 +141,19 @@ from app.modules.procurement.infrastructure.persistence.repository_impl import (
 )
 from app.common.email_utils import render_premium_email, send_email
 from app.security.dependencies import CurrentUser, get_current_user
+from app.modules.storage.infrastructure.persistence.models import InventoryLocationBalanceModel, StorageLocationModel
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/procurement", tags=["procurement"])
+
+
+def canonical_warehouse_id(warehouse_id: str) -> str:
+    """Translate legacy display names to the inventory warehouse identifier."""
+    normalized = warehouse_id.strip()
+    if normalized.casefold() in {"main", "main warehouse", "wh_pune-01"}:
+        return "WH_PUNE-01"
+    return normalized
 
 
 @router.get("/health", tags=["ops"])
@@ -152,31 +162,30 @@ async def procurement_health() -> dict:
 
 
 @router.get("/stats", response_model=ProcurementStatsResponse)
-async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
+async def get_procurement_stats(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     try:
-
+        # 1. Active Suppliers
         suppliers_count_stmt = select(func.count(SupplierModel.id)).where(SupplierModel.status == "Active")
         suppliers_res = await uow.session.execute(suppliers_count_stmt)
         active_suppliers = suppliers_res.scalar() or 0
 
-        total_suppliers_stmt = select(func.count(SupplierModel.id))
-        total_suppliers_res = await uow.session.execute(total_suppliers_stmt)
-        total_suppliers = total_suppliers_res.scalar() or 0
-
-
+        # 2. Open POs (Approved but not yet Received)
         open_pos_stmt = select(func.count(PurchaseOrderModel.id)).where(
             PurchaseOrderModel.status.in_(["APPROVED", "SENT", "DISPATCHED", "SHIPPED"])
         )
         open_pos_res = await uow.session.execute(open_pos_stmt)
         open_pos = open_pos_res.scalar() or 0
 
-
+        # 3. Total PO Value
         total_value_stmt = select(func.sum(PurchaseOrderModel.total_amount))
         total_value_res = await uow.session.execute(total_value_stmt)
         total_po_value = total_value_res.scalar() or Decimal("0.0")
 
-
-
+        # 4. Compliance Rate
+        # Metric: % of Approved POs that have an associated ASN
         total_approved_stmt = select(func.count(PurchaseOrderModel.id)).where(
             PurchaseOrderModel.status.in_(["APPROVED", "SENT", "DISPATCHED", "SHIPPED", "RECEIVED"])
         )
@@ -184,22 +193,24 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
         total_approved = total_approved_res.scalar() or 0
 
         if total_approved > 0:
+            # Join PO with ASN to find how many have submissions
+            # We use distinct po_id in AsnModel
             asns_with_po_stmt = select(func.count(func.distinct(AsnModel.po_id))).where(AsnModel.po_id.isnot(None))
             asns_with_po_res = await uow.session.execute(asns_with_po_stmt)
             compliant_pos = asns_with_po_res.scalar() or 0
 
             compliance_rate = (compliant_pos / total_approved) * 100
         else:
-            compliance_rate = None
+            compliance_rate = 100.0  # Default to 100% if no POs exist
 
-
+        # 5. PO Issuance Trend (Last 6 Months)
         from datetime import timedelta
         trend = []
-
-
+        # Get counts grouped by month
+        # Since we might have months with 0 POs, we'll generate the last 6 months in Python
         current_date = datetime.now()
         for i in range(5, -1, -1):
-
+            # Calculate first day of the month i months ago
             year = current_date.year
             month = current_date.month - i
             while month <= 0:
@@ -208,7 +219,7 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
 
             month_name = date(year, month, 1).strftime("%b")
 
-
+            # Count POs in this specific month
             start_of_month = date(year, month, 1)
             if month == 12:
                 end_of_month = date(year + 1, 1, 1)
@@ -225,26 +236,38 @@ async def get_procurement_stats(uow: UnitOfWork = Depends(get_uow)):
 
         return ProcurementStatsResponse(
             active_suppliers=active_suppliers,
-            total_suppliers=total_suppliers,
             open_pos=open_pos,
-            compliance_rate=round(compliance_rate, 1) if compliance_rate is not None else None,
-            compliance_target=99.0,
+            compliance_rate=round(compliance_rate, 1),
             total_po_value=total_po_value,
             trend=trend
         )
     except Exception as e:
         logger.error(f"Failed to fetch stats: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Unable to load procurement statistics") from e
+        # Fallback values if everything else fails
+        return ProcurementStatsResponse(
+            active_suppliers=0,
+            open_pos=0,
+            compliance_rate=100.0,
+            total_po_value=Decimal("0.0"),
+            trend=[]
+        )
 
 
 @router.get("/vendor-types")
-async def list_vendor_types(uow: UnitOfWork = Depends(get_uow)):
+async def list_vendor_types(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     result = await uow.session.execute(select(VendorTypeModel).order_by(VendorTypeModel.name))
     return result.scalars().all()
 
 
 @router.post("/vendor-types", status_code=status.HTTP_201_CREATED)
-async def create_vendor_type(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
+async def create_vendor_type(
+    request: MasterDataCreate,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     new_type = VendorTypeModel(name=request.name)
     uow.session.add(new_type)
     await uow.commit()
@@ -252,13 +275,20 @@ async def create_vendor_type(request: MasterDataCreate, uow: UnitOfWork = Depend
 
 
 @router.get("/supplier-categories")
-async def list_supplier_categories(uow: UnitOfWork = Depends(get_uow)):
+async def list_supplier_categories(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     result = await uow.session.execute(select(SupplierCategoryModel).order_by(SupplierCategoryModel.name))
     return result.scalars().all()
 
 
 @router.post("/supplier-categories", status_code=status.HTTP_201_CREATED)
-async def create_supplier_category(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
+async def create_supplier_category(
+    request: MasterDataCreate,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     new_cat = SupplierCategoryModel(name=request.name)
     uow.session.add(new_cat)
     await uow.commit()
@@ -266,23 +296,70 @@ async def create_supplier_category(request: MasterDataCreate, uow: UnitOfWork = 
 
 
 @router.get("/raw-materials")
-async def list_raw_materials(uow: UnitOfWork = Depends(get_uow)):
+async def list_raw_materials(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     result = await uow.session.execute(select(RawMaterialMasterModel).order_by(RawMaterialMasterModel.name))
     return result.scalars().all()
 
 
 @router.post("/raw-materials", status_code=status.HTTP_201_CREATED)
-async def create_raw_material(request: MasterDataCreate, uow: UnitOfWork = Depends(get_uow)):
+async def create_raw_material(
+    request: MasterDataCreate,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     new_mat = RawMaterialMasterModel(name=request.name)
     uow.session.add(new_mat)
     await uow.commit()
     return new_mat
 
 
+@router.get("/material-catalog")
+async def get_material_catalog(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """Return purchasable products and their market variants."""
+    result = await uow.session.execute(select(RawMaterialMasterModel).order_by(RawMaterialMasterModel.name))
+    names = {material.name for material in result.scalars().all()}
+    names.add("Wire")
+    request_items = await uow.session.execute(
+        select(MaterialRequestItemModel.material_code, MaterialRequestItemModel.material_name)
+    )
+    stock_items = await uow.session.execute(
+        select(MaterialStockModel.material_code, MaterialStockModel.material_name)
+    )
+    known_pairs = list(request_items.all()) + list(stock_items.all())
+    code_by_name = {name.strip().casefold(): code for code, name in known_pairs if code and name}
 
+    wire_variants = [
+        {"category": size, "priceMin": minimum, "priceMax": maximum,
+         "materialCode": code_by_name.get(f"Wire - {size}".casefold())}
+        for size, minimum, maximum in [
+            ("0.5 mm", 0, 100), ("1 mm", 100, 200),
+            ("1.5 mm", 200, 300), ("2 mm", 300, 400),
+        ]
+    ]
+    return [
+        {
+            "name": name,
+            "uom": "MTR" if name.casefold() == "wire" else "PCS",
+            "materialCode": code_by_name.get(name.casefold()),
+            "variants": wire_variants if name.casefold() == "wire" else [],
+        }
+        for name in sorted(names, key=str.casefold)
+    ]
+
+
+# --- Material Requests ---
 
 @router.get("/material-requests/next-number")
-async def get_next_mr_number(uow: UnitOfWork = Depends(get_uow)):
+async def get_next_mr_number(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     """Return the next persisted material-request number and next material sequence."""
     from app.modules.procurement.infrastructure.persistence.repository_impl import SqlAlchemyMaterialRequestRepository
 
@@ -290,7 +367,7 @@ async def get_next_mr_number(uow: UnitOfWork = Depends(get_uow)):
     use_case = GetNextMaterialRequestNumberUseCase(repo)
     num = await use_case.handle()
 
-
+    # Calculate next material sequence
     existing_codes_result = await uow.session.execute(
         select(MaterialRequestItemModel.material_code).where(
             MaterialRequestItemModel.material_code.like("MAT-%")
@@ -322,6 +399,8 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
     stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).order_by(MaterialRequestModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
+    pick_result = await uow.session.execute(select(PickTaskModel))
+    picks = {pick.request_id: pick for pick in pick_result.scalars().all()}
     return [
         MaterialRequestResponse(
             id=str(m.id),
@@ -341,7 +420,12 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
                 )
                 for it in m.items
             ],
-            created_at=m.created_at
+            created_at=m.created_at,
+            approved_by=m.approved_by,
+            approved_at=m.approved_at,
+            pick_task=({"id": str(picks[m.id].id), "task_number": picks[m.id].task_number,
+                        "status": picks[m.id].status, "items": picks[m.id].items,
+                        "created_at": picks[m.id].created_at.isoformat()} if m.id in picks else None),
         )
         for m in entities
     ]
@@ -357,9 +441,9 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         use_case = GetNextMaterialRequestNumberUseCase(repo)
         req_no = await use_case.handle()
 
-
-
-
+    # Material codes are owned by the system.  Find the highest MAT sequence in
+    # both request history and stock so newly requested materials keep the same
+    # identifier throughout RFQ, quotation, PO, ASN and inventory workflows.
     existing_codes_result = await uow.session.execute(
         select(MaterialRequestItemModel.material_code).where(
             MaterialRequestItemModel.material_code.like("MAT-%")
@@ -383,7 +467,7 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
     new_mr = MaterialRequestModel(
         id=uuid.uuid4(),
         request_number=req_no,
-        warehouse_id=request.warehouse_id,
+        warehouse_id=canonical_warehouse_id(request.warehouse_id),
         department=request.department,
         requested_by=request.requested_by,
         status="PENDING",
@@ -391,12 +475,27 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         remarks=request.remarks
     )
 
+    known_result = await uow.session.execute(
+        select(MaterialRequestItemModel.material_code, MaterialRequestItemModel.material_name)
+    )
+    known_by_name = {
+        name.strip().casefold(): code for code, name in known_result.all() if code and name
+    }
+    used_codes = set(existing_codes)
+
     for it in request.items:
-        if it.material_code:
-            material_code = it.material_code
-        else:
-            material_code = f"MAT-{next_material_sequence:04d}"
+        normalized_name = (it.material_name or "").strip().casefold()
+        material_code = known_by_name.get(normalized_name)
+        requested_code = (it.material_code or "").strip()
+        if not material_code and requested_code and requested_code not in used_codes:
+            material_code = requested_code
+        if not material_code:
+            while f"MAT-{next_material_sequence:03d}" in used_codes:
+                next_material_sequence += 1
+            material_code = f"MAT-{next_material_sequence:03d}"
             next_material_sequence += 1
+        used_codes.add(material_code)
+        known_by_name[normalized_name] = material_code
 
         new_mr.items.append(MaterialRequestItemModel(
             id=uuid.uuid4(),
@@ -420,14 +519,249 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
 
 @router.post("/material-requests/{id}/process")
 async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
-    stmt = select(MaterialRequestModel).where(MaterialRequestModel.id == uuid.UUID(id))
+    stmt = (select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items))
+            .where(MaterialRequestModel.id == uuid.UUID(id)).with_for_update())
     res = await uow.session.execute(stmt)
     req = res.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Material request not found")
-    req.status = "PROCESSED"
+    if req.status != "PENDING":
+        raise HTTPException(status_code=409, detail="Only pending material requests can be approved")
+
+    warehouse_id = canonical_warehouse_id(req.warehouse_id)
+
+    stocks = {}
+    shortages = []
+    for item in req.items:
+        stock_result = await uow.session.execute(
+            select(MaterialStockModel).where(
+                MaterialStockModel.material_code == item.material_code,
+                MaterialStockModel.warehouse_id == warehouse_id,
+            ).with_for_update()
+        )
+        stock = stock_result.scalar_one_or_none()
+        stocks[item.id] = stock
+        if stock is None or stock.available < item.quantity:
+            shortages.append({"material_code": item.material_code, "material_name": item.material_name,
+                              "requested": float(item.quantity), "available": float(stock.available) if stock else 0,
+                              "uom": item.uom})
+    if shortages:
+        raise HTTPException(status_code=409, detail={"message": "Insufficient available stock", "shortages": shortages})
+
+    approved_at = datetime.now()
+    approver = "Warehouse Manager"
+    pick_items = []
+    inventory_updates = []
+    for item in req.items:
+        stock = stocks[item.id]
+        balance_result = await uow.session.execute(
+            select(InventoryLocationBalanceModel, StorageLocationModel)
+            .join(StorageLocationModel, StorageLocationModel.id == InventoryLocationBalanceModel.storage_location_id)
+            .where(InventoryLocationBalanceModel.material_code == item.material_code,
+                   InventoryLocationBalanceModel.warehouse_id == warehouse_id,
+                   InventoryLocationBalanceModel.available_quantity > 0)
+            .order_by(InventoryLocationBalanceModel.updated_at, StorageLocationModel.location_code)
+            .with_for_update()
+        )
+        remaining = item.quantity
+        allocations = []
+        for balance, location in balance_result.all():
+            if remaining <= 0:
+                break
+            picked = min(balance.available_quantity, remaining)
+            balance.available_quantity -= picked
+            remaining -= picked
+            allocations.append({"balance_id": str(balance.id), "location_id": str(location.id), "location": location.location_code,
+                                "quantity": float(picked), "uom": item.uom})
+        if remaining > 0:
+            raise HTTPException(status_code=409, detail={"message": "Stored location stock is insufficient",
+                                                        "material_code": item.material_code,
+                                                        "shortage": float(remaining)})
+        stock.available -= item.quantity
+        stock.allocated += item.quantity
+        stock.updated_at = approved_at
+        inventory_updates.append({"material_code": stock.material_code, "material_name": stock.material_name,
+                                  "on_hand": float(stock.on_hand), "allocated": float(stock.allocated),
+                                  "available": float(stock.available), "reserved": float(item.quantity),
+                                  "uom": stock.uom, "warehouse_id": stock.warehouse_id,
+                                  "allocations": allocations})
+        uow.session.add(StockReservationModel(
+            id=uuid.uuid4(), request_id=req.id, request_item_id=item.id,
+            material_code=item.material_code, warehouse_id=warehouse_id,
+            quantity=item.quantity, uom=item.uom, status="RESERVED",
+            allocations=allocations,
+            reserved_by=approver, reserved_at=approved_at,
+        ))
+        pick_items.append({"material_code": item.material_code, "material_name": item.material_name,
+                           "quantity": float(item.quantity), "uom": item.uom, "allocations": allocations})
+    pick_count = await uow.session.scalar(select(func.count(PickTaskModel.id))) or 0
+    pick = PickTaskModel(
+        id=uuid.uuid4(), task_number=f"PT-{approved_at.year}-{pick_count + 1:04d}",
+        request_id=req.id, request_number=req.request_number, warehouse_id=warehouse_id,
+        department=req.department, items=pick_items, status="OPEN", destination="Production Staging Area",
+        created_by=approver, created_at=approved_at,
+    )
+    uow.session.add(pick)
+    req.status = "RESERVED"
+    req.approved_by = approver
+    req.approved_at = approved_at
     await uow.commit()
-    return {"status": "success"}
+    return {"status": req.status, "request_number": req.request_number,
+            "approval": {"approved_by": approver, "approved_at": approved_at.isoformat()},
+            "availability_check": "PASSED", "reservation_status": "RESERVED",
+            "inventory_updates": inventory_updates,
+            "pick_task": {"id": str(pick.id), "task_number": pick.task_number,
+                          "status": pick.status, "items": pick.items}}
+
+
+@router.get("/pick-tasks")
+async def list_pick_tasks(uow: UnitOfWork = Depends(get_uow)):
+    result = await uow.session.execute(select(PickTaskModel).order_by(PickTaskModel.created_at.desc()))
+    return [{"id": str(task.id), "task_number": task.task_number, "request_id": str(task.request_id),
+             "request_number": task.request_number, "warehouse_id": task.warehouse_id,
+             "department": task.department, "destination": task.destination, "items": task.items, "status": task.status,
+             "assigned_to": task.assigned_to, "assigned_at": task.assigned_at.isoformat() if task.assigned_at else None,
+             "started_at": task.started_at.isoformat() if task.started_at else None,
+             "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+             "completed_by": task.completed_by,
+             "created_by": task.created_by, "created_at": task.created_at.isoformat()}
+            for task in result.scalars().all()]
+
+
+@router.post("/pick-tasks/{task_id}/assign")
+async def assign_pick_task(task_id: uuid.UUID, operator: str = Query(..., min_length=1), uow: UnitOfWork = Depends(get_uow)):
+    task = await uow.session.get(PickTaskModel, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Pick task not found")
+    if task.status != "OPEN":
+        raise HTTPException(status_code=409, detail="Only open pick tasks can be assigned")
+    task.assigned_to = operator.strip()
+    task.assigned_at = datetime.now()
+    task.status = "ASSIGNED"
+    await uow.commit()
+    return {"id": str(task.id), "status": task.status, "assigned_to": task.assigned_to, "assigned_at": task.assigned_at.isoformat()}
+
+
+@router.post("/pick-tasks/{task_id}/start")
+async def start_pick_task(task_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow)):
+    task = await uow.session.get(PickTaskModel, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Pick task not found")
+    if task.status != "ASSIGNED":
+        raise HTTPException(status_code=409, detail="Pick task must be assigned before picking starts")
+    task.status = "IN_PROGRESS"
+    task.started_at = datetime.now()
+    await uow.commit()
+    return {"id": str(task.id), "status": task.status, "started_at": task.started_at.isoformat()}
+
+
+@router.post("/pick-tasks/{task_id}/complete")
+async def complete_pick_task(task_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow)):
+    result = await uow.session.execute(select(PickTaskModel).where(PickTaskModel.id == task_id).with_for_update())
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Pick task not found")
+    if task.status != "IN_PROGRESS":
+        raise HTTPException(status_code=409, detail="Pick task must be in progress")
+    reservations_result = await uow.session.execute(select(StockReservationModel).where(
+        StockReservationModel.request_id == task.request_id).with_for_update())
+    stock_updates = []
+    for reservation in reservations_result.scalars().all():
+        if reservation.status != "RESERVED":
+            raise HTTPException(status_code=409, detail="Pick task reservation is no longer active")
+        stock_result = await uow.session.execute(select(MaterialStockModel).where(
+            MaterialStockModel.material_code == reservation.material_code,
+            MaterialStockModel.warehouse_id == reservation.warehouse_id).with_for_update())
+        stock = stock_result.scalar_one()
+        before = {"on_hand": float(stock.on_hand), "allocated": float(stock.allocated), "available": float(stock.available)}
+        stock.allocated -= reservation.quantity
+        stock.available += reservation.quantity
+        stock.updated_at = datetime.now()
+        for allocation in reservation.allocations:
+            location_id = uuid.UUID(allocation["location_id"])
+            if allocation.get("balance_id"):
+                balance = await uow.session.get(InventoryLocationBalanceModel, uuid.UUID(allocation["balance_id"]), with_for_update=True)
+            else:
+                balance_result = await uow.session.execute(select(InventoryLocationBalanceModel).where(
+                    InventoryLocationBalanceModel.material_code == reservation.material_code,
+                    InventoryLocationBalanceModel.storage_location_id == location_id).with_for_update())
+                balance = balance_result.scalar_one()
+            balance.available_quantity += Decimal(str(allocation["quantity"]))
+        reservation.status = "PICKED"
+        stock_updates.append({"material_code": stock.material_code, "material_name": stock.material_name,
+                              "uom": stock.uom, "before": before,
+                              "after": {"on_hand": float(stock.on_hand), "allocated": float(stock.allocated),
+                                        "available": float(stock.available)}})
+    task.status = "COMPLETED"
+    task.completed_at = datetime.now()
+    task.completed_by = task.assigned_to
+    request_record = await uow.session.get(MaterialRequestModel, task.request_id, with_for_update=True)
+    request_record.status = "PICKED"
+    await uow.commit()
+    return {"id": str(task.id), "task_number": task.task_number, "status": task.status,
+            "destination": task.destination, "completed_by": task.completed_by,
+            "completed_at": task.completed_at.isoformat(), "stock_updates": stock_updates,
+            "ownership_status": "WAREHOUSE_OWNED", "next_step": "ISSUE_OR_CONSUMPTION"}
+
+
+@router.post("/pick-tasks/{task_id}/issue")
+async def issue_picked_material(task_id: uuid.UUID, received_by: str = Query(..., min_length=1), uow: UnitOfWork = Depends(get_uow)):
+    result = await uow.session.execute(select(PickTaskModel).where(PickTaskModel.id == task_id).with_for_update())
+    task = result.scalar_one_or_none()
+    if task is None:
+        raise HTTPException(status_code=404, detail="Pick task not found")
+    if task.status != "COMPLETED":
+        raise HTTPException(status_code=409, detail="Picking must be completed before material issue")
+    existing = await uow.session.scalar(select(MaterialIssueModel.id).where(MaterialIssueModel.pick_task_id == task.id))
+    if existing:
+        raise HTTPException(status_code=409, detail="Material was already issued")
+    reservations_result = await uow.session.execute(select(StockReservationModel).where(
+        StockReservationModel.request_id == task.request_id).with_for_update())
+    stock_updates = []
+    for reservation in reservations_result.scalars().all():
+        if reservation.status != "PICKED":
+            raise HTTPException(status_code=409, detail="Picked reservation is not ready for issue")
+        stock_result = await uow.session.execute(select(MaterialStockModel).where(
+            MaterialStockModel.material_code == reservation.material_code,
+            MaterialStockModel.warehouse_id == reservation.warehouse_id).with_for_update())
+        stock = stock_result.scalar_one()
+        before = float(stock.on_hand)
+        stock.on_hand -= reservation.quantity
+        stock.available -= reservation.quantity
+        for allocation in reservation.allocations:
+            location_id = uuid.UUID(allocation["location_id"])
+            balance_result = await uow.session.execute(select(InventoryLocationBalanceModel).where(
+                InventoryLocationBalanceModel.material_code == reservation.material_code,
+                InventoryLocationBalanceModel.storage_location_id == location_id).with_for_update())
+            balance = balance_result.scalar_one()
+            location = await uow.session.get(StorageLocationModel, location_id, with_for_update=True)
+            quantity = Decimal(str(allocation["quantity"]))
+            balance.quantity -= quantity
+            balance.available_quantity -= quantity
+            location.occupied_quantity -= quantity
+        reservation.status = "ISSUED"
+        stock_updates.append({"material_code": stock.material_code, "material_name": stock.material_name,
+                              "issued": float(reservation.quantity), "uom": stock.uom,
+                              "on_hand_before": before, "on_hand_after": float(stock.on_hand),
+                              "available_after": float(stock.available)})
+    issued_at = datetime.now()
+    issue_count = await uow.session.scalar(select(func.count(MaterialIssueModel.id))) or 0
+    issue = MaterialIssueModel(id=uuid.uuid4(), issue_number=f"MI-{issued_at.year}-{issue_count + 1:04d}",
+                               pick_task_id=task.id, request_id=task.request_id, department=task.department,
+                               items=task.items, issued_by=task.completed_by or task.created_by,
+                               received_by=received_by.strip(), issued_at=issued_at)
+    uow.session.add(issue)
+    request_record = await uow.session.get(MaterialRequestModel, task.request_id, with_for_update=True)
+    request_record.status = "ISSUED"
+    task.status = "ISSUED"
+    from app.modules.assembly.infrastructure.api.router import create_order_for_issue
+    assembly_order = await create_order_for_issue(uow, task, issue)
+    await uow.commit()
+    return {"id": str(issue.id), "issue_number": issue.issue_number, "status": "ISSUED",
+            "received_by": issue.received_by, "issued_at": issue.issued_at.isoformat(),
+            "stock_updates": stock_updates, "ownership_status": "ISSUED_TO_PRODUCTION",
+            "assembly_order": {"id": str(assembly_order.id), "order_number": assembly_order.order_number,
+                               "status": assembly_order.status}}
 
 
 @router.put("/material-requests/{id}")
@@ -442,7 +776,7 @@ async def update_material_request(id: str, request: CreateMaterialRequest, uow: 
     mr.required_date = request.required_date
     mr.remarks = request.remarks
 
-
+    # Standard sync: clear and re-add (cascade="all, delete-orphan" handles deletion)
     from app.modules.procurement.infrastructure.persistence.models import MaterialRequestItemModel
     mr.items = []
     for it in request.items:
@@ -464,33 +798,6 @@ async def list_material_stock(uow: UnitOfWork = Depends(get_uow)):
         stmt = select(MaterialStockModel).order_by(MaterialStockModel.material_code)
         res = await uow.session.execute(stmt)
         entities = res.scalars().all()
-
-
-        if not entities:
-            logger.info("Material stock table empty, seeding demo data...")
-            mock_data = [
-                {"code": "MAT-001", "name": "Steel Pipe 2\"", "cat": "Raw Materials", "qty": 1240, "uom": "MTR"},
-                {"code": "MAT-002", "name": "Aluminum Sheet", "cat": "Raw Materials", "qty": 850, "uom": "SQM"},
-                {"code": "COMP-08", "name": "Bearing 6205", "cat": "Components", "qty": 3200, "uom": "PCS"},
-                {"code": "HDW-12", "name": "M12 Bolt", "cat": "Hardware", "qty": 15000, "uom": "PCS"},
-            ]
-            for m in mock_data:
-                new_s = MaterialStockModel(
-                    id=uuid.uuid4(),
-                    material_code=m["code"],
-                    material_name=m["name"],
-                    category=m["cat"],
-                    on_hand=Decimal(str(m["qty"])),
-                    available=Decimal(str(m["qty"])),
-                    warehouse_id="Main Warehouse",
-                    uom=m["uom"]
-                )
-                uow.session.add(new_s)
-            await uow.commit()
-
-
-            res = await uow.session.execute(stmt)
-            entities = res.scalars().all()
 
         return [
             MaterialStockResponse(
@@ -524,10 +831,10 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
         e_id = str(getattr(entity, 'id', uuid.uuid4()))
         e_name = getattr(entity, 'supplier_name', 'Unknown')
 
-
+        # Check SQLAlchemy state to see what is already loaded
         state = inspect(entity)
 
-
+        # Helper to get relationship only if loaded
         def get_rel(name):
             try:
                 if state and name in state.unloaded:
@@ -543,6 +850,7 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
 
         return SupplierResponse(
             supplier_id=e_id,
+            supplier_code=getattr(entity, 'supplier_code', None),
             supplier_name=e_name,
             registered_company_name=getattr(entity, 'registered_company_name', None),
             vendor_type=getattr(entity, 'vendor_type', None),
@@ -596,9 +904,37 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
         logger.error(f"Mapping crash for supplier {getattr(entity, 'id', 'unknown')}: {exc}", exc_info=True)
         return SupplierResponse(
             supplier_id=str(getattr(entity, 'id', 'error')),
+            supplier_code=getattr(entity, 'supplier_code', None),
             supplier_name=getattr(entity, 'supplier_name', "Mapping Error"),
             created_at=datetime.now()
         )
+
+
+async def _backfill_missing_supplier_codes(uow: UnitOfWork) -> None:
+    """Persist codes for suppliers created before supplier_code was introduced."""
+    result = await uow.session.execute(select(SupplierModel.supplier_code))
+    used = {
+        int(code[4:])
+        for code in result.scalars()
+        if code and code.startswith("SUP-") and code[4:].isdigit()
+    }
+    missing_result = await uow.session.execute(
+        select(SupplierModel)
+        .where(SupplierModel.supplier_code.is_(None))
+        .order_by(SupplierModel.created_at, SupplierModel.id)
+    )
+    missing = missing_result.scalars().all()
+    if not missing:
+        return
+
+    sequence = 1
+    for supplier in missing:
+        while sequence in used:
+            sequence += 1
+        supplier.supplier_code = f"SUP-{sequence:05d}"
+        used.add(sequence)
+        sequence += 1
+    await uow.commit()
 
 
 @router.post("/suppliers/documents")
@@ -610,27 +946,29 @@ async def upload_supplier_document(
     Standard upload endpoint for supplier onboarding documents.
     Saves to media_uploads/suppliers/ and returns metadata for the create_supplier call.
     """
-    import shutil
     from pathlib import Path
 
+    # Resolve from the service root instead of the process working directory.
+    # Windows services and IDE launch configurations often start elsewhere.
+    service_root = Path(__file__).resolve().parents[5]
+    upload_dir = service_root / "media_uploads" / "suppliers"
 
-    upload_dir = Path("media_uploads/suppliers")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-
+    # Unique file name to prevent collisions
     file_ext = Path(file.filename).suffix
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     dest_path = upload_dir / unique_filename
 
-
     try:
-        with dest_path.open("wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        contents = await file.read()
+        if not contents:
+            raise ValueError("Uploaded file is empty")
+        dest_path.write_bytes(contents)
     except Exception as e:
-        logger.error(f"Failed to save uploaded document: {e}")
+        logger.exception("Failed to save uploaded supplier document to %s", dest_path)
         raise HTTPException(status_code=500, detail="Could not save file")
 
-
+    # Return metadata as expected by CreateSupplierRequest
     return {
         "document_type": document_type,
         "file_name": file.filename,
@@ -713,6 +1051,7 @@ async def list_suppliers(
     _user: CurrentUser = Depends(get_current_user),
 ) -> List[SupplierResponse]:
     try:
+        await _backfill_missing_supplier_codes(uow)
         stmt = select(SupplierModel).options(
             selectinload(SupplierModel.address),
             selectinload(SupplierModel.contact),
@@ -749,7 +1088,7 @@ async def list_suppliers(
         return responses
     except Exception as e:
         logger.error(f"Failed to list suppliers: {e}", exc_info=True)
-
+        # Return specific error message to help debug
         raise HTTPException(status_code=500, detail=f"Database error in list_suppliers: {str(e)}")
 
 
@@ -760,6 +1099,7 @@ async def get_supplier(
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
     try:
+        await _backfill_missing_supplier_codes(uow)
         stmt = select(SupplierModel).options(
             selectinload(SupplierModel.address),
             selectinload(SupplierModel.contact),
@@ -814,7 +1154,7 @@ async def update_supplier(
         await use_case.handle(command)
         await uow.commit()
 
-
+        # Fetch model directly for response mapping (to avoid domain object mismatch)
         stmt = select(SupplierModel).options(
             selectinload(SupplierModel.address),
             selectinload(SupplierModel.contact),
@@ -884,7 +1224,7 @@ async def unblock_supplier(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
+# --- RFQ ---
 
 @router.post("/rfqs", response_model=RfqResponse, status_code=status.HTTP_201_CREATED)
 async def create_rfq(
@@ -908,7 +1248,7 @@ async def create_rfq(
         rfq_id = await use_case.handle(command)
         await uow.commit()
 
-
+        # Fetch the model directly with preloaded relationships to get actual supplier names
         stmt = select(RfqModel).options(
             selectinload(RfqModel.items),
             selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
@@ -927,7 +1267,6 @@ async def create_rfq(
 @router.post("/rfqs/{id}/send")
 async def send_rfq_endpoint(
     id: str,
-    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow)
 ):
     repo = SqlAlchemyRfqRepository(uow.session)
@@ -943,11 +1282,18 @@ async def send_rfq_endpoint(
         elif rfq.status != "OPEN":
             raise HTTPException(status_code=409, detail=f"Cannot send RFQ in status: {rfq.status}")
 
-        background_tasks.add_task(_notify_suppliers_rfq, id)
+        delivery = await _notify_suppliers_rfq(id)
+        if delivery["total"] == 0:
+            raise HTTPException(status_code=400, detail="No supplier email address is configured for this RFQ")
+        if delivery["failed"] > 0:
+            raise HTTPException(
+                status_code=502,
+                detail=f"RFQ saved, but email delivery failed for {delivery['failed']} of {delivery['total']} supplier(s)",
+            )
         return {
-            "status": "queued",
-            "message": "RFQ published. Supplier emails are being delivered in the background.",
-            "delivery": {"status": "queued"},
+            "status": "sent",
+            "message": f"RFQ email sent successfully to {delivery['sent']} supplier(s).",
+            "delivery": delivery,
         }
     except HTTPException:
         raise
@@ -971,7 +1317,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
     total = 0
     deliveries = []
     async with session_scope() as session:
-
+        # Fetch RFQ with suppliers and their contact info
         stmt = (
             select(RfqModel)
             .options(
@@ -989,18 +1335,18 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
         for supplier in rfq.suppliers:
             total += 1
-
+            # Check if supplier_user exists
             su_stmt = select(SupplierUserModel).where(SupplierUserModel.supplier_id == supplier.id)
             su_res = await session.execute(su_stmt)
             sup_user = su_res.scalar_one_or_none()
 
-
+            # Always generate a fresh random temporary password for every quotation request
             chars = string.ascii_letters + string.digits
             temp_password = "".join(random.choices(chars, k=10))
             password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
 
             if not sup_user:
-
+                # Generate username: supplier_code or clean name
                 code = supplier.supplier_code or "".join(c for c in supplier.supplier_name if c.isalnum()).lower()[:10]
                 username = f"supplier_{code.lower()}"
 
@@ -1023,8 +1369,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
             if email:
                 subject = f"Request for Quotation - {rfq.rfq_number}"
-
-
+                
+                # Format materials list
                 materials_str = ""
                 for idx, item in enumerate(rfq.items):
                     materials_str += f"\nMaterial: {item.material_name}\nQuantity: {item.quantity} {item.uom}\nRequired Delivery: {item.required_delivery_date}\nWarehouse: {item.warehouse}\n"
@@ -1059,7 +1405,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     note="Please submit your quotation before the RFQ closing date. Pricing and delivery commitments entered in the portal will form part of your official response.",
                 )
 
-
+                # Write mock email to file
                 os.makedirs(os.path.join("media_uploads", "emails"), exist_ok=True)
                 email_path = os.path.join("media_uploads", "emails", f"rfq_{rfq.rfq_number}_{username}.html")
                 try:
@@ -1073,7 +1419,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 logger.warning(f"No primary email configured for supplier {supplier.id}")
                 failed += 1
 
-
+        # Credentials must be durable before any supplier can receive them.
         await session.commit()
         results = await asyncio.gather(
             *(send_email(email, subject, body, html_body) for email, subject, body, html_body in deliveries),
@@ -1116,7 +1462,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         if not rfq:
             raise HTTPException(status_code=404, detail="RFQ not found")
 
-
+        # Check if this specific supplier was already selected for this RFQ to avoid duplicates
         existing_po_result = await uow.session.execute(
             select(PurchaseOrderModel)
             .where(
@@ -1139,7 +1485,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         rfq.selection_comments = request.selection_comments
         rfq.status = "CLOSED"
 
-
+        # Automatically generate a Purchase Order Proposal
         supplier_stmt = select(SupplierModel).options(
             selectinload(SupplierModel.address),
             selectinload(SupplierModel.contact)
@@ -1147,7 +1493,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         s_res = await uow.session.execute(supplier_stmt)
         supplier = s_res.scalar_one_or_none()
 
-
+        # Get the latest quotation to get prices
         quo_stmt = select(QuotationModel).options(selectinload(QuotationModel.lines)).where(
             QuotationModel.rfq_id == rfq_uuid,
             QuotationModel.supplier_id == supplier_uuid
@@ -1156,10 +1502,10 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         quotation = q_res.scalars().first()
 
         import random
-
+        # Proposals use PROP- prefix until approved by Finance
         po_number = f"PROP-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
 
-
+        # Material Request for Department lookup
         mr_dept = "Procurement"
         if rfq.material_request_number:
             mr_stmt = select(MaterialRequestModel).where(MaterialRequestModel.request_number == rfq.material_request_number)
@@ -1167,20 +1513,6 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             mr_obj = mr_res.scalar_one_or_none()
             if mr_obj:
                 mr_dept = mr_obj.department
-
-        subtotal = Decimal("0.0")
-        if quotation:
-            quoted_prices = {line.item_code: line.unit_price for line in quotation.lines}
-            subtotal = sum(
-                (item.quantity * quoted_prices.get(item.material_code, Decimal("0.0")) for item in rfq.items),
-                Decimal("0.0"),
-            )
-        discount_amount = Decimal(str(quotation.discount or 0)) if quotation else Decimal("0.0")
-        tax_rate = Decimal(str(quotation.tax or 0)) if quotation else Decimal("0.0")
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_amount = taxable_amount * tax_rate / Decimal("100")
-        freight_charges = Decimal(str(quotation.freight_charges or 0)) if quotation else Decimal("0.0")
-        total_amount = taxable_amount + tax_amount + freight_charges
 
         new_po = PurchaseOrderModel(
             id=uuid.uuid4(),
@@ -1196,14 +1528,14 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             supplier_address=supplier.address.registered_address if supplier and supplier.address else None,
             warehouse_id=rfq.warehouse,
             delivery_warehouse_name=rfq.warehouse,
-            delivery_address="Main Industrial Area, Phase 2, Pune, MH",
+            delivery_address="Main Industrial Area, Phase 2, Pune, MH", # Default warehouse address
             department=mr_dept,
             status="PENDING_FINANCE",
-            total_amount=total_amount,
-            subtotal=subtotal,
-            discount_amount=discount_amount,
-            tax_amount=tax_amount,
-            freight_charges=freight_charges,
+            total_amount=quotation.total_amount if quotation else Decimal("0.0"),
+            subtotal=quotation.total_amount - (quotation.tax or 0) - (quotation.freight_charges or 0) + (quotation.discount or 0) if quotation else Decimal("0.0"),
+            discount_amount=quotation.discount or Decimal("0.0"),
+            tax_amount=quotation.tax or Decimal("0.0"),
+            freight_charges=quotation.freight_charges or Decimal("0.0"),
             additional_charges=Decimal("0.0"),
             expected_delivery_date=rfq.required_delivery_date,
             payment_terms=quotation.payment_terms,
@@ -1213,7 +1545,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             selected_by=_user.username
         )
 
-
+        # Add to history
         new_po.history.append(POApprovalHistoryModel(
             id=uuid.uuid4(),
             status="SUBMITTED",
@@ -1221,7 +1553,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             comments="Proposal submitted for Finance Approval"
         ))
 
-
+        # Create Notification for Finance
         uow.session.add(NotificationModel(
             id=uuid.uuid4(),
             user_role="FINANCE",
@@ -1231,7 +1563,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         ))
 
         for item in rfq.items:
-
+            # Find price from quotation if exists
             price = Decimal("0.0")
             if quotation:
                 q_line = next((l for l in quotation.lines if l.item_code == item.material_code), None)
@@ -1245,14 +1577,14 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
                 category=item.category,
                 quantity=item.quantity,
                 unit_price=price,
-                discount=Decimal("0.0"),
-                tax=Decimal("0.0"),
+                discount=Decimal("0.0"), # We can add more granular bid prices if needed
+                tax=quotation.tax / len(rfq.items) if quotation and quotation.tax else Decimal("0.0"),
                 uom=item.uom
             ))
 
         uow.session.add(new_po)
 
-
+        # Mark winning quotation as Selected
         if quotation:
             quotation.status = "Selected"
 
@@ -1278,7 +1610,7 @@ async def list_purchase_orders(
 ):
     try:
         repo = SqlAlchemyPurchaseOrderRepository(uow.session)
-
+        # Using model directly to get history
         stmt = select(PurchaseOrderModel).options(
             selectinload(PurchaseOrderModel.items),
             selectinload(PurchaseOrderModel.history),
@@ -1314,11 +1646,7 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
 
     result = await uow.session.execute(
         select(PurchaseOrderModel)
-        .options(
-            selectinload(PurchaseOrderModel.items),
-            selectinload(PurchaseOrderModel.history),
-            selectinload(PurchaseOrderModel.rfq),
-        )
+        .options(selectinload(PurchaseOrderModel.items))
         .where(PurchaseOrderModel.id == po_id)
     )
     po = result.scalar_one_or_none()
@@ -1365,8 +1693,21 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
     ]
 
     item_rows = [["#", "Material", "Description", "Qty", "UOM", "Unit Price", "Line Total"]]
+    calc_subtotal = Decimal("0.0")
+    calc_discount = Decimal("0.0")
+    calc_tax = Decimal("0.0")
+
     for index, item in enumerate(po.items, start=1):
+        # Calculate line values
         line_gross = item.quantity * item.unit_price
+        line_disc = getattr(item, "discount", Decimal("0.0"))
+        line_tax = getattr(item, "tax", Decimal("0.0"))
+        line_total = line_gross - line_disc + line_tax
+
+        # Accumulate totals
+        calc_subtotal += line_gross
+        calc_discount += line_disc
+        calc_tax += line_tax
 
         item_rows.append([
             str(index),
@@ -1375,16 +1716,13 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
             f"{item.quantity:,.2f}",
             item.uom,
             f"{item.unit_price:,.2f}",
-            f"{line_gross:,.2f}",
+            f"{line_total:,.2f}",
         ])
 
-    normalized_po = _to_po_response(po)
-    calc_subtotal = normalized_po.subtotal
-    calc_discount = normalized_po.discount_amount
-    calc_tax = normalized_po.tax_amount
+    # Final totals including header-level charges
     calc_freight = po.freight_charges or Decimal("0.0")
     calc_additional = po.additional_charges or Decimal("0.0")
-    calc_grand_total = normalized_po.total_amount
+    calc_grand_total = calc_subtotal - calc_discount + calc_tax + calc_freight + calc_additional
 
     story.append(Table(
         item_rows,
@@ -1403,14 +1741,14 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
         ]),
     ))
 
-
+    # Currency format helper
     def fmt(val): return f"INR {val:,.2f}"
 
     story.extend([
         Spacer(1, 6 * mm),
         Paragraph(f"Subtotal: {fmt(calc_subtotal)}", right_style),
         Paragraph(f"Discount: - {fmt(calc_discount)}", right_style),
-        Paragraph(f"Tax (GST {normalized_po.tax_percentage:g}%): {fmt(calc_tax)}", right_style),
+        Paragraph(f"Tax (GST): {fmt(calc_tax)}", right_style),
         Paragraph(f"Freight: {fmt(calc_freight)}", right_style),
         Paragraph(f"Additional charges: {fmt(calc_additional)}", right_style),
         Spacer(1, 2 * mm),
@@ -1490,9 +1828,9 @@ async def approve_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow), _u
             logger.error(f"PO with ID {id} not found")
             raise HTTPException(status_code=404, detail="PO not found")
 
-
+        # Generate formal PO Number: PO-YYYY-XXXX
         year = datetime.now().year
-
+        # Count all issued POs (Approved, Sent, etc.) to ensure unique sequencing
         count_stmt = select(func.count(PurchaseOrderModel.id)).where(
             PurchaseOrderModel.po_number.like(f"PO-{year}-%")
         )
@@ -1511,7 +1849,7 @@ async def approve_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow), _u
             comments="Purchase Order approved by Finance"
         ))
 
-
+        # Create Notification for Procurement
         notif = NotificationModel(
             id=uuid.uuid4(),
             user_role="PROCUREMENT",
@@ -1526,7 +1864,7 @@ async def approve_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow), _u
         return {"status": "success", "po_number": formal_po_number}
     except Exception as e:
         logger.error(f"CRITICAL: Approval failed for PO {id}: {e}", exc_info=True)
-
+        # Rollback is handled by UnitOfWork context manager or session
         raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
 
 
@@ -1557,7 +1895,7 @@ async def reject_purchase_order(id: str, request: dict, uow: UnitOfWork = Depend
             comments=f"Rejected by Finance: {reason}"
         ))
 
-
+        # Create Notification for Procurement
         uow.session.add(NotificationModel(
             id=uuid.uuid4(),
             user_role="PROCUREMENT",
@@ -1575,7 +1913,7 @@ async def reject_purchase_order(id: str, request: dict, uow: UnitOfWork = Depend
 
 
 @router.post("/purchase-orders/{id}/send-to-supplier")
-async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
+async def send_po_to_supplier(id: str, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
     try:
         try:
             po_id = uuid.UUID(id)
@@ -1607,7 +1945,7 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
                 detail="Supplier email address is missing. Add an email address before sending the PO.",
             )
 
-
+        # Ensure supplier user exists for portal access
         import hashlib
         import string
         import random
@@ -1616,7 +1954,7 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
             chars = string.ascii_letters + string.digits
             return ''.join(random.choice(chars) for _ in range(length))
 
-
+        # Check if supplier_user exists
         su_stmt = select(SupplierUserModel).where(SupplierUserModel.supplier_id == po.supplier_id)
         su_res = await uow.session.execute(su_stmt)
         sup_user = su_res.scalar_one_or_none()
@@ -1645,7 +1983,7 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
             f"Note: For security, you will be required to change this password upon your first login.\n"
         )
 
-
+        # Email Logic
         subject = f"Purchase Order {po.po_number}"
 
         asn_link = f"http://localhost:8080/login?redirect=/supplier/asns/new?poId={po.id}"
@@ -1688,7 +2026,7 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
             signoff=po.procurement_officer or "NexusWMS Procurement Team",
         )
 
-
+        # Mock email persistence
         os.makedirs(os.path.join("media_uploads", "emails"), exist_ok=True)
         email_path = os.path.join("media_uploads", "emails", f"po_issued_{po.po_number}.html")
         try:
@@ -1696,6 +2034,12 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
                 f.write(html_body)
         except Exception as fe:
             logger.error(f"Failed to write mock PO email: {fe}")
+
+        # Wait for the SMTP server to accept the message. Do not mark the PO as
+        # sent or persist newly generated credentials on a failed delivery.
+        delivered = await send_email(recipient_email, subject, body, html_body)
+        if delivered is not True:
+            raise HTTPException(status_code=503, detail="SMTP is not configured; purchase order email was not sent")
 
         po.status = "SENT"
         po.history.append(POApprovalHistoryModel(
@@ -1706,8 +2050,12 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
         ))
 
         await uow.commit()
-        background_tasks.add_task(_send_email_logged, recipient_email, subject, body, html_body, f"PO {po.po_number}")
-        return {"status": "queued", "message": "Purchase order saved. Email delivery is running in the background.", "recipient": recipient_email, "resent": is_resend}
+        return {
+            "status": "sent",
+            "message": f"Purchase Order {'resent' if is_resend else 'sent'} successfully to {recipient_email}.",
+            "recipient": recipient_email,
+            "resent": is_resend,
+        }
     except HTTPException:
         raise
     except Exception as e:
@@ -1731,7 +2079,7 @@ async def resubmit_purchase_order(id: str, request: dict, uow: UnitOfWork = Depe
         if po.status != "REJECTED":
             raise HTTPException(status_code=400, detail="Only rejected POs can be resubmitted")
 
-
+        # Update any fields provided
         if "total_amount" in request:
             po.total_amount = Decimal(str(request["total_amount"]))
         if "expected_delivery_date" in request:
@@ -1745,7 +2093,7 @@ async def resubmit_purchase_order(id: str, request: dict, uow: UnitOfWork = Depe
             comments="Modified and resubmitted for approval"
         ))
 
-
+        # Create Notification for Finance
         uow.session.add(NotificationModel(
             id=uuid.uuid4(),
             user_role="FINANCE",
@@ -1762,7 +2110,7 @@ async def resubmit_purchase_order(id: str, request: dict, uow: UnitOfWork = Depe
 
 
 def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
-
+    # Populate rfq_number if relationship is loaded
     rfq_number = None
     try:
         from sqlalchemy import inspect
@@ -1772,30 +2120,6 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
                 rfq_number = po.rfq.rfq_number
     except Exception as e:
         logger.warning(f"Could not load rfq_number for PO {po.id}: {e}")
-
-    subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
-    discount_amount = Decimal(str(getattr(po, "discount_amount", 0) or 0))
-    stored_subtotal = Decimal(str(getattr(po, "subtotal", 0) or 0))
-    stored_tax = Decimal(str(getattr(po, "tax_amount", 0) or 0))
-    if abs(stored_subtotal - subtotal) > Decimal("0.01") and Decimal("0") <= stored_tax <= Decimal("100"):
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_percentage = stored_tax
-        tax_amount = taxable_amount * tax_percentage / Decimal("100")
-        total_amount = (
-            taxable_amount
-            + tax_amount
-            + Decimal(str(getattr(po, "freight_charges", 0) or 0))
-            + Decimal(str(getattr(po, "additional_charges", 0) or 0))
-        )
-    else:
-        tax_amount = stored_tax
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_percentage = (
-            (tax_amount * Decimal("100") / taxable_amount).quantize(Decimal("0.01"))
-            if taxable_amount > 0
-            else Decimal("0.0")
-        )
-        total_amount = Decimal(str(po.total_amount or 0))
 
     return PurchaseOrderResponse(
         id=str(po.id),
@@ -1816,11 +2140,10 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         delivery_warehouse_name=getattr(po, "delivery_warehouse_name", None),
         delivery_address=getattr(po, "delivery_address", None),
         department=getattr(po, "department", None),
-        total_amount=total_amount,
-        subtotal=subtotal,
-        discount_amount=discount_amount,
-        tax_amount=tax_amount,
-        tax_percentage=tax_percentage,
+        total_amount=po.total_amount or Decimal("0.0"),
+        subtotal=getattr(po, "subtotal", Decimal("0.0")),
+        discount_amount=getattr(po, "discount_amount", Decimal("0.0")),
+        tax_amount=getattr(po, "tax_amount", Decimal("0.0")),
         freight_charges=getattr(po, "freight_charges", Decimal("0.0")),
         additional_charges=getattr(po, "additional_charges", Decimal("0.0")),
         expected_delivery_date=po.expected_delivery_date,
@@ -1893,7 +2216,7 @@ def _to_rfq_response(rfq) -> RfqResponse:
         if hasattr(item, "__dict__"):
             data = {k: v for k, v in item.__dict__.items() if not k.startswith('_')}
         else:
-
+            # Fallback for dataclasses or objects without __dict__ if any
             data = {
                 "material_code": item.material_code,
                 "material_name": item.material_name,
@@ -1908,10 +2231,10 @@ def _to_rfq_response(rfq) -> RfqResponse:
 
     suppliers_list = []
     supplier_emails = []
-
+    # Check for suppliers in model or domain object
     suppliers = getattr(rfq, "suppliers", [])
     if not suppliers:
-
+        # Fallback to supplier_ids if it's a domain object
         supplier_ids = getattr(rfq, "supplier_ids", [])
         for sid in supplier_ids:
             suppliers_list.append(SupplierResponse(
@@ -1924,7 +2247,7 @@ def _to_rfq_response(rfq) -> RfqResponse:
                 s_resp = _response_from_entity(s)
                 suppliers_list.append(s_resp)
 
-
+                # Ensure we collect the email if available in the response mapping
                 if s_resp.contact and s_resp.contact.primary_email:
                     if s_resp.contact.primary_email not in supplier_emails:
                         supplier_emails.append(s_resp.contact.primary_email)
@@ -1952,75 +2275,7 @@ def _to_rfq_response(rfq) -> RfqResponse:
     )
 
 
-
-
-@router.post("/rfqs/{id}/decline", response_model=QuotationResponse)
-async def decline_rfq_invitation(
-    id: str,
-    request: dict,
-    uow: UnitOfWork = Depends(get_uow),
-    user: CurrentUser = Depends(get_current_user),
-) -> QuotationResponse:
-    """Allow an invited supplier to decline an RFQ with a required reason."""
-    reason = str(request.get("reason") or "").strip()
-    if not reason:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A decline reason is required")
-
-    supplier_id = user.raw_claims.get("supplier_id")
-    if "SUPPLIER" not in user.roles or not supplier_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only suppliers can decline RFQs")
-
-    try:
-        rfq_id = uuid.UUID(id)
-        supplier_uuid = uuid.UUID(str(supplier_id))
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid RFQ or supplier ID") from exc
-
-    invitation = await uow.session.execute(
-        select(rfq_supplier_link).where(
-            rfq_supplier_link.c.rfq_id == rfq_id,
-            rfq_supplier_link.c.supplier_id == supplier_uuid,
-        )
-    )
-    if invitation.first() is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This supplier was not invited to the RFQ")
-
-    result = await uow.session.execute(
-        select(QuotationModel).options(
-            selectinload(QuotationModel.lines),
-            selectinload(QuotationModel.documents),
-        ).where(
-            QuotationModel.rfq_id == rfq_id,
-            QuotationModel.supplier_id == supplier_uuid,
-        )
-    )
-    quotation = result.scalars().first()
-    if quotation and str(quotation.status).upper() in {"SUBMITTED", "SELECTED"}:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A submitted quotation cannot be declined")
-
-    decline_note = f"Declined by supplier: {reason}"
-    if quotation:
-        quotation.status = "Declined"
-        quotation.remarks = decline_note
-    else:
-        quotation = QuotationModel(
-            rfq_id=rfq_id,
-            supplier_id=supplier_uuid,
-            status="Declined",
-            total_amount=Decimal("0"),
-            remarks=decline_note,
-        )
-        uow.session.add(quotation)
-
-    await uow.commit()
-    saved_result = await uow.session.execute(
-        select(QuotationModel).options(
-            selectinload(QuotationModel.lines),
-            selectinload(QuotationModel.documents),
-        ).where(QuotationModel.id == quotation.id)
-    )
-    return _to_quotation_response(saved_result.scalar_one())
-
+# --- Quotation ---
 
 @router.post("/quotations/documents")
 async def upload_quotation_document(
@@ -2032,16 +2287,16 @@ async def upload_quotation_document(
     import shutil
     from pathlib import Path
 
-
+    # Create directory if not exists
     upload_dir = Path("media_uploads/quotations")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
-
+    # Unique file name to prevent collisions
     file_ext = Path(file.filename).suffix
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     dest_path = upload_dir / unique_filename
 
-
+    # Save file
     try:
         with dest_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -2135,7 +2390,7 @@ async def update_quotation(id: str, request: dict, uow: UnitOfWork = Depends(get
         if not q:
             raise HTTPException(status_code=404, detail="Quotation not found")
 
-
+        # Update scalar fields
         scalar_fields = {
             "status", "discount", "tax", "freight_charges", "total_amount",
             "delivery_time", "expected_delivery_date", "payment_terms", "remarks"
@@ -2143,7 +2398,7 @@ async def update_quotation(id: str, request: dict, uow: UnitOfWork = Depends(get
         for field in scalar_fields:
             if field in request:
                 val = request[field]
-
+                # Convert string dates to date objects
                 if field == "expected_delivery_date" and isinstance(val, str):
                     try:
                         val = datetime.strptime(val, "%Y-%m-%d").date()
@@ -2151,7 +2406,7 @@ async def update_quotation(id: str, request: dict, uow: UnitOfWork = Depends(get
                         val = None
                 setattr(q, field, val)
 
-
+        # Update nested lines
         if "lines" in request:
             q.lines.clear()
             for line in request["lines"]:
@@ -2163,7 +2418,7 @@ async def update_quotation(id: str, request: dict, uow: UnitOfWork = Depends(get
                     unit_price=Decimal(str(line.get("unit_price") or line.get("unitPrice") or 0))
                 ))
 
-
+        # Update nested documents
         if "documents" in request:
             q.documents.clear()
             for doc in request["documents"]:
@@ -2175,13 +2430,13 @@ async def update_quotation(id: str, request: dict, uow: UnitOfWork = Depends(get
                     file_url=doc.get("file_url") or doc.get("fileUrl")
                 ))
 
-
+        # Re-calculate total_amount
         line_total = sum((l.quantity * l.unit_price for l in q.lines), Decimal("0"))
         disc = Decimal(str(q.discount or 0))
         tx = Decimal(str(q.tax or 0))
         fr = Decimal(str(q.freight_charges or 0))
 
-
+        # Standard calculation: (Base - Discount) + Tax% + Freight
         base_amount = line_total - disc
         calculated_tax = base_amount * (tx / Decimal("100")) if tx > 0 else Decimal("0")
         q.total_amount = base_amount + calculated_tax + fr
@@ -2265,7 +2520,7 @@ def _to_quotation_response(q) -> QuotationResponse:
     )
 
 
-
+# --- ASN ---
 
 @router.post("/asns", response_model=AsnResponse, status_code=status.HTTP_201_CREATED)
 async def create_asn(
@@ -2283,8 +2538,8 @@ async def create_asn(
         if supplier_id:
             supplier_id = str(supplier_id)
 
-
-
+        # Older local supplier tokens did not preserve UUIDs correctly. Resolve
+        # the supplier through the referenced PO so the ASN still has ownership.
         if not supplier_id and request.po_id:
             try:
                 supplier_result = await uow.session.execute(
@@ -2297,11 +2552,11 @@ async def create_asn(
             except ValueError:
                 pass
 
-
+        # Manual date parsing for maximum flexibility
         expected_arrival = None
         if request.expected_arrival_at:
             try:
-
+                # Parse and force to naive datetime to match DB TIMESTAMP WITHOUT TIME ZONE
                 dt = datetime.fromisoformat(request.expected_arrival_at.replace("Z", "+00:00"))
                 expected_arrival = dt.replace(tzinfo=None)
             except: pass
@@ -2309,7 +2564,7 @@ async def create_asn(
         ship_date = None
         if request.shipment_date:
             try:
-
+                # Ensure we only have the date part
                 ship_date = datetime.fromisoformat(request.shipment_date.split("T")[0]).date()
             except: pass
 
@@ -2343,7 +2598,7 @@ async def create_asn(
         )
         asn_id = await use_case.handle(command)
 
-
+        # Update Purchase Order status to SHIPPED if linked
         if request.po_id:
             try:
                 po_stmt = (
@@ -2356,7 +2611,7 @@ async def create_asn(
                 if po_obj:
                     po_obj.status = "SHIPPED"
 
-
+                    # Record history
                     po_obj.history.append(POApprovalHistoryModel(
                         id=uuid.uuid4(),
                         status="SHIPPED",
@@ -2364,7 +2619,7 @@ async def create_asn(
                         comments=f"ASN {request.asn_number} submitted. Shipment is in transit."
                     ))
 
-
+                    # Notify Procurement
                     uow.session.add(NotificationModel(
                         id=uuid.uuid4(),
                         user_role="PROCUREMENT",
@@ -2375,7 +2630,7 @@ async def create_asn(
             except Exception as po_err:
                 logger.warning(f"Failed to update PO status on ASN submission: {po_err}")
 
-
+        # Fetch for response with all relations
         stmt = select(AsnModel).options(
             selectinload(AsnModel.lines),
             selectinload(AsnModel.documents)
@@ -2455,22 +2710,10 @@ async def list_asns(
         res = await uow.session.execute(stmt)
         rows = res.all()
 
-        asn_ids = [asn.id for asn, _, _ in rows]
-        warehouse_by_asn = {}
-        if asn_ids:
-            warehouse_result = await uow.session.execute(
-                select(GateEntryModel)
-                .where(GateEntryModel.asn_id.in_(asn_ids))
-                .order_by(GateEntryModel.updated_at.desc())
-            )
-            for gate_entry in warehouse_result.scalars().all():
-                warehouse_by_asn.setdefault(gate_entry.asn_id, gate_entry)
-
         responses = []
         for asn, supplier_name, resolved_id in rows:
             try:
-                warehouse_entry = warehouse_by_asn.get(asn.id)
-
+                # Map lines carefully
                 lines = []
                 for l in asn.lines:
                     lines.append(AsnLineSchema(
@@ -2480,7 +2723,7 @@ async def list_asns(
                         uom=getattr(l, "uom", "PCS")
                     ))
 
-
+                # Map documents carefully
                 documents = []
                 for d in asn.documents:
                     documents.append(AsnDocumentSchema(
@@ -2509,9 +2752,6 @@ async def list_asns(
                     number_of_packages=asn.number_of_packages,
                     package_type=asn.package_type,
                     shipping_method=asn.shipping_method,
-                    warehouse_status=warehouse_entry.status if warehouse_entry else None,
-                    warehouse_status_updated_at=warehouse_entry.updated_at if warehouse_entry else None,
-                    assigned_dock_id=warehouse_entry.assigned_dock_id if warehouse_entry else None,
                     created_at=asn.created_at,
                     documents=documents
                 ))
@@ -2552,13 +2792,6 @@ async def get_asn(id: str, uow: UnitOfWork = Depends(get_uow)):
             raise HTTPException(status_code=404, detail="ASN not found")
 
         asn, supplier_name, resolved_id = row
-        warehouse_result = await uow.session.execute(
-            select(GateEntryModel)
-            .where(GateEntryModel.asn_id == asn.id)
-            .order_by(GateEntryModel.updated_at.desc())
-            .limit(1)
-        )
-        warehouse_entry = warehouse_result.scalar_one_or_none()
 
         return AsnResponse(
             id=str(asn.id),
@@ -2583,9 +2816,6 @@ async def get_asn(id: str, uow: UnitOfWork = Depends(get_uow)):
             number_of_packages=asn.number_of_packages,
             package_type=asn.package_type,
             shipping_method=asn.shipping_method,
-            warehouse_status=warehouse_entry.status if warehouse_entry else None,
-            warehouse_status_updated_at=warehouse_entry.updated_at if warehouse_entry else None,
-            assigned_dock_id=warehouse_entry.assigned_dock_id if warehouse_entry else None,
             documents=[AsnDocumentSchema(
                 document_type=d.document_type,
                 file_name=d.file_name,
@@ -2660,7 +2890,7 @@ async def resubmit_asn(
         asn.shipping_method = request.shipping_method
         asn.status = "DISPATCHED"
 
-
+        # Create notification for procurement
         notification = NotificationModel(
             id=uuid.uuid4(),
             user_role="PROCUREMENT",
@@ -2749,7 +2979,10 @@ async def resubmit_asn(
 
 
 @router.get("/arrival-notifications", response_model=List[ArrivalNotificationResponse])
-async def list_arrival_notifications(uow: UnitOfWork = Depends(get_uow)):
+async def list_arrival_notifications(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     repo = SqlAlchemyArrivalNotificationRepository(uow.session)
     notifications = await repo.list_all()
     po_ids = []
@@ -2794,18 +3027,29 @@ async def list_arrival_notifications(uow: UnitOfWork = Depends(get_uow)):
     ]
 
 
-
+# --- Notifications ---
 
 @router.get("/notifications")
-async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
+async def list_notifications(
+    role: str = Query(...),
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     normalized_role = role.strip().upper()
+    if normalized_role not in _user.roles and "ADMIN" not in _user.roles:
+         raise HTTPException(status_code=403, detail="Not authorized to view notifications for this role")
+
     stmt = select(NotificationModel).where(NotificationModel.user_role == normalized_role).order_by(NotificationModel.created_at.desc())
     res = await uow.session.execute(stmt)
     return res.scalars().all()
 
 
 @router.post("/notifications/{id}/read")
-async def mark_notification_read(id: str, uow: UnitOfWork = Depends(get_uow)):
+async def mark_notification_read(
+    id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     stmt = select(NotificationModel).where(NotificationModel.id == uuid.UUID(id))
     res = await uow.session.execute(stmt)
     n = res.scalar_one_or_none()
@@ -2816,8 +3060,15 @@ async def mark_notification_read(id: str, uow: UnitOfWork = Depends(get_uow)):
 
 
 @router.post("/notifications/read-all")
-async def mark_all_notifications_read(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
+async def mark_all_notifications_read(
+    role: str = Query(...),
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     normalized_role = role.strip().upper()
+    if normalized_role not in _user.roles and "ADMIN" not in _user.roles:
+         raise HTTPException(status_code=403, detail="Not authorized to update notifications for this role")
+
     result = await uow.session.execute(
         update(NotificationModel)
         .where(NotificationModel.user_role == normalized_role, NotificationModel.is_read.is_(False))
@@ -2828,7 +3079,11 @@ async def mark_all_notifications_read(role: str = Query(...), uow: UnitOfWork = 
 
 
 @router.post("/arrival-notifications/{notification_id}/read")
-async def mark_arrival_notification_read(notification_id: str, uow: UnitOfWork = Depends(get_uow)):
+async def mark_arrival_notification_read(
+    notification_id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     result = await uow.session.execute(
         update(ArrivalNotificationModel)
         .where(ArrivalNotificationModel.id == notification_id)
@@ -2841,7 +3096,10 @@ async def mark_arrival_notification_read(notification_id: str, uow: UnitOfWork =
 
 
 @router.post("/arrival-notifications/read-all")
-async def mark_all_arrival_notifications_read(uow: UnitOfWork = Depends(get_uow)):
+async def mark_all_arrival_notifications_read(
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
+):
     result = await uow.session.execute(
         update(ArrivalNotificationModel)
         .where(ArrivalNotificationModel.status != "ACKNOWLEDGED")
@@ -2851,7 +3109,7 @@ async def mark_all_arrival_notifications_read(uow: UnitOfWork = Depends(get_uow)
     return {"status": "success", "updated": result.rowcount or 0}
 
 
-
+# --- Supplier Auth Endpoints ---
 
 @router.post("/auth/supplier-login", response_model=SupplierLoginResponse)
 async def supplier_login(
@@ -2911,7 +3169,7 @@ async def dev_login(
 ) -> dict:
     from app.config.settings import get_settings
     settings = get_settings()
-
+    # Validate against configured settings (from .env)
     if request.username == settings.admin_username and request.password == settings.admin_password:
         return {
             "token": "mock-jwt-admin-token",
@@ -2935,6 +3193,12 @@ async def dev_login(
             "token": "mock-jwt-warehouse-token",
             "username": settings.warehouse_username,
             "roles": ["WAREHOUSE"]
+        }
+    elif request.username == settings.assembly_manager_username and request.password == settings.assembly_manager_password:
+        return {
+            "token": "mock-jwt-assembly-manager-token",
+            "username": settings.assembly_manager_username,
+            "roles": ["ASSEMBLY_MANAGER"]
         }
     elif request.username == settings.gate_security_username and request.password == settings.gate_security_password:
         return {
@@ -2969,7 +3233,7 @@ async def global_search(
         search_term = f"%{q}%"
         results = []
 
-
+        # 1. Search Suppliers
         supplier_stmt = select(SupplierModel).where(
             or_(
                 SupplierModel.supplier_name.ilike(search_term),
@@ -2987,7 +3251,7 @@ async def global_search(
                 "link": f"/master-data?search={s.supplier_name}"
             })
 
-
+        # 2. Search Purchase Orders
         po_stmt = select(PurchaseOrderModel).where(
             or_(
                 PurchaseOrderModel.po_number.ilike(search_term),
@@ -3004,7 +3268,7 @@ async def global_search(
                 "link": f"/purchase-order?poId={po.id}"
             })
 
-
+        # 3. Search ASNs
         asn_stmt = select(AsnModel).where(
             or_(
                 AsnModel.asn_number.ilike(search_term),
@@ -3023,7 +3287,7 @@ async def global_search(
                 "link": f"/procurement/asns/{asn.id}"
             })
 
-
+        # 4. Search Material Requests
         mr_stmt = select(MaterialRequestModel).where(
             or_(
                 MaterialRequestModel.request_number.ilike(search_term),
@@ -3041,7 +3305,7 @@ async def global_search(
                 "link": f"/procurement/material-requests"
             })
 
-
+        # 5. Search RFQs
         rfq_stmt = select(RfqModel).where(
             or_(
                 RfqModel.rfq_number.ilike(search_term),
@@ -3058,9 +3322,9 @@ async def global_search(
                 "link": f"/procurement/rfqs"
             })
 
-
-
-
+        # 6. Search Gate Entries (from memory if available)
+        # Note: Accessing gate router's memory repo directly is complex due to structure.
+        # Most gate entries will have associated POs or ASNs which are already searched.
 
         return {"results": results}
     except Exception as e:
@@ -3075,10 +3339,10 @@ async def check_upcoming_arrivals():
 
     try:
         async with session_scope() as session:
-
+            # Target date is exactly 5 days from today
             target_date = (datetime.now() + timedelta(days=5)).date()
 
-
+            # Find ASNs arriving on that day that are in transit
             stmt = select(AsnModel).where(
                 cast(AsnModel.expected_arrival_at, Date) == target_date,
                 AsnModel.status == "DISPATCHED"
@@ -3087,8 +3351,8 @@ async def check_upcoming_arrivals():
             asns = res.scalars().all()
 
             for asn in asns:
-
-
+                # Check if we already sent this specific 5-day reminder to avoid spam
+                # Link is used as a unique identifier for the specific ASN reminder
                 unique_link = f"/notifications?asnId={asn.id}&alert=5day"
 
                 check_stmt = select(NotificationModel).where(
@@ -3112,6 +3376,6 @@ async def check_upcoming_arrivals():
                 session.add(new_notif)
                 logger.info(f"Generated 5-day arrival reminder for ASN {asn.asn_number}")
 
-
+            # Note: session.commit() is handled by session_scope()
     except Exception as e:
         logger.error(f"Background arrival check failed: {e}")

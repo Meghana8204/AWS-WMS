@@ -11,8 +11,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-
-
+/**
+ * User management (RBAC administration). Restricted to ADMIN - see
+ * SecurityConfig. This is the ONLY place users, roles, or permissions are
+ * created/changed; the Python business-service never writes here, it only
+ * reads role/permission names back out of validated JWT claims.
+ */
 @RestController
 @RequestMapping("/api/users")
 public class UserController {

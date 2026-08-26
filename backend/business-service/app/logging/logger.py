@@ -42,12 +42,12 @@ def configure_logging() -> None:
         )
     root.handlers = [handler]
 
-
+    # Quiet noisy libraries down unless the whole app is in DEBUG.
     if settings.log_level.upper() != "DEBUG":
         for noisy in ("sqlalchemy.engine", "aiokafka", "httpx", "apscheduler", "uvicorn.access"):
             logging.getLogger(noisy).setLevel(logging.ERROR)
 
-
+        # Also silence specific noisy loggers that don't follow the prefix rule
         logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
         logging.getLogger("apscheduler.scheduler").setLevel(logging.ERROR)
         logging.getLogger("aiokafka").setLevel(logging.CRITICAL)

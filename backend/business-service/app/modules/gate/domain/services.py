@@ -34,32 +34,32 @@ class GateVerificationService:
         Returns:
           (GateEntryStatus, list of FieldMismatch, canonical_po_number)
         """
-
+        # IF PO NOT FOUND -> UNSCHEDULED_ARRIVAL
         if po_record is None or not ocr_result.po_number:
             return (GateEntryStatus.UNSCHEDULED_ARRIVAL, [], None)
 
         mismatches: List[FieldMismatch] = []
 
-
+        # Helper normalizers
         def norm_str(val: Optional[str]) -> str:
             return (val or "").strip().upper()
 
         def norm_num(val: Optional[float]) -> float:
             return float(val or 0.0)
 
-
+        # 1. PO Number
         if norm_str(ocr_result.po_number) != norm_str(po_record.po_number):
             mismatches.append(
                 FieldMismatch("po_number", ocr_result.po_number, po_record.po_number)
             )
 
-
+        # 2. Supplier Name
         if norm_str(ocr_result.supplier_name) != norm_str(po_record.supplier_name):
             mismatches.append(
                 FieldMismatch("supplier_name", ocr_result.supplier_name, po_record.supplier_name)
             )
 
-
+        # 3. Material Description
         if norm_str(ocr_result.material_description) != norm_str(po_record.material_description):
             mismatches.append(
                 FieldMismatch(
@@ -69,7 +69,7 @@ class GateVerificationService:
                 )
             )
 
-
+        # 4. Total Quantity
         if abs(norm_num(ocr_result.total_quantity) - norm_num(po_record.total_quantity)) > 1e-4:
             mismatches.append(
                 FieldMismatch(
@@ -79,13 +79,13 @@ class GateVerificationService:
                 )
             )
 
-
+        # 5. PO Date
         if norm_str(ocr_result.po_date) != norm_str(po_record.po_date):
             mismatches.append(
                 FieldMismatch("po_date", ocr_result.po_date, po_record.po_date)
             )
 
-
+        # 6. Delivery Date
         if norm_str(ocr_result.delivery_date) != norm_str(po_record.delivery_date):
             mismatches.append(
                 FieldMismatch(
@@ -185,3 +185,4 @@ class GateEntryVerificationDomainService:
             mismatched_fields=[],
             reasons=[],
         )
+

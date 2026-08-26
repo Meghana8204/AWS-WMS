@@ -1,6 +1,7 @@
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
   LayoutDashboard,
+  DoorOpen,
   Truck,
   ListOrdered,
   Warehouse,
@@ -23,26 +24,33 @@ import {
   FileQuestion,
   FileBadge,
   Loader2,
-  ShieldCheck,
+  Factory,
+  Users,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Inventory", to: "/inventory", icon: Boxes },
+  { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
+  { label: "Pick Tasks", to: "/pick-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
+  { label: "GRN", to: "/grn", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+
 const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
+  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
   { label: "RFQs", to: "/procurement/rfqs", icon: FileQuestion },
@@ -50,22 +58,51 @@ const procurementNav = [
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
+
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
+  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
+
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
+  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+
 const gateSecurityNav = [
-  { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
-  { label: "Gate Entry", to: "/gate-entry", icon: ShieldCheck },
+  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Notifications", to: "/notifications", icon: Bell },
+  { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
 ];
+
+const assemblyNav = [
+  { label: "Dashboard", to: "/assembly-dashboard", icon: LayoutDashboard },
+  { label: "Assembly Orders", to: "/assembly-orders", icon: Factory },
+  { label: "Material Requirements", to: "/assembly-material-requirements", icon: ClipboardList },
+  { label: "Material Reservations", to: "/assembly-material-reservations", icon: Boxes },
+  { label: "Material Issues", to: "/assembly-material-issues", icon: PackageCheck },
+  { label: "Work Orders", to: "/assembly-work-orders", icon: Factory },
+  { label: "Assembly Teams", to: "/assembly-workforce", icon: Users },
+  { label: "Assembly Progress", to: "/assembly-progress", icon: BarChart3 },
+  { label: "Material Consumption", to: "/assembly-material-consumption", icon: Boxes },
+  { label: "Scrap / Wastage", to: "/assembly-scrap-wastage", icon: FileText },
+  { label: "Quality Inspection", to: "/assembly-quality-inspection", icon: FileCheck2 },
+  { label: "Rework", to: "/assembly-rework", icon: Settings },
+  { label: "Finished Goods", to: "/assembly-finished-goods", icon: Warehouse },
+  { label: "Reports", to: "/assembly-reports", icon: BarChart3 },
+  { label: "Notifications", to: "/notifications", icon: Bell },
+];
+
+function isActiveRoute(path: string, target: string): boolean {
+  return path === target || path.startsWith(`${target}/`);
+}
+
 export function AppShell({
   children,
   title,
@@ -82,15 +119,15 @@ export function AppShell({
   const [mounted, setMounted] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
-  const [user, setUser] = useState<{
-    username?: string;
-    roles?: string[];
-  } | null>(null);
+  const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+
+  // Global Search State
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+
   useEffect(() => {
     const delayDebounceFn = setTimeout(async () => {
       if (searchTerm.length >= 2) {
@@ -109,23 +146,31 @@ export function AppShell({
         setShowSearch(false);
       }
     }, 300);
+
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
+
   useEffect(() => {
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
+
+    // Load user only on client side to prevent hydration mismatch
     try {
       const savedUser = localStorage.getItem("user_info");
       if (savedUser) {
         const u = JSON.parse(savedUser);
         setUser(u);
+
+        // Fetch notifications for the user's role
         const role = u.roles?.includes("SUPPLIER")
           ? "SUPPLIER"
           : u.roles?.includes("FINANCE")
             ? "FINANCE"
             : u.roles?.includes("PROCUREMENT")
               ? "PROCUREMENT"
-              : "WAREHOUSE";
+              : u.roles?.includes("ASSEMBLY_MANAGER")
+                ? "ASSEMBLY_MANAGER"
+                : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE") {
@@ -155,71 +200,58 @@ export function AppShell({
       console.error("Failed to parse user info", e);
     }
   }, [dark]);
-  const isProcurementRoute =
-    path === "/procurement-dashboard" ||
-    path.startsWith("/procurement/") ||
-    path === "/master-data" ||
-    path === "/new-supplier" ||
-    (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
+
+  // The current route is available during server rendering, so each module
+  // pages can select their sidebar immediately rather than waiting for the
+  // client-side localStorage role lookup.
+  const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
-  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
-  const isSharedFinanceRoute = path.startsWith("/reports");
-  const isFinanceRoute =
-    path === "/finance-dashboard" ||
-    path.startsWith("/finance/") ||
-    (isFinanceUser && isSharedFinanceRoute);
-  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
-  const isNotificationsRoute = path.startsWith("/notifications");
-  const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
-    (route) => path.startsWith(route),
-  );
+  const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isGateSecurityRoute = path === "/gate-entry" || path === "/vehicle-exit";
+  const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
   const isWarehouseRoute =
-    isSharedOperationsRoute ||
+    path === "/warehouse-dashboard" ||
     [
       "/inventory",
+      "/warehouse-storage",
       "/warehouse/material-requests",
-      "/dock-management",
+      "/notifications",
+      "/vehicle-queue",
       "/receiving",
-      "/putaway-tasks",
+      "/grn",
       "/reports",
     ].some((p) => path.startsWith(p));
-  const isGateSecurityRoute =
-    [
-      "/gate-entry",
-      "/gate-dashboard",
-      "/accept-arrival",
-      "/driver-verification",
-      "/vehicle-verification",
-      "/dock-assignment",
-      "/arrival-success",
-    ].some((route) => path.startsWith(route)) ||
-    (isGateSecurityUser && (isSharedOperationsRoute || isNotificationsRoute));
-  const resolvedNav = isSupplierRoute
-    ? supplierNav
-    : isFinanceRoute
-      ? financeNav
-      : isProcurementRoute
-        ? procurementNav
-        : isGateSecurityRoute
-          ? gateSecurityNav
-          : isWarehouseRoute
-            ? warehouseNav
-            : mounted && user?.roles?.includes("SUPPLIER")
-              ? supplierNav
-              : mounted && user?.roles?.includes("FINANCE")
-                ? financeNav
-                : mounted && user?.roles?.includes("PROCUREMENT")
-                  ? procurementNav
-                  : isGateSecurityUser
-                    ? gateSecurityNav
-                    : warehouseNav;
-  const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
-  const nav = navigationPending ? [] : resolvedNav;
+
+  const nav = mounted
+    ? user?.roles?.includes("SUPPLIER")
+      ? supplierNav
+      : user?.roles?.includes("FINANCE")
+        ? financeNav
+        : user?.roles?.includes("PROCUREMENT")
+          ? procurementNav
+      : user?.roles?.includes("GATE_SECURITY")
+            ? gateSecurityNav
+            : user?.roles?.includes("ASSEMBLY_MANAGER")
+              ? assemblyNav
+            : warehouseNav
+    : isSupplierRoute
+      ? supplierNav
+      : isFinanceRoute
+        ? financeNav
+        : isProcurementRoute
+          ? procurementNav
+          : isGateSecurityRoute
+            ? gateSecurityNav
+            : isAssemblyRoute
+              ? assemblyNav
+            : warehouseNav;
+
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
     navigate({ to: "/login" });
   };
+
   return (
     <div className="flex min-h-screen w-full bg-background">
       <aside
@@ -241,18 +273,14 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {navigationPending &&
-            Array.from({ length: 5 }).map((_, index) => (
-              <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
-            ))}
           {nav.map((item) => {
-            const active =
-              path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
+            const active = isActiveRoute(path, item.to);
             return (
               <Link
                 key={item.to}
                 to={item.to}
                 title={item.label}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-all",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -273,6 +301,7 @@ export function AppShell({
 
         <div className="border-t border-sidebar-border p-3 space-y-1">
           <button
+            type="button"
             suppressHydrationWarning
             onClick={() => setCollapsed((c) => !c)}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
@@ -285,6 +314,7 @@ export function AppShell({
             {!collapsed && <span>Collapse</span>}
           </button>
           <button
+            type="button"
             suppressHydrationWarning
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
@@ -299,7 +329,7 @@ export function AppShell({
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
             <Link
-              to={nav[0]?.to ?? "/warehouse-dashboard"}
+              to={nav[0].to}
               className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
             >
               <Warehouse className="size-4" />
@@ -318,6 +348,7 @@ export function AppShell({
                 {isSearching ? <Loader2 className="size-3 animate-spin" /> : "⌘K"}
               </kbd>
 
+              {/* Search Results Dropdown */}
               {showSearch && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
@@ -367,6 +398,7 @@ export function AppShell({
 
             <div className="ml-auto flex items-center gap-1.5">
               <button
+                type="button"
                 suppressHydrationWarning
                 onClick={() => setDark((d) => !d)}
                 aria-label="Toggle dark mode"
@@ -399,10 +431,13 @@ export function AppShell({
                         ? "Finance Manager"
                         : user?.roles?.includes("GATE_SECURITY")
                           ? "Security Officer"
+                          : user?.roles?.includes("ASSEMBLY_MANAGER")
+                            ? "Assembly Manager"
                           : "Operations Manager"}
                   </p>
                 </div>
                 <button
+                  type="button"
                   suppressHydrationWarning
                   onClick={handleLogout}
                   className="ml-2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -430,11 +465,12 @@ export function AppShell({
 
         <nav className="sticky bottom-0 z-30 grid grid-cols-5 border-t border-border glass-strong md:hidden">
           {nav.slice(0, 5).map((item) => {
-            const active = path === item.to;
+            const active = isActiveRoute(path, item.to);
             return (
               <Link
                 key={item.to}
                 to={item.to}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium text-muted-foreground",
                   active && "text-primary",
@@ -450,6 +486,7 @@ export function AppShell({
     </div>
   );
 }
+
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
@@ -501,7 +538,9 @@ export function StatusBadge({ status }: { status: string }) {
     SHIPPED: "bg-teal-soft text-teal border-teal/30",
     DISPATCHED: "bg-teal-soft text-teal border-teal/30",
   };
+
   const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
+
   return (
     <Badge
       variant="outline"

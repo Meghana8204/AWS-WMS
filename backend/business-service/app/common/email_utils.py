@@ -2,6 +2,7 @@ import smtplib
 import anyio
 import os
 import socket
+import time
 from html import escape
 from typing import Iterable
 from email.mime.text import MIMEText
@@ -13,8 +14,9 @@ from app.logging.logger import get_logger
 logger = get_logger(__name__)
 
 def _smtp_transports(settings):
-    """Yield configured SMTP transport first, then Gmail's SSL fallback."""
+    """Retry the configured transport, then try Gmail's SSL fallback."""
     configured = (settings.email_port, settings.email_port == 465)
+    yield configured
     yield configured
     if configured != (465, True):
         yield (465, True)
@@ -65,13 +67,13 @@ def render_premium_email(
 def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = None):
     settings = get_settings()
 
-
+    # Absolute path for debugging
     log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
     with open(log_path, "a") as lf:
         lf.write(f"SMTP Start: {to_email} via {settings.email_host_user}\n")
 
-
-
+    # Let Gmail, Outlook, and mobile clients prefer the premium HTML while
+    # retaining the plain-text version as an accessibility fallback.
     msg = MIMEMultipart('alternative')
     msg['From'] = f"{settings.email_from_name} <{settings.email_host_user}>"
     msg['To'] = to_email
@@ -84,7 +86,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
     errors = []
-    for port, use_ssl in _smtp_transports(settings):
+    for attempt, (port, use_ssl) in enumerate(_smtp_transports(settings), start=1):
         server = None
         try:
             if use_ssl:
@@ -96,7 +98,12 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                 server.ehlo()
             server.login(settings.email_host_user, settings.email_host_password)
             server.send_message(msg)
-            server.quit()
+            # Delivery has completed once send_message returns. A timeout while
+            # closing must not trigger another attempt and duplicate the email.
+            try:
+                server.quit()
+            except (OSError, smtplib.SMTPException, socket.error):
+                server.close()
             with open(log_path, "a") as lf:
                 lf.write(f"SMTP Success: {to_email} via port {port}\n")
             return True
@@ -107,6 +114,8 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                     server.close()
                 except Exception:
                     pass
+            if attempt == 1:
+                time.sleep(1)
 
     error_message = "; ".join(errors)
     with open(log_path, "a") as lf:
@@ -137,7 +146,7 @@ async def send_email(to_email: str, subject: str, body: str, html_body: str | No
                 greeting="Hello,",
                 intro=body,
             )
-
+        # Run synchronous smtplib in a separate thread
         await anyio.to_thread.run_sync(_send_sync, to_email, subject, body, html_body)
         return True
     except Exception as e:

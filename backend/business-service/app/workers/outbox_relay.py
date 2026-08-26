@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 async def relay_once() -> None:
     if not is_producer_available():
-
+        # Skip relay if Kafka is offline to avoid log noise in local dev
         return
 
     settings = get_settings()

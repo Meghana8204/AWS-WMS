@@ -6,6 +6,7 @@ import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { activeArrival } from "@/lib/wms-data";
 import driverPhoto from "@/assets/driver.jpg";
+
 export const Route = createFileRoute("/driver-verification")({
   head: () => ({
     meta: [
@@ -24,9 +25,11 @@ export const Route = createFileRoute("/driver-verification")({
   }),
   component: DriverVerification,
 });
+
 function DriverVerification() {
   const a = activeArrival;
   const navigate = useNavigate();
+
   return (
     <AppShell
       title="Driver verification"

@@ -84,7 +84,7 @@ class TesseractAnprService:
 
         raw_text = await _read_image_text(self.command, image_data, page_segmentation_mode="11")
         compact_text = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
-
+        # Indian registration formats: MH12AB1234, DL01C1234, BH12AB1234A, etc.
         match = re.search(r"\b(?:[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|[A-Z]{2}\d{2}[A-Z]{2}\d{4}[A-Z]?)\b", compact_text)
         if not match:
             raise ValueError("No vehicle registration number could be read. Reposition the plate and scan again.")

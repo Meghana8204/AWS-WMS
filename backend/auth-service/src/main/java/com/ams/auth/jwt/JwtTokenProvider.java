@@ -16,8 +16,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-
-
+/**
+ * Issues and validates the RS256 access token. Claims include roles and
+ * flattened permissions, so the Python business-service can authorize
+ * requests LOCALLY (see business-service/app/security/dependencies.py)
+ * without calling back into this service on every request - it only fetches
+ * (and caches) the public key via /.well-known/jwks.json.
+ */
 @Component
 public class JwtTokenProvider {
 

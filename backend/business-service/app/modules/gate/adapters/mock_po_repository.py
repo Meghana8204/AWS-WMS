@@ -14,7 +14,7 @@ def _normalise_po_number(value: str) -> str:
     compact = "".join(char for char in value.upper() if char.isalnum())
     return f"PO{compact[2:]}" if compact.startswith("P0") else compact
 
-
+# Raw sample mock database dictionary
 MOCK_PO_DATABASE: Dict[str, Dict[str, str | float]] = {
     "PO-1001": {
         "poNumber": "PO-1001",

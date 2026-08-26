@@ -1,20 +1,39 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Truck, Inbox, Loader2, FileText } from "lucide-react";
-import { AppShell } from "@/components/wms/app-shell";
+import {
+  Bell,
+  Truck,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  Filter,
+  Inbox,
+  Loader2,
+  Calendar,
+  FileText,
+  ArrowRight,
+  Package,
+} from "lucide-react";
+import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
   component: Notifications,
 });
+
 function Notifications() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
+
   useEffect(() => {
     const info = localStorage.getItem("user_info");
     const roles = info ? JSON.parse(info).roles || [] : [];
@@ -24,7 +43,9 @@ function Notifications() {
         ? "FINANCE"
         : roles.includes("PROCUREMENT")
           ? "PROCUREMENT"
-          : "WAREHOUSE";
+          : roles.includes("ASSEMBLY_MANAGER")
+            ? "ASSEMBLY_MANAGER"
+            : "WAREHOUSE";
     setUserRole(role);
     void fetchData(role, false);
     const timer = window.setInterval(() => void fetchData(role, true), 2000);
@@ -37,6 +58,7 @@ function Notifications() {
       window.removeEventListener("notifications:refresh", refresh);
     };
   }, []);
+
   const fetchData = async (role: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -76,10 +98,50 @@ function Notifications() {
       if (!quiet) setLoading(false);
     }
   };
+
+  const handleMarkRead = async (id: string) => {
+    try {
+      const notification = notifications.find((n) => n.id === id);
+      if (userRole === "WAREHOUSE" && notification?.type === "arrival")
+        await api.markArrivalNotificationRead(id);
+      else await api.markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch (e) {
+      toast.error("Unable to mark notification as read");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      if (userRole === "WAREHOUSE") {
+        await Promise.all([
+          api.markAllArrivalNotificationsRead(),
+          api.markAllNotificationsRead(userRole),
+        ]);
+      } else await api.markAllNotificationsRead(userRole);
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })));
+      window.dispatchEvent(new Event("notifications:refresh"));
+      toast.success("All notifications marked as read");
+    } catch (error) {
+      toast.error("Unable to mark all notifications as read");
+    }
+  };
+
   return (
     <AppShell
       title="Notification centre"
       subtitle="Stay updated with procurement and supply chain alerts"
+      actions={
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={handleMarkAllRead}
+          disabled={!notifications.some((notification) => !notification.is_read)}
+        >
+          Mark all read
+        </Button>
+      }
     >
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -101,7 +163,7 @@ function Notifications() {
             <Card
               key={n.id}
               className={cn(
-                "relative overflow-hidden border-border/50 p-5",
+                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
                 !n.is_read && "bg-primary-soft/5 border-primary/20",
               )}
             >
@@ -113,13 +175,15 @@ function Notifications() {
                     "grid size-12 shrink-0 place-items-center rounded-2xl",
                     n.title?.includes("Approved")
                       ? "bg-success-soft text-success"
-                      : n.title?.includes("Rejected")
+                      : n.title?.includes("Rejected") || n.title?.includes("Failed")
                         ? "bg-destructive-soft text-destructive"
                         : "bg-primary-soft text-primary",
                   )}
                 >
                   {n.type === "arrival" ? (
                     <Truck className="size-6" />
+                  ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
+                    <Package className="size-6" />
                   ) : (
                     <FileText className="size-6" />
                   )}
@@ -136,22 +200,20 @@ function Notifications() {
                   </div>
                   <p className="text-sm text-muted-foreground leading-relaxed">{n.message}</p>
 
-                  {(n.po_number || n.supplier_name) && (
-                    <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
-                      <div className="flex gap-2">
-                        {n.po_number && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">
-                            PO: {n.po_number}
-                          </span>
-                        )}
-                        {n.supplier_name && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-muted">
-                            {n.supplier_name}
-                          </span>
-                        )}
-                      </div>
+                  <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
+                    <div className="flex gap-2">
+                      {n.po_number && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">
+                          PO: {n.po_number}
+                        </span>
+                      )}
+                      {n.supplier_name && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted">
+                          {n.supplier_name}
+                        </span>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
               </div>
             </Card>

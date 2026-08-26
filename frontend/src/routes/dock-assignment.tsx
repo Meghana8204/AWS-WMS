@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+
 export const Route = createFileRoute("/dock-assignment")({
   head: () => ({
     meta: [
@@ -35,11 +36,13 @@ export const Route = createFileRoute("/dock-assignment")({
   }),
   component: DockAssignment,
 });
+
 function DockAssignment() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<string | null>("D-04");
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+
   return (
     <AppShell
       title="Assign unloading dock"

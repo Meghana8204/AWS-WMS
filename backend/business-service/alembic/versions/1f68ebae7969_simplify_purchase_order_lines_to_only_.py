@@ -17,7 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-
+    # Remove extra columns from purchase_order_line
     op.drop_column('purchase_order_line', 'unit_price')
     op.drop_column('purchase_order_line', 'material_name')
     op.drop_column('purchase_order_line', 'category')
@@ -27,7 +27,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-
+    # Add back columns with defaults where necessary
     op.add_column('purchase_order_line', sa.Column('tax', sa.NUMERIC(precision=18, scale=4), server_default=sa.text('0.0'), autoincrement=False, nullable=False))
     op.add_column('purchase_order_line', sa.Column('discount', sa.NUMERIC(precision=18, scale=4), server_default=sa.text('0.0'), autoincrement=False, nullable=False))
     op.add_column('purchase_order_line', sa.Column('uom', sa.VARCHAR(length=64), autoincrement=False, nullable=True))

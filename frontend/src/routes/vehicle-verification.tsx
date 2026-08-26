@@ -9,6 +9,7 @@ import { activeArrival } from "@/lib/wms-data";
 import truckGate from "@/assets/truck-gate.jpg";
 import truckRear from "@/assets/truck-rear.jpg";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+
 export const Route = createFileRoute("/vehicle-verification")({
   head: () => ({
     meta: [
@@ -27,15 +28,18 @@ export const Route = createFileRoute("/vehicle-verification")({
   }),
   component: VehicleVerification,
 });
+
 const history = [
   { date: "22 Jul 2026", po: "PO-2026-117905", result: "Accepted", note: "No exception" },
   { date: "09 Jul 2026", po: "PO-2026-117402", result: "Accepted", note: "Late by 40 min" },
   { date: "27 Jun 2026", po: "PO-2026-116988", result: "Accepted", note: "No exception" },
 ];
+
 function VehicleVerification() {
   const a = activeArrival;
   const navigate = useNavigate();
   const [zoom, setZoom] = useState<string | null>(null);
+
   return (
     <AppShell
       title="Vehicle verification"

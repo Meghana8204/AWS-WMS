@@ -24,11 +24,14 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/supplier/asns/new")({
   beforeLoad: () => requireRole("SUPPLIER"),
   component: NewAsn,
 });
+
 const inputClass = "mt-1.5 h-11 rounded-xl border-border/80 bg-background focus:ring-primary/20";
+
 function NewAsn() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as any;
@@ -36,10 +39,12 @@ function NewAsn() {
   const poNumberFromSearch = search.po_number || search.poNumber || "";
   const draftStorageKey = `supplier-asn-draft:${poId || poNumberFromSearch || "new"}`;
   const draftHydrated = useRef(false);
+
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [po, setPo] = useState<any>(null);
   const [asnNumber, setAsnNumber] = useState("");
+
   const [formData, setFormData] = useState({
     shipment_date: new Date().toISOString().split("T")[0],
     expected_arrival_date: "",
@@ -50,14 +55,17 @@ function NewAsn() {
     number_of_packages: "",
     package_type: "",
   });
+
   const [lines, setLines] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+
   useEffect(() => {
     async function init() {
       try {
         draftHydrated.current = false;
         setLoading(true);
+
         let savedDraft: any = null;
         try {
           const saved = localStorage.getItem(draftStorageKey);
@@ -68,11 +76,17 @@ function NewAsn() {
         } catch {
           localStorage.removeItem(draftStorageKey);
         }
+
+        // 1. Fetch next ASN number
         const { asnNumber: nextAsn } = await api.getNextAsnNumber();
         setAsnNumber(nextAsn);
+
+        // 2. Fetch PO details if poId is provided
         if (poId) {
           const poData = await api.getPurchaseOrder(poId);
           setPo(poData);
+
+          // Initialize lines from PO items
           const poItems = poData.items || poData.lines || [];
           setLines(
             poItems.map((item: any) => {
@@ -83,7 +97,7 @@ function NewAsn() {
                 material_name: item.materialName || item.material_name,
                 uom: item.uom || "PCS",
                 ordered_quantity: parseFloat(item.quantity) || 0,
-                already_shipped_quantity: 0,
+                already_shipped_quantity: 0, // In a real app, track cumulative shipments
                 shipped_quantity: savedLine?.shipped_quantity ?? (parseFloat(item.quantity) || 0),
               };
             }),
@@ -98,8 +112,10 @@ function NewAsn() {
     }
     init();
   }, [draftStorageKey, poId]);
+
   useEffect(() => {
     if (loading || !draftHydrated.current) return;
+
     localStorage.setItem(
       draftStorageKey,
       JSON.stringify({
@@ -110,23 +126,29 @@ function NewAsn() {
       }),
     );
   }, [asnNumber, documents, draftStorageKey, formData, lines, loading]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     setUploadingDoc(true);
     try {
+      // Reusing supplier document upload for now as it's a generic multipart endpoint
       const response = await api.uploadSupplierDocument(type, file);
+
       const newDoc = {
         document_type: type,
         file_name: file.name,
         file_url: response.storage_path || response.file_url || "",
-        uploaded_by: "Supplier User",
+        uploaded_by: "Supplier User", // In a real app, get from auth context
         uploaded_at: new Date().toISOString(),
       };
+
       setDocuments((prev) => [...prev, newDoc]);
       toast.success(`${type} uploaded successfully`);
     } catch (error: any) {
@@ -135,17 +157,21 @@ function NewAsn() {
       setUploadingDoc(false);
     }
   };
+
   const removeDocument = (index: number) => {
     setDocuments((prev) => prev.filter((_, i) => i !== index));
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!poId) {
       toast.error("No Purchase Order referenced");
       return;
     }
+
     setSubmitting(true);
     try {
+      // Validate quantities before submission
       const overShippedItems = lines.filter(
         (l) => l.shipped_quantity + l.already_shipped_quantity > l.ordered_quantity,
       );
@@ -156,6 +182,7 @@ function NewAsn() {
         setSubmitting(false);
         return;
       }
+
       const payload = {
         po_id: poId || null,
         po_number: String(po?.poNumber || poNumberFromSearch || ""),
@@ -179,6 +206,7 @@ function NewAsn() {
           uom: String(l.uom || "PCS"),
         })),
       };
+
       const createdAsn = await api.createAsn(payload);
       localStorage.removeItem(draftStorageKey);
       toast.success("Advance Shipment Notice submitted successfully");
@@ -192,6 +220,7 @@ function NewAsn() {
       setSubmitting(false);
     }
   };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center gap-3">
@@ -200,6 +229,7 @@ function NewAsn() {
       </div>
     );
   }
+
   return (
     <AppShell
       title="Create Advance Shipment Notice"

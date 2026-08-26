@@ -8,7 +8,8 @@ import uuid
 
 
 class PutawayStatus(str, Enum):
-    PENDING = "PUTAWAY_PENDING"
+    OPEN = "OPEN"
+    ASSIGNED = "ASSIGNED"
     IN_PROGRESS = "PUTAWAY_IN_PROGRESS"
     COMPLETED = "PUTAWAY_COMPLETED"
 
@@ -27,4 +28,4 @@ class PutawayTask:
     destination_bin: str | None
     location_assigned_by: str | None
     location_assigned_at: datetime | None
-    status: PutawayStatus = PutawayStatus.PENDING
+    status: PutawayStatus = PutawayStatus.OPEN

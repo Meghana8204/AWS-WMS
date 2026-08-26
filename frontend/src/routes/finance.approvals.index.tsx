@@ -22,13 +22,16 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/finance/approvals/")({
   beforeLoad: () => requireRole("FINANCE"),
   component: FinanceApprovals,
 });
+
 function FinanceApprovals() {
   const [approvals, setApprovals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -41,25 +44,23 @@ function FinanceApprovals() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, []);
-  const rfqGroups: Record<
-    string,
-    {
-      id: string;
-      number: string;
-      pos: any[];
-    }
-  > = {};
+
+  // Group approvals by RFQ
+  const rfqGroups: Record<string, { id: string; number: string; pos: any[] }> = {};
   approvals.forEach((po) => {
     const rfqId = po.rfqId || "none";
     const rfqNumber = po.rfqNumber || po.rfqId || "none";
+
     if (!rfqGroups[rfqId]) {
       rfqGroups[rfqId] = { id: rfqId, number: rfqNumber, pos: [] };
     }
     rfqGroups[rfqId].pos.push(po);
   });
+
   return (
     <AppShell
       title="Finance Approvals"
@@ -95,6 +96,7 @@ function FinanceApprovals() {
           {Object.entries(rfqGroups).map(([rfqId, group]) => {
             const { number: rfqNumber, pos } = group;
             const isGrouped = rfqId !== "none" && pos.length > 1;
+
             if (isGrouped) {
               return (
                 <Card
@@ -215,6 +217,7 @@ function FinanceApprovals() {
                 </Card>
               );
             }
+
             return (
               <div key={rfqId} className="grid gap-4">
                 {pos.map((po) => (

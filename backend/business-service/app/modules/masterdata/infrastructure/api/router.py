@@ -20,6 +20,7 @@ from app.modules.masterdata.infrastructure.api.schemas import (
     SupplierUpdateDTO,
 )
 from app.modules.masterdata.infrastructure.persistence.repository_impl import SQLAlchemySupplierRepository
+from app.security.dependencies import get_current_user, CurrentUser
 
 router = APIRouter(prefix="/api/v1/suppliers", tags=["Supplier Management"])
 
@@ -53,6 +54,7 @@ def _to_response_dto(s) -> SupplierResponseDTO:
 async def create_supplier(
     dto: SupplierCreateDTO,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _user: CurrentUser = Depends(get_current_user),
 ):
     repo = SQLAlchemySupplierRepository(db)
     use_case = CreateSupplierUseCase(repo)
@@ -68,6 +70,7 @@ async def create_supplier(
 @router.get("", response_model=SupplierListResponseDTO)
 async def list_suppliers(
     db: Annotated[AsyncSession, Depends(get_db)],
+    _user: CurrentUser = Depends(get_current_user),
     category: str | None = Query(None),
     status_param: str | None = Query(None, alias="status"),
     skip: int = Query(0, ge=0),
@@ -88,6 +91,7 @@ async def list_suppliers(
 async def get_supplier(
     supplier_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _user: CurrentUser = Depends(get_current_user),
 ):
     repo = SQLAlchemySupplierRepository(db)
     use_case = GetSupplierUseCase(repo)
@@ -103,6 +107,7 @@ async def update_supplier(
     supplier_id: str,
     dto: SupplierUpdateDTO,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _user: CurrentUser = Depends(get_current_user),
 ):
     repo = SQLAlchemySupplierRepository(db)
     use_case = UpdateSupplierUseCase(repo)

@@ -14,8 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.UUID;
 
-
-
+/**
+ * User + role management (RBAC administration). Endpoints calling this
+ * service are restricted to the ADMIN authority - see SecurityConfig.
+ */
 @Service
 public class UserService {
 

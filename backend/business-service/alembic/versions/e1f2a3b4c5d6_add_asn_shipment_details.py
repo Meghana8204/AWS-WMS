@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-
+# revision identifiers, used by Alembic.
 revision: str = 'e1f2a3b4c5d6'
 down_revision: Union[str, None] = 'd0e1f2a3b4c5'
 branch_labels: Union[str, Sequence[str], None] = None
@@ -22,15 +22,15 @@ def upgrade() -> None:
     op.add_column('asn', sa.Column('transporter', sa.String(length=128), nullable=True))
     op.add_column('asn', sa.Column('number_of_packages', sa.Integer(), nullable=True))
     op.add_column('asn', sa.Column('package_type', sa.String(length=64), nullable=True))
-
+    # Check if shipping_method column already exists from a previous run or manual edit
     op.add_column('asn', sa.Column('shipping_method', sa.String(length=64), nullable=True))
     op.add_column('asn', sa.Column('warehouse_id', sa.String(length=64), nullable=True))
 
-
+    # Add columns to asn_line
     op.add_column('asn_line', sa.Column('material_name', sa.String(length=256), nullable=True))
     op.add_column('asn_line', sa.Column('uom', sa.String(length=64), nullable=True))
 
-
+    # Create arrival_notification table
     op.create_table('arrival_notification',
         sa.Column('id', sa.String(length=128), nullable=False),
         sa.Column('asn_id', sa.UUID(), nullable=False),
@@ -51,7 +51,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
 
-
+    # Create asn_document table
     op.create_table('asn_document',
         sa.Column('id', sa.UUID(), nullable=False),
         sa.Column('asn_id', sa.UUID(), nullable=False),

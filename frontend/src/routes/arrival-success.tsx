@@ -5,6 +5,7 @@ import { Field } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { activeArrival } from "@/lib/wms-data";
+
 export const Route = createFileRoute("/arrival-success")({
   head: () => ({
     meta: [
@@ -23,6 +24,7 @@ export const Route = createFileRoute("/arrival-success")({
   }),
   component: ArrivalSuccess,
 });
+
 function ArrivalSuccess() {
   const a = activeArrival;
   return (

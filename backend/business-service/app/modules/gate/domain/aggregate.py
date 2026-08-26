@@ -141,8 +141,7 @@ class GateEntry(AggregateRoot):
         self._emit_ready_event()
 
     def approve_gate_entry(self, security_officer_id: str) -> None:
-        if not self.asn_id or not self.asn_number:
-            raise DomainRuleViolationException("An ASN reference is required to approve gate entry")
+        """Approve a verified gate entry, including a permitted direct arrival."""
         self.status = GateEntryStatus.GATE_ENTRY_APPROVED
         self.verified_by = security_officer_id
         self.updated_at = datetime.now(timezone.utc)

@@ -21,14 +21,17 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/procurement/purchase-orders")({
   beforeLoad: () => requireRole("PROCUREMENT"),
   component: PurchaseOrders,
 });
+
 function PurchaseOrders() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -41,9 +44,11 @@ function PurchaseOrders() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, []);
+
   return (
     <AppShell
       title="Purchase Orders"

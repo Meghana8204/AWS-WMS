@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 
-
+# Add the parent directory to sys.path so we can import app modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy import text
@@ -30,8 +30,8 @@ async def migrate():
     async with session_scope() as session:
         print("Starting migration of Supplier ID columns to VARCHAR...")
 
-
-
+        # 1. Drop constraints
+        # We'll find constraints dynamically
         for table, col in tables_and_columns:
             query = text(f"""
                 SELECT constraint_name
@@ -45,16 +45,16 @@ async def migrate():
                 print(f"Dropping constraint {c[0]} on {table}")
                 await session.execute(text(f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS {c[0]}"))
 
-
+        # 2. Alter column types
         for table, col in tables_and_columns:
             print(f"Altering {table}.{col} to VARCHAR(64)")
-
+            # We use 'USING col::text' to convert existing UUIDs to strings
             await session.execute(text(f"ALTER TABLE {table} ALTER COLUMN {col} TYPE VARCHAR(64) USING {col}::text"))
 
-
+        # 3. Re-add constraints (minimal set)
         print("Re-adding basic foreign key constraints...")
-
-
+        # Note: In a real migration we'd restore exactly what was there,
+        # but for dev we can just ensure they are VARCHAR and pointing to the right place.
 
         fks = [
             ("rfq_supplier_link", "supplier_id", "supplier", "id"),

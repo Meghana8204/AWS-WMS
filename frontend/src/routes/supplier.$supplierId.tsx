@@ -46,9 +46,11 @@ import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { INDIAN_STATES, TDS_SECTIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/supplier/$supplierId")({
   component: SupplierProfile,
 });
+
 function SupplierProfile() {
   const { supplierId } = Route.useParams();
   const [supplier, setSupplier] = useState<any>(null);
@@ -65,6 +67,7 @@ function SupplierProfile() {
     "Finished Goods",
     "Consumables",
   ]);
+
   useEffect(() => {
     api
       .getSupplier(supplierId)
@@ -72,6 +75,7 @@ function SupplierProfile() {
       .catch((err) =>
         setError(err instanceof Error ? err.message : "Unable to load supplier profile."),
       );
+
     api
       .getSupplierCategories()
       .then((cats) => {
@@ -79,6 +83,7 @@ function SupplierProfile() {
       })
       .catch((err) => console.warn("Failed to fetch categories", err));
   }, [supplierId]);
+
   const title = supplier?.supplierName || "Supplier profile";
   const openEditor = () => {
     setForm(JSON.parse(JSON.stringify(supplier)));
@@ -90,6 +95,8 @@ function SupplierProfile() {
         ? { ...current, [field]: value }
         : { ...current, [section]: { ...current[section], [field]: value } },
     );
+
+    // Clear inline error
     const errorKey = section === "root" ? field : `${section}.${field}`;
     if (errors[errorKey]) {
       setErrors((prev) => {
@@ -99,6 +106,7 @@ function SupplierProfile() {
       });
     }
   };
+
   const validate = () => {
     const newErrors: Record<string, string> = {};
     const name = (form.supplierName || "").trim();
@@ -106,19 +114,24 @@ function SupplierProfile() {
     const industry = (form.industry || "").trim();
     const gstin = (form.gstin || "").trim();
     const mainMaterials = form.mainMaterials || [];
+
     if (!name) newErrors.supplierName = "Supplier name is required";
     else if (name.length < 2 || name.length > 100)
       newErrors.supplierName = "Must be between 2 and 100 characters";
+
     if (!regName) newErrors.registeredCompanyName = "Registered company name is required";
     else if (regName.length < 2 || regName.length > 200)
       newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+
     if (!form.vendorType) newErrors.vendorType = "Vendor type is required";
     if (!form.category || form.category.length === 0)
       newErrors.category = "At least one category is required";
     if (mainMaterials.length === 0) newErrors.mainMaterials = "Select at least one material";
+
     if (!industry) newErrors.industry = "Industry is required";
     else if (industry.length < 2 || industry.length > 100)
       newErrors.industry = "Must be between 2 and 100 characters";
+
     if (!gstin) newErrors.gstin = "GSTIN is required";
     else if (gstin.length !== 15) newErrors.gstin = "Exactly 15 characters";
     else if (
@@ -126,24 +139,31 @@ function SupplierProfile() {
     ) {
       newErrors.gstin = "Invalid format (e.g. 29ABCDE1234F1Z5)";
     }
+
+    // Address & Contact Validation
     if (form.address) {
       const addr = (form.address.registeredAddress || "").trim();
       const city = (form.address.city || "").trim();
       const pincode = (form.address.pincode || "").trim();
       const state = (form.address.state || "").trim();
+
       if (!addr) newErrors["address.registeredAddress"] = "Address is required";
       else if (addr.length < 10 || addr.length > 300)
         newErrors["address.registeredAddress"] = "Must be between 10 and 300 characters";
+
       if (!city) newErrors["address.city"] = "City is required";
       else if (city.length < 2 || city.length > 100)
         newErrors["address.city"] = "Must be between 2 and 100 characters";
       else if (!/^[a-zA-Z\s-]+$/.test(city))
         newErrors["address.city"] = "Letters/spaces/hyphen only";
+
       if (state && (state.length < 2 || state.length > 100))
         newErrors["address.state"] = "Must be 2-100 characters";
+
       if (!pincode) newErrors["address.pincode"] = "Pincode is required";
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
     }
+
     if (form.contact) {
       const contactName = (form.contact.primaryContactName || "").trim();
       const phone = (form.contact.phone || "").trim();
@@ -151,21 +171,27 @@ function SupplierProfile() {
       const secondaryEmail = (form.contact.secondaryEmail || "").trim();
       const website = (form.contact.website || "").trim();
       const designation = (form.contact.designation || "").trim();
+
       if (!contactName) newErrors["contact.primaryContactName"] = "Name is required";
       else if (contactName.length < 2 || contactName.length > 100)
         newErrors["contact.primaryContactName"] = "Must be 2-100 characters";
       else if (!/^[a-zA-Z\s]+$/.test(contactName))
         newErrors["contact.primaryContactName"] = "Letters and spaces only";
+
       if (!phone) newErrors["contact.phone"] = "Phone is required";
       else if (!/^[6-9]\d{9}$/.test(phone))
         newErrors["contact.phone"] = "Must be 10-digit mobile number";
+
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!primaryEmail) newErrors["contact.primaryEmail"] = "Email is required";
       else if (!emailRegex.test(primaryEmail)) newErrors["contact.primaryEmail"] = "Invalid email";
+
       if (secondaryEmail && !emailRegex.test(secondaryEmail))
         newErrors["contact.secondaryEmail"] = "Invalid email";
+
       if (designation && (designation.length < 2 || designation.length > 100))
         newErrors["contact.designation"] = "Must be 2-100 characters";
+
       if (website) {
         try {
           new URL(website.startsWith("http") ? website : `https://${website}`);
@@ -174,6 +200,7 @@ function SupplierProfile() {
         }
       }
     }
+
     if (form.bankInfo) {
       const bankName = (form.bankInfo.bankName || "").trim();
       const accNo = (form.bankInfo.accountNumber || "").trim();
@@ -181,32 +208,41 @@ function SupplierProfile() {
       const holder = (form.bankInfo.accountHolderName || "").trim();
       const branch = (form.bankInfo.branch || "").trim();
       const swift = (form.bankInfo.swiftBic || "").trim();
+
       if (!bankName) newErrors["bankInfo.bankName"] = "Bank name is required";
+
       if (!accNo) newErrors["bankInfo.accountNumber"] = "Account number is required";
       else if (accNo.length < 9 || accNo.length > 18)
         newErrors["bankInfo.accountNumber"] = "9-18 digits required";
       else if (!/^\d+$/.test(accNo)) newErrors["bankInfo.accountNumber"] = "Digits only";
+
       if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
       else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
         newErrors["bankInfo.ifsc"] = "Invalid format (e.g. SBIN0012345)";
       }
+
       if (!holder) newErrors["bankInfo.accountHolderName"] = "Holder name is required";
       if (!branch) newErrors["bankInfo.branch"] = "Branch is required";
+
       if (swift && !/^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/.test(swift.toUpperCase())) {
         newErrors["bankInfo.swiftBic"] = "Invalid format";
       }
     }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
+
   const saveChanges = async () => {
     if (!validate()) {
       return;
     }
+
     const name = (form.supplierName || "").trim();
     const regName = (form.registeredCompanyName || "").trim();
     const industry = (form.industry || "").trim();
     const gstin = (form.gstin || "").trim();
+
     setSaving(true);
     try {
       const finalForm = {
@@ -232,6 +268,7 @@ function SupplierProfile() {
     const previousSupplier = supplier;
     setSupplier((prev: any) => ({ ...prev, status: "Blocked" }));
     setBlocking(true);
+
     try {
       const updated = await api.blockSupplier(supplierId);
       setSupplier(updated);
@@ -250,6 +287,7 @@ function SupplierProfile() {
     const previousSupplier = supplier;
     setSupplier((prev: any) => ({ ...prev, status: "Active" }));
     setBlocking(true);
+
     try {
       const updated = await api.unblockSupplier(supplierId);
       setSupplier(updated);
@@ -263,12 +301,13 @@ function SupplierProfile() {
       setBlocking(false);
     }
   };
+
   return (
     <AppShell
       title={title}
       subtitle={
         supplier
-          ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierId}`
+          ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierCode || "Code pending"}`
           : "Loading supplier master record"
       }
       actions={
@@ -584,6 +623,8 @@ function SupplierProfile() {
                       onChange={(value) => {
                         const sanitized = value.replace(/\s/g, "").substring(0, 128);
                         updateForm("contact", "primaryEmail", sanitized);
+
+                        // Run-time validation
                         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                         if (sanitized && !emailRegex.test(sanitized)) {
                           setErrors((prev) => ({
@@ -607,6 +648,8 @@ function SupplierProfile() {
                       onChange={(value) => {
                         const sanitized = value.replace(/\s/g, "").substring(0, 128);
                         updateForm("contact", "secondaryEmail", sanitized);
+
+                        // Run-time validation
                         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                         if (sanitized && !emailRegex.test(sanitized)) {
                           setErrors((prev) => ({
@@ -926,9 +969,11 @@ function SupplierProfile() {
     </AppShell>
   );
 }
+
 function EmptySection({ text }: { text: string }) {
   return <p className="py-4 text-sm text-muted-foreground">{text}</p>;
 }
+
 function EditField({
   label,
   value,
@@ -945,6 +990,7 @@ function EditField({
     </div>
   );
 }
+
 function ValidatedEditField({
   label,
   value,

@@ -49,6 +49,7 @@ class SupplierDocumentResponse(ApiModel):
 
 class SupplierResponse(ApiModel):
     supplier_id: str
+    supplier_code: Optional[str] = None
     supplier_name: str
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
@@ -134,7 +135,7 @@ class UpdateSupplierRequest(ApiModel):
     remarks: Optional[str] = None
 
 
-
+# --- RFQ ---
 
 class RfqItemSchema(ApiModel):
     material_code: str
@@ -174,7 +175,7 @@ class RfqResponse(ApiModel):
     created_at: Optional[datetime] = None
 
 
-
+# --- Quotation ---
 
 class QuotationLineSchema(ApiModel):
     item_code: str
@@ -193,9 +194,9 @@ class SubmitQuotationRequest(ApiModel):
     supplier_id: str
     lines: List[QuotationLineSchema]
     status: str = "SUBMITTED"
-    discount: Decimal = Field(default=Decimal("0.0"), ge=0)
-    tax: Decimal = Field(default=Decimal("0.0"), ge=0, le=100)
-    freight_charges: Decimal = Field(default=Decimal("0.0"), ge=0)
+    discount: Decimal = Decimal("0.0")
+    tax: Decimal = Decimal("0.0")
+    freight_charges: Decimal = Decimal("0.0")
     delivery_time: Optional[str] = None
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = None
@@ -224,7 +225,7 @@ class QuotationResponse(ApiModel):
     created_at: Optional[datetime] = None
 
 
-
+# --- ASN ---
 
 class AsnLineSchema(ApiModel):
     item_code: str
@@ -278,13 +279,10 @@ class AsnResponse(ApiModel):
     package_type: Optional[str] = None
     shipping_method: Optional[str] = None
     documents: List[AsnDocumentSchema] = []
-    warehouse_status: Optional[str] = None
-    warehouse_status_updated_at: Optional[datetime] = None
-    assigned_dock_id: Optional[str] = None
     created_at: datetime
 
 
-
+# --- Purchase Order ---
 
 class POApprovalHistorySchema(ApiModel):
     status: str
@@ -329,7 +327,6 @@ class PurchaseOrderResponse(ApiModel):
     subtotal: Decimal = Decimal("0.0")
     discount_amount: Decimal = Decimal("0.0")
     tax_amount: Decimal = Decimal("0.0")
-    tax_percentage: Decimal = Decimal("0.0")
     freight_charges: Decimal = Decimal("0.0")
     additional_charges: Decimal = Decimal("0.0")
 
@@ -356,7 +353,7 @@ class FinanceApprovalResponse(ApiModel):
     po_details: Optional[PurchaseOrderResponse] = None
 
 
-
+# --- Material Request ---
 
 class MaterialRequestItemSchema(ApiModel):
     material_code: Optional[str] = None
@@ -392,6 +389,9 @@ class MaterialRequestResponse(ApiModel):
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = []
     created_at: datetime
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    pick_task: Optional[dict] = None
 
 
 class MaterialStockResponse(ApiModel):
@@ -424,7 +424,7 @@ class ArrivalNotificationResponse(ApiModel):
     created_at: datetime
 
 
-
+# --- Global Search ---
 
 class ProcurementTrendItem(ApiModel):
     month: str
@@ -433,17 +433,15 @@ class ProcurementTrendItem(ApiModel):
 
 class ProcurementStatsResponse(ApiModel):
     active_suppliers: int
-    total_suppliers: int
     open_pos: int
-    compliance_rate: Optional[float] = None
-    compliance_target: float
+    compliance_rate: float
     total_po_value: Decimal
     trend: List[ProcurementTrendItem] = []
 
 
 class GlobalSearchItem(ApiModel):
     id: str
-    type: str
+    type: str  # SUPPLIER, PO, ASN, GATE_ENTRY, RFQ, MATERIAL_REQUEST
     title: str
     subtitle: str
     link: str
@@ -453,7 +451,7 @@ class GlobalSearchResponse(ApiModel):
     results: List[GlobalSearchItem]
 
 
-
+# --- Supplier Auth ---
 
 class SupplierLoginRequest(ApiModel):
     username: str
@@ -476,3 +474,4 @@ class ChangePasswordRequest(ApiModel):
 class DevLoginRequest(ApiModel):
     username: str
     password: str
+

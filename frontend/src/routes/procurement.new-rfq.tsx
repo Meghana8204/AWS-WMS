@@ -24,10 +24,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/procurement/new-rfq")({
   component: NewRfq,
 });
+
 const inputClass = "mt-1.5 h-11 rounded-xl border-border/80 bg-background";
+
 function NewRfq() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +44,7 @@ function NewRfq() {
     material: "",
     city: "",
   });
+
   const [formData, setFormData] = useState({
     rfq_date: new Date().toISOString().split("T")[0],
     material_request_number: "",
@@ -49,7 +53,9 @@ function NewRfq() {
     procurement_officer: "",
     remarks: "",
   });
+
   const generateRandomCode = () => `MAT-${Math.floor(100000 + Math.random() * 900000)}`;
+
   const [items, setItems] = useState<any[]>([
     {
       material_code: generateRandomCode(),
@@ -60,6 +66,7 @@ function NewRfq() {
       special_requirements: "",
     },
   ]);
+
   const addItem = () => {
     setItems((prev) => [
       ...prev,
@@ -73,6 +80,7 @@ function NewRfq() {
       },
     ]);
   };
+
   const removeItem = (index: number) => {
     if (items.length === 1) {
       toast.error("At least one material requirement is required");
@@ -80,14 +88,18 @@ function NewRfq() {
     }
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
+
   const handleItemChange = (index: number, field: string, value: any) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
   };
+
   useEffect(() => {
     async function fetchSuppliers() {
       try {
         setLoadingSuppliers(true);
         const data = await api.getSuppliers({ ...filters, status: "Active" });
+        // Keep the RFQ invitation list safe even if an older backend ignores
+        // the status query parameter.
         setSuppliers(
           data.filter(
             (supplier: any) =>
@@ -105,15 +117,19 @@ function NewRfq() {
     const debounceTimer = setTimeout(() => {
       fetchSuppliers();
     }, 300);
+
     return () => clearTimeout(debounceTimer);
   }, [filters]);
+
   useEffect(() => {
+    // Fetch available supplier categories for the filter
     const fetchCategories = async () => {
       try {
         const cats = await api.getSupplierCategories();
         if (cats.length > 0) {
           setAvailableCategories(cats.map((c: any) => c.name));
         } else {
+          // Fallback if no categories in DB yet
           setAvailableCategories(["Raw Materials", "Components", "Services", "Hardware"]);
         }
       } catch (e) {
@@ -122,13 +138,18 @@ function NewRfq() {
       }
     };
     fetchCategories();
+
+    // Get current user for procurement officer field
     const userInfo = localStorage.getItem("user_info");
     if (userInfo) {
       const user = JSON.parse(userInfo);
       setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
     }
+
+    // Handle auto-fill from Material Request
     const urlParams = new URLSearchParams(window.location.search);
     const fromRequestId = urlParams.get("fromRequestId");
+
     if (fromRequestId) {
       const loadMR = async () => {
         try {
@@ -141,6 +162,7 @@ function NewRfq() {
               warehouse: mr.warehouseId,
               required_delivery_date: mr.requiredDate,
             }));
+
             setItems(
               mr.items.map((it: any) => ({
                 material_code: it.materialCode,
@@ -161,6 +183,7 @@ function NewRfq() {
       void fetchNextMrNumber();
     }
   }, []);
+
   const fetchNextMrNumber = async () => {
     try {
       const { requestNumber } = await api.getNextMaterialRequestNumber();
@@ -170,6 +193,7 @@ function NewRfq() {
       }));
     } catch (e) {
       console.error("Failed to fetch next MR number", e);
+      // Fallback if API fails
       const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
       setFormData((prev) => ({
         ...prev,
@@ -177,25 +201,30 @@ function NewRfq() {
       }));
     }
   };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
+
   const toggleSupplier = (id: string) => {
     setSelectedSuppliers((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedSuppliers.length === 0) {
       toast.error("Please select at least one supplier");
       return;
     }
+
     if (items.some((item) => !item.material_code.trim() || !item.material_name.trim())) {
       toast.error("Please fill in Material Code and Name for all items");
       return;
     }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -205,8 +234,10 @@ function NewRfq() {
           ...item,
           quantity: parseFloat(item.quantity) || 0,
         })),
+        // Convert empty strings to null for optional date fields to prevent Pydantic errors
         required_delivery_date: formData.required_delivery_date || null,
       };
+
       await api.createRfq(payload);
       toast.success("RFQ Draft created successfully");
       navigate({ to: "/procurement/rfqs" });
@@ -216,6 +247,7 @@ function NewRfq() {
       setSubmitting(false);
     }
   };
+
   return (
     <AppShell
       title="Create New RFQ"

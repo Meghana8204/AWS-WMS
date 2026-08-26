@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   Camera,
@@ -27,57 +28,11 @@ import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
 
-async function compressFileForUpload(file: File): Promise<File> {
-  if (!file.type.startsWith("image/")) return file;
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.width;
-      let h = img.height;
-      const maxDim = 1024;
-      if (w > maxDim || h > maxDim) {
-        if (w > h) {
-          h = Math.round((h * maxDim) / w);
-          w = maxDim;
-        } else {
-          w = Math.round((w * maxDim) / h);
-          h = maxDim;
-        }
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        resolve(file);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) {
-            resolve(file);
-            return;
-          }
-          resolve(new File([blob], file.name, { type: "image/jpeg" }));
-        },
-        "image/jpeg",
-        0.82,
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
-    img.src = url;
-  });
-}
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
   component: GateEntry,
 });
+
 type GateEntryRecord = {
   id: string;
   gate_entry_number?: string;
@@ -89,9 +44,7 @@ type GateEntryRecord = {
   driverName: string;
   status: string;
   truckPhotoBase64?: string | null;
-  verificationResult?: {
-    reasons?: string[];
-  } | null;
+  verificationResult?: { reasons?: string[] } | null;
 };
 type CaptureKind = "po" | "vehicle";
 type ArrivalLineItem = {
@@ -101,6 +54,7 @@ type ArrivalLineItem = {
   uom: string;
 };
 const inputClass = "mt-1.5 h-10 rounded-xl border-border/80 bg-background";
+
 function formatVehicleNumber(value: string): string {
   const compact = value
     .toUpperCase()
@@ -113,10 +67,12 @@ function formatVehicleNumber(value: string): string {
     return `${standard[1]}-${standard[2].padStart(2, "0")}-${standard[3]}-${standard[4]}`;
   return compact;
 }
+
 function isValidVehicleNumber(value: string): boolean {
   const compact = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
   return /^(?:[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|\d{2}BH\d{4}[A-Z]{2})$/.test(compact);
 }
+
 function GateEntry() {
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,9 +100,29 @@ function GateEntry() {
   const [driverPhone, setDriverPhone] = useState("");
   const [extractedDetails, setExtractedDetails] = useState<Record<string, unknown> | null>(null);
   const [lastCreatedEntry, setLastCreatedEntry] = useState<GateEntryRecord | null>(null);
+  const approvalDialog = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const element = approvalDialog.current;
+    if (!lastCreatedEntry || !element) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    if (!element.open) element.showModal();
+
+    return () => {
+      if (element.open) element.close();
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [lastCreatedEntry]);
+
   const handleVehicleNumberChange = (rawVal: string) => {
     setVehicleNumber(formatVehicleNumber(rawVal));
   };
+
   const applyLineItems = (rawItems: unknown): boolean => {
     if (!Array.isArray(rawItems) || rawItems.length === 0) return false;
     const items = rawItems
@@ -174,6 +150,7 @@ function GateEntry() {
     setTotalQuantity(String(items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)));
     return true;
   };
+
   const updateLineItem = (index: number, field: keyof ArrivalLineItem, value: string) => {
     const items = arrivalLineItems.map((item, itemIndex) =>
       itemIndex === index ? { ...item, [field]: value } : item,
@@ -187,6 +164,7 @@ function GateEntry() {
     );
     setTotalQuantity(String(items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0)));
   };
+
   const loadEntries = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -200,11 +178,13 @@ function GateEntry() {
       if (!quiet) setLoading(false);
     }
   }, []);
+
   useEffect(() => {
     void loadEntries();
     const timer = window.setInterval(() => void loadEntries(true), 2000);
     return () => window.clearInterval(timer);
   }, [loadEntries]);
+
   useEffect(() => {
     if (poDocument) {
       const url = URL.createObjectURL(poDocument);
@@ -213,6 +193,7 @@ function GateEntry() {
     }
     setPoPreview(null);
   }, [poDocument]);
+
   useEffect(() => {
     if (vehiclePhoto) {
       const url = URL.createObjectURL(vehiclePhoto);
@@ -221,17 +202,20 @@ function GateEntry() {
     }
     setVehiclePreview(null);
   }, [vehiclePhoto]);
+
   async function scanCapture(kind: CaptureKind, file: File) {
     console.log(`Starting scanCapture for kind: ${kind}`, file);
     setScanning(null);
     if (kind === "po") setPoDocument(file);
     if (kind === "vehicle") setVehiclePhoto(file);
+
     const toastId = toast.loading(`OCR is analyzing ${kind === "po" ? "document" : "vehicle"}...`);
+
     try {
       console.log(`Calling api.scanOcr for ${kind}...`);
-      const uploadFile = await compressFileForUpload(file);
-      const result = await api.scanOcr(uploadFile, kind);
+      const result = await api.scanOcr(file, kind);
       console.log("OCR scan result:", result);
+
       const extraction = result.extraction || result;
       const fields = extraction.fields || {};
       setExtractedDetails({
@@ -240,15 +224,9 @@ function GateEntry() {
         confidence: result.confidence,
         verified_against_backend: result.verified ?? false,
       });
-      const detectedPo =
-        result.po_number ||
-        result.poNumber ||
-        result.purchase_order_number ||
-        result.purchaseOrderNumber ||
-        fields.po_number ||
-        fields.poNumber ||
-        fields.purchase_order_number ||
-        fields.purchaseOrderNumber;
+
+      // Greedy extraction: if we find these core fields in ANY scan, fill them
+      const detectedPo = result.po_number || fields.po_number || fields.purchase_order_number;
       const detectedVehicle =
         result.vehicle_number ||
         fields.vehicle_number ||
@@ -257,6 +235,7 @@ function GateEntry() {
         fields.license_plate_number;
       const detectedDriver = result.driver_name || fields.driver_name || fields.full_name;
       const detectedLicense = result.license_number || fields.license_number || fields.dl_number;
+
       if (detectedPo) {
         setPoNumber(detectedPo);
         if (kind === "po")
@@ -284,6 +263,7 @@ function GateEntry() {
       }
       if (detectedDriver) setDriverName(detectedDriver);
       if (detectedLicense) setLicenseNumber(detectedLicense);
+
       if (kind === "po") {
         const missing = [
           ["supplier name", result.supplier_name || fields.supplier_name],
@@ -331,10 +311,10 @@ function GateEntry() {
       });
     }
   }
+
   async function handlePoScannerSuccess(data: any, file: File) {
     setPoDocument(file);
     const result = data.ocr_result || data;
-    const fields = data.extraction?.fields || result.extraction?.fields || {};
 
     setExtractedDetails({
       ...data,
@@ -342,45 +322,28 @@ function GateEntry() {
       confidence: result.confidence,
     });
 
-    const detectedPo =
-      result.po_number ||
-      result.poNumber ||
-      result.purchase_order_number ||
-      result.purchaseOrderNumber ||
-      fields.po_number ||
-      fields.poNumber ||
-      fields.purchase_order_number ||
-      fields.purchaseOrderNumber;
-    const detectedSupplier = result.supplier_name || fields.supplier_name;
-    const detectedMaterial = result.material_description || fields.material_description;
-    const detectedQty =
-      result.total_quantity ?? result.quantity ?? fields.total_quantity ?? fields.quantity;
-    const detectedPoDate = result.po_date || fields.po_date;
-    const detectedDeliveryDate = result.delivery_date || fields.delivery_date;
-
-    if (detectedPo) {
-      setPoNumber(detectedPo);
-      const previewStatus = data.computedStatus || data.computed_status || data.status;
+    if (result.po_number) {
+      setPoNumber(result.po_number);
+      const previewStatus = data.computedStatus || data.computed_status;
       setPoVerificationStatus(
-        previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
+        previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
       );
-      void fetchPoDetails(detectedPo, true);
+      void fetchPoDetails(result.po_number, true);
     }
-    if (detectedSupplier) setSupplierName(detectedSupplier);
-    if (detectedMaterial) setMaterialDescription(detectedMaterial);
-    if (detectedQty !== undefined && detectedQty !== null && detectedQty !== "")
-      setTotalQuantity(String(detectedQty));
-    if (detectedPoDate) setPoDate(detectedPoDate);
-    if (detectedDeliveryDate) setDeliveryDate(detectedDeliveryDate);
-
-    const lineItems = result.line_items || result.lineItems || fields.line_items || [];
-    if (lineItems.length) {
-      applyLineItems(lineItems);
+    if (result.supplier_name) setSupplierName(result.supplier_name);
+    const foundLineItems = applyLineItems(result.line_items || result.lineItems);
+    if (!foundLineItems) {
+      setArrivalLineItems([]);
+      if (result.material_description) setMaterialDescription(result.material_description);
+      if (result.total_quantity) setTotalQuantity(String(result.total_quantity));
     }
+    if (result.po_date) setPoDate(result.po_date);
+    if (result.delivery_date) setDeliveryDate(result.delivery_date);
   }
 
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
     if (!number || number.length < 5) return;
+
     const toastId = toast.loading(`Fetching details for PO: ${number}...`);
     try {
       const [purchaseOrders, asns] = await Promise.all([api.getPurchaseOrders(), api.getAsns()]);
@@ -394,6 +357,8 @@ function GateEntry() {
           .toUpperCase()
           .startsWith(`${lookup}-`),
       );
+      // OCR can read only "PO-2026" from a complete "PO-2026-0001".
+      // Prefer a shipment with an ASN when resolving that partial prefix.
       const po =
         exactPo ||
         prefixMatches.find((candidate: any) => {
@@ -405,6 +370,7 @@ function GateEntry() {
           );
         }) ||
         (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
+
       if (!po) {
         if (preserveScannedFields) {
           setPoVerificationStatus("UNSCHEDULED_ARRIVAL");
@@ -417,27 +383,27 @@ function GateEntry() {
         }
         throw new Error(`Complete purchase order not found for ${number}`);
       }
+
       const resolvedPoNumber = String(po.poNumber || po.po_number || number);
       setPoNumber(resolvedPoNumber);
       setPoVerificationStatus("PO_VERIFIED");
+
+      // Once OCR identifies a real PO, use its complete line-item data to
+      // populate the editable material inputs. This is more reliable than
+      // expecting OCR to reconstruct every cell in a photographed table.
       const items = po.items || [];
-      if (items.length) {
-        applyLineItems(items);
+      if (items.length) applyLineItems(items);
+
+      if (!preserveScannedFields) {
+        setSupplierName(po.supplierName || "");
+
+        setPoDate(po.poDate || "");
+        setDeliveryDate(po.expectedDeliveryDate || "");
       }
 
-      setSupplierName((prev) => prev || po.supplierName || po.supplier_name || "");
-      setPoDate((prev) => prev || po.poDate || po.po_date || "");
-      setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
-
-      const systemMat = items
-        .map((i: any) => i.materialName || i.material_name)
-        .filter(Boolean)
-        .join(", ");
-      if (systemMat) setMaterialDescription((prev) => prev || systemMat);
-
-      const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
-      if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
-
+      // Vehicle and driver details belong to the supplier's ASN, not the PO.
+      // The ASN list is newest-first, so the first PO match is the current
+      // shipment after a supplier edits and re-submits it.
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
@@ -450,12 +416,14 @@ function GateEntry() {
       if (shipment?.driverContact || shipment?.driver_contact) {
         setDriverPhone(shipment.driverContact || shipment.driver_contact);
       }
+
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
           ? "PO and vehicle details fetched from system"
           : "PO details fetched; no submitted ASN vehicle found",
         { id: toastId },
       );
+
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
@@ -464,6 +432,7 @@ function GateEntry() {
       toast.error(error.message || "PO not found in system", { id: toastId });
     }
   }
+
   async function fetchAsnDetails(reference: string) {
     if (!reference.trim()) return;
     const toastId = toast.loading(`Loading ASN ${reference}...`);
@@ -499,33 +468,41 @@ function GateEntry() {
       });
     }
   }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formElement = event.currentTarget;
+
     if (!vehiclePhoto) {
       return toast.error("Vehicle photo is required", {
         description: "Please capture or upload a vehicle photo before creating the entry.",
       });
     }
+
     if (!poNumber.trim()) {
       return toast.error("Purchase order number is required");
     }
+
     if (!supplierName.trim()) {
       return toast.error("Supplier name is required");
     }
+
     const parsedQty = parseFloat(totalQuantity);
     if (!totalQuantity || isNaN(parsedQty) || parsedQty <= 0) {
       return toast.error("Total quantity is required and must be greater than 0");
     }
+
     if (!vehicleNumber.trim()) {
       return toast.error("Vehicle number is required");
     }
+
     const isVehicleValid = isValidVehicleNumber(vehicleNumber);
     if (!isVehicleValid) {
       return toast.error("Invalid Vehicle Number format", {
         description: "Use a valid format such as MH-12-AB-1234 or 22-BH-1234-AA.",
       });
     }
+
     const form = new FormData(formElement);
     if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
@@ -541,6 +518,8 @@ function GateEntry() {
       const createdPo = entry.poNumber || entry.po_number || poNumber;
       const createdGateNumber = entry.gateEntryNumber || entry.gate_entry_number;
       const createdDriver = entry.driverName || entry.driver_name || driverName;
+      // Temporary handoff to the receiving workflow until arrivals are shared
+      // through a dedicated backend endpoint.
       localStorage.setItem(
         "verified_gate_po",
         JSON.stringify({
@@ -558,6 +537,8 @@ function GateEntry() {
       toast.success("Gate entry approved", {
         description: "The Warehouse Manager has been notified.",
       });
+
+      // Show the created pass card instead of auto-downloading
       setLastCreatedEntry({
         id: entry.id,
         gate_entry_number: createdGateNumber,
@@ -569,6 +550,7 @@ function GateEntry() {
         driverName: createdDriver,
         status: entry.status,
       });
+
       formElement.reset();
       setPoDocument(null);
       setVehiclePhoto(null);
@@ -594,6 +576,7 @@ function GateEntry() {
       setSubmitting(false);
     }
   }
+
   const handleClearAll = async () => {
     if (!confirm("Are you sure you want to delete all gate entry data? This cannot be undone."))
       return;
@@ -605,6 +588,7 @@ function GateEntry() {
       toast.error("Failed to delete data");
     }
   };
+
   return (
     <AppShell
       title="Gate Entry"
@@ -670,13 +654,13 @@ function GateEntry() {
 
           <SectionCard
             title="Arrival scanning & upload"
-            description="Capture from camera or upload an image—OCR/ANPR will process either"
+            description="Capture from camera or upload an image or PDF—OCR/ANPR will process either"
             icon={ScanLine}
           >
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 w-full">
               <ScanCard
                 label="PO document"
-                detail={poDocument ? "PO document ready" : "Optional (Scan/Upload)"}
+                detail={poDocument ? "PO document ready" : "Optional (Image/PDF)"}
                 kind="po"
                 captured={!!poDocument}
                 onOpen={() => setPoScannerOpen(true)}
@@ -710,11 +694,19 @@ function GateEntry() {
                       </Button>
                     </div>
                     <div className="aspect-[4/3] rounded-xl border border-border/60 overflow-hidden bg-muted/20">
-                      <img
-                        src={poPreview}
-                        alt="PO Preview"
-                        className="w-full h-full object-contain"
-                      />
+                      {poDocument?.type === "application/pdf" ? (
+                        <iframe
+                          src={poPreview}
+                          title="PO PDF preview"
+                          className="h-full w-full"
+                        />
+                      ) : (
+                        <img
+                          src={poPreview}
+                          alt="PO Preview"
+                          className="w-full h-full object-contain"
+                        />
+                      )}
                     </div>
                   </div>
                 )}
@@ -747,7 +739,7 @@ function GateEntry() {
 
             <p className="mt-4 text-xs text-muted-foreground">
               <ShieldCheck className="mr-1 inline size-3.5 text-primary" />
-              Captured or uploaded images stay attached to the audited gate-entry record.
+              Captured images and uploaded PO PDFs stay attached to the audited gate-entry record.
             </p>
           </SectionCard>
 
@@ -1041,7 +1033,10 @@ function GateEntry() {
             <div className="space-y-3">
               {entries.slice(0, 8).map((entry) => (
                 <div key={entry.id} className="relative group">
-                  <div className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft">
+                  <Link
+                    to="/vehicle-queue"
+                    className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft"
+                  >
                     {entry.truckPhotoBase64 ? (
                       <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border/40">
                         <img
@@ -1057,12 +1052,9 @@ function GateEntry() {
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <Link
-                          to="/vehicle-queue"
-                          className="truncate font-mono text-sm font-semibold text-primary hover:underline"
-                        >
+                        <p className="font-mono text-sm font-semibold text-primary truncate">
                           {entry.vehiclePlate || "NO PLATE"}
-                        </Link>
+                        </p>
                         <StatusBadge status={entry.status} />
                       </div>
                       <p className="mt-0.5 truncate text-sm font-medium">{entry.driverName}</p>
@@ -1080,7 +1072,7 @@ function GateEntry() {
                         </p>
                       )}
                     </div>
-                  </div>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -1114,8 +1106,15 @@ function GateEntry() {
         />
       )}
       {lastCreatedEntry && (
-        <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-foreground/60 p-4 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="relative w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl border border-border/50 animate-in zoom-in-95 duration-200">
+        <dialog
+          ref={approvalDialog}
+          onCancel={(event) => {
+            event.preventDefault();
+            setLastCreatedEntry(null);
+          }}
+          className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center overflow-hidden bg-transparent p-4 open:flex backdrop:bg-black/65 backdrop:backdrop-blur-sm"
+        >
+          <div className="relative max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-hidden rounded-3xl border border-border/50 bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <Button
               variant="ghost"
               size="icon"
@@ -1222,11 +1221,12 @@ function GateEntry() {
               </Button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
     </AppShell>
   );
 }
+
 function ScanCard({
   label,
   detail,
@@ -1246,6 +1246,7 @@ function ScanCard({
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const isRequired = detail.toLowerCase().includes("required");
+
   return (
     <div
       suppressHydrationWarning
@@ -1343,16 +1344,29 @@ function ScanCard({
         type="file"
         ref={fileInput}
         className="hidden"
-        accept="image/*"
+        accept={kind === "po" ? "image/*,application/pdf,.pdf" : "image/*"}
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) onUpload(file);
+          if (!file) return;
+          const isImage = file.type.startsWith("image/");
+          const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+          if (!isImage && !(kind === "po" && isPdf)) {
+            toast.error(
+              kind === "po"
+                ? "Please upload an image or PDF document"
+                : "Please upload an image file",
+            );
+            e.target.value = "";
+            return;
+          }
+          onUpload(file);
           e.target.value = "";
         }}
       />
     </div>
   );
 }
+
 function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
   const fields =
     details.fields && typeof details.fields === "object" && !Array.isArray(details.fields)
@@ -1362,6 +1376,7 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     ([, value]) => value !== null && value !== "" && typeof value !== "object",
   );
   const rawText = typeof details.raw_text === "string" ? details.raw_text : "";
+
   return (
     <div className="space-y-4">
       {entries.length > 0 ? (
@@ -1391,6 +1406,7 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     </div>
   );
 }
+
 function CameraScanner({
   kind,
   onClose,
@@ -1402,9 +1418,16 @@ function CameraScanner({
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
+  const [cameraReady, setCameraReady] = useState(false);
+
   useEffect(() => {
     let mounted = true;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
     if (navigator.mediaDevices?.getUserMedia) {
       navigator.mediaDevices
         .getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false })
@@ -1425,20 +1448,34 @@ function CameraScanner({
     } else {
       setError("Camera not supported on this browser.");
     }
+
     return () => {
       mounted = false;
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
       if (stream.current) {
         stream.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
+
+  useEffect(() => {
+    const element = dialog.current;
+    if (element && !element.open) element.showModal();
+    return () => {
+      if (element?.open) element.close();
+    };
+  }, []);
+
   function capture() {
     const element = video.current;
     if (!element || !element.videoWidth) return;
+
     const canvas = document.createElement("canvas");
     const maxDim = 2000;
     let width = element.videoWidth;
     let height = element.videoHeight;
+
     if (width > height) {
       if (width > maxDim) {
         height *= maxDim / width;
@@ -1450,6 +1487,7 @@ function CameraScanner({
         height = maxDim;
       }
     }
+
     canvas.width = width;
     canvas.height = height;
     canvas.getContext("2d")?.drawImage(element, 0, 0, width, height);
@@ -1463,15 +1501,30 @@ function CameraScanner({
       0.95,
     );
   }
+
   const title = kind === "po" ? "Scan purchase order" : "Capture vehicle photo";
-  return (
-    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-foreground/80 p-4 backdrop-blur-sm">
-      <div className="flex max-h-full w-full max-w-2xl flex-col rounded-3xl bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b border-border/50 p-5">
-          <div>
-            <h3 className="text-lg font-bold tracking-tight">{title}</h3>
+
+  return createPortal(
+    <dialog
+      ref={dialog}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      className="fixed inset-0 m-0 h-dvh max-h-none w-screen max-w-none items-center justify-center overflow-hidden bg-transparent p-4 open:flex backdrop:bg-black/75 backdrop:backdrop-blur-sm"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="vehicle-camera-title"
+        className="flex w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border/50 bg-card shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/50 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
+            <h3 id="vehicle-camera-title" className="truncate text-base font-bold tracking-tight sm:text-lg">{title}</h3>
             <p className="text-xs text-muted-foreground">
-              Align the subject inside the camera frame.
+              Keep the complete vehicle and number plate inside the frame.
             </p>
           </div>
           <Button
@@ -1485,7 +1538,8 @@ function CameraScanner({
           </Button>
         </div>
 
-        <div className="relative flex-1 overflow-hidden bg-black/5 p-2">
+        {/* Camera Feed Container */}
+        <div className="relative h-[clamp(240px,45dvh,420px)] shrink-0 bg-black">
           {error ? (
             <div className="flex h-64 flex-col items-center justify-center p-8 text-center">
               <div className="mb-4 rounded-full bg-destructive/10 p-3 text-destructive">
@@ -1494,36 +1548,48 @@ function CameraScanner({
               <p className="text-sm font-medium text-destructive">{error}</p>
             </div>
           ) : (
-            <video
-              ref={video}
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full rounded-2xl bg-muted object-cover"
-              style={{ minHeight: "320px", maxHeight: "60vh" }}
-            />
+            <>
+              <video
+                ref={video}
+                autoPlay
+                playsInline
+                muted
+                onCanPlay={() => setCameraReady(true)}
+                className="block h-full w-full object-contain"
+              />
+              {!cameraReady && (
+                <div className="absolute inset-0 grid place-items-center bg-black text-white">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Loader2 className="size-5 animate-spin" /> Starting camera…
+                  </div>
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-[8%] bottom-[10%] top-[10%] rounded-2xl border-2 border-dashed border-white/60" />
+            </>
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-3 border-t border-border/50 p-5">
+        {/* Footer */}
+        <div className="grid shrink-0 grid-cols-2 gap-2 border-t border-border/50 p-3 sm:flex sm:justify-end sm:gap-3 sm:p-5">
           <Button
             type="button"
             variant="outline"
-            className="rounded-xl h-11 px-6 font-bold"
+            className="h-11 rounded-xl px-4 font-bold sm:px-6"
             onClick={onClose}
           >
             Cancel
           </Button>
           <Button
             type="button"
-            className="rounded-xl h-11 px-8 font-bold shadow-glow"
-            disabled={!!error}
+            className="h-11 rounded-xl px-4 font-bold shadow-glow sm:px-8"
+            disabled={!!error || !cameraReady}
             onClick={capture}
           >
             <Camera className="mr-2 size-4" /> Capture & scan
           </Button>
         </div>
       </div>
-    </div>
+    </dialog>,
+    document.body,
   );
 }

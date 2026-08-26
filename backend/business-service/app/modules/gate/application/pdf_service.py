@@ -10,7 +10,7 @@ class GatePassPdfGenerator:
     def generate_html(entry: GateEntry) -> str:
         """Renders an HTML template formatted for downloading or printing as a gate pass."""
 
-
+        # Extract details for the pass
         ocr = entry.ocr_result
         po_number = entry.po_number or "N/A"
         vehicle_plate = entry.vehicle_plate or "N/A"

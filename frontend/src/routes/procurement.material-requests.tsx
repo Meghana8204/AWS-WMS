@@ -24,14 +24,17 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/procurement/material-requests")({
   component: MaterialRequests,
 });
+
 function MaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -44,13 +47,16 @@ function MaterialRequests() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, []);
+
   const handleRequestClick = (req: any) => {
     setSelectedRequest(req);
     setIsModalOpen(true);
   };
+
   return (
     <AppShell
       title="Material Requests"
@@ -147,10 +153,12 @@ function MaterialRequests() {
         </div>
       )}
 
+      {/* View Details Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
+              {/* Header */}
               <div className="p-6 text-white bg-blue-600 flex justify-between items-start">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -165,7 +173,9 @@ function MaterialRequests() {
                 </div>
               </div>
 
+              {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Basic Info */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
@@ -195,6 +205,7 @@ function MaterialRequests() {
                   </div>
                 </div>
 
+                {/* Items Table */}
                 <div className="space-y-4">
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Requested Materials
@@ -240,6 +251,7 @@ function MaterialRequests() {
                   </div>
                 </div>
 
+                {/* Remarks */}
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Remarks / Justification
@@ -250,6 +262,7 @@ function MaterialRequests() {
                 </div>
               </div>
 
+              {/* Footer Actions */}
               <div className="p-6 bg-muted/10 border-t border-border/60 flex items-center justify-between">
                 <Button
                   variant="ghost"

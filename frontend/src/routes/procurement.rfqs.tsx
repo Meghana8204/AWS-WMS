@@ -23,15 +23,18 @@ import { api } from "@/lib/api-client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/procurement/rfqs")({
   beforeLoad: () => requireRole("PROCUREMENT"),
   component: Rfqs,
 });
+
 function Rfqs() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRfq, setSelectedRfq] = useState<any | null>(null);
   const [sendingRfq, setSendingRfq] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -44,14 +47,19 @@ function Rfqs() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, []);
+
   const handleSendRfq = async (rfqId: string) => {
     try {
       setSendingRfq(true);
       const result = await api.sendRfq(rfqId);
-      toast.success(result.message || "RFQ published and sent to suppliers successfully!");
+      const sent = result.delivery?.sent;
+      toast.success(result.message || "RFQ published and sent to suppliers successfully!", {
+        description: typeof sent === "number" ? `${sent} email(s) delivered` : undefined,
+      });
       setSelectedRfq(null);
       await fetchData();
     } catch (error: any) {
@@ -60,6 +68,7 @@ function Rfqs() {
       setSendingRfq(false);
     }
   };
+
   return (
     <AppShell
       title="Request for Quotations"
@@ -164,9 +173,11 @@ function Rfqs() {
         </div>
       )}
 
+      {/* Detail & Review Modal */}
       {selectedRfq && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm transition-all duration-200">
           <Card className="flex max-h-[85vh] w-full max-w-4xl flex-col border-border/80 bg-card shadow-soft animate-in fade-in zoom-in-95">
+            {/* Header */}
             <div className="flex items-center justify-between border-b border-border/60 p-6">
               <div>
                 <div className="flex items-center gap-3">
@@ -187,7 +198,9 @@ function Rfqs() {
               </Button>
             </div>
 
+            {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Metadata Grid */}
               <div className="grid gap-4 rounded-xl border border-border/60 bg-muted/10 p-4 sm:grid-cols-3">
                 <div>
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -238,6 +251,7 @@ function Rfqs() {
                 </div>
               </div>
 
+              {/* Items Section */}
               <div>
                 <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
                   <Package className="size-4 text-primary" /> Material Requirements
@@ -294,6 +308,7 @@ function Rfqs() {
                 </div>
               </div>
 
+              {/* Invited Suppliers List */}
               {selectedRfq.suppliers && selectedRfq.suppliers.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
@@ -314,6 +329,7 @@ function Rfqs() {
                 </div>
               )}
 
+              {/* Suppliers count info */}
               <div className="flex items-start gap-3 rounded-xl border border-warning/20 bg-warning-soft/10 p-4">
                 <Info className="size-5 text-warning shrink-0 mt-0.5" />
                 <div>
@@ -338,6 +354,7 @@ function Rfqs() {
               )}
             </div>
 
+            {/* Footer */}
             <div className="flex items-center justify-end gap-3 border-t border-border/60 p-6 bg-muted/5">
               <Button variant="outline" className="rounded-xl" onClick={() => setSelectedRfq(null)}>
                 Close

@@ -17,18 +17,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-
+    # Remove columns
     op.drop_column('purchase_order', 'department')
     op.drop_column('purchase_order', 'procurement_officer')
-
+    # Add new columns
     op.add_column('purchase_order', sa.Column('priority', sa.String(length=32), nullable=True, server_default='Normal'))
     op.add_column('purchase_order', sa.Column('remarks', sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-
+    # Remove added columns
     op.drop_column('purchase_order', 'remarks')
     op.drop_column('purchase_order', 'priority')
-
+    # Add back removed columns
     op.add_column('purchase_order', sa.Column('department', sa.String(length=128), nullable=True))
     op.add_column('purchase_order', sa.Column('procurement_officer', sa.String(length=128), nullable=True))

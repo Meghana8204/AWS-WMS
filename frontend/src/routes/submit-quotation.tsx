@@ -27,30 +27,30 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/submit-quotation")({
   beforeLoad: () => requireRole("SUPPLIER"),
   component: SubmitQuotation,
 });
+
 function SubmitQuotation() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as any;
   const rfqId = search.rfqId || "";
+
   const [loading, setLoading] = useState(true);
   const [rfq, setRfq] = useState<any | null>(null);
   const [existingQuote, setExistingQuote] = useState<any | null>(null);
-  const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+
+  // Supplier user state
   const [supplierId, setSupplierId] = useState("");
   const [username, setUsername] = useState("");
+
+  // Bid form state
   const [itemsData, setItemsData] = useState<
-    Record<
-      string,
-      {
-        unitPrice: string;
-        availableQty: string;
-      }
-    >
+    Record<string, { unitPrice: string; availableQty: string }>
   >({});
   const [metaData, setMetaData] = useState({
     discount: "0",
@@ -61,14 +61,14 @@ function SubmitQuotation() {
     paymentTerms: "Net 30",
     remarks: "",
   });
+
+  // Document Upload state
   const [uploadedDocs, setUploadedDocs] = useState<
-    Array<{
-      document_type: string;
-      file_name: string;
-      file_url: string;
-    }>
+    Array<{ document_type: string; file_name: string; file_url: string }>
   >([]);
+
   useEffect(() => {
+    // Check if supplier is logged in
     const userInfoStr = localStorage.getItem("user_info");
     if (!userInfoStr) {
       toast.error("Please login first to submit a quotation");
@@ -76,18 +76,23 @@ function SubmitQuotation() {
       navigate({ to: `/login?redirect=${redirect}` });
       return;
     }
+
     const userInfo = JSON.parse(userInfoStr);
     if (!userInfo.roles?.includes("SUPPLIER")) {
       toast.error("Unauthorized. Only suppliers can submit quotations.");
       navigate({ to: "/login" });
       return;
     }
+
     setSupplierId(userInfo.supplierId || "");
     setUsername(userInfo.username || "");
+
     if (!rfqId) {
       setLoading(false);
       return;
     }
+
+    // Fetch RFQ details and check for existing quotations
     const fetchRfqAndQuotation = async () => {
       try {
         const sid = userInfo.supplierId || "";
@@ -95,20 +100,16 @@ function SubmitQuotation() {
           api.getRfq(rfqId),
           api.getQuotations(rfqId, sid),
         ]);
+
         setRfq(rfqData);
+
+        // Check if there is an existing quotation (Draft or Submitted)
         const existing = quotesList.find((q: any) => q.rfqId === rfqId && q.supplierId === sid);
         if (existing) {
           setExistingQuote(existing);
-          const normalizedStatus = String(existing.status || "").toUpperCase();
-          setIsLocked(normalizedStatus === "SUBMITTED" || normalizedStatus === "SELECTED");
-          if (normalizedStatus === "REJECTED") {
-            const rejectionNote = String(existing.remarks || "")
-              .split("\n")
-              .findLast((line) => line.startsWith("Rejected by "));
-            setRejectionReason(rejectionNote || "The procurement team rejected this quotation.");
-          } else {
-            setRejectionReason("");
-          }
+          setIsLocked(existing.status === "SUBMITTED");
+
+          // Map items data
           const mappedItems: any = {};
           existing.lines?.forEach((line: any) => {
             const price = parseFloat(line.unitPrice || line.unit_price || "0");
@@ -119,6 +120,8 @@ function SubmitQuotation() {
             };
           });
           setItemsData(mappedItems);
+
+          // Map meta data
           setMetaData({
             discount: String(Math.floor(parseFloat(existing.discount || "0"))),
             tax: String(Math.floor(parseFloat(existing.tax || "0"))),
@@ -131,8 +134,11 @@ function SubmitQuotation() {
             paymentTerms: existing.paymentTerms || existing.payment_terms || "",
             remarks: existing.remarks || "",
           });
+
+          // Map documents
           setUploadedDocs(existing.documents || []);
         } else {
+          // Initialize empty
           const initialItems: any = {};
           rfqData.items?.forEach((item: any) => {
             initialItems[item.materialCode] = {
@@ -148,15 +154,20 @@ function SubmitQuotation() {
         setLoading(false);
       }
     };
+
     fetchRfqAndQuotation();
   }, [rfqId]);
+
   const handleItemChange = (
     itemCode: string,
     field: "unitPrice" | "availableQty",
     value: string,
   ) => {
     if (isLocked) return;
+
     let finalValue = value;
+
+    // Enforce that Quoted Quantity (availableQty) does not exceed Requested Qty
     if (field === "availableQty" && rfq) {
       const item = rfq.items.find(
         (it: any) => it.materialCode === itemCode || it.material_code === itemCode,
@@ -164,11 +175,14 @@ function SubmitQuotation() {
       if (item) {
         const requestedQty = Math.floor(item.quantity);
         const enteredQty = parseInt(value, 10);
+
+        // If the user tries to enter a value greater than requested, cap it at requested
         if (!isNaN(enteredQty) && enteredQty > requestedQty) {
           finalValue = String(requestedQty);
         }
       }
     }
+
     setItemsData((prev) => ({
       ...prev,
       [itemCode]: {
@@ -177,12 +191,15 @@ function SubmitQuotation() {
       },
     }));
   };
+
   const handleMetaChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     if (isLocked) return;
     const { name, value } = e.target;
+
     setMetaData((prev) => {
-      const normalizedValue = name === "tax" && parseFloat(value) > 100 ? "100" : value;
-      const newState = { ...prev, [name]: normalizedValue };
+      const newState = { ...prev, [name]: value };
+
+      // Auto-select Expected Delivery Date based on Delivery Time (days)
       if (name === "deliveryTime") {
         const daysMatch = value.match(/\d+/);
         if (daysMatch) {
@@ -194,16 +211,21 @@ function SubmitQuotation() {
           }
         }
       }
+
       return newState;
     });
   };
+
+  // Real-time document upload to backend
   const handleFileUpload = async (documentType: string, e: React.ChangeEvent<HTMLInputElement>) => {
     if (isLocked) return;
     const file = e.target.files?.[0];
     if (!file) return;
+
     const toastId = toast.loading(`Uploading ${file.name} to server...`);
     try {
       const response = await api.uploadQuotationDocument(file);
+
       setUploadedDocs((prev) => [
         ...prev.filter((d) => d.document_type !== documentType),
         {
@@ -218,14 +240,21 @@ function SubmitQuotation() {
       console.error("Quotation file upload error:", error);
     }
   };
+
+  // Auto-save logic
   useEffect(() => {
     if (!rfq || isLocked || loading || submitting) return;
+
+    // Don't auto-save if form is empty/initial
     if (Object.keys(itemsData).length === 0) return;
+
     const timer = setTimeout(() => {
       autoSaveDraft();
-    }, 2000);
+    }, 2000); // 2 second debounce
+
     return () => clearTimeout(timer);
   }, [itemsData, metaData, uploadedDocs]);
+
   const autoSaveDraft = async () => {
     try {
       const payload = {
@@ -246,18 +275,24 @@ function SubmitQuotation() {
         remarks: metaData.remarks,
         documents: uploadedDocs,
       };
+
       if (existingQuote) {
         const updated = await api.updateQuotation(existingQuote.id, payload);
         setExistingQuote(updated);
       } else {
         const result = await api.submitQuotation(payload);
-        setExistingQuote(result);
+        setExistingQuote(result); // Set so future auto-saves use update
       }
       console.log("Draft auto-saved");
-    } catch (error) {}
+    } catch (error) {
+      // Silent error for background auto-save
+    }
   };
+
   const handleSave = async (status: "SUBMITTED") => {
     if (!rfq || isLocked) return;
+
+    // Validation for submission
     const lineCodes = Object.keys(itemsData);
     if (
       lineCodes.some(
@@ -267,11 +302,8 @@ function SubmitQuotation() {
       toast.error("Please enter a valid unit price for all items before submitting");
       return;
     }
-    const gstRate = parseFloat(metaData.tax) || 0;
-    if (gstRate < 0 || gstRate > 100) {
-      toast.error("GST percentage must be between 0 and 100");
-      return;
-    }
+
+    // Ensure Quoted Quantity is at least the Requested Quantity
     for (const item of rfq.items) {
       const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
       const requested = Math.floor(item.quantity);
@@ -282,6 +314,7 @@ function SubmitQuotation() {
         return;
       }
     }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -302,11 +335,15 @@ function SubmitQuotation() {
         remarks: metaData.remarks,
         documents: uploadedDocs,
       };
+
       if (existingQuote) {
+        // Update existing
         await api.updateQuotation(existingQuote.id, payload);
       } else {
+        // Create new
         await api.submitQuotation(payload);
       }
+
       toast.success("Quotation submitted and locked!");
       setIsLocked(true);
       navigate({ to: "/supplier-dashboard" });
@@ -316,21 +353,7 @@ function SubmitQuotation() {
       setSubmitting(false);
     }
   };
-  const quotationSubtotal = Object.values(itemsData).reduce((total, item) => {
-    return total + (parseFloat(item.unitPrice) || 0) * (parseFloat(item.availableQty) || 0);
-  }, 0);
-  const discountAmount = Math.min(parseFloat(metaData.discount) || 0, quotationSubtotal);
-  const taxableAmount = Math.max(quotationSubtotal - discountAmount, 0);
-  const gstRate = Math.min(Math.max(parseFloat(metaData.tax) || 0, 0), 100);
-  const gstAmount = taxableAmount * (gstRate / 100);
-  const freightAmount = parseFloat(metaData.freightCharges) || 0;
-  const quotationTotal = taxableAmount + gstAmount + freightAmount;
-  const formatCurrency = (value: number) =>
-    new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 2,
-    }).format(value);
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center gap-3">
@@ -339,6 +362,7 @@ function SubmitQuotation() {
       </div>
     );
   }
+
   if (!rfqId || !rfq) {
     return (
       <AppShell title="Quotation Workspace" subtitle="Submit bids for pending requests">
@@ -353,6 +377,7 @@ function SubmitQuotation() {
       </AppShell>
     );
   }
+
   return (
     <AppShell
       title="RFQ Response Workspace"
@@ -369,20 +394,7 @@ function SubmitQuotation() {
       }
     >
       <div className="mx-auto max-w-4xl space-y-6">
-        {rejectionReason && (
-          <div className="rounded-2xl border border-destructive/35 bg-destructive/10 p-4 text-sm">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" />
-              <div>
-                <p className="font-bold text-destructive">Quotation rejected — revision required</p>
-                <p className="mt-1 text-muted-foreground">{rejectionReason}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Update the quotation using the feedback below and submit it again.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Lock Banner */}
         {isLocked && (
           <div className="flex items-center gap-3 rounded-2xl border border-success/35 bg-success-soft/10 p-4 text-sm text-success font-bold">
             <Lock className="size-5" />
@@ -390,6 +402,7 @@ function SubmitQuotation() {
           </div>
         )}
 
+        {/* RFQ Details Summary (Read-Only) */}
         <SectionCard
           title="RFQ Information (Read-Only)"
           description="Reference details for this request"
@@ -443,6 +456,7 @@ function SubmitQuotation() {
           )}
         </SectionCard>
 
+        {/* Required Materials Bidding Form */}
         <SectionCard
           title="Material Response"
           description="Enter pricing and available quantity for each material requirement"
@@ -517,6 +531,7 @@ function SubmitQuotation() {
           </div>
         </SectionCard>
 
+        {/* Commercial & Logistical Details */}
         <SectionCard
           title="Logistics & Commercials"
           description="Bidding parameters, terms, and conditions"
@@ -546,9 +561,8 @@ function SubmitQuotation() {
                 <Input
                   type="number"
                   min="0"
-                  max="100"
                   name="tax"
-                  step="0.01"
+                  step="1"
                   className="pl-9 rounded-xl h-10 font-mono"
                   disabled={isLocked}
                   value={metaData.tax}
@@ -611,22 +625,6 @@ function SubmitQuotation() {
             </div>
           </div>
 
-          <div className="mt-6 border-t border-border pt-5">
-            <div className="ml-auto max-w-sm space-y-2 text-sm">
-              <CommercialRow label="Subtotal" value={formatCurrency(quotationSubtotal)} />
-              <CommercialRow label="Discount" value={`- ${formatCurrency(discountAmount)}`} />
-              <CommercialRow
-                label={`GST (${gstRate.toLocaleString("en-IN")}% on ${formatCurrency(taxableAmount)})`}
-                value={formatCurrency(gstAmount)}
-              />
-              <CommercialRow label="Freight" value={formatCurrency(freightAmount)} />
-              <div className="flex items-center justify-between border-t border-border pt-3 font-bold">
-                <span>Grand Total</span>
-                <span className="text-lg text-primary">{formatCurrency(quotationTotal)}</span>
-              </div>
-            </div>
-          </div>
-
           <div className="mt-4 space-y-1.5">
             <Label className="text-xs">Remarks / Terms Details</Label>
             <Textarea
@@ -640,6 +638,7 @@ function SubmitQuotation() {
           </div>
         </SectionCard>
 
+        {/* Document Uploads section */}
         <SectionCard
           title="Quotation Supporting Documents"
           description="Upload PDF or compliance certification"
@@ -704,6 +703,7 @@ function SubmitQuotation() {
           </div>
         </SectionCard>
 
+        {/* Action Panel */}
         {!isLocked && (
           <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/60 p-6 shadow-soft">
             <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -732,14 +732,5 @@ function SubmitQuotation() {
         )}
       </div>
     </AppShell>
-  );
-}
-
-function CommercialRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-mono font-semibold tabular-nums">{value}</span>
-    </div>
   );
 }

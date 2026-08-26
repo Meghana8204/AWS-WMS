@@ -1,15 +1,16 @@
 import asyncio
 import re
+import redis.asyncio as redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 async def try_connect(base_url, ports=[5432, 5433]):
     last_error = None
     for port in ports:
-
+        # Replace port in URL
         url = re.sub(r':\d+/', f':{port}/', base_url)
         if ':' not in base_url.split('@')[1].split('/')[0]:
-
+             # If no port specified in base_url, add it
              url = base_url.replace('/localhost/', f'/localhost:{port}/').replace('/127.0.0.1/', f'/127.0.0.1:{port}/')
 
         engine = create_async_engine(url)
@@ -40,12 +41,12 @@ async def wipe_business(engine):
             return
 
         print(f"Found {len(tables)} tables. Truncating...")
-
+        # TRUNCATE TABLE T1, T2, ... CASCADE;
         await conn.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE;"))
 
-
+        # Verification
         print("Verifying ams_business wipe...")
-        for table in tables[:5]:
+        for table in tables[:5]: # Check first 5 tables
             count_res = await conn.execute(text(f"SELECT COUNT(*) FROM {table}"))
             count = count_res.scalar()
             print(f"  Table {table}: {count} rows")
@@ -54,29 +55,46 @@ async def wipe_business(engine):
 async def wipe_auth(engine):
     print("--- Wiping ams_auth ---")
     async with engine.begin() as conn:
-        print("Truncating logs and tokens...")
-        await conn.execute(text("TRUNCATE TABLE audit_log CASCADE;"))
-        await conn.execute(text("TRUNCATE TABLE refresh_token CASCADE;"))
+        # Get all tables except flyway_schema_history
+        query = text("""
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_type = 'BASE TABLE'
+              AND table_name != 'flyway_schema_history';
+        """)
+        result = await conn.execute(query)
+        tables = [row[0] for row in result.fetchall()]
 
-        print("Deleting users (except admin)...")
-        await conn.execute(text("DELETE FROM user_role WHERE user_id != 'c1000000-0000-0000-0000-000000000001';"))
-        await conn.execute(text("DELETE FROM app_user WHERE id != 'c1000000-0000-0000-0000-000000000001';"))
+        if not tables:
+            print("No tables found to wipe in ams_auth.")
+            return
 
-        print("Ensuring admin user is enabled...")
-        await conn.execute(text("UPDATE app_user SET enabled = TRUE WHERE id = 'c1000000-0000-0000-0000-000000000001';"))
+        print(f"Found {len(tables)} tables in ams_auth. Truncating...")
+        # TRUNCATE TABLE T1, T2, ... CASCADE;
+        await conn.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE;"))
 
-
+        # Verification
         user_count = await conn.execute(text("SELECT COUNT(*) FROM app_user"))
-        log_count = await conn.execute(text("SELECT COUNT(*) FROM audit_log"))
         print(f"  Users remaining: {user_count.scalar()}")
-        print(f"  Audit logs remaining: {log_count.scalar()}")
     print("ams_auth wipe complete.")
+
+async def flush_redis(redis_url):
+    print(f"--- Flushing Redis at {redis_url} ---")
+    try:
+        r = redis.from_url(redis_url)
+        await r.flushall()
+        print("Redis flushed successfully.")
+        await r.aclose()
+    except Exception as e:
+        print(f"Error flushing Redis: {e}")
 
 async def main():
     business_url = "postgresql+asyncpg://ams_business:ams_business@localhost:5432/ams_business"
     auth_url = "postgresql+asyncpg://ams_auth:ams_auth@localhost:5432/ams_auth"
+    redis_url = "redis://localhost:6379/0"
 
-    print("Starting data wipe...")
+    print("Starting COMPLETE data wipe...")
 
     try:
         b_engine, b_url = await try_connect(business_url)
@@ -93,6 +111,8 @@ async def main():
         await a_engine.dispose()
     except Exception as e:
         print(f"CRITICAL ERROR (Auth DB): {e}")
+
+    await flush_redis(redis_url)
 
     print("\nAll tasks finished.")
 

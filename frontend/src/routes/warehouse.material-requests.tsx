@@ -37,42 +37,60 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
 });
+
 const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
+
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
+  const [materialStock, setMaterialStock] = useState<any[]>([]);
+  const [materialCatalog, setMaterialCatalog] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [nextRequestNumber, setNextRequestNumber] = useState("");
   const [baseMaterialSequence, setBaseMaterialSequence] = useState(1);
+
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [isViewing, setIsRequestModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+
+  // Form State
   const [formData, setFormData] = useState({
     request_number: "",
-    warehouse_id: "Main Warehouse",
+    warehouse_id: "MAIN",
     department: "Inventory",
     requested_by: "Warehouse Manager",
     required_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     remarks: "",
   });
+
   const [items, setItems] = useState<any[]>([
-    { material_code: "", material_name: "", quantity: 1, uom: "PCS" },
+    { material_code: "", material_name: "", product_name: "", category: "", price_range: "", quantity: 1, uom: "PCS" },
   ]);
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await api.getMaterialRequests();
+      const [data, stock, catalog] = await Promise.all([
+        api.getMaterialRequests(),
+        api.getMaterialStock(),
+        api.getMaterialCatalog(),
+      ]);
+      // Filter for this warehouse's requests in a real app
       setRequests(data);
+      setMaterialStock(stock);
+      setMaterialCatalog(catalog);
     } catch (error) {
       toast.error("Failed to load requests");
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
     const info = localStorage.getItem("user_info");
@@ -81,48 +99,86 @@ function WarehouseMaterialRequests() {
       setFormData((prev) => ({ ...prev, requested_by: user.username || "Warehouse Manager" }));
     }
   }, []);
+
   const addItem = () => {
-    const nextSeq = baseMaterialSequence + items.length;
-    const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
-    setItems([...items, { material_code: code, material_name: "", quantity: 1, uom: "PCS" }]);
+    const highestSequence = Math.max(
+      baseMaterialSequence - 1,
+      ...items.map(
+        (item) => Number.parseInt(String(item.material_code).split("-").pop() || "0", 10) || 0,
+      ),
+    );
+    setItems([
+      ...items,
+      {
+        material_code: `MAT-${String(highestSequence + 1).padStart(3, "0")}`,
+        material_name: "",
+        product_name: "",
+        category: "",
+        price_range: "",
+        quantity: 1,
+        uom: "PCS",
+      },
+    ]);
   };
+
   const removeItem = (idx: number) => {
     if (items.length === 1) return;
     setItems(items.filter((_, i) => i !== idx));
   };
+
   const handleItemChange = (idx: number, field: string, value: any) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
   };
+
   const handleEditItemChange = (idx: number, field: string, value: any) => {
     if (!selectedRequest) return;
     const newItems = [...selectedRequest.items];
     newItems[idx] = { ...newItems[idx], [field]: value };
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
+
   const addEditItem = () => {
     if (!selectedRequest) return;
     const nextSeq = baseMaterialSequence + selectedRequest.items.length;
-    const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
+    const code = `MAT-${String(nextSeq).padStart(3, "0")}`;
     const newItem = { materialCode: code, materialName: "", quantity: 1, uom: "PCS" };
     setSelectedRequest({ ...selectedRequest, items: [...selectedRequest.items, newItem] });
   };
+
   const removeEditItem = (idx: number) => {
     if (!selectedRequest || selectedRequest.items.length <= 1) return;
     const newItems = selectedRequest.items.filter((_: any, i: number) => i !== idx);
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.some((it) => !it.material_name?.trim() || !it.quantity)) {
-      toast.error("Please fill in material description and quantity for all items");
+    if (items.some((it) => !it.product_name?.trim() || !it.quantity)) {
+      toast.error("Please select a material and quantity for all items");
       return;
     }
+    if (items.some((it) => {
+      const product = materialCatalog.find((entry) => entry.name === it.product_name);
+      return product?.variants?.length > 0 && !it.category;
+    })) {
+      toast.error("Please select a category/size for each material");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      await api.createMaterialRequest({ ...formData, items });
+      await api.createMaterialRequest({
+        ...formData,
+        items: items.map((item) => ({
+          material_code: item.material_code,
+          material_name: item.material_name,
+          quantity: item.quantity,
+          uom: item.uom,
+        })),
+      });
       toast.success("Material request submitted to Procurement");
       setIsCreating(false);
-      setItems([{ material_code: "", material_name: "", quantity: 1, uom: "PCS" }]);
+      setItems([{ material_code: "", material_name: "", product_name: "", category: "", price_range: "", quantity: 1, uom: "PCS" }]);
       setFormData((prev) => ({ ...prev, request_number: "" }));
       fetchData();
     } catch (error: any) {
@@ -131,25 +187,38 @@ function WarehouseMaterialRequests() {
       setSubmitting(false);
     }
   };
+
   const startCreating = async () => {
     try {
       const { requestNumber, nextMaterialSequence } =
         (await api.getNextMaterialRequestNumber()) as any;
       setNextRequestNumber(requestNumber);
       setBaseMaterialSequence(nextMaterialSequence || 1);
-      const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(4, "0")}`;
+
       setFormData((prev) => ({ ...prev, request_number: requestNumber }));
-      setItems([{ material_code: initialCode, material_name: "", quantity: 1, uom: "PCS" }]);
+      setItems([
+        {
+          material_code: `MAT-${String(nextMaterialSequence || 1).padStart(3, "0")}`,
+          material_name: "",
+          product_name: "",
+          category: "",
+          price_range: "",
+          quantity: 1,
+          uom: "PCS",
+        },
+      ]);
       setIsCreating(true);
     } catch (error) {
       toast.error("Failed to generate request number");
     }
   };
+
   const handleRequestClick = (req: any) => {
     setSelectedRequest(JSON.parse(JSON.stringify(req)));
     setIsRequestModalOpen(true);
     setIsEditing(false);
   };
+
   const handleUpdate = async () => {
     if (!selectedRequest) return;
     setSubmitting(true);
@@ -179,6 +248,40 @@ function WarehouseMaterialRequests() {
       setSubmitting(false);
     }
   };
+
+  const approveAndReserve = async () => {
+    if (!selectedRequest) return;
+    setSubmitting(true);
+    try {
+      const result = await api.processMaterialRequest(selectedRequest.id);
+      const updated = {
+        ...selectedRequest,
+        status: result.status,
+        approvedBy: result.approval?.approved_by,
+        approvedAt: result.approval?.approved_at,
+        pickTask: result.pick_task,
+      };
+      setSelectedRequest(updated);
+      setRequests((current) =>
+        current.map((request) => (request.id === updated.id ? updated : request)),
+      );
+      const inventory = result.inventory_updates?.[0];
+      toast.success("Stock reserved and pick task created", {
+        description: inventory
+          ? `${inventory.material_name}: On Hand ${inventory.on_hand.toLocaleString()} · Allocated ${inventory.allocated.toLocaleString()} · Available ${inventory.available.toLocaleString()} ${inventory.uom}`
+          : result.pick_task?.task_number,
+      });
+      const refreshedStock = await api.getMaterialStock();
+      setMaterialStock(refreshedStock);
+    } catch (error) {
+      toast.error("Unable to approve material request", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <AppShell
       title="Warehouse Material Requests"
@@ -260,24 +363,99 @@ function WarehouseMaterialRequests() {
 
                 <div className="space-y-2">
                   {items.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 items-end">
-                      <div className="flex-[2] space-y-1">
+                    <div key={idx} className="grid gap-3 items-end md:grid-cols-[1fr_1.4fr_1.1fr_1.1fr_.65fr_.65fr_auto]">
+                      <div className="space-y-1">
                         <Label className="text-[10px]">Material Code</Label>
                         <Input
-                          placeholder="MAT-XXXX"
-                          className="h-9 rounded-lg font-mono text-xs bg-muted/50"
                           value={item.material_code}
-                          readOnly
+                          onChange={(event) => {
+                            const code = event.target.value.toUpperCase();
+                            let match: any = null;
+                            for (const product of materialCatalog) {
+                              const variant = product.variants?.find(
+                                (entry: any) => entry.materialCode === code,
+                              );
+                              if (variant) {
+                                match = { product, variant };
+                                break;
+                              }
+                              if (product.materialCode === code) match = { product, variant: null };
+                            }
+                            setItems((current) => current.map((line, lineIndex) => lineIndex === idx ? {
+                              ...line,
+                              material_code: code,
+                              ...(match ? {
+                                product_name: match.product.name,
+                                category: match.variant?.category || "",
+                                material_name: match.variant
+                                  ? `${match.product.name} - ${match.variant.category}`
+                                  : match.product.name,
+                                price_range: match.variant
+                                  ? `₹${match.variant.priceMin} - ₹${match.variant.priceMax}`
+                                  : "",
+                                uom: match.product.uom || "PCS",
+                              } : {}),
+                            } : line));
+                          }}
+                          placeholder="MAT-001"
+                          aria-label="Material code"
+                          className="h-9 rounded-lg font-mono text-xs"
                         />
                       </div>
-                      <div className="flex-[3] space-y-1">
+                      <div className="space-y-1">
                         <Label className="text-[10px]">Material Name</Label>
-                        <Input
-                          placeholder="Steel Pipe..."
-                          className="h-9 rounded-lg text-xs"
-                          value={item.material_name}
-                          onChange={(e) => handleItemChange(idx, "material_name", e.target.value)}
-                        />
+                        <Select value={item.product_name} onValueChange={(value) => {
+                          const product = materialCatalog.find((entry) => entry.name === value);
+                          setItems((current) => current.map((line, lineIndex) => lineIndex === idx ? {
+                            ...line,
+                            material_code: product?.materialCode || line.material_code,
+                            product_name: value,
+                            material_name: value,
+                            category: "",
+                            price_range: "",
+                            uom: product?.uom || "PCS",
+                          } : line));
+                        }}>
+                          <SelectTrigger className="h-9 rounded-lg text-xs">
+                            <SelectValue placeholder="Select material" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {materialCatalog.map((product) => (
+                              <SelectItem key={product.name} value={product.name}>{product.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Category / Size</Label>
+                        <Select
+                          disabled={!materialCatalog.find((product) => product.name === item.product_name)?.variants?.length}
+                          value={item.category}
+                          onValueChange={(value) => {
+                            const product = materialCatalog.find((entry) => entry.name === item.product_name);
+                            const variant = product?.variants?.find((entry: any) => entry.category === value);
+                            setItems((current) => current.map((line, lineIndex) => lineIndex === idx ? {
+                              ...line,
+                              material_code: variant?.materialCode || line.material_code,
+                              category: value,
+                              material_name: `${line.product_name} - ${value}`,
+                              price_range: variant ? `₹${variant.priceMin} - ₹${variant.priceMax}` : "",
+                            } : line));
+                          }}
+                        >
+                          <SelectTrigger className="h-9 rounded-lg text-xs">
+                            <SelectValue placeholder="Select size" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(materialCatalog.find((product) => product.name === item.product_name)?.variants || []).map((variant: any) => (
+                              <SelectItem key={variant.category} value={variant.category}>{variant.category}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-[10px]">Price Range</Label>
+                        <Input value={item.price_range} readOnly placeholder="Auto-filled" className="h-9 rounded-lg bg-muted/50 text-xs" />
                       </div>
                       <div className="flex-1 space-y-1">
                         <Label className="text-[10px]">Qty</Label>
@@ -432,10 +610,12 @@ function WarehouseMaterialRequests() {
         </div>
       )}
 
+      {/* View/Edit Modal */}
       <Dialog open={isViewing} onOpenChange={setIsRequestModalOpen}>
         <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
+              {/* Header */}
               <div className={cn("p-6 text-white flex justify-between items-start", "bg-blue-600")}>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -450,7 +630,9 @@ function WarehouseMaterialRequests() {
                 </div>
               </div>
 
+              {/* Scrollable Content */}
               <div className="flex-1 overflow-y-auto p-6 space-y-8">
+                {/* Basic Info */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
@@ -502,6 +684,7 @@ function WarehouseMaterialRequests() {
                   </div>
                 </div>
 
+                {/* Items Table */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
@@ -636,6 +819,7 @@ function WarehouseMaterialRequests() {
                   </div>
                 </div>
 
+                {/* Remarks */}
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Remarks / Justification
@@ -654,8 +838,52 @@ function WarehouseMaterialRequests() {
                     </p>
                   )}
                 </div>
+                {!isEditing && (
+                  <div className="rounded-2xl border bg-muted/20 p-4">
+                    <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                      Outbound Workflow
+                    </Label>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                      {[
+                        "Material Request",
+                        "Approval",
+                        "Stock Check",
+                        "Reservation",
+                        "Pick Task",
+                      ].map((step, index) => {
+                        const complete = selectedRequest.status === "RESERVED" || index === 0;
+                        return (
+                          <div
+                            key={step}
+                            className={cn(
+                              "rounded-xl border p-3 text-center text-xs font-bold",
+                              complete
+                                ? "border-success/30 bg-success-soft text-success"
+                                : "bg-background text-muted-foreground",
+                            )}
+                          >
+                            {complete && <CheckCircle2 className="mx-auto mb-1 size-4" />}
+                            {step}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {selectedRequest.pickTask && (
+                      <div className="mt-3 rounded-xl border border-success/30 bg-background p-3 text-sm">
+                        <p className="font-mono font-bold text-success">
+                          {selectedRequest.pickTask.task_number}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Status: {selectedRequest.pickTask.status} · Stock reserved for{" "}
+                          {selectedRequest.department}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
+              {/* Footer Actions */}
               <div className="p-6 bg-muted/10 border-t border-border/60 flex items-center justify-end">
                 <div className="flex items-center gap-3">
                   {isEditing ? (
@@ -689,12 +917,29 @@ function WarehouseMaterialRequests() {
                       >
                         Close
                       </Button>
-                      <Button
-                        className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase"
-                        onClick={() => setIsEditing(true)}
-                      >
-                        Edit Request
-                      </Button>
+                      {selectedRequest.status === "PENDING" && (
+                        <Button
+                          variant="outline"
+                          className="rounded-full h-11 px-6 font-bold text-xs uppercase"
+                          onClick={() => setIsEditing(true)}
+                        >
+                          Edit Request
+                        </Button>
+                      )}
+                      {selectedRequest.status === "PENDING" && (
+                        <Button
+                          className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase"
+                          onClick={() => void approveAndReserve()}
+                          disabled={submitting}
+                        >
+                          {submitting ? (
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-2 size-4" />
+                          )}{" "}
+                          Approve & Reserve
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>

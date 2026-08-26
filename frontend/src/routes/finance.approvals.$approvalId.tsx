@@ -25,9 +25,11 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/finance/approvals/$approvalId")({
   component: ApprovalDetail,
 });
+
 function ApprovalDetail() {
   const { approvalId } = Route.useParams();
   const navigate = useNavigate();
@@ -37,11 +39,14 @@ function ApprovalDetail() {
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
   const [hasRelatedProposals, setHasRelatedProposals] = useState(false);
+
   const fetchPo = async () => {
     try {
       setLoading(true);
       const data = await api.getPurchaseOrder(approvalId);
       setPo(data);
+
+      // Check for related proposals if rfqId exists
       if (data.rfqId) {
         const allApprovals = await api.getFinanceApprovals();
         const related = allApprovals.filter(
@@ -56,9 +61,11 @@ function ApprovalDetail() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchPo();
   }, [approvalId]);
+
   const handleApprove = async () => {
     try {
       setProcessing(true);
@@ -71,6 +78,7 @@ function ApprovalDetail() {
       setProcessing(false);
     }
   };
+
   const handleReject = async () => {
     if (!rejectionReason) {
       toast.error("Please provide a reason for rejection");
@@ -88,6 +96,7 @@ function ApprovalDetail() {
       setIsRejecting(false);
     }
   };
+
   if (loading) {
     return (
       <AppShell title="Loading Proposal..." subtitle="Please wait">
@@ -97,7 +106,9 @@ function ApprovalDetail() {
       </AppShell>
     );
   }
+
   if (!po) return null;
+
   return (
     <AppShell
       title={`Review PO Proposal: ${po.poNumber}`}
@@ -113,6 +124,7 @@ function ApprovalDetail() {
       }
     >
       <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left Column: PO Info & Material Details */}
         <div className="lg:col-span-2 space-y-6">
           {hasRelatedProposals && (
             <Card className="bg-primary/5 border-primary/20 shadow-soft overflow-hidden">
@@ -241,6 +253,7 @@ function ApprovalDetail() {
           </Card>
         </div>
 
+        {/* Right Column: Financial Summary & Actions */}
         <div className="space-y-6">
           <Card className="border-border/40 shadow-soft overflow-hidden sticky top-24">
             <CardHeader className="bg-primary text-primary-foreground">
@@ -254,11 +267,7 @@ function ApprovalDetail() {
             <CardContent className="p-6 space-y-4">
               <SummaryRow label="Subtotal" value={po.subtotal} />
               <SummaryRow label="Discount" value={po.discountAmount} isNegative />
-              <SummaryRow
-                label={`Tax (GST ${parseFloat(po.taxPercentage || 0).toLocaleString()}%)`}
-                value={po.taxAmount}
-              />
-              <SummaryRow label="Freight Charges" value={po.freightCharges} />
+              <SummaryRow label="Tax (GST)" value={po.taxAmount} />
               <SummaryRow label="Freight" value={po.freightCharges} />
 
               <div className="pt-4 border-t border-border mt-2">
@@ -345,6 +354,7 @@ function ApprovalDetail() {
     </AppShell>
   );
 }
+
 function InfoField({ label, value, icon: Icon, mono = false }: any) {
   return (
     <div className="space-y-1.5">
@@ -357,6 +367,7 @@ function InfoField({ label, value, icon: Icon, mono = false }: any) {
     </div>
   );
 }
+
 function SummaryRow({ label, value, isNegative = false }: any) {
   return (
     <div className="flex items-center justify-between text-sm">

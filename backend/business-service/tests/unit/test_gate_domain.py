@@ -67,7 +67,7 @@ def test_verification_service_full_match():
 def test_verification_service_mismatches_and_low_anpr():
     service = GateEntryVerificationDomainService(anpr_confidence_threshold=0.85)
 
-    anpr = AnprResult(detected_vehicle_number="KA-01-AB-1234", confidence=0.60)
+    anpr = AnprResult(detected_vehicle_number="KA-01-AB-1234", confidence=0.60)  # low confidence
     ocr = OcrResult(
         po_number="PO-1001",
         supplier_name="Wrong Supplier",
@@ -101,7 +101,7 @@ def test_verification_unscheduled_arrival():
         vehicle_number="KA-01-AB-1234",
         anpr_result=AnprResult(detected_vehicle_number="KA-01-AB-1234", confidence=0.90),
         ocr_result=OcrResult(po_number="PO-9999"),
-        po_details=None,
+        po_details=None,  # PO not found in DB
     )
 
     assert res.status == GateEntryStatus.UNSCHEDULED_ARRIVAL

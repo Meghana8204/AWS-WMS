@@ -5,8 +5,12 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
-
-
+/**
+ * A single-use, hashed refresh token. Only the SHA-256 hash of the token
+ * value is ever stored - the plaintext token is returned to the client
+ * once at issuance time and never persisted, so a database read cannot
+ * leak usable tokens.
+ */
 @Entity
 @Table(name = "refresh_token")
 public class RefreshToken {
@@ -30,7 +34,7 @@ public class RefreshToken {
     private boolean revoked;
 
     protected RefreshToken() {
-
+        // required by JPA
     }
 
     public RefreshToken(UUID userId, String tokenHash, Instant issuedAt, Instant expiresAt) {
