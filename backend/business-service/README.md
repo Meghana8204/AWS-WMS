@@ -1,5 +1,8 @@
 # business-service
 
+Complete architecture, API, workflow, security, operations, and production
+guidance: [`TECHNICAL_DOCUMENTATION.md`](TECHNICAL_DOCUMENTATION.md).
+
 Python (FastAPI) business backend for the AMS/WMS platform. Owns every
 business module (inventory, warehouse, receiving, returns, ...) except
 authentication/authorization, which stays in `auth-service` (Java).
