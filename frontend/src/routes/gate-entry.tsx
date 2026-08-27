@@ -89,13 +89,9 @@ type GateEntryRecord = {
   driverName: string;
   status: string;
   truckPhotoBase64?: string | null;
-<<<<<<< HEAD
-  verificationResult?: { reasons?: string[] } | null;
-=======
   verificationResult?: {
     reasons?: string[];
   } | null;
->>>>>>> origin/main
 };
 type CaptureKind = "po" | "vehicle";
 type ArrivalLineItem = {
@@ -244,11 +240,6 @@ function GateEntry() {
         confidence: result.confidence,
         verified_against_backend: result.verified ?? false,
       });
-<<<<<<< HEAD
-
-      // Greedy extraction: if we find these core fields in ANY scan, fill them
-      const detectedPo = result.po_number || fields.po_number || fields.purchase_order_number;
-=======
       const detectedPo =
         result.po_number ||
         result.poNumber ||
@@ -258,7 +249,6 @@ function GateEntry() {
         fields.poNumber ||
         fields.purchase_order_number ||
         fields.purchaseOrderNumber;
->>>>>>> origin/main
       const detectedVehicle =
         result.vehicle_number ||
         fields.vehicle_number ||
@@ -352,15 +342,6 @@ function GateEntry() {
       confidence: result.confidence,
     });
 
-<<<<<<< HEAD
-    if (result.po_number) {
-      setPoNumber(result.po_number);
-      const previewStatus = data.computedStatus || data.computed_status;
-      setPoVerificationStatus(
-        previewStatus === "PO_VERIFIED" ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
-      );
-      void fetchPoDetails(result.po_number, true);
-=======
     const detectedPo =
       result.po_number ||
       result.poNumber ||
@@ -384,7 +365,6 @@ function GateEntry() {
         previewStatus === "PO_VERIFIED" || data.verified ? "PO_VERIFIED" : "UNSCHEDULED_ARRIVAL",
       );
       void fetchPoDetails(detectedPo, true);
->>>>>>> origin/main
     }
     if (detectedSupplier) setSupplierName(detectedSupplier);
     if (detectedMaterial) setMaterialDescription(detectedMaterial);
@@ -414,11 +394,6 @@ function GateEntry() {
           .toUpperCase()
           .startsWith(`${lookup}-`),
       );
-<<<<<<< HEAD
-      // OCR can read only "PO-2026" from a complete "PO-2026-0001".
-      // Prefer a shipment with an ASN when resolving that partial prefix.
-=======
->>>>>>> origin/main
       const po =
         exactPo ||
         prefixMatches.find((candidate: any) => {
@@ -430,10 +405,6 @@ function GateEntry() {
           );
         }) ||
         (prefixMatches.length === 1 ? prefixMatches[0] : undefined);
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
       if (!po) {
         if (preserveScannedFields) {
           setPoVerificationStatus("UNSCHEDULED_ARRIVAL");
@@ -454,11 +425,6 @@ function GateEntry() {
         applyLineItems(items);
       }
 
-<<<<<<< HEAD
-      // Vehicle and driver details belong to the supplier's ASN, not the PO.
-      // The ASN list is newest-first, so the first PO match is the current
-      // shipment after a supplier edits and re-submits it.
-=======
       setSupplierName((prev) => prev || po.supplierName || po.supplier_name || "");
       setPoDate((prev) => prev || po.poDate || po.po_date || "");
       setDeliveryDate((prev) => prev || po.expectedDeliveryDate || po.expected_delivery_date || "");
@@ -472,7 +438,6 @@ function GateEntry() {
       const systemQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || 0), 0);
       if (systemQty > 0) setTotalQuantity((prev) => prev || String(systemQty));
 
->>>>>>> origin/main
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
@@ -485,20 +450,12 @@ function GateEntry() {
       if (shipment?.driverContact || shipment?.driver_contact) {
         setDriverPhone(shipment.driverContact || shipment.driver_contact);
       }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
           ? "PO and vehicle details fetched from system"
           : "PO details fetched; no submitted ASN vehicle found",
         { id: toastId },
       );
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
@@ -569,12 +526,6 @@ function GateEntry() {
         description: "Use a valid format such as MH-12-AB-1234 or 22-BH-1234-AA.",
       });
     }
-<<<<<<< HEAD
-
-    if (!asnReference.trim())
-      return toast.error("Enter the ASN reference before approving gate entry");
-=======
->>>>>>> origin/main
     const form = new FormData(formElement);
     if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
@@ -590,11 +541,6 @@ function GateEntry() {
       const createdPo = entry.poNumber || entry.po_number || poNumber;
       const createdGateNumber = entry.gateEntryNumber || entry.gate_entry_number;
       const createdDriver = entry.driverName || entry.driver_name || driverName;
-<<<<<<< HEAD
-      // Temporary handoff to the receiving workflow until arrivals are shared
-      // through a dedicated backend endpoint.
-=======
->>>>>>> origin/main
       localStorage.setItem(
         "verified_gate_po",
         JSON.stringify({
@@ -612,11 +558,6 @@ function GateEntry() {
       toast.success("Gate entry approved", {
         description: "The Warehouse Manager has been notified.",
       });
-<<<<<<< HEAD
-
-      // Show the created pass card instead of auto-downloading
-=======
->>>>>>> origin/main
       setLastCreatedEntry({
         id: entry.id,
         gate_entry_number: createdGateNumber,
@@ -664,18 +605,10 @@ function GateEntry() {
       toast.error("Failed to delete data");
     }
   };
-<<<<<<< HEAD
-
-  return (
-    <AppShell
-      title="Gate entry"
-      subtitle="Complete security approval from the existing ASN reference."
-=======
   return (
     <AppShell
       title="Gate Entry"
       subtitle="Security verification, vehicle photo capture, and arrival queue management."
->>>>>>> origin/main
       actions={
         <div className="flex gap-2">
           <Button
@@ -699,16 +632,6 @@ function GateEntry() {
       <div className="grid gap-4 xl:grid-cols-3">
         <form onSubmit={submit} className="space-y-4 xl:col-span-2">
           <SectionCard
-<<<<<<< HEAD
-            title="ASN gate entry"
-            description="Reference the submitted ASN; shipment data is not entered again"
-            icon={ScanLine}
-          >
-            <div className="mb-4 max-w-xl">
-              <Label htmlFor="asn_reference">ASN reference</Label>
-              <div className="relative">
-                <Input
-=======
             title="ASN Reference Lookup (Optional)"
             description="Enter an ASN reference to quickly auto-populate PO, supplier, vehicle, and item details"
             icon={ScanLine}
@@ -718,15 +641,11 @@ function GateEntry() {
               <div className="relative mt-1.5">
                 <Input
                   suppressHydrationWarning
->>>>>>> origin/main
                   id="asn_reference"
                   name="asn_reference"
                   value={asnReference}
                   onChange={(e) => setAsnReference(e.target.value)}
                   onBlur={() => void fetchAsnDetails(asnReference)}
-<<<<<<< HEAD
-                  placeholder="ASN-2026-0001"
-=======
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -734,7 +653,6 @@ function GateEntry() {
                     }
                   }}
                   placeholder="e.g. ASN-2026-0001 (Press Enter or click refresh to load)"
->>>>>>> origin/main
                   className={cn(inputClass, "pr-10")}
                   required
                 />
@@ -742,24 +660,13 @@ function GateEntry() {
                   suppressHydrationWarning
                   type="button"
                   onClick={() => void fetchAsnDetails(asnReference)}
-<<<<<<< HEAD
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary"
-                  title="Load ASN"
-=======
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
                   title="Load ASN Details"
->>>>>>> origin/main
                 >
                   <RefreshCw className="size-4" />
                 </button>
               </div>
             </div>
-<<<<<<< HEAD
-            <div className="grid gap-3 grid-cols-2 lg:grid-cols-2 max-w-xl">
-              <ScanCard
-                label="Vehicle photo"
-                detail={vehiclePhoto ? "Vehicle photo ready" : "Optional"}
-=======
           </SectionCard>
 
           <SectionCard
@@ -779,31 +686,15 @@ function GateEntry() {
               <ScanCard
                 label="Vehicle photo"
                 detail={vehiclePhoto ? "Vehicle photo ready" : "Required"}
->>>>>>> origin/main
                 kind="vehicle"
                 captured={!!vehiclePhoto}
                 onOpen={setScanning}
                 onUpload={(f) => void scanCapture("vehicle", f)}
               />
-<<<<<<< HEAD
-              <ScanCard
-                label="PO document"
-                detail={poDocument ? "PO document ready" : "Optional"}
-                kind="po"
-                captured={!!poDocument}
-                onOpen={setScanning}
-                onUpload={(f) => void scanCapture("po", f)}
-              />
-            </div>
-
-            {(poPreview || vehiclePreview) && (
-              <div className="mt-6 grid gap-4 grid-cols-2 max-w-xl">
-=======
             </div>
 
             {(poPreview || vehiclePreview) && (
               <div className="mt-6 grid gap-4 grid-cols-1 sm:grid-cols-2 w-full">
->>>>>>> origin/main
                 {poPreview && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -832,11 +723,7 @@ function GateEntry() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-[10px] uppercase font-bold text-muted-foreground">
-<<<<<<< HEAD
-                        Vehicle Photo
-=======
                         Vehicle Photo <span className="text-destructive">*</span>
->>>>>>> origin/main
                       </Label>
                       <Button
                         variant="ghost"
@@ -872,21 +759,14 @@ function GateEntry() {
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="relative">
-<<<<<<< HEAD
-                <Label htmlFor="po_number">Purchase order number</Label>
-=======
                 <Label htmlFor="po_number">
                   Purchase order number <span className="text-destructive">*</span>
                 </Label>
->>>>>>> origin/main
                 <div className="relative">
                   <Input
                     id="po_number"
                     name="po_number"
-<<<<<<< HEAD
-=======
                     required
->>>>>>> origin/main
                     value={poNumber}
                     onChange={(e) => {
                       setPoNumber(e.target.value);
@@ -897,10 +777,7 @@ function GateEntry() {
                     className={cn(inputClass, "pr-10")}
                   />
                   <button
-<<<<<<< HEAD
-=======
                     suppressHydrationWarning
->>>>>>> origin/main
                     type="button"
                     onClick={() => fetchPoDetails(poNumber)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
@@ -921,12 +798,6 @@ function GateEntry() {
                 )}
               </div>
               <div>
-<<<<<<< HEAD
-                <Label htmlFor="supplier_name">Supplier name</Label>
-                <Input
-                  id="supplier_name"
-                  name="supplier_name"
-=======
                 <Label htmlFor="supplier_name">
                   Supplier name <span className="text-destructive">*</span>
                 </Label>
@@ -934,7 +805,6 @@ function GateEntry() {
                   id="supplier_name"
                   name="supplier_name"
                   required
->>>>>>> origin/main
                   value={supplierName}
                   onChange={(e) => setSupplierName(e.target.value)}
                   placeholder="Auto-filled from PO"
@@ -1015,25 +885,16 @@ function GateEntry() {
                     />
                   </div>
                   <div>
-<<<<<<< HEAD
-                    <Label htmlFor="total_quantity">Total quantity</Label>
-=======
                     <Label htmlFor="total_quantity">
                       Total quantity <span className="text-destructive">*</span>
                     </Label>
->>>>>>> origin/main
                     <Input
                       id="total_quantity"
                       name="total_quantity"
                       type="number"
-<<<<<<< HEAD
-                      min="0"
-                      step="any"
-=======
                       min="0.01"
                       step="any"
                       required
->>>>>>> origin/main
                       value={totalQuantity}
                       onChange={(e) => setTotalQuantity(e.target.value)}
                       placeholder="Auto-filled from PO"
@@ -1067,12 +928,6 @@ function GateEntry() {
                 />
               </div>
               <div className="relative">
-<<<<<<< HEAD
-                <Label htmlFor="vehicle_number">Vehicle number</Label>
-                <Input
-                  id="vehicle_number"
-                  name="vehicle_number"
-=======
                 <Label htmlFor="vehicle_number">
                   Vehicle number <span className="text-destructive">*</span>
                 </Label>
@@ -1080,7 +935,6 @@ function GateEntry() {
                   id="vehicle_number"
                   name="vehicle_number"
                   required
->>>>>>> origin/main
                   value={vehicleNumber}
                   onChange={(e) => handleVehicleNumberChange(e.target.value)}
                   placeholder="MH-12-AB-1234"
@@ -1145,18 +999,11 @@ function GateEntry() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary-soft/50 p-4">
             <p className="text-sm text-muted-foreground">
-<<<<<<< HEAD
-              Approval sets GATE_ENTRY_APPROVED and notifies the Warehouse Manager.
-=======
               Creating the entry publishes the verified arrival to the yard in real time.
->>>>>>> origin/main
             </p>
             <Button
               type="submit"
               className="rounded-xl shadow-glow"
-<<<<<<< HEAD
-              disabled={submitting || !asnReference.trim()}
-=======
               disabled={
                 submitting ||
                 !vehiclePhoto ||
@@ -1167,18 +1014,13 @@ function GateEntry() {
                 !vehicleNumber.trim() ||
                 !isValidVehicleNumber(vehicleNumber)
               }
->>>>>>> origin/main
             >
               {submitting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
                 <ClipboardCheck className="size-4" />
               )}
-<<<<<<< HEAD
-              {submitting ? "Approving…" : "Approve gate entry"}
-=======
               {submitting ? "Creating entry…" : "Create gate entry"}
->>>>>>> origin/main
             </Button>
           </div>
         </form>
@@ -1200,14 +1042,7 @@ function GateEntry() {
             <div className="space-y-3">
               {entries.slice(0, 8).map((entry) => (
                 <div key={entry.id} className="relative group">
-<<<<<<< HEAD
-                  <Link
-                    to="/vehicle-queue"
-                    className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft"
-                  >
-=======
                   <div className="flex items-center gap-3 rounded-xl border border-border/70 p-3 transition-colors hover:border-primary/30 hover:bg-primary-soft">
->>>>>>> origin/main
                     {entry.truckPhotoBase64 ? (
                       <div className="size-14 shrink-0 overflow-hidden rounded-lg border border-border/40">
                         <img
@@ -1223,18 +1058,12 @@ function GateEntry() {
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-<<<<<<< HEAD
-                        <p className="font-mono text-sm font-semibold text-primary truncate">
-                          {entry.vehiclePlate || "NO PLATE"}
-                        </p>
-=======
                         <Link
                           to="/vehicle-queue"
                           className="truncate font-mono text-sm font-semibold text-primary hover:underline"
                         >
                           {entry.vehiclePlate || "NO PLATE"}
                         </Link>
->>>>>>> origin/main
                         <StatusBadge status={entry.status} />
                       </div>
                       <p className="mt-0.5 truncate text-sm font-medium">{entry.driverName}</p>
@@ -1252,11 +1081,7 @@ function GateEntry() {
                         </p>
                       )}
                     </div>
-<<<<<<< HEAD
-                  </Link>
-=======
                   </div>
->>>>>>> origin/main
                   <Button
                     variant="ghost"
                     size="icon"
@@ -1403,10 +1228,6 @@ function GateEntry() {
     </AppShell>
   );
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
 function ScanCard({
   label,
   detail,
@@ -1427,28 +1248,6 @@ function ScanCard({
   const fileInput = useRef<HTMLInputElement>(null);
   const isRequired = detail.toLowerCase().includes("required");
   return (
-<<<<<<< HEAD
-    <div className="relative flex flex-col gap-2">
-      <button
-        type="button"
-        onClick={() => (hideCamera ? fileInput.current?.click() : onOpen(kind))}
-        className="flex-1 rounded-2xl border border-dashed border-border bg-muted/30 p-4 text-left transition-colors hover:border-primary/40 hover:bg-primary-soft"
-      >
-        <span
-          className={`grid size-9 place-items-center rounded-xl ${captured ? "bg-success-soft text-success" : "bg-primary-soft text-primary"}`}
-        >
-          {captured ? (
-            <CheckCircle2 className="size-[18px]" />
-          ) : hideCamera ? (
-            <Upload className="size-[18px]" />
-          ) : (
-            <Camera className="size-[18px]" />
-          )}
-        </span>
-        <p className="mt-3 text-sm font-semibold">{label}</p>
-        <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-      </button>
-=======
     <div
       suppressHydrationWarning
       className={cn(
@@ -1503,7 +1302,6 @@ function ScanCard({
             {captured ? "Attached" : isRequired ? "Required *" : "Optional"}
           </Badge>
         </div>
->>>>>>> origin/main
 
         <div>
           <p className="text-sm font-semibold text-foreground">{label}</p>
@@ -1565,10 +1363,6 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     ([, value]) => value !== null && value !== "" && typeof value !== "object",
   );
   const rawText = typeof details.raw_text === "string" ? details.raw_text : "";
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
   return (
     <div className="space-y-4">
       {entries.length > 0 ? (
@@ -1598,10 +1392,6 @@ function ExtractedDetails({ details }: { details: Record<string, unknown> }) {
     </div>
   );
 }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
 function CameraScanner({
   kind,
   onClose,

@@ -83,11 +83,7 @@ function NewAsn() {
                 material_name: item.materialName || item.material_name,
                 uom: item.uom || "PCS",
                 ordered_quantity: parseFloat(item.quantity) || 0,
-<<<<<<< HEAD
-                already_shipped_quantity: 0, // In a real app, track cumulative shipments
-=======
                 already_shipped_quantity: 0,
->>>>>>> origin/main
                 shipped_quantity: savedLine?.shipped_quantity ?? (parseFloat(item.quantity) || 0),
               };
             }),
@@ -104,10 +100,6 @@ function NewAsn() {
   }, [draftStorageKey, poId]);
   useEffect(() => {
     if (loading || !draftHydrated.current) return;
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
     localStorage.setItem(
       draftStorageKey,
       JSON.stringify({
@@ -122,28 +114,9 @@ function NewAsn() {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-<<<<<<< HEAD
-
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Validate file type (Only PDF or JPEG allowed)
-    const allowedTypes = ["application/pdf", "image/jpeg", "image/jpg"];
-    const allowedExts = [".pdf", ".jpeg", ".jpg"];
-    const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
-
-    if (!allowedTypes.includes(file.type.toLowerCase()) && !allowedExts.includes(fileExt)) {
-      toast.error("Only PDF (.pdf) and JPEG (.jpeg, .jpg) files are allowed");
-      e.target.value = "";
-      return;
-    }
-
-=======
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
->>>>>>> origin/main
     setUploadingDoc(true);
     try {
       const response = await api.uploadSupplierDocument(type, file);
@@ -154,12 +127,7 @@ function NewAsn() {
         uploaded_by: "Supplier User",
         uploaded_at: new Date().toISOString(),
       };
-<<<<<<< HEAD
-
-      setDocuments((prev) => [...prev.filter((d) => d.document_type !== type), newDoc]);
-=======
       setDocuments((prev) => [...prev, newDoc]);
->>>>>>> origin/main
       toast.success(`${type} uploaded successfully`);
     } catch (error: any) {
       toast.error("Upload failed", { description: error.message });
@@ -179,10 +147,6 @@ function NewAsn() {
     }
     setSubmitting(true);
     try {
-<<<<<<< HEAD
-      // Validate quantities before submission
-=======
->>>>>>> origin/main
       const overShippedItems = lines.filter(
         (l) => l.shipped_quantity + l.already_shipped_quantity > l.ordered_quantity,
       );

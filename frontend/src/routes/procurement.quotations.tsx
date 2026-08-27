@@ -94,11 +94,6 @@ function Quotations() {
   };
   const handleAction = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-<<<<<<< HEAD
-
-    const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
-
-=======
     const actionReason = reason.trim();
     if (!actionReason) {
       toast.error(
@@ -109,7 +104,6 @@ function Quotations() {
       return;
     }
     const effectiveRfqId = rfqId || quotations.find((q) => q.id === targetQuotationId)?.rfqId;
->>>>>>> origin/main
     if (!targetQuotationId) {
       toast.error("Required selection IDs are missing.");
       return;
@@ -123,11 +117,7 @@ function Quotations() {
         }
         const result = await api.selectSupplier(effectiveRfqId, {
           supplier_id: targetSupplierId,
-<<<<<<< HEAD
-          selection_reason: reason,
-=======
           selection_reason: actionReason,
->>>>>>> origin/main
           selection_comments: procurementComments,
         });
         toast.success(
@@ -548,11 +538,6 @@ function Quotations() {
                               className="w-full rounded-xl bg-destructive/20 text-destructive border-destructive/30 font-bold text-xs"
                               disabled
                             >
-<<<<<<< HEAD
-                              <X className="size-3.5 mr-1.5" /> Rejected
-                            </Button>
-                            {!selectionFinalized && (
-=======
                               <X className="size-3.5 mr-1.5" />
                               {q.status === "Declined" ? "Declined by Supplier" : "Rejected"}
                             </Button>
@@ -562,7 +547,6 @@ function Quotations() {
                               </p>
                             )}
                             {q.status === "Rejected" && !selectionFinalized && (
->>>>>>> origin/main
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -630,47 +614,6 @@ function Quotations() {
                 modalMode === "SELECT" ? "text-primary" : "text-destructive",
               )}
             >
-<<<<<<< HEAD
-              <X className="size-5" />
-            </button>
-            <CardHeader className="p-0 mb-4">
-              <div
-                className={cn(
-                  "flex items-center gap-2",
-                  modalMode === "SELECT" ? "text-primary" : "text-destructive",
-                )}
-              >
-                {modalMode === "SELECT" ? (
-                  <FileCheck2 className="size-5" />
-                ) : (
-                  <XCircle className="size-5" />
-                )}
-                <CardTitle className="text-base font-bold">
-                  {modalMode === "SELECT" ? "Select Supplier & Generate PO" : "Reject Quotation"}
-                </CardTitle>
-              </div>
-              <CardDescription className="text-xs">
-                {modalMode === "SELECT"
-                  ? "Log the supplier selection reasoning to finalize the evaluation process."
-                  : "Provide a reason for rejecting this quotation."}
-              </CardDescription>
-            </CardHeader>
-            <form onSubmit={handleAction} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label className="text-xs">
-                  {modalMode === "SELECT" ? "Selection Reason*" : "Rejection Reason*"}
-                </Label>
-                <Input
-                  placeholder={
-                    modalMode === "SELECT"
-                      ? "e.g. L1 Price / Technical Fit"
-                      : "e.g. High price / Poor delivery terms"
-                  }
-                  value={reason}
-                  onChange={(e) => setReason(e.target.value)}
-                  required
-                  className="rounded-xl h-10"
-=======
               {modalMode === "SELECT" ? (
                 <FileCheck2 className="size-5" />
               ) : (
@@ -715,60 +658,10 @@ function Quotations() {
                   className="min-h-[100px] rounded-2xl text-sm border-border/60 focus:ring-primary/20 p-4"
                   value={procurementComments}
                   onChange={(e) => setProcurementComments(e.target.value)}
->>>>>>> origin/main
                 />
               </div>
             )}
 
-<<<<<<< HEAD
-              {modalMode === "SELECT" && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Procurement Evaluation Comments</Label>
-                  <Textarea
-                    placeholder="Write selection notes or evaluations details..."
-                    className="min-h-[90px] rounded-xl text-xs"
-                    value={procurementComments}
-                    onChange={(e) => setProcurementComments(e.target.value)}
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsModalOpen(false)}
-                  className="rounded-xl"
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className={cn(
-                    "rounded-xl shadow-glow min-w-[140px] font-bold",
-                    modalMode === "SELECT"
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                      : "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-                  )}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
-                    </>
-                  ) : modalMode === "SELECT" ? (
-                    "Finalize & Select"
-                  ) : (
-                    "Confirm Rejection"
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-=======
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
@@ -803,7 +696,6 @@ function Quotations() {
           </form>
         </DialogContent>
       </Dialog>
->>>>>>> origin/main
     </AppShell>
   );
 }

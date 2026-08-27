@@ -44,11 +44,6 @@ function FinanceApprovals() {
   useEffect(() => {
     fetchData();
   }, []);
-<<<<<<< HEAD
-
-  // Group approvals by RFQ
-  const rfqGroups: Record<string, { id: string; number: string; pos: any[] }> = {};
-=======
   const rfqGroups: Record<
     string,
     {
@@ -57,7 +52,6 @@ function FinanceApprovals() {
       pos: any[];
     }
   > = {};
->>>>>>> origin/main
   approvals.forEach((po) => {
     const rfqId = po.rfqId || "none";
     const rfqNumber = po.rfqNumber || po.rfqId || "none";

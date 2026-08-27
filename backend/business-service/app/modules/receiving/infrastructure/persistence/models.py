@@ -76,8 +76,3 @@ class InventoryReceiptPostingModel(Base):
     on_hand_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     posted_by: Mapped[str] = mapped_column(String(128), nullable=False)
     posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-<<<<<<< HEAD
-
-
-=======
->>>>>>> origin/main

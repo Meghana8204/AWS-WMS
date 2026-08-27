@@ -88,11 +88,6 @@ function NewRfq() {
       try {
         setLoadingSuppliers(true);
         const data = await api.getSuppliers({ ...filters, status: "Active" });
-<<<<<<< HEAD
-        // Keep the RFQ invitation list safe even if an older backend ignores
-        // the status query parameter.
-=======
->>>>>>> origin/main
         setSuppliers(
           data.filter(
             (supplier: any) =>
@@ -134,10 +129,6 @@ function NewRfq() {
     }
     const urlParams = new URLSearchParams(window.location.search);
     const fromRequestId = urlParams.get("fromRequestId");
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
     if (fromRequestId) {
       const loadMR = async () => {
         try {
@@ -150,10 +141,6 @@ function NewRfq() {
               warehouse: mr.warehouseId,
               required_delivery_date: mr.requiredDate,
             }));
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
             setItems(
               mr.items.map((it: any) => ({
                 material_code: it.materialCode,
@@ -183,10 +170,6 @@ function NewRfq() {
       }));
     } catch (e) {
       console.error("Failed to fetch next MR number", e);
-<<<<<<< HEAD
-      // Fallback if API fails
-=======
->>>>>>> origin/main
       const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
       setFormData((prev) => ({
         ...prev,
@@ -209,10 +192,6 @@ function NewRfq() {
       toast.error("Please select at least one supplier");
       return;
     }
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
     if (items.some((item) => !item.material_code.trim() || !item.material_name.trim())) {
       toast.error("Please fill in Material Code and Name for all items");
       return;

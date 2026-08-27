@@ -46,10 +46,6 @@ function FinanceDashboard() {
         (sum: number, p: any) => sum + parseFloat(p.totalAmount || 0),
         0,
       );
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
       setStats({
         pending: pending.length,
         approved: approved.length,
@@ -150,22 +146,6 @@ function FinanceDashboard() {
                           : "/finance/approvals/compare/$rfqId"
                       }
                       params={rfqId === "no-rfq" ? {} : { rfqId }}
-<<<<<<< HEAD
-                      className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 hover:shadow-glow transition-all bg-card/50 group"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="size-10 rounded-xl bg-primary-soft/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                          <TableIcon className="size-5" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold uppercase tracking-tight">
-                            {rfqId === "no-rfq"
-                              ? "Direct Purchase Orders"
-                              : `RFQ: ${rfqApprovals[0]?.rfqNumber || rfqId}`}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground">
-                            {rfqApprovals.length} Proposal(s) awaiting signature ·{" "}
-=======
                       className="group grid gap-4 rounded-lg border border-border/60 bg-card/50 p-4 transition-all hover:border-primary/30 hover:shadow-glow sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
                     >
                       <div className="flex min-w-0 items-center gap-4">
@@ -182,18 +162,12 @@ function FinanceDashboard() {
                             {rfqApprovals.length}{" "}
                             {rfqApprovals.length === 1 ? "proposal" : "proposals"} awaiting approval
                             {" · "}
->>>>>>> origin/main
                             {rfqApprovals.map((p: any) => p.supplierName).join(", ")}
                           </p>
                         </div>
                       </div>
-<<<<<<< HEAD
-                      <div className="text-right flex items-center gap-6">
-                        <div className="hidden sm:block">
-=======
                       <div className="flex items-center justify-between gap-4 sm:justify-end sm:text-right">
                         <div>
->>>>>>> origin/main
                           <p className="text-sm font-black text-primary">
                             ₹
                             {rfqApprovals
@@ -210,11 +184,7 @@ function FinanceDashboard() {
                         <Button
                           variant="outline"
                           size="sm"
-<<<<<<< HEAD
-                          className="rounded-xl h-8 text-xs font-bold pointer-events-none group-hover:bg-primary group-hover:text-white transition-colors"
-=======
                           className="pointer-events-none h-8 rounded-lg text-xs font-bold transition-colors group-hover:bg-primary group-hover:text-white"
->>>>>>> origin/main
                         >
                           Review Comparison
                         </Button>

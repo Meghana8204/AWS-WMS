@@ -646,7 +646,6 @@ async def upload_supplier_document(
     import shutil
     from pathlib import Path
 
-<<<<<<< HEAD
     upload_dir = Path("media_uploads/suppliers")
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -663,14 +662,6 @@ async def upload_supplier_document(
         )
 
     # Unique file name to prevent collisions
-=======
-
-    upload_dir = Path("media_uploads/suppliers")
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-
-    file_ext = Path(file.filename).suffix
->>>>>>> origin/main
     unique_filename = f"{uuid.uuid4()}{file_ext}"
     dest_path = upload_dir / unique_filename
 

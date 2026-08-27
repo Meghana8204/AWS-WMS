@@ -1,9 +1,5 @@
 """
-<<<<<<< HEAD
-SQLAlchemy ORM models for Storage module.
-=======
 SQLAlchemy ORM models for the Storage module (Putaway & Locations).
->>>>>>> origin/main
 """
 from __future__ import annotations
 

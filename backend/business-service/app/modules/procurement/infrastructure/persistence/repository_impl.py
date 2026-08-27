@@ -79,11 +79,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
                 selectinload(SupplierModel.bank_info),
                 selectinload(SupplierModel.documents),
             )
-<<<<<<< HEAD
-            .where(SupplierModel.id == str(supplier_id.value))
-=======
             .where(SupplierModel.id == lookup_id)
->>>>>>> origin/main
         )
         entity = result.scalar_one_or_none()
         if entity is None:
