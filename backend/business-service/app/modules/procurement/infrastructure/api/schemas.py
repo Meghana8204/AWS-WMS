@@ -65,6 +65,7 @@ class SupplierDocumentResponse(ApiModel):
 
 class SupplierResponse(ApiModel):
     supplier_id: str
+    supplier_code: Optional[str] = None
     supplier_name: str
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None

@@ -231,7 +231,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierContactModel.id)).where(func.upper(SupplierContactModel.primary_email) == email.upper())
         if exclude_id:
-            stmt = stmt.where(SupplierContactModel.supplier_id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierContactModel.supplier_id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 
@@ -240,7 +244,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierContactModel.id)).where(SupplierContactModel.phone == phone)
         if exclude_id:
-            stmt = stmt.where(SupplierContactModel.supplier_id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierContactModel.supplier_id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 
@@ -249,7 +257,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierBankInfoModel.id)).where(SupplierBankInfoModel.account_number == account_number)
         if exclude_id:
-            stmt = stmt.where(SupplierBankInfoModel.supplier_id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierBankInfoModel.supplier_id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 
@@ -258,7 +270,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierBankInfoModel.id)).where(func.upper(SupplierBankInfoModel.swift_bic) == swift.upper())
         if exclude_id:
-            stmt = stmt.where(SupplierBankInfoModel.supplier_id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierBankInfoModel.supplier_id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 

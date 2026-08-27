@@ -14,9 +14,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-
-
-
+    # Older gate entries were approved before gate_entry.asn_id existed. Link only
+    # an unambiguous PO + vehicle match; ambiguous records remain untouched for
+    # manual review instead of being attached to the wrong shipment.
     op.execute(
         """
         WITH matches AS (
@@ -52,7 +52,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-
-
-
+    # This migration repairs operational data. Reverting it could detach the ASN
+    # after downstream warehouse work has started, so downgrade is intentionally
+    # non-destructive.
     pass

@@ -338,7 +338,7 @@ function SupplierProfile() {
       title={title}
       subtitle={
         supplier
-          ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierId}`
+          ? `${supplier.registeredCompanyName || "Supplier master record"} · ${supplier.supplierCode || supplier.supplierId}`
           : "Loading supplier master record"
       }
       actions={
@@ -966,9 +966,9 @@ function SupplierProfile() {
             >
               {supplier.documents?.length ? (
                 <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
-                  {supplier.documents.map((document: any) => (
+                  {supplier.documents.map((document: any, index: number) => (
                     <div
-                      key={document.uploadId}
+                      key={`${document.uploadId || document.fileName || document.documentType || "document"}-${index}`}
                       className="flex items-center justify-between rounded-xl border border-border/70 p-3"
                     >
                       <div>

@@ -6,10 +6,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 async def try_connect(base_url, ports=[5432, 5433]):
     last_error = None
     for port in ports:
-
         url = re.sub(r':\d+/', f':{port}/', base_url)
         if ':' not in base_url.split('@')[1].split('/')[0]:
-
              url = base_url.replace('/localhost/', f'/localhost:{port}/').replace('/127.0.0.1/', f'/127.0.0.1:{port}/')
 
         engine = create_async_engine(url)
@@ -40,7 +38,6 @@ async def wipe_business(engine):
             return
 
         print(f"Found {len(tables)} tables. Truncating...")
-
         await conn.execute(text(f"TRUNCATE TABLE {', '.join(tables)} CASCADE;"))
 
 
@@ -65,7 +62,7 @@ async def wipe_auth(engine):
         print("Ensuring admin user is enabled...")
         await conn.execute(text("UPDATE app_user SET enabled = TRUE WHERE id = 'c1000000-0000-0000-0000-000000000001';"))
 
-
+        # Verification
         user_count = await conn.execute(text("SELECT COUNT(*) FROM app_user"))
         log_count = await conn.execute(text("SELECT COUNT(*) FROM audit_log"))
         print(f"  Users remaining: {user_count.scalar()}")

@@ -23,7 +23,7 @@ from sqlalchemy import or_, select, cast, String, update, func, Date
 from sqlalchemy.orm import aliased, selectinload, joinedload
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
 
-from app.common.domain.exceptions import NotFoundException
+from app.common.domain.exceptions import DomainRuleViolationException, NotFoundException
 from app.logging.logger import get_logger
 
 from app.database.session import UnitOfWork, get_uow
@@ -548,34 +548,19 @@ async def list_material_stock(uow: UnitOfWork = Depends(get_uow)):
 
 def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
     """
-    Safely maps a SupplierModel to a SupplierResponse, ensuring no lazy-load
-    exceptions occur in an async context.
+    Safely maps a Supplier domain object to a SupplierResponse.
     """
-    from sqlalchemy import inspect
-
     try:
         e_id = str(getattr(entity, 'id', uuid.uuid4()))
         e_name = getattr(entity, 'supplier_name', 'Unknown')
-
-
-        state = inspect(entity)
-
-
-        def get_rel(name):
-            try:
-                if state and name in state.unloaded:
-                    return None
-                return getattr(entity, name, None)
-            except (AttributeError, Exception):
-                return None
-
-        addr = get_rel('address')
-        cont = get_rel('contact')
-        bank = get_rel('bank_info')
-        docs = get_rel('documents') or []
+        addr = getattr(entity, 'address', None)
+        cont = getattr(entity, 'contact', None)
+        bank = getattr(entity, 'bank_info', None)
+        docs = getattr(entity, 'documents', None) or []
 
         return SupplierResponse(
             supplier_id=e_id,
+            supplier_code=getattr(entity, 'supplier_code', None),
             supplier_name=e_name,
             registered_company_name=getattr(entity, 'registered_company_name', None),
             vendor_type=getattr(entity, 'vendor_type', None),
@@ -629,6 +614,7 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
         logger.error(f"Mapping crash for supplier {getattr(entity, 'id', 'unknown')}: {exc}", exc_info=True)
         return SupplierResponse(
             supplier_id=str(getattr(entity, 'id', 'error')),
+            supplier_code=getattr(entity, 'supplier_code', None),
             supplier_name=getattr(entity, 'supplier_name', "Mapping Error"),
             created_at=datetime.now()
         )
@@ -718,32 +704,35 @@ async def create_supplier(
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
-    repo = SqlAlchemySupplierRepository(uow.session)
-    use_case = CreateSupplierUseCase(repo)
+    try:
+        repo = SqlAlchemySupplierRepository(uow.session)
+        use_case = CreateSupplierUseCase(repo)
 
-    address_cmd = AddressCommand(**request.address.dict()) if request.address else None
-    contact_cmd = ContactCommand(**request.contact.dict()) if request.contact else None
-    bank_info_cmd = BankInfoCommand(**request.bank_info.dict()) if request.bank_info else None
-    doc_cmds = [DocumentCommand(**d.dict()) for d in request.documents]
+        address_cmd = AddressCommand(**request.address.dict()) if request.address else None
+        contact_cmd = ContactCommand(**request.contact.dict()) if request.contact else None
+        bank_info_cmd = BankInfoCommand(**request.bank_info.dict()) if request.bank_info else None
+        doc_cmds = [DocumentCommand(**d.dict()) for d in (request.documents or [])]
 
-    command = CreateSupplierCommand(
-        supplier_name=request.supplier_name,
-        registered_company_name=request.registered_company_name,
-        vendor_type=request.vendor_type,
-        category=request.category,
-        industry=request.industry,
-        gstin=request.gstin,
-        main_materials=request.main_materials,
-        address=address_cmd,
-        contact=contact_cmd,
-        bank_info=bank_info_cmd,
-        documents=doc_cmds,
-        remarks=request.remarks,
-        created_by=_user.username,
-    )
-    supplier_id = await use_case.handle(command)
-    entity = await repo.find_by_id(supplier_id)
-    return _response_from_entity(entity)
+        command = CreateSupplierCommand(
+            supplier_name=request.supplier_name,
+            registered_company_name=request.registered_company_name,
+            vendor_type=request.vendor_type,
+            category=request.category,
+            industry=request.industry,
+            gstin=request.gstin,
+            main_materials=request.main_materials,
+            address=address_cmd,
+            contact=contact_cmd,
+            bank_info=bank_info_cmd,
+            documents=doc_cmds,
+            remarks=request.remarks,
+            created_by=_user.username,
+        )
+        supplier_id = await use_case.handle(command)
+        entity = await repo.find_by_id(supplier_id)
+        return _response_from_entity(entity)
+    except DomainRuleViolationException as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.get("/suppliers", response_model=List[SupplierResponse])
@@ -807,12 +796,13 @@ async def get_supplier(
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
     try:
+        supplier_id = uuid.UUID(str(id))
         stmt = select(SupplierModel).options(
             selectinload(SupplierModel.address),
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == str(id))
+        ).where(SupplierModel.id == supplier_id)
 
         result = await uow.session.execute(stmt)
         entity = result.scalar_one_or_none()
@@ -836,6 +826,7 @@ async def update_supplier(
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
     try:
+        supplier_id = uuid.UUID(str(id))
         repo = SqlAlchemySupplierRepository(uow.session)
         use_case = UpdateSupplierUseCase(repo)
 
@@ -869,7 +860,7 @@ async def update_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == str(id))
+        ).where(SupplierModel.id == supplier_id)
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -886,6 +877,7 @@ async def block_supplier(
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
     try:
+        supplier_id = uuid.UUID(str(id))
         repo = SqlAlchemySupplierRepository(uow.session)
         use_case = BlockSupplierUseCase(repo)
         await use_case.handle(id)
@@ -896,7 +888,7 @@ async def block_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == str(id))
+        ).where(SupplierModel.id == supplier_id)
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 
@@ -913,6 +905,7 @@ async def unblock_supplier(
     _user: CurrentUser = Depends(get_current_user),
 ) -> SupplierResponse:
     try:
+        supplier_id = uuid.UUID(str(id))
         repo = SqlAlchemySupplierRepository(uow.session)
         use_case = UnblockSupplierUseCase(repo)
         await use_case.handle(id)
@@ -923,7 +916,7 @@ async def unblock_supplier(
             selectinload(SupplierModel.contact),
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
-        ).where(SupplierModel.id == str(id))
+        ).where(SupplierModel.id == supplier_id)
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
 

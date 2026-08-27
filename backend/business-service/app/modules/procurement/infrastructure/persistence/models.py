@@ -20,7 +20,7 @@ rfq_supplier_link = Table(
     "rfq_supplier_link",
     Base.metadata,
     Column("rfq_id", GUID, ForeignKey("rfq.id"), primary_key=True),
-    Column("supplier_id", String(64), ForeignKey("supplier.id"), primary_key=True),
+    Column("supplier_id", GUID, ForeignKey("supplier.id"), primary_key=True),
 )
 
 
@@ -45,7 +45,7 @@ class RawMaterialMasterModel(Base):
 class SupplierModel(Base):
     __tablename__ = "supplier"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     supplier_name: Mapped[str] = mapped_column(String(128), nullable=False)
     registered_company_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
     vendor_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -85,9 +85,7 @@ class SupplierAddressModel(Base):
     __tablename__ = "supplier_address"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
-    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False)
     registered_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -101,9 +99,7 @@ class SupplierContactModel(Base):
     __tablename__ = "supplier_contact"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
-    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False)
     primary_contact_name: Mapped[str] = mapped_column(String(128), nullable=False)
     primary_email: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
     secondary_email: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -118,9 +114,7 @@ class SupplierBankInfoModel(Base):
     __tablename__ = "supplier_bank_info"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
-    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False)
     bank_name: Mapped[str] = mapped_column(String(128), nullable=False)
     account_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     account_holder_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
@@ -136,9 +130,7 @@ class SupplierDocumentModel(Base):
     __tablename__ = "supplier_document"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
-    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False)
     document_type: Mapped[str] = mapped_column(String(64), nullable=False)
     file_name: Mapped[str] = mapped_column(String(256), nullable=False)
     file_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
