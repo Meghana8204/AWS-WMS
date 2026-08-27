@@ -345,7 +345,7 @@ function ProcurementDashboard() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{s.supplierName}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {s.supplierId.substring(0, 8)}...
+                          {s.supplierCode || s.supplierId}
                         </p>
                       </div>
                     </Link>
@@ -443,7 +443,7 @@ function ProcurementDashboard() {
                           {s.supplierName}
                         </Link>
                         <p className="text-[11px] text-muted-foreground">
-                          {s.supplierId.substring(0, 8)}...
+                          {s.supplierCode || s.supplierId}
                         </p>
                       </td>
                       <td className="py-3 text-muted-foreground">{s.category}</td>

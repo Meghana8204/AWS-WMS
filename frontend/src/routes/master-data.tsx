@@ -232,7 +232,7 @@ function MasterData() {
                           {supplier.supplierName}
                         </Link>
                         <p className="text-[11px] text-muted-foreground">
-                          {supplier.registeredCompanyName || supplier.supplierId}
+                          {supplier.registeredCompanyName || supplier.supplierCode || supplier.supplierId}
                         </p>
                       </td>
                       <td className="py-3 text-muted-foreground">{supplier.category || "—"}</td>
