@@ -14,10 +14,11 @@ export const Route = createFileRoute("/login")({
     if (isAuthenticated()) {
       const user = getUserInfo();
       let target = "/warehouse-dashboard";
-      if (user?.roles.includes("FINANCE")) target = "/finance-dashboard";
-      else if (user?.roles.includes("PROCUREMENT")) target = "/procurement-dashboard";
-      else if (user?.roles.includes("GATE_SECURITY")) target = "/gate-dashboard";
-      else if (user?.roles.includes("SUPPLIER")) target = "/submit-quotation";
+      if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
+      else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
+      else if (user?.roles?.includes("PROCUREMENT")) target = "/procurement-dashboard";
+      else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
+      else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
       throw redirect({ to: target as any });
     }
   },
@@ -50,12 +51,16 @@ function LoginPage() {
   };
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
+    const isGrn = data.roles?.includes("GRN") || data.username?.toLowerCase() === "grn" || employeeId.toLowerCase() === "grn";
     const isSupplier = data.roles?.includes("SUPPLIER");
     const isProcurement = data.roles?.includes("PROCUREMENT");
     const isFinance = data.roles?.includes("FINANCE");
     const isGate = data.roles?.includes("GATE_SECURITY");
+
     let targetPath = "/warehouse-dashboard";
-    if (isSupplier) {
+    if (isGrn) {
+      targetPath = "/grn";
+    } else if (isSupplier) {
       targetPath = redirect || "/submit-quotation";
     } else if (isProcurement) {
       targetPath = redirect || "/procurement-dashboard";
@@ -151,7 +156,7 @@ function LoginPage() {
               <Label htmlFor="employeeId">Employee ID / Username</Label>
               <Input
                 id="employeeId"
-                placeholder="EMP-001 or supplier_acme"
+                placeholder="grn or emp_001"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 required
@@ -187,6 +192,51 @@ function LoginPage() {
                 </button>
               </div>
             </div>
+
+            {/* DEMO CREDENTIALS QUICK-FILL BAR */}
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <span className="text-xs font-bold text-primary uppercase block">Demo Sign-In Credentials</span>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg text-xs font-bold border-primary/40 bg-background text-primary hover:bg-primary/10"
+                  onClick={() => {
+                    setEmployeeId("grn");
+                    setPassword("123456");
+                    toast.info("GRN credentials loaded: Username: grn | Password: 123456");
+                  }}
+                >
+                  📦 GRN Officer (grn / 123456)
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg text-xs font-medium border-border"
+                  onClick={() => {
+                    setEmployeeId("warehouse");
+                    setPassword("123456");
+                  }}
+                >
+                  🏭 Warehouse
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg text-xs font-medium border-border"
+                  onClick={() => {
+                    setEmployeeId("procurement");
+                    setPassword("123456");
+                  }}
+                >
+                  🛒 Procurement
+                </Button>
+              </div>
+            </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="remember"
@@ -200,7 +250,7 @@ function LoginPage() {
                 Remember me on this device
               </Label>
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full font-bold" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

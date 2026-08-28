@@ -13,6 +13,9 @@ import {
   RefreshCw,
   Save,
   Truck,
+  Zap,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -27,6 +30,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/receiving")({ component: Receiving });
 type Material = {
   item_code: string;
@@ -395,23 +399,50 @@ function Receiving() {
                   <ArrowDown className="mx-auto size-4 -rotate-90 text-muted-foreground" />
                   <span className="font-mono font-semibold">{s.assigned_dock_id}</span>
                 </div>
-                <h3 className="mb-2 text-sm font-semibold">Physical receiving comparison</h3>
-                <div className="overflow-x-auto rounded-xl border">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold">Physical Receiving Comparison</h3>
+                    <p className="text-xs text-muted-foreground">
+                      PO Reference: <span className="font-mono font-bold text-foreground">{s.po_number}</span> · Supplier: {s.supplier_name}
+                    </p>
+                  </div>
+                  {s.status === "UNLOADING_IN_PROGRESS" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 rounded-lg text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10"
+                      onClick={() => {
+                        const newQ: Record<string, string> = {};
+                        s.expected_materials.forEach((m) => {
+                          const targetQty = m.po_quantity && m.po_quantity > 0 ? m.po_quantity : m.quantity;
+                          newQ[`${s.id}:${m.item_code}`] = String(targetQty);
+                        });
+                        setQuantities((prev) => ({ ...prev, ...newQ }));
+                        toast.success(`Auto-filled all physical quantities from PO ${s.po_number} details!`);
+                      }}
+                    >
+                      <Zap className="mr-1.5 size-3.5 fill-primary text-primary" /> Auto-Fill All PO Quantities
+                    </Button>
+                  )}
+                </div>
+                <div className="overflow-x-auto rounded-xl border bg-card">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3">Material</th>
-                        <th className="px-4 py-3">Ordered</th>
-                        <th className="px-4 py-3">Shipped</th>
-                        <th className="px-4 py-3">Received</th>
-                        <th className="px-4 py-3">Verification</th>
+                        <th className="px-4 py-3">Material Nameplate & Code</th>
+                        <th className="px-4 py-3">Actual PO Detail Qty</th>
+                        <th className="px-4 py-3">ASN Shipped Qty</th>
+                        <th className="px-4 py-3">Physical Received Qty</th>
+                        <th className="px-4 py-3">Verification Result</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {s.expected_materials.map((m) => {
+                        const targetPoQty = m.po_quantity && m.po_quantity > 0 ? m.po_quantity : m.quantity;
                         const raw = quantities[`${s.id}:${m.item_code}`] ?? "",
                           received = raw === "" ? null : Number(raw),
-                          variance = received == null ? null : received - m.po_quantity,
+                          variance = received == null ? null : received - targetPoQty,
                           shortage = Number(policy.shortage_tolerance) || 0,
                           excess = Number(policy.excess_tolerance) || 0,
                           result =
@@ -423,49 +454,85 @@ function Receiving() {
                                   ? "EXCESS"
                                   : "MATCH";
                         return (
-                          <tr key={m.item_code}>
+                          <tr key={m.item_code} className="hover:bg-muted/30 transition-colors">
                             <td className="px-4 py-3">
-                              <b>{m.material_name || m.item_code}</b>
-                              <p className="font-mono text-xs text-muted-foreground">
-                                {m.item_code}
-                              </p>
+                              <div className="flex items-start gap-2">
+                                <div>
+                                  <b className="text-foreground text-sm font-semibold block">
+                                    {m.material_name || m.item_code}
+                                  </b>
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-muted border text-primary">
+                                      {m.item_code}
+                                    </span>
+                                    <span className="text-[10px] font-medium text-muted-foreground px-1.5 py-0.5 rounded bg-muted/60">
+                                      PO: {s.po_number}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </td>
-                            <td className="px-4 py-3 font-semibold">
-                              {m.po_quantity.toLocaleString()} {m.uom}
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-foreground">
+                                {targetPoQty.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
+                              </div>
+                              <span className="text-[10px] text-emerald-600 font-medium block">
+                                Auto-Fetched PO Detail
+                              </span>
                             </td>
-                            <td className="px-4 py-3 font-semibold">
-                              {m.quantity.toLocaleString()} {m.uom}
+                            <td className="px-4 py-3 font-semibold text-foreground">
+                              {m.quantity.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
                             </td>
-                            <td className="min-w-44 px-4 py-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="any"
-                                disabled={s.status !== "UNLOADING_IN_PROGRESS"}
-                                value={raw}
-                                onChange={(e) =>
-                                  setQuantities((q) => ({
-                                    ...q,
-                                    [`${s.id}:${m.item_code}`]: e.target.value,
-                                  }))
-                                }
-                                placeholder="Actual quantity"
-                              />
+                            <td className="min-w-48 px-4 py-3">
+                              <div className="space-y-1">
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  disabled={s.status !== "UNLOADING_IN_PROGRESS"}
+                                  value={raw}
+                                  onChange={(e) =>
+                                    setQuantities((q) => ({
+                                      ...q,
+                                      [`${s.id}:${m.item_code}`]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={`PO Qty: ${targetPoQty}`}
+                                  className="h-9 font-mono font-bold"
+                                />
+                                {s.status === "UNLOADING_IN_PROGRESS" && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setQuantities((q) => ({
+                                        ...q,
+                                        [`${s.id}:${m.item_code}`]: String(targetPoQty),
+                                      }))
+                                    }
+                                    className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-1"
+                                  >
+                                    <Sparkles className="size-3 text-amber-500" /> Match PO Qty ({targetPoQty} {m.uom || "PCS"})
+                                  </button>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3">
                               {result === "PENDING" ? (
-                                <span className="text-muted-foreground">Pending</span>
+                                <span className="text-muted-foreground text-xs font-medium">Pending Entry</span>
                               ) : result === "MATCH" ? (
-                                <span className="font-bold text-success">MATCH</span>
+                                <span className="inline-flex items-center gap-1 font-bold text-success text-xs bg-success/10 px-2 py-1 rounded-md border border-success/20">
+                                  <CheckCircle2 className="size-3.5" /> MATCH
+                                </span>
                               ) : (
                                 <span
-                                  className={
+                                  className={cn(
+                                    "inline-flex items-center gap-1 font-bold text-xs px-2 py-1 rounded-md border",
                                     result === "SHORT"
-                                      ? "font-bold text-destructive"
-                                      : "font-bold text-warning"
-                                  }
+                                      ? "text-destructive bg-destructive/10 border-destructive/20"
+                                      : "text-warning bg-warning/10 border-warning/20",
+                                  )}
                                 >
-                                  {result} = {Math.abs(variance!).toLocaleString()} {m.uom}
+                                  {result} ({Math.abs(variance!).toLocaleString()} {m.uom || "PCS"})
                                 </span>
                               )}
                             </td>

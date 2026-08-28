@@ -584,6 +584,102 @@ async def lifespan(app: FastAPI):
             try:
                 await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {col} {col_type}")
             except Exception: pass
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn (
+                    id UUID PRIMARY KEY,
+                    po_id UUID UNIQUE,
+                    po_number VARCHAR(64) UNIQUE,
+                    grn_number VARCHAR(64) UNIQUE,
+                    asn_id UUID,
+                    asn_number VARCHAR(64),
+                    gate_entry_id UUID,
+                    gate_entry_number VARCHAR(64),
+                    supplier_name VARCHAR(255),
+                    supplier_company_name VARCHAR(255),
+                    warehouse_id VARCHAR(64),
+                    warehouse_name VARCHAR(255),
+                    dock_number VARCHAR(32),
+                    vehicle_number VARCHAR(64),
+                    driver_name VARCHAR(128),
+                    invoice_number VARCHAR(128),
+                    receipt_type VARCHAR(32) NOT NULL DEFAULT 'PO_RECEIPT',
+                    receipt_date TIMESTAMP WITH TIME ZONE,
+                    received_by VARCHAR(128),
+                    status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+                    posted_by VARCHAR(128),
+                    posted_at TIMESTAMP WITH TIME ZONE,
+                    verification_notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_line (
+                    id UUID PRIMARY KEY,
+                    grn_id UUID NOT NULL REFERENCES grn(id) ON DELETE CASCADE,
+                    item_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(256),
+                    material_category VARCHAR(128),
+                    uom VARCHAR(32),
+                    ordered_quantity NUMERIC(18, 4),
+                    received_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    good_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    accepted_quantity NUMERIC(18, 4),
+                    rejected_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    quality_approved_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    balance_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    quality_result VARCHAR(32)
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_evidence (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL,
+                    reason TEXT,
+                    remarks TEXT,
+                    file_name VARCHAR(255) NOT NULL,
+                    file_path VARCHAR(512) NOT NULL,
+                    uploaded_by VARCHAR(128) NOT NULL,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_batch (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    batch_number VARCHAR(64) UNIQUE NOT NULL,
+                    batch_quantity NUMERIC(18, 4) NOT NULL,
+                    created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_document (
+                    id UUID PRIMARY KEY,
+                    grn_id UUID NOT NULL REFERENCES grn(id) ON DELETE CASCADE,
+                    document_type VARCHAR(64) NOT NULL,
+                    file_name VARCHAR(255) NOT NULL,
+                    file_path VARCHAR(512) NOT NULL,
+                    uploaded_by VARCHAR(128) NOT NULL,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_batch_qr (
+                    id UUID PRIMARY KEY,
+                    batch_id UUID UNIQUE NOT NULL REFERENCES grn_batch(id) ON DELETE CASCADE,
+                    qr_code VARCHAR(128) UNIQUE NOT NULL,
+                    generated_by VARCHAR(128) NOT NULL,
+                    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured GRN module tables exist")
+        except Exception as e:
+            logger.warning(f"Failed to create GRN module tables: {e}")
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 

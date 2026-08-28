@@ -42,11 +42,13 @@ export function requireRole(roles: string[] | string) {
   if (!hasRole(roles)) {
     const user = getUserInfo();
     const primaryRole = user?.roles[0];
-    let target = "/warehouse-dashboard";
-    if (user?.roles.includes("FINANCE")) target = "/finance-dashboard";
-    else if (user?.roles.includes("PROCUREMENT")) target = "/procurement-dashboard";
-    else if (user?.roles.includes("GATE_SECURITY")) target = "/gate-dashboard";
-    else if (user?.roles.includes("SUPPLIER")) target = "/submit-quotation";
+    let target = "/grn";
+    if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
+    else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
+    else if (user?.roles?.includes("PROCUREMENT")) target = "/procurement-dashboard";
+    else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
+    else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
+    else target = "/grn";
     throw redirect({ to: target as any });
   }
 }

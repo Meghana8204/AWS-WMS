@@ -121,6 +121,7 @@ export const api = {
       const isFinance = username.toLowerCase().includes("finance");
       const isWarehouse = username.toLowerCase().includes("warehouse");
       const isGate = username.toLowerCase().includes("gate");
+      const isGrn = username.toLowerCase().includes("grn") || username.toLowerCase().includes("receiving");
       const mockUser = {
         token: isFinance
           ? "mock-jwt-finance-token"
@@ -130,7 +131,9 @@ export const api = {
               ? "mock-jwt-warehouse-token"
               : isGate
                 ? "mock-jwt-gate-entry-token"
-                : "mock-jwt-admin-token",
+                : isGrn
+                  ? "mock-jwt-grn-token"
+                  : "mock-jwt-admin-token",
         username,
         roles: isFinance
           ? ["FINANCE"]
@@ -140,7 +143,9 @@ export const api = {
               ? ["WAREHOUSE"]
               : isGate
                 ? ["GATE_SECURITY"]
-                : ["ADMIN"],
+                : isGrn
+                  ? ["GRN"]
+                  : ["ADMIN"],
       };
       localStorage.setItem("auth_token", mockUser.token);
       localStorage.setItem("user_info", JSON.stringify(mockUser));
@@ -464,6 +469,19 @@ export const api = {
   },
   async getGrn(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
+  },
+  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (typeof input === "object" && input !== null) {
+      if (input.poNumber) params.set("po_number", input.poNumber);
+      if (input.poId) params.set("po_id", input.poId);
+      if (input.gateEntryId) params.set("gate_entry_id", input.gateEntryId);
+    } else if (typeof input === "string") {
+      params.set("po_number", input);
+      if (poId) params.set("po_id", poId);
+      if (gateEntryId) params.set("gate_entry_id", gateEntryId);
+    }
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/context?${params.toString()}`);
   },
   async confirmGrn(
     poId: string,
@@ -862,5 +880,96 @@ export const api = {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`,
     );
+  },
+  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
+    const params = new URLSearchParams();
+    if (typeof input === "object" && input !== null) {
+      if (input.poNumber) params.set("po_number", input.poNumber);
+      if (input.poId) params.set("po_id", input.poId);
+      if (input.gateEntryId) params.set("gate_entry_id", input.gateEntryId);
+    } else if (typeof input === "string") {
+      params.set("po_number", input);
+      if (poId) params.set("po_id", poId);
+      if (gateEntryId) params.set("gate_entry_id", gateEntryId);
+    }
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/context?${params.toString()}`);
+  },
+  async createGrnHeader(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/header`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateGrnLines(grnId: string, lines: any[]): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/lines`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines }),
+    });
+  },
+  async uploadDamageEvidence(grnLineId: string, formData: FormData): Promise<any> {
+    const token = localStorage.getItem("auth_token");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BUSINESS_API_URL}/api/receiving/grn/lines/${grnLineId}/damage-evidence`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || "Failed to upload damage evidence");
+    }
+    return res.json();
+  },
+  async submitQualityInspection(grnId: string, lines: any[]): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/quality`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lines }),
+    });
+  },
+  async createGrnBatches(grnLineId: string, batches: { batch_quantity: number }[]): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/receiving/grn/lines/${grnLineId}/batches`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(batches),
+    });
+  },
+  async uploadGrnDocument(grnId: string, formData: FormData): Promise<any> {
+    const token = localStorage.getItem("auth_token");
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/documents`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || "Failed to upload GRN document");
+    }
+    return res.json();
+  },
+  async completeGrn(grnId: string, verification_notes?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verification_notes }),
+    });
+  },
+  async getGrnDrafts(status?: string, search?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (search) params.set("search", search);
+    const res = await request<{ items: any[] }>(`${BUSINESS_API_URL}/api/receiving/grn?${params.toString()}`);
+    return res.items || [];
+  },
+  async postGrn(grnId: string, verification_notes?: string): Promise<any> {
+    return this.completeGrn(grnId, verification_notes);
+  },
+  async getGrnDetail(grnId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
   },
 };

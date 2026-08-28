@@ -118,42 +118,44 @@ async def _lookup_database_po(
     if not target:
         return None
 
-    result = await session.execute(
-        select(PurchaseOrderModel)
-        .options(selectinload(PurchaseOrderModel.items))
-        .where(func.upper(PurchaseOrderModel.po_number) == target)
-    )
-    exact = result.scalars().first()
-    if exact:
-        return _po_record_from_model(exact)
-
-    if not allow_partial:
-        return None
-
-
-
-    candidates_result = await session.execute(
-        select(PurchaseOrderModel)
-        .options(selectinload(PurchaseOrderModel.items))
-        .where(func.upper(PurchaseOrderModel.po_number).like(f"{target}-%"))
-        .order_by(PurchaseOrderModel.created_at.desc())
-    )
-    candidates = candidates_result.scalars().all()
-    if len(candidates) == 1:
-        return _po_record_from_model(candidates[0])
-    if candidates:
-        candidate_numbers = [candidate.po_number for candidate in candidates]
-        shipment_result = await session.execute(
-            select(AsnModel.po_number)
-            .where(AsnModel.po_number.in_(candidate_numbers))
-            .order_by(AsnModel.created_at.desc())
-            .limit(1)
+    try:
+        result = await session.execute(
+            select(PurchaseOrderModel)
+            .options(selectinload(PurchaseOrderModel.items))
+            .where(func.upper(PurchaseOrderModel.po_number) == target)
         )
-        shipment_po_number = shipment_result.scalar_one_or_none()
-        matched = next((candidate for candidate in candidates if candidate.po_number == shipment_po_number), None)
-        if matched:
-            return _po_record_from_model(matched)
-    return None
+        exact = result.scalars().first()
+        if exact:
+            return _po_record_from_model(exact)
+
+        if not allow_partial:
+            return None
+
+        candidates_result = await session.execute(
+            select(PurchaseOrderModel)
+            .options(selectinload(PurchaseOrderModel.items))
+            .where(func.upper(PurchaseOrderModel.po_number).like(f"{target}-%"))
+            .order_by(PurchaseOrderModel.created_at.desc())
+        )
+        candidates = candidates_result.scalars().all()
+        if len(candidates) == 1:
+            return _po_record_from_model(candidates[0])
+        if candidates:
+            candidate_numbers = [candidate.po_number for candidate in candidates]
+            shipment_result = await session.execute(
+                select(AsnModel.po_number)
+                .where(AsnModel.po_number.in_(candidate_numbers))
+                .order_by(AsnModel.created_at.desc())
+                .limit(1)
+            )
+            shipment_po_number = shipment_result.scalar_one_or_none()
+            matched = next((candidate for candidate in candidates if candidate.po_number == shipment_po_number), None)
+            if matched:
+                return _po_record_from_model(matched)
+        return None
+    except Exception as exc:
+        logger.warning(f"Database lookup exception for PO '{target}': {exc}")
+        return None
 
 
 @router.post("/scan-ocr")
@@ -834,7 +836,22 @@ async def list_inbound_arrivals(
                     "item_code": line.item_code,
                     "material_name": line.material_name,
                     "quantity": float(line.shipped_quantity),
-                    "po_quantity": next((float(item.quantity) for item in (po.items if po else []) if item.material_code == line.item_code), 0.0),
+                    "po_quantity": (
+                        next(
+                            (
+                                float(item.quantity)
+                                for item in (po.items if po else [])
+                                if (
+                                    getattr(item, "material_code", None) == line.item_code
+                                    or getattr(item, "item_code", None) == line.item_code
+                                    or getattr(item, "material_name", None) == line.material_name
+                                    or getattr(item, "material_description", None) == line.material_name
+                                )
+                            ),
+                            None,
+                        )
+                        or float(line.shipped_quantity)
+                    ),
                     "uom": line.uom,
                     "received_quantity": float(received_by_code[line.item_code].received_quantity) if line.item_code in received_by_code else None,
                     "variance_to_po": float(received_by_code[line.item_code].received_quantity - received_by_code[line.item_code].ordered_quantity) if line.item_code in received_by_code else None,
