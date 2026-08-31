@@ -45,6 +45,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/v1/materials", tags=["material-master"])
 
 STANDARD_UOMS = [
+    "INGOT",
+    "ROLL",
+    "COIL",
+    "LENGTH",
+    "BUNDLE",
+    "TON",
     "PCS",
     "MTR",
     "KG",
@@ -55,8 +61,7 @@ STANDARD_UOMS = [
     "SQM",
     "SET",
     "NOS",
-    "TON",
-    "BUNDLE",
+    "DRUM",
 ]
 
 DEFAULT_CATEGORIES = [

@@ -63,6 +63,12 @@ export const Route = createFileRoute("/warehouse/materials")({
 });
 
 const DEFAULT_UOMS = [
+  "INGOT",
+  "ROLL",
+  "COIL",
+  "LENGTH",
+  "BUNDLE",
+  "TON",
   "PCS",
   "MTR",
   "KG",
@@ -73,8 +79,7 @@ const DEFAULT_UOMS = [
   "SQM",
   "SET",
   "NOS",
-  "TON",
-  "BUNDLE",
+  "DRUM",
 ];
 
 interface VariantItem {
@@ -489,9 +494,6 @@ function WarehouseMaterials() {
               <h3 className="mt-1 text-2xl font-black tabular-nums text-success">
                 {loading ? "..." : `${activeCount} / ${totalMaterials}`}
               </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Available for MR & PO
-              </p>
             </div>
             <div className="grid size-12 place-items-center rounded-2xl bg-success-soft text-success">
               <CheckCircle2 className="size-6" />
@@ -716,12 +718,13 @@ function WarehouseMaterials() {
                   <Input
                     placeholder="e.g. MAT-001"
                     value={materialCode}
-                    onChange={(e) => setMaterialCode(e.target.value.toUpperCase())}
-                    className="font-mono text-sm rounded-xl font-bold bg-background"
+                    readOnly
+                    disabled
+                    className="font-mono text-sm rounded-xl font-bold bg-muted/60 text-foreground cursor-not-allowed border-dashed"
                     required
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    Fixed parent identifier shared by all variants
+                    System-generated sequential identifier
                   </p>
                 </div>
 
@@ -852,11 +855,10 @@ function WarehouseMaterials() {
                         <Label className="text-[10px] text-muted-foreground">Variant Code</Label>
                         <Input
                           value={variant.variant_code}
-                          onChange={(e) =>
-                            updateVariantRow(idx, "variant_code", e.target.value.toUpperCase())
-                          }
+                          readOnly
+                          disabled
                           placeholder="MAT-001-V001"
-                          className="h-8 font-mono text-xs font-bold rounded-lg"
+                          className="h-8 font-mono text-xs font-bold rounded-lg bg-muted/60 text-foreground cursor-not-allowed border-dashed"
                         />
                       </div>
 
@@ -1045,7 +1047,6 @@ function WarehouseMaterials() {
                         <th className="p-3">Color</th>
                         <th className="p-3">Grade</th>
                         <th className="p-3">Specification</th>
-                        <th className="p-3">Attributes</th>
                         <th className="p-3">UOM</th>
                         <th className="p-3">Status</th>
                         <th className="p-3 text-right">Actions</th>
@@ -1055,54 +1056,73 @@ function WarehouseMaterials() {
                       {selectedMaterial.variants?.map((v: any) => (
                         <tr key={v.id} className="hover:bg-muted/10 transition-colors">
                           <td className="p-3 font-mono font-bold text-primary">{v.variant_code}</td>
-                          <td className="p-3 text-foreground">{v.size || "—"}</td>
+                          <td className="p-3 text-foreground font-medium">{v.size || "—"}</td>
                           <td className="p-3 text-foreground">
                             {v.color ? (
-                              <span className="inline-flex items-center gap-1">
+                              <span className="inline-flex items-center gap-1.5">
                                 <span
-                                  className="size-2.5 rounded-full border border-border inline-block"
+                                  className="size-2.5 rounded-full border border-border inline-block shrink-0"
                                   style={{ backgroundColor: v.color.toLowerCase() }}
                                 />
-                                {v.color}
+                                <span>{v.color}</span>
                               </span>
                             ) : (
                               "—"
                             )}
                           </td>
-                          <td className="p-3 text-foreground">{v.grade || "—"}</td>
-                          <td className="p-3 text-muted-foreground">{v.specification || "—"}</td>
-                          <td className="p-3">
-                            {v.attributes && Object.keys(v.attributes).length > 0 ? (
-                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          <td className="p-3 text-foreground font-medium">{v.grade || "—"}</td>
+                          <td className="p-3 text-muted-foreground max-w-xs">
+                            <div>{v.specification || "—"}</div>
+                            {v.attributes && Object.keys(v.attributes).length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
                                 {Object.entries(v.attributes).map(([k, val]) => (
                                   <Badge
                                     key={k}
-                                    variant="secondary"
-                                    className="text-[9px] font-mono px-1.5 py-0 rounded"
+                                    variant="outline"
+                                    className="text-[9px] font-mono px-1.5 py-0 rounded text-muted-foreground/80"
                                   >
                                     {k}: {String(val)}
                                   </Badge>
                                 ))}
                               </div>
-                            ) : (
-                              <span className="text-muted-foreground/60">—</span>
                             )}
                           </td>
-                          <td className="p-3 font-mono">{v.uom || selectedMaterial.base_uom}</td>
+                          <td className="p-3 font-mono font-semibold text-foreground">
+                            {v.uom || selectedMaterial.base_uom}
+                          </td>
                           <td className="p-3">
                             <StatusBadge status={v.status} />
                           </td>
                           <td className="p-3 text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2.5 text-[11px] font-bold text-destructive hover:bg-destructive/10 hover:text-destructive inline-flex items-center gap-1 rounded-lg transition-colors"
-                              onClick={() => handleRemoveVariant(v)}
-                              disabled={(selectedMaterial.variants?.length || 0) <= 1}
-                              title={(selectedMaterial.variants?.length || 0) <= 1 ? "A material must retain at least one variant" : "Remove Variant"}
-                            >
-                              <Trash2 className="size-3.5" /> Remove
-                            </Button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className={cn(
+                                  "h-7 px-2 text-[11px] font-bold rounded-lg transition-colors",
+                                  v.status === "Active"
+                                    ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    : "text-success hover:bg-success-soft"
+                                )}
+                                onClick={() => handleToggleVariantStatus(v)}
+                              >
+                                {v.status === "Active" ? "Deactivate" : "Activate"}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-[11px] font-bold text-destructive hover:bg-destructive/10 hover:text-destructive inline-flex items-center gap-1 rounded-lg transition-colors"
+                                onClick={() => handleRemoveVariant(v)}
+                                disabled={(selectedMaterial.variants?.length || 0) <= 1}
+                                title={
+                                  (selectedMaterial.variants?.length || 0) <= 1
+                                    ? "A material must retain at least one variant"
+                                    : "Remove Variant"
+                                }
+                              >
+                                <Trash2 className="size-3.5" /> Remove
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -1148,9 +1168,10 @@ function WarehouseMaterials() {
                 <Label className="text-xs font-bold">Variant Code</Label>
                 <Input
                   value={newVarCode}
-                  onChange={(e) => setNewVarCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. MAT-WIRE-001-V004"
-                  className="h-9 font-mono text-xs font-bold rounded-xl"
+                  readOnly
+                  disabled
+                  placeholder="e.g. MAT-001-V004"
+                  className="h-9 font-mono text-xs font-bold rounded-xl bg-muted/60 text-foreground cursor-not-allowed border-dashed"
                   required
                 />
               </div>

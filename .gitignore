@@ -3,4 +3,9 @@ media_uploads/
 *.log
 .DS_Store
 
+# Environment files
 .env
+.env.*
+.env.local
+.env.production
+!.env.example
