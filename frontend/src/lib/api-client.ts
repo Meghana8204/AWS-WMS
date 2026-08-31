@@ -321,12 +321,19 @@ export const api = {
       method: "POST",
     });
   },
-  async getGrnDrafts(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/grn-drafts`);
+  async getGrnDrafts(status?: string, search?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    if (search) params.set("search", search);
+    const query = params.toString();
+    const url = `${BUSINESS_API_URL}/api/gate-entries/grn-drafts${query ? `?${query}` : ""}`;
+    const res = await request<any>(url);
+    return Array.isArray(res) ? res : res?.items || [];
   },
   async postGrn(grnId: string, verificationNotes?: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/grns/${grnId}/post`, {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/complete`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ verification_notes: verificationNotes }),
     });
   },
@@ -778,9 +785,14 @@ export const api = {
   async getPurchaseOrder(id: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`);
   },
-  async getPurchaseOrderByNumber(poNumber: str): Promise<any> {
+  async getPurchaseOrderByNumber(poNumber: string): Promise<any> {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`,
+    );
+  },
+  async getPoDamagedGoods(poIdentifier: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${encodeURIComponent(poIdentifier)}/damaged-goods`,
     );
   },
   async downloadPoPdf(id: string, poNumber?: string): Promise<void> {
@@ -881,19 +893,6 @@ export const api = {
       `${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`,
     );
   },
-  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
-    const params = new URLSearchParams();
-    if (typeof input === "object" && input !== null) {
-      if (input.poNumber) params.set("po_number", input.poNumber);
-      if (input.poId) params.set("po_id", input.poId);
-      if (input.gateEntryId) params.set("gate_entry_id", input.gateEntryId);
-    } else if (typeof input === "string") {
-      params.set("po_number", input);
-      if (poId) params.set("po_id", poId);
-      if (gateEntryId) params.set("gate_entry_id", gateEntryId);
-    }
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/context?${params.toString()}`);
-  },
   async createGrnHeader(data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/header`, {
       method: "POST",
@@ -959,17 +958,14 @@ export const api = {
       body: JSON.stringify({ verification_notes }),
     });
   },
-  async getGrnDrafts(status?: string, search?: string): Promise<any[]> {
-    const params = new URLSearchParams();
-    if (status) params.set("status", status);
-    if (search) params.set("search", search);
-    const res = await request<{ items: any[] }>(`${BUSINESS_API_URL}/api/receiving/grn?${params.toString()}`);
-    return res.items || [];
-  },
-  async postGrn(grnId: string, verification_notes?: string): Promise<any> {
-    return this.completeGrn(grnId, verification_notes);
-  },
   async getGrnDetail(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
+  },
+  async notifyVendorDamage(grnId: string, payload: { supplier_email?: string; custom_remarks?: string; notify_procurement?: boolean; damage_items?: any[] }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/notify-vendor-damage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
   },
 };

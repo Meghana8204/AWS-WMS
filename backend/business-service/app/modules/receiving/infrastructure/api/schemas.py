@@ -312,6 +312,7 @@ class GrnLineResponse(ApiModel):
 
     balance_quantity: Decimal = Decimal("0")
     quality_result: str | None = None
+    damage_lots: list[GrnDamageLotResponse] = Field(default_factory=list)
 
 
 class UpdateGrnLinesResponse(ApiModel):
@@ -444,7 +445,8 @@ class GrnBatchResponse(ApiModel):
 
 class GrnBatchQrResponse(ApiModel):
     qr_id: str
-    batch_id: str
+    item_code: str | None = None
+    batch_id: str | None = None
     qr_code: str
     qr_payload: str
     generated_at: datetime
@@ -453,6 +455,64 @@ class GrnBatchQrResponse(ApiModel):
 class BatchWithQrResponse(ApiModel):
     batch: GrnBatchResponse
     qr: GrnBatchQrResponse | None = None
+
+
+# ============================================================================
+# DAMAGED GOODS QR & DAMAGE LOT SCHEMAS
+# ============================================================================
+
+class GrnDamageQrResponse(ApiModel):
+    qr_id: str
+    damage_lot_id: str
+    grn_line_id: str
+    grn_number: str
+    item_code: str
+    qr_code: str
+    qr_payload: str
+    generated_by: str | None = None
+    generated_at: datetime
+
+
+class GrnDamageLotResponse(ApiModel):
+    damage_lot_id: str
+    grn_line_id: str
+    damage_lot_number: str
+    damaged_quantity: Decimal
+    uom: str | None = None
+    reason: str | None = None
+    qa_status: str | None = None
+    quarantine_location: str | None = None
+    status: str
+    created_by: str
+    created_at: datetime
+    qr: GrnDamageQrResponse | None = None
+
+
+class DamageItemPayload(ApiModel):
+    item_code: str | None = None
+    material_name: str | None = None
+    damaged_quantity: Decimal | float | str | None = None
+    uom: str | None = "PCS"
+    reason: str | None = None
+    damage_lot_number: str | None = None
+    quarantine_location: str | None = None
+
+
+class GrnDamageVendorNotifyRequest(ApiModel):
+    supplier_email: str | None = None
+    custom_remarks: str | None = None
+    notify_procurement: bool = True
+    damage_items: list[DamageItemPayload] = []
+
+
+class GrnDamageVendorNotifyResponse(ApiModel):
+    status: str
+    grn_number: str
+    vendor_email: str
+    email_delivered: bool
+    email_html_url: str | None = None
+    procurement_notified: bool
+    summary: str
 
 
 # ============================================================================

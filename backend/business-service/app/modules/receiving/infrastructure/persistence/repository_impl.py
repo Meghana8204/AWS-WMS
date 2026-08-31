@@ -65,6 +65,8 @@ from app.modules.receiving.infrastructure.persistence.models import (
     GrnBatchModel,
     GrnBatchQrModel,
     GrnDamageEvidenceModel,
+    GrnDamageLotModel,
+    GrnDamageQrModel,
     GrnDocumentModel,
     GrnLineModel,
     GrnModel,
@@ -898,6 +900,33 @@ class SqlAlchemyGrnRepository(GrnRepository):
             raise ValueError(f"GRN Line not found: {grn_line_id}")
 
         now = datetime.now(timezone.utc)
+
+        # 1. Reuse existing QR for material if present, otherwise create a new material QR
+        qr_res = await self._session.execute(
+            select(GrnBatchQrModel).where(GrnBatchQrModel.item_code == line.item_code)
+        )
+        qr = qr_res.scalar_one_or_none()
+        if not qr:
+            qr_payload = (
+                f"📦 WMS MATERIAL QR\n"
+                f"----------------------------------------\n"
+                f"• Material Code : {line.item_code}\n"
+                f"• Material Name : {line.material_name or line.item_code}\n"
+                f"• Category      : {line.material_category or 'Raw Materials'}\n"
+                f"• UOM           : {line.uom or 'PCS'}\n"
+                f"----------------------------------------"
+            )
+            qr = GrnBatchQrModel(
+                id=uuid.uuid4(),
+                item_code=line.item_code,
+                qr_code=f"QR-MAT-{line.item_code}",
+                qr_payload=qr_payload,
+                generated_by=created_by,
+                generated_at=now,
+            )
+            self._session.add(qr)
+            await self._session.flush()
+
         created_batches: list[GrnBatchModel] = []
         for idx, qty in enumerate(batch_quantities, 1):
             batch_num = f"LOT-{line.item_code}-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
@@ -910,21 +939,151 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 created_at=now,
             )
             self._session.add(batch)
-            await self._session.flush()
-
-            # Generate QR code for batch
-            qr = GrnBatchQrModel(
-                id=uuid.uuid4(),
-                batch_id=batch.id,
-                qr_code=f"QR-{batch_num}",
-                generated_by=created_by,
-                generated_at=now,
-            )
-            self._session.add(qr)
             created_batches.append(batch)
 
         await self._session.flush()
         return created_batches
+
+    async def create_or_get_damage_lots_for_grn(
+        self,
+        grn_id: uuid.UUID,
+        created_by: str = "System User",
+    ) -> list[GrnDamageLotModel]:
+        """
+        Creates or retrieves Damage Lots and Damage QRs for all GRN lines where
+        damaged_quantity > 0 or rejected_quantity > 0.
+        One Damage Lot = One Damage QR.
+        Chain: GRN -> GRN Line -> Damage Evidence -> Damage Lot -> Damage QR -> Quarantine Area
+        """
+        res = await self._session.execute(
+            select(GrnModel)
+            .options(
+                selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_evidence),
+                selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_lots).selectinload(GrnDamageLotModel.qr_code),
+            )
+            .where(GrnModel.id == grn_id)
+        )
+        grn = res.scalar_one_or_none()
+        if not grn:
+            raise ValueError(f"GRN not found: {grn_id}")
+
+        now = datetime.now(timezone.utc)
+        damage_lots: list[GrnDamageLotModel] = []
+
+        for line in grn.lines:
+            ev_qty = Decimal("0")
+            if line.damage_evidence:
+                ev_qty = max((e.damaged_quantity for e in line.damage_evidence if e.damaged_quantity), default=Decimal("0"))
+
+            damaged_qty = line.damaged_quantity if line.damaged_quantity > Decimal("0") else (line.rejected_quantity if line.rejected_quantity > Decimal("0") else ev_qty)
+            if damaged_qty <= Decimal("0"):
+                continue
+
+            if line.damaged_quantity != damaged_qty:
+                line.damaged_quantity = damaged_qty
+
+            # 1. Reuse existing Damage Lot for line if present AND update quantity if changed
+            if line.damage_lots:
+                lot = line.damage_lots[0]
+                if lot.damaged_quantity != damaged_qty:
+                    lot.damaged_quantity = damaged_qty
+                    self._session.add(lot)
+
+                reasons = [e.reason for e in line.damage_evidence if e.reason]
+                reason_text = line.damage_evidence[0].reason if line.damage_evidence and line.damage_evidence[0].reason else (reasons[0] if reasons else "Damaged/Rejected during receiving inspection")
+                qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
+                qr_payload = (
+                    f"⚠️ WMS DAMAGED / QUARANTINE GOODS QR\n"
+                    f"----------------------------------------\n"
+                    f"• GRN Number      : {grn.grn_number}\n"
+                    f"• Material Code   : {line.item_code}\n"
+                    f"• Material Name   : {line.material_name or line.item_code}\n"
+                    f"• Damage Lot No   : {lot.damage_lot_number}\n"
+                    f"• Damaged Qty     : {lot.damaged_quantity} {line.uom or 'PCS'}\n"
+                    f"• UOM             : {line.uom or 'PCS'}\n"
+                    f"• Damage Reason   : {reason_text}\n"
+                    f"• QA Status       : {lot.qa_status or 'REJECTED'}\n"
+                    f"• Quarantine Loc  : {lot.quarantine_location or 'QUARANTINE-ZONE-A'}\n"
+                    f"• Status          : {lot.status}\n"
+                    f"----------------------------------------"
+                )
+
+                if not lot.qr_code:
+                    qr = GrnDamageQrModel(
+                        id=uuid.uuid4(),
+                        damage_lot_id=lot.id,
+                        grn_line_id=line.id,
+                        grn_number=grn.grn_number or "",
+                        item_code=line.item_code,
+                        qr_code=qr_code_str,
+                        qr_payload=qr_payload,
+                        generated_by=created_by,
+                        generated_at=now,
+                    )
+                    self._session.add(qr)
+                else:
+                    lot.qr_code.qr_payload = qr_payload
+                    lot.qr_code.item_code = line.item_code
+
+                await self._session.flush()
+                damage_lots.append(lot)
+                continue
+
+            # 2. Create new Damage Lot
+            lot_num = f"DMG-LOT-{grn.grn_number}-{line.item_code}"
+            reasons = [e.reason for e in line.damage_evidence if e.reason]
+            reason_text = line.damage_evidence[0].reason if line.damage_evidence and line.damage_evidence[0].reason else (reasons[0] if reasons else "Damaged/Rejected during receiving inspection")
+
+            lot = GrnDamageLotModel(
+                id=uuid.uuid4(),
+                grn_line_id=line.id,
+                damage_lot_number=lot_num,
+                damaged_quantity=damaged_qty,
+                uom=line.uom or "PCS",
+                reason=reason_text,
+                qa_status=line.quality_result or "REJECTED",
+                quarantine_location="QUARANTINE-ZONE-A",
+                status="DAMAGED",
+                created_by=created_by,
+                created_at=now,
+            )
+            self._session.add(lot)
+            await self._session.flush()
+
+            # 3. Create unique Damage QR
+            qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
+            qr_payload = (
+                f"⚠️ WMS DAMAGED / QUARANTINE GOODS QR\n"
+                f"----------------------------------------\n"
+                f"• GRN Number      : {grn.grn_number}\n"
+                f"• Material Code   : {line.item_code}\n"
+                f"• Material Name   : {line.material_name or line.item_code}\n"
+                f"• Damage Lot No   : {lot.damage_lot_number}\n"
+                f"• Damaged Qty     : {damaged_qty} {line.uom or 'PCS'}\n"
+                f"• UOM             : {line.uom or 'PCS'}\n"
+                f"• Damage Reason   : {reason_text}\n"
+                f"• QA Status       : {lot.qa_status}\n"
+                f"• Quarantine Loc  : {lot.quarantine_location}\n"
+                f"• Status          : {lot.status}\n"
+                f"----------------------------------------"
+            )
+            qr = GrnDamageQrModel(
+                id=uuid.uuid4(),
+                damage_lot_id=lot.id,
+                grn_line_id=line.id,
+                grn_number=grn.grn_number or "",
+                item_code=line.item_code,
+                qr_code=qr_code_str,
+                qr_payload=qr_payload,
+                generated_by=created_by,
+                generated_at=now,
+            )
+            self._session.add(qr)
+            await self._session.flush()
+
+            damage_lots.append(lot)
+
+        return damage_lots
 
     async def add_document(
         self,
@@ -1109,6 +1268,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
             .options(
                 selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_evidence),
                 selectinload(GrnModel.lines).selectinload(GrnLineModel.batches).selectinload(GrnBatchModel.qr_code),
+                selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_lots).selectinload(GrnDamageLotModel.qr_code),
                 selectinload(GrnModel.documents),
             )
             .where(GrnModel.id == grn_id)

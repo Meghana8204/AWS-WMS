@@ -505,6 +505,13 @@ class GrnLineModel(Base):
         cascade="all, delete-orphan",
     )
 
+    damage_lots: Mapped[
+        list["GrnDamageLotModel"]
+    ] = relationship(
+        back_populates="grn_line",
+        cascade="all, delete-orphan",
+    )
+
 
 # ============================================================
 # 3. DAMAGED GOODS / PHOTO EVIDENCE
@@ -679,13 +686,15 @@ class GrnBatchModel(Base):
         back_populates="batches",
     )
 
-    # One Batch -> One QR Code
+    # Material-wise QR Code (shared across all batches of the same material)
     qr_code: Mapped[
         Optional["GrnBatchQrModel"]
     ] = relationship(
-        back_populates="batch",
-        cascade="all, delete-orphan",
+        primaryjoin="foreign(GrnBatchModel.grn_line_id) == foreign(GrnLineModel.id)",
+        secondary="grn_line",
+        secondaryjoin="foreign(GrnLineModel.item_code) == foreign(GrnBatchQrModel.item_code)",
         uselist=False,
+        viewonly=True,
     )
 
 
@@ -773,22 +782,22 @@ class GrnDocumentModel(Base):
 
 
 # ============================================================
-# 6. BATCH-WISE QR CODE
+# 6. MATERIAL-WISE QR CODE
 # ============================================================
 
 
 class GrnBatchQrModel(Base):
     """
-    Batch-wise QR code.
+    Material-wise QR code.
 
     Business rule:
 
-        One Batch -> One Unique QR
+        One Material (item_code) -> One Unique QR
+        All batches of the same material share this QR code and QR ID.
 
     Example:
 
-        BATCH-001 -> QR-000001
-        BATCH-002 -> QR-000002
+        Material Code: ITEM-A -> QR-ITEM-A (Shared across BATCH-001, BATCH-002, etc.)
     """
 
     __tablename__ = "grn_batch_qr"
@@ -800,18 +809,25 @@ class GrnBatchQrModel(Base):
     )
 
     # --------------------------------------------------------
-    # Batch Reference
-    #
-    # unique=True ensures:
-    # One Batch -> One QR
+    # Optional Batch Reference
     # --------------------------------------------------------
 
-    batch_id: Mapped[uuid.UUID] = mapped_column(
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID,
         ForeignKey(
             "grn_batch.id",
-            ondelete="CASCADE",
+            ondelete="SET NULL",
         ),
+        nullable=True,
+        index=True,
+    )
+
+    # --------------------------------------------------------
+    # Material Information (Primary Unique Key for QR)
+    # --------------------------------------------------------
+
+    item_code: Mapped[str] = mapped_column(
+        String(64),
         nullable=False,
         unique=True,
         index=True,
@@ -833,17 +849,184 @@ class GrnBatchQrModel(Base):
         nullable=False,
     )
 
+    generated_by: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
 
-    # --------------------------------------------------------
-    # Relationship
-    # --------------------------------------------------------
 
-    batch: Mapped["GrnBatchModel"] = relationship(
+# ============================================================
+# 6B. DAMAGED GOODS LOT & DAMAGE QR CODE
+# ============================================================
+
+
+class GrnDamageLotModel(Base):
+    """
+    Stores Damage Lot created for damaged / rejected material lines.
+
+    Chain of Connection:
+        GRN -> GRN Line -> Damage Evidence -> Damage Lot -> Damage QR -> Quarantine Area
+
+    Example QR ID: DMG-GRN-2026-0001-MAT-001-01
+    """
+
+    __tablename__ = "grn_damage_lot"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    grn_line_id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
+        ForeignKey(
+            "grn_line.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        index=True,
+    )
+
+    damage_lot_number: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    damaged_quantity: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+    )
+
+    uom: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+    )
+
+    reason: Mapped[Optional[str]] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    qa_status: Mapped[Optional[str]] = mapped_column(
+        String(32),
+        nullable=True,
+        default="REJECTED",
+    )
+
+    quarantine_location: Mapped[Optional[str]] = mapped_column(
+        String(64),
+        nullable=True,
+        default="QUARANTINE-ZONE-A",
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="DAMAGED",
+        server_default="DAMAGED",
+    )
+
+    created_by: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    # Relationships
+    grn_line: Mapped["GrnLineModel"] = relationship(
+        back_populates="damage_lots",
+    )
+
+    qr_code: Mapped[Optional["GrnDamageQrModel"]] = relationship(
+        back_populates="damage_lot",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+
+class GrnDamageQrModel(Base):
+    """
+    Stores unique QR code for a Damage Lot.
+    """
+
+    __tablename__ = "grn_damage_qr"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    damage_lot_id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
+        ForeignKey(
+            "grn_damage_lot.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    grn_line_id: Mapped[uuid.UUID] = mapped_column(
+        GUID,
+        ForeignKey(
+            "grn_line.id",
+            ondelete="CASCADE",
+        ),
+        nullable=False,
+        index=True,
+    )
+
+    grn_number: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+    )
+
+    item_code: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        index=True,
+    )
+
+    qr_code: Mapped[str] = mapped_column(
+        String(128),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+
+    qr_payload: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+
+    generated_by: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
+    generated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    damage_lot: Mapped["GrnDamageLotModel"] = relationship(
         back_populates="qr_code",
     )
 

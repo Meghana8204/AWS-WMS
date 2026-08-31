@@ -35,15 +35,13 @@ import { toast } from "sonner";
 const grnNav = [
   { label: "GRN Operations Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
   { label: "GRN Records History", to: "/grn?tab=records", icon: ClipboardList },
-  { label: "Header & Dock Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
+  { label: "Header Details & Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
   { label: "Material Receiving", to: "/grn?tab=wizard&page=2", icon: PackageCheck },
   { label: "Quality & Photos", to: "/grn?tab=wizard&page=3", icon: AlertTriangle },
   { label: "Batch Allocation", to: "/grn?tab=wizard&page=4", icon: Boxes },
   { label: "Documents & Posting", to: "/grn?tab=wizard&page=5", icon: FileText },
   { label: "Batch QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
-  { label: "Dock Management", to: "/dock-management", icon: Warehouse },
-  { label: "Reports & Analytics", to: "/reports", icon: BarChart3 },
 ];
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
@@ -302,9 +300,9 @@ export function AppShell({
               >
                 <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} />
                 {!collapsed && <span className="truncate">{item.label}</span>}
-                {!collapsed && item.badge && (
+                {!collapsed && (item as any).badge && (
                   <span className="ml-auto grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground">
-                    {item.badge}
+                    {(item as any).badge}
                   </span>
                 )}
               </Link>

@@ -23,6 +23,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 type POSearch = {
@@ -48,6 +55,10 @@ export const Route = createFileRoute("/purchase-order")({
 function PurchaseOrder() {
   const { poId } = Route.useSearch();
   const [poData, setPoData] = useState<any>(null);
+  const [damagedGoodsData, setDamagedGoodsData] = useState<any>(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(!!poId);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -57,6 +68,14 @@ function PurchaseOrder() {
       setLoading(true);
       const data = await api.getPurchaseOrder(poId as string);
       setPoData(data);
+      if (data?.poNumber || poId) {
+        try {
+          const dmg = await api.getPoDamagedGoods(data?.poNumber || poId);
+          setDamagedGoodsData(dmg);
+        } catch {
+          setDamagedGoodsData(null);
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch PO details:", err);
       toast.error("Could not load PO details");
@@ -185,6 +204,74 @@ function PurchaseOrder() {
               <Field label="Address" value={poData.supplierAddress} />
             </div>
           </SectionCard>
+
+          {damagedGoodsData?.has_damaged_goods && (
+            <SectionCard
+              title="Damaged Goods"
+              icon={AlertTriangle}
+              className="border-rose-300/80 bg-rose-50/20 dark:bg-rose-950/20"
+            >
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-rose-200/60 pb-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-600">Traceability Record</span>
+                    <h4 className="text-sm font-bold text-foreground">Damaged Goods Reported</h4>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-800 border border-rose-300">
+                    {damagedGoodsData.status || "Damage Reported"}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 text-xs sm:grid-cols-2">
+                  <Field label="PO Number" value={damagedGoodsData.po_number} mono />
+                  <Field label="GRN Number" value={damagedGoodsData.grn_number} mono />
+                  <Field label="Supplier Name" value={damagedGoodsData.supplier_name} />
+                  <Field label="Warehouse Name" value={damagedGoodsData.warehouse_name} />
+                  <Field label="Reported Date/Time" value={damagedGoodsData.damage_reported_at} />
+                  <Field
+                    label="Damaged Materials"
+                    value={
+                      <span className="font-bold text-rose-600">
+                        {damagedGoodsData.damaged_materials_count} damaged materials ({damagedGoodsData.total_damaged_quantity} units)
+                      </span>
+                    }
+                  />
+                  <Field
+                    label="Supplier Email"
+                    value={
+                      <span className="font-bold text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="size-3.5" /> Sent ({damagedGoodsData.supplier_notification_status})
+                      </span>
+                    }
+                  />
+                  <Field
+                    label="Procurement Email"
+                    value={
+                      <span className="font-bold text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="size-3.5" /> Sent ({damagedGoodsData.procurement_notification_status})
+                      </span>
+                    }
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2 pt-3 border-t border-rose-200/60">
+                  <Button
+                    onClick={() => setShowDetailsModal(true)}
+                    className="rounded-xl font-bold bg-rose-600 hover:bg-rose-700 text-white shadow-sm text-xs flex-1"
+                  >
+                    <FileText className="mr-1.5 size-3.5" /> View Damage Details
+                  </Button>
+                  <Button
+                    onClick={() => setShowHistoryModal(true)}
+                    variant="outline"
+                    className="rounded-xl font-bold border-rose-300 text-rose-800 hover:bg-rose-50 text-xs flex-1"
+                  >
+                    <History className="mr-1.5 size-3.5" /> Notification History
+                  </Button>
+                </div>
+              </div>
+            </SectionCard>
+          )}
         </div>
 
         <div className="xl:col-span-2 space-y-6">
@@ -343,6 +430,138 @@ function PurchaseOrder() {
             </div>
           </SectionCard>
         </div>
+      )}
+
+      {/* 📋 VIEW DAMAGE DETAILS MODAL */}
+      {showDetailsModal && damagedGoodsData && (
+        <Dialog open={showDetailsModal} onOpenChange={() => setShowDetailsModal(false)}>
+          <DialogContent className="sm:max-w-2xl rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold flex items-center gap-2 text-rose-700">
+                <AlertTriangle className="size-5 text-rose-600" /> Damaged Goods Report
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Line-level material breakdown and photo proof recorded during receiving inspection.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-muted/20 border text-xs font-mono">
+              <div><b>GRN Number:</b> {damagedGoodsData.grn_number}</div>
+              <div><b>PO Number:</b> {damagedGoodsData.po_number}</div>
+              <div><b>Supplier:</b> {damagedGoodsData.supplier_name}</div>
+              <div><b>Warehouse:</b> {damagedGoodsData.warehouse_name}</div>
+              <div className="col-span-2"><b>Reported Date/Time:</b> {damagedGoodsData.damage_reported_at}</div>
+            </div>
+
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Damaged Materials Breakdown</h4>
+              <div className="overflow-x-auto rounded-xl border">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-muted/60 uppercase font-mono border-b text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2.5">Material Code & Name</th>
+                      <th className="px-3 py-2.5 text-right">Damaged Qty</th>
+                      <th className="px-3 py-2.5">Damage Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y font-medium">
+                    {damagedGoodsData.materials?.map((m: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-muted/10">
+                        <td className="px-3 py-2.5">
+                          <span className="font-bold text-foreground block">{m.material_name}</span>
+                          <span className="font-mono text-[10px] text-primary">{m.item_code}</span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-bold text-rose-600 tabular-nums">
+                          {m.damaged_quantity} {m.uom}
+                        </td>
+                        <td className="px-3 py-2.5 text-foreground">{m.reason}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {damagedGoodsData.materials?.some((m: any) => m.photos && m.photos.length > 0) && (
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Attached Damage Evidence Photos</h4>
+                <div className="grid grid-cols-3 gap-3">
+                  {damagedGoodsData.materials.flatMap((m: any) =>
+                    (m.photos || []).map((p: any) => (
+                      <div
+                        key={p.id}
+                        className="group relative rounded-xl overflow-hidden border bg-black/5 cursor-pointer"
+                        onClick={() => setEnlargedPhoto(p.url)}
+                      >
+                        <img src={p.url} alt={p.file_name} className="h-24 w-full object-cover group-hover:scale-105 transition-transform" />
+                        <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 truncate font-mono">
+                          {m.item_code}: {p.file_name}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3 border-t">
+              <Button variant="outline" className="rounded-xl text-xs font-bold" onClick={() => setShowDetailsModal(false)}>
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 📜 NOTIFICATION HISTORY MODAL */}
+      {showHistoryModal && damagedGoodsData && (
+        <Dialog open={showHistoryModal} onOpenChange={() => setShowHistoryModal(false)}>
+          <DialogContent className="sm:max-w-md rounded-2xl p-6 space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold flex items-center gap-2 text-rose-700">
+                <History className="size-5 text-rose-600" /> Notification Delivery History
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Dispatched damage report notifications for PO {damagedGoodsData.po_number}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              {damagedGoodsData.notification_history?.map((h: any, idx: number) => (
+                <div key={idx} className="p-3 rounded-xl border bg-muted/20 flex items-center justify-between text-xs font-mono">
+                  <div>
+                    <span className="font-bold text-foreground block">{h.recipient_type} Notification</span>
+                    <span className="text-[10px] text-muted-foreground">{h.recipient}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 block mb-1">
+                      {h.status}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">{h.sent_at}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t">
+              <Button variant="outline" className="rounded-xl text-xs font-bold" onClick={() => setShowHistoryModal(false)}>
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 🖼️ PHOTO LIGHTBOX MODAL */}
+      {enlargedPhoto && (
+        <Dialog open={!!enlargedPhoto} onOpenChange={() => setEnlargedPhoto(null)}>
+          <DialogContent className="sm:max-w-lg rounded-2xl p-4 space-y-3">
+            <img src={enlargedPhoto} alt="Damage Evidence Photo" className="w-full rounded-xl object-contain max-h-[70vh]" />
+            <Button variant="outline" className="w-full rounded-xl text-xs font-bold" onClick={() => setEnlargedPhoto(null)}>
+              Close Image
+            </Button>
+          </DialogContent>
+        </Dialog>
       )}
     </AppShell>
   );

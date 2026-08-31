@@ -494,3 +494,43 @@ class ChangePasswordRequest(ApiModel):
 class DevLoginRequest(ApiModel):
     username: str
     password: str
+
+
+class DamagedMaterialPhotoSchema(ApiModel):
+    id: str
+    file_name: str
+    url: str
+
+
+class DamagedMaterialItemSchema(ApiModel):
+    item_code: str
+    material_name: str
+    damaged_quantity: float
+    uom: str
+    reason: str
+    photos: List[DamagedMaterialPhotoSchema] = []
+
+
+class NotificationHistoryItemSchema(ApiModel):
+    recipient_type: str
+    recipient: str
+    status: str
+    sent_at: str
+
+
+class PoDamagedGoodsResponse(ApiModel):
+    has_damaged_goods: bool
+    po_number: Optional[str] = None
+    grn_number: Optional[str] = None
+    grn_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    damage_reported_at: Optional[str] = None
+    damaged_materials_count: int = 0
+    total_damaged_quantity: float = 0.0
+    status: str = "Damage Reported"
+    supplier_notification_status: str = "Sent"
+    procurement_notification_status: str = "Sent"
+    materials: List[DamagedMaterialItemSchema] = []
+    notification_history: List[NotificationHistoryItemSchema] = []
+

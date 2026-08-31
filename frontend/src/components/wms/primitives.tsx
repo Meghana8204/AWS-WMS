@@ -42,17 +42,8 @@ export function StatCard({
       </Card>
     </Link>
   );
-
-  if (to) {
-    return (
-      <Link to={to} className="group block">
-        {cardContent}
-      </Link>
-    );
-  }
-  return <div className="group block">{cardContent}</div>;
 }
-export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+export function Field({ label, value, mono, icon: Icon }: { label: string; value: ReactNode; mono?: boolean; icon?: LucideIcon }) {
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

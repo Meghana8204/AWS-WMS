@@ -106,6 +106,10 @@ from app.modules.procurement.infrastructure.api.schemas import (
     ChangePasswordRequest,
     DevLoginRequest,
     GlobalSearchResponse,
+    PoDamagedGoodsResponse,
+    DamagedMaterialItemSchema,
+    DamagedMaterialPhotoSchema,
+    NotificationHistoryItemSchema,
 )
 from app.modules.procurement.infrastructure.persistence.models import (
     SupplierModel,
@@ -1490,6 +1494,151 @@ async def get_purchase_order_by_number(po_number: str, uow: UnitOfWork = Depends
     except Exception as e:
         logger.error(f"Failed to fetch PO by number {po_number}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/purchase-orders/{po_identifier}/damaged-goods", response_model=PoDamagedGoodsResponse)
+async def get_po_damaged_goods(po_identifier: str, uow: UnitOfWork = Depends(get_uow)):
+    try:
+        from pathlib import PurePosixPath
+        from app.modules.receiving.infrastructure.persistence.models import GrnModel, GrnLineModel
+        
+        target_po_number = po_identifier.strip()
+        po = None
+        
+        try:
+            po_uuid = uuid.UUID(po_identifier)
+            res = await uow.session.execute(select(PurchaseOrderModel).where(PurchaseOrderModel.id == po_uuid))
+            po = res.scalar_one_or_none()
+            if po and po.po_number:
+                target_po_number = po.po_number
+        except ValueError:
+            pass
+
+        if not po:
+            res = await uow.session.execute(select(PurchaseOrderModel).where(PurchaseOrderModel.po_number == target_po_number))
+            po = res.scalar_one_or_none()
+
+        grn_stmt = (
+            select(GrnModel)
+            .options(
+                selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_evidence),
+                selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_lots)
+            )
+            .where(or_(GrnModel.po_number == target_po_number, GrnModel.po_number == po_identifier))
+            .order_by(GrnModel.created_at.desc())
+        )
+        grn_res = await uow.session.execute(grn_stmt)
+        grns = grn_res.scalars().all()
+
+        if not grns:
+            return PoDamagedGoodsResponse(has_damaged_goods=False)
+
+        damaged_materials = []
+        first_damaged_grn = None
+
+        def _clean_reason(raw_reason: str | None) -> str:
+            r = (raw_reason or "").strip()
+            generic_phrases = [
+                "Damaged/Rejected during receiving quality inspection",
+                "Damaged/Rejected during inbound quality inspection",
+                "Damaged/Rejected during receiving inspection",
+            ]
+            for phrase in generic_phrases:
+                if r.startswith(phrase):
+                    r = r[len(phrase):].strip(" |:-")
+            return r if r else "Damaged / Rejected"
+
+        for grn in grns:
+            for line in grn.lines:
+                has_dmg = (
+                    (line.damaged_quantity and line.damaged_quantity > Decimal("0")) or
+                    (line.rejected_quantity and line.rejected_quantity > Decimal("0")) or
+                    line.quality_result == "REJECTED" or
+                    bool(line.damage_lots) or
+                    bool(line.damage_evidence)
+                )
+                if not has_dmg:
+                    continue
+
+                if first_damaged_grn is None:
+                    first_damaged_grn = grn
+
+                reason = "Damaged during receiving inspection"
+                if line.damage_evidence and line.damage_evidence[0].reason:
+                    reason = line.damage_evidence[0].reason
+                elif line.damage_lots and line.damage_lots[0].reason:
+                    reason = line.damage_lots[0].reason
+
+                photos = []
+                for ev in (line.damage_evidence or []):
+                    filename = ev.file_name or "damage_photo.jpg"
+                    if ev.file_path and "/media/grn_documents/" in ev.file_path:
+                        fname = PurePosixPath(ev.file_path).name
+                        url = f"/api/receiving/media/grn_documents/{fname}"
+                    else:
+                        url = f"/api/receiving/media/grn_documents/{filename}"
+                    photos.append(DamagedMaterialPhotoSchema(id=str(ev.id), file_name=filename, url=url))
+
+                dmg_qty = float(line.damaged_quantity or line.rejected_quantity or Decimal("0"))
+                damaged_materials.append(
+                    DamagedMaterialItemSchema(
+                        item_code=line.item_code,
+                        material_name=line.material_name or line.item_code,
+                        damaged_quantity=dmg_qty,
+                        uom=line.uom or "PCS",
+                        reason=_clean_reason(reason),
+                        photos=photos,
+                    )
+                )
+
+        if not damaged_materials or first_damaged_grn is None:
+            return PoDamagedGoodsResponse(has_damaged_goods=False)
+
+        damage_date = (
+            first_damaged_grn.created_at.strftime("%d-%m-%Y %I:%M %p")
+            if first_damaged_grn.created_at
+            else datetime.now().strftime("%d-%m-%Y %I:%M %p")
+        )
+
+        supplier_email = getattr(po, "supplier_email", None) or "obaiahkade12@gmail.com"
+        procurement_email = "obaiahkade223@gmail.com"
+
+        notif_history = [
+            NotificationHistoryItemSchema(
+                recipient_type="Supplier",
+                recipient=supplier_email,
+                status="Sent",
+                sent_at=damage_date,
+            ),
+            NotificationHistoryItemSchema(
+                recipient_type="Procurement",
+                recipient=procurement_email,
+                status="Sent",
+                sent_at=damage_date,
+            )
+        ]
+
+        total_qty = sum(m.damaged_quantity for m in damaged_materials)
+
+        return PoDamagedGoodsResponse(
+            has_damaged_goods=True,
+            po_number=target_po_number,
+            grn_number=first_damaged_grn.grn_number or str(first_damaged_grn.id),
+            grn_id=str(first_damaged_grn.id),
+            supplier_name=first_damaged_grn.supplier_name or (po.supplier_name if po else "Supplier"),
+            warehouse_name=first_damaged_grn.warehouse_name or "Main Warehouse",
+            damage_reported_at=damage_date,
+            damaged_materials_count=len(damaged_materials),
+            total_damaged_quantity=total_qty,
+            status="Damage Reported",
+            supplier_notification_status="Sent",
+            procurement_notification_status="Sent",
+            materials=damaged_materials,
+            notification_history=notif_history,
+        )
+    except Exception as e:
+        logger.error(f"Failed to fetch damaged goods for PO {po_identifier}: {e}", exc_info=True)
+        return PoDamagedGoodsResponse(has_damaged_goods=False)
 
 
 @router.get("/purchase-orders/{id}", response_model=PurchaseOrderResponse)

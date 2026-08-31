@@ -361,6 +361,39 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_lot (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    damage_lot_number VARCHAR(64) NOT NULL UNIQUE,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32),
+                    reason TEXT,
+                    qa_status VARCHAR(32) DEFAULT 'REJECTED',
+                    quarantine_location VARCHAR(64) DEFAULT 'QUARANTINE-ZONE-A',
+                    status VARCHAR(32) NOT NULL DEFAULT 'DAMAGED',
+                    created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_qr (
+                    id UUID PRIMARY KEY,
+                    damage_lot_id UUID NOT NULL UNIQUE REFERENCES grn_damage_lot(id) ON DELETE CASCADE,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    grn_number VARCHAR(64) NOT NULL,
+                    item_code VARCHAR(64) NOT NULL,
+                    qr_code VARCHAR(128) NOT NULL UNIQUE,
+                    qr_payload TEXT NOT NULL,
+                    generated_by VARCHAR(128),
+                    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured grn_damage_lot and grn_damage_qr tables exist")
+        except Exception as e:
+            logger.warning(f"Failed to create grn_damage_lot/grn_damage_qr tables: {e}")
+
 
         try:
             await run_ddl("""
@@ -671,12 +704,18 @@ async def lifespan(app: FastAPI):
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS grn_batch_qr (
                     id UUID PRIMARY KEY,
-                    batch_id UUID UNIQUE NOT NULL REFERENCES grn_batch(id) ON DELETE CASCADE,
+                    item_code VARCHAR(64) UNIQUE NOT NULL,
                     qr_code VARCHAR(128) UNIQUE NOT NULL,
-                    generated_by VARCHAR(128) NOT NULL,
+                    qr_payload TEXT NOT NULL,
+                    batch_id UUID REFERENCES grn_batch(id) ON DELETE SET NULL,
+                    generated_by VARCHAR(128),
                     generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS item_code VARCHAR(64);")
+            await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS qr_payload TEXT;")
+            await run_ddl("ALTER TABLE grn_batch_qr ALTER COLUMN batch_id DROP NOT NULL;")
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS uq_grn_batch_qr_item_code ON grn_batch_qr (item_code);")
             logger.debug("Ensured GRN module tables exist")
         except Exception as e:
             logger.warning(f"Failed to create GRN module tables: {e}")
@@ -752,16 +791,24 @@ def create_app() -> FastAPI:
         origins = list(raw_origins)
 
 
-    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
+    for o in [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]:
         if o not in origins:
             origins.append(o)
-
-
 
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
+        allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

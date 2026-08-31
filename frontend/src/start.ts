@@ -1,4 +1,5 @@
 import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/react-start";
+import { isRedirect, isNotFound } from "@tanstack/react-router";
 import { renderErrorPage } from "./lib/error-page";
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
