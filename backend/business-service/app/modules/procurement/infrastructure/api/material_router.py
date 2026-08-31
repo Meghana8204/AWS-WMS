@@ -167,27 +167,40 @@ async def list_materials(
     stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).order_by(MaterialModel.created_at.desc())
 
     if status and status.upper() != "ALL":
-        stmt = stmt.where(MaterialModel.status == status)
+        clean_status = status.strip()
+        var_status_subq = select(MaterialVariantModel.material_id).where(
+            func.lower(MaterialVariantModel.status) == clean_status.lower()
+        )
+        stmt = stmt.where(
+            or_(
+                func.lower(MaterialModel.status) == clean_status.lower(),
+                MaterialModel.id.in_(var_status_subq),
+            )
+        )
 
     if category and category.upper() != "ALL":
         stmt = stmt.where(MaterialModel.category == category)
 
     if search:
         search_term = f"%{search.strip()}%"
-        # Match parent material attributes or child variant codes/attributes
-        stmt = stmt.outerjoin(MaterialVariantModel, MaterialModel.id == MaterialVariantModel.material_id).where(
+        var_search_subq = select(MaterialVariantModel.material_id).where(
             or_(
-                MaterialModel.material_code.ilike(search_term),
-                MaterialModel.material_name.ilike(search_term),
-                MaterialModel.category.ilike(search_term),
-                MaterialModel.description.ilike(search_term),
                 MaterialVariantModel.variant_code.ilike(search_term),
                 MaterialVariantModel.size.ilike(search_term),
                 MaterialVariantModel.color.ilike(search_term),
                 MaterialVariantModel.grade.ilike(search_term),
                 MaterialVariantModel.specification.ilike(search_term),
             )
-        ).distinct()
+        )
+        stmt = stmt.where(
+            or_(
+                MaterialModel.material_code.ilike(search_term),
+                MaterialModel.material_name.ilike(search_term),
+                MaterialModel.category.ilike(search_term),
+                MaterialModel.description.ilike(search_term),
+                MaterialModel.id.in_(var_search_subq),
+            )
+        )
 
     result = await uow.session.execute(stmt)
     materials = result.scalars().all()

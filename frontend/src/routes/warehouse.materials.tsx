@@ -637,13 +637,26 @@ function WarehouseMaterials() {
                       {mat.variants && mat.variants.length > 0 ? (
                         mat.variants.slice(0, 4).map((v: any) => {
                           const spec = [v.size, v.color, v.grade].filter(Boolean).join(" · ");
+                          const isInactive = v.status === "Inactive";
                           return (
                             <span
                               key={v.id}
-                              className="inline-flex items-center gap-1 rounded-md border border-border/80 bg-muted/40 px-2 py-0.5 text-[10px] font-mono font-medium text-foreground"
+                              className={cn(
+                                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono font-medium",
+                                isInactive
+                                  ? "border-dashed border-muted-foreground/40 bg-muted/20 text-muted-foreground"
+                                  : "border-border/80 bg-muted/40 text-foreground",
+                              )}
                             >
-                              <span className="font-bold text-primary">{v.variant_code}</span>
+                              <span className={cn("font-bold", isInactive ? "text-muted-foreground" : "text-primary")}>
+                                {v.variant_code}
+                              </span>
                               {spec && <span className="text-muted-foreground">({spec})</span>}
+                              {isInactive && (
+                                <span className="text-[9px] font-sans font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 rounded">
+                                  Inactive
+                                </span>
+                              )}
                             </span>
                           );
                         })
