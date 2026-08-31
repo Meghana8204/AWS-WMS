@@ -696,8 +696,8 @@ function WarehouseMaterials() {
 
       {/* CREATE MATERIAL & MULTI-VARIANT MODAL */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl">
-          <DialogHeader className="border-b pb-4">
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl">
+          <DialogHeader className="border-b pb-4 pr-10">
             <div className="flex items-center gap-2.5">
               <div className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary">
                 <Plus className="size-5" />
@@ -974,32 +974,32 @@ function WarehouseMaterials() {
 
       {/* DETAIL & VARIANT MANAGEMENT DRAWER/MODAL */}
       <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 shadow-2xl">
+        <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-7 shadow-2xl">
           {selectedMaterial && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4 pr-12">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
-                    <Boxes className="size-6" />
+                  <div className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary shrink-0">
+                    <Boxes className="size-5" />
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-base font-black text-primary px-3 py-1 rounded-xl bg-primary-soft/60 border border-primary/20">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary-soft/60 border border-primary/20">
                         {selectedMaterial.material_code}
                       </span>
-                      <h2 className="text-xl font-bold text-foreground">
+                      <h2 className="text-lg font-bold text-foreground">
                         {selectedMaterial.material_name}
                       </h2>
                       <StatusBadge status={selectedMaterial.status} />
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground flex items-center gap-2">
+                    <p className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-2">
                       <span className="font-semibold text-foreground/80">
                         {selectedMaterial.category}
                       </span>
                       <span>·</span>
                       <span>
-                        Base UOM: <strong>{selectedMaterial.base_uom}</strong>
+                        Base UOM: <strong className="font-mono">{selectedMaterial.base_uom}</strong>
                       </span>
                       <span>·</span>
                       <span>
@@ -1012,18 +1012,18 @@ function WarehouseMaterials() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button
                     size="sm"
-                    className="rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                    className="h-8.5 rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
                     onClick={openAddVariantForExisting}
                   >
-                    <Plus className="mr-1.5 size-4" /> Add Variant
+                    <Plus className="mr-1 size-3.5" /> Add Variant
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-xl"
+                    className="h-8.5 rounded-xl text-xs font-semibold"
                     onClick={() => handleToggleMaterialStatus(selectedMaterial)}
                   >
                     {selectedMaterial.status === "Active" ? "Deactivate" : "Activate"}
@@ -1032,23 +1032,23 @@ function WarehouseMaterials() {
               </div>
 
               {selectedMaterial.description && (
-                <div className="p-3.5 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground leading-relaxed">
+                <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground leading-relaxed">
                   <span className="font-bold text-foreground mr-1">Description:</span>
                   {selectedMaterial.description}
                 </div>
               )}
 
               {/* Variants List Section */}
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                    <Layers className="size-4 text-teal-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                    <Layers className="size-3.5 text-teal-600" />
                     Material Variants ({selectedMaterial.variants?.length || 0})
                   </h3>
                 </div>
 
-                <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card">
-                  <table className="w-full text-left text-xs border-collapse min-w-[820px]">
+                <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-border/70 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
                         <th className="p-3 whitespace-nowrap">Variant Code</th>
@@ -1058,7 +1058,7 @@ function WarehouseMaterials() {
                         <th className="p-3">Specification</th>
                         <th className="p-3 whitespace-nowrap">UOM</th>
                         <th className="p-3 whitespace-nowrap">Status</th>
-                        <th className="p-3 text-right whitespace-nowrap">Actions</th>
+                        <th className="p-3 text-right whitespace-nowrap pr-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50 font-medium">
@@ -1080,8 +1080,8 @@ function WarehouseMaterials() {
                             )}
                           </td>
                           <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.grade || "—"}</td>
-                          <td className="p-3 text-muted-foreground min-w-[220px]">
-                            <div>{v.specification || "—"}</div>
+                          <td className="p-3 text-muted-foreground min-w-[150px] max-w-xs">
+                            <div className="font-normal">{v.specification || "—"}</div>
                             {v.attributes && Object.keys(v.attributes).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1">
                                 {Object.entries(v.attributes).map(([k, val]) => (
@@ -1102,16 +1102,16 @@ function WarehouseMaterials() {
                           <td className="p-3 whitespace-nowrap">
                             <StatusBadge status={v.status} />
                           </td>
-                          <td className="p-3 text-right whitespace-nowrap">
+                          <td className="p-3 text-right whitespace-nowrap pr-3">
                             <div className="flex items-center justify-end gap-1.5">
                               <Button
-                                variant="ghost"
+                                variant="outline"
                                 size="sm"
                                 className={cn(
                                   "h-7 px-2 text-[11px] font-bold rounded-lg transition-colors",
                                   v.status === "Active"
-                                    ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    : "text-success hover:bg-success-soft"
+                                    ? "border-border/70 hover:border-destructive/40 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                    : "border-success/40 text-success hover:bg-success-soft"
                                 )}
                                 onClick={() => handleToggleVariantStatus(v)}
                               >
@@ -1129,7 +1129,7 @@ function WarehouseMaterials() {
                                     : "Remove Variant"
                                 }
                               >
-                                <Trash2 className="size-3.5" /> Remove
+                                <Trash2 className="size-3.5" />
                               </Button>
                             </div>
                           </td>
@@ -1156,8 +1156,8 @@ function WarehouseMaterials() {
 
       {/* ADD VARIANT TO EXISTING MATERIAL MODAL */}
       <Dialog open={isAddVariantModalOpen} onOpenChange={setIsAddVariantModalOpen}>
-        <DialogContent className="max-w-lg rounded-3xl p-6 shadow-2xl">
-          <DialogHeader className="border-b pb-3">
+        <DialogContent className="w-[95vw] max-w-lg rounded-3xl p-6 shadow-2xl">
+          <DialogHeader className="border-b pb-3 pr-10">
             <div className="flex items-center gap-2">
               <div className="grid size-9 place-items-center rounded-xl bg-teal-soft text-teal">
                 <Plus className="size-4" />
