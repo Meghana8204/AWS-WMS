@@ -36,12 +36,6 @@ class SupplierCategoryModel(Base):
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
 
 
-class RawMaterialMasterModel(Base):
-    __tablename__ = "raw_material_master"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-
-
 class SupplierModel(Base):
     __tablename__ = "supplier"
 
@@ -145,11 +139,51 @@ class MaterialModel(Base):
     __tablename__ = "material"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(256), nullable=False)
-    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    category: Mapped[str] = mapped_column(String(128), nullable=False, default="General")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    base_uom: Mapped[str] = mapped_column(String(32), default="PCS", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="Active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
+    variants: Mapped[List["MaterialVariantModel"]] = relationship(
+        "MaterialVariantModel", back_populates="material", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+    @property
+    def code(self) -> str:
+        return self.material_code
+
+    @property
+    def name(self) -> str:
+        return self.material_name
+
+
+class MaterialVariantModel(Base):
+    __tablename__ = "material_variant"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    material_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("material.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    variant_code: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    size: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    color: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    grade: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    specification: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    uom: Mapped[str] = mapped_column(String(32), default="PCS", nullable=False)
+    attributes: Mapped[Optional[dict]] = mapped_column(JSON, default=dict, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="Active", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    created_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+    updated_by: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
+    material: Mapped["MaterialModel"] = relationship("MaterialModel", back_populates="variants")
 
 
 supplier_material_link = Table(
@@ -196,7 +230,10 @@ class RfqItemModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     rfq_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("rfq.id", ondelete="CASCADE"), nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
     material_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     material_name: Mapped[str] = mapped_column(String(256), nullable=False)
     category: Mapped[str] = mapped_column(String(128), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
@@ -206,6 +243,8 @@ class RfqItemModel(Base):
     special_requirements: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     rfq: Mapped[RfqModel] = relationship("RfqModel", back_populates="items")
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class QuotationModel(Base):
@@ -252,11 +291,16 @@ class QuotationLineModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     quotation_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("quotation.id"), nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
     item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
 
     quotation: Mapped[QuotationModel] = relationship(back_populates="lines")
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class AsnModel(Base):
@@ -303,12 +347,17 @@ class AsnLineModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     asn_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("asn.id"), nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
     item_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     shipped_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     material_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     uom: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
     asn: Mapped[AsnModel] = relationship(back_populates="lines")
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class PurchaseOrderModel(Base):
@@ -390,7 +439,10 @@ class PurchaseOrderItemModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     purchase_order_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("purchase_order.id"), nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
     material_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     material_name: Mapped[str] = mapped_column(String(255), nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
@@ -400,6 +452,8 @@ class PurchaseOrderItemModel(Base):
     uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
 
     purchase_order: Mapped[PurchaseOrderModel] = relationship("PurchaseOrderModel", back_populates="items")
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class MaterialRequestModel(Base):
@@ -425,19 +479,27 @@ class MaterialRequestItemModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id"), nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
     material_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     material_name: Mapped[str] = mapped_column(String(255), nullable=True)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
 
     request: Mapped[MaterialRequestModel] = relationship("MaterialRequestModel", back_populates="items")
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class MaterialStockModel(Base):
     __tablename__ = "material_stock"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    material_code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    material_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
+    material_code: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    variant_code: Mapped[Optional[str]] = mapped_column(String(128), index=True, nullable=True)
     material_name: Mapped[str] = mapped_column(String(255), nullable=False)
     category: Mapped[str] = mapped_column(String(128), nullable=False)
     on_hand: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
@@ -447,6 +509,9 @@ class MaterialStockModel(Base):
     warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
     reorder_point: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("10.0"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+    material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
+    variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
 class ArrivalNotificationModel(Base):

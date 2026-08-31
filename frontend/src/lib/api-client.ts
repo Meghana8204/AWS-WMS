@@ -863,4 +863,100 @@ export const api = {
       `${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`,
     );
   },
+  async getMaterials(filters?: {
+    search?: string;
+    category?: string;
+    status?: string;
+  }): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (filters?.search) params.append("search", filters.search);
+    if (filters?.category) params.append("category", filters.category);
+    if (filters?.status) params.append("status", filters.status);
+    const query = params.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/materials${query ? `?${query}` : ""}`);
+  },
+  async getMaterial(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${id}`);
+  },
+  async createMaterial(data: {
+    material_code: string;
+    material_name: string;
+    category: string;
+    description?: string;
+    base_uom: string;
+    status?: string;
+    variants?: any[];
+  }): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateMaterial(id: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateMaterialStatus(id: string, status: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  },
+  async addMaterialVariant(materialId: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${materialId}/variants`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateMaterialVariant(materialId: string, variantId: string, data: any): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${materialId}/variants/${variantId}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+    );
+  },
+  async updateMaterialVariantStatus(
+    materialId: string,
+    variantId: string,
+    status: string,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${materialId}/variants/${variantId}/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      },
+    );
+  },
+  async deleteMaterialVariant(materialId: string, variantId: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${materialId}/variants/${variantId}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
+  async getMaterialCategories(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/materials/categories`);
+  },
+  async getMaterialUoms(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/materials/uoms`);
+  },
+  async getNextMaterialCode(category?: string): Promise<{
+    suggested_material_code: string;
+    suggested_variant_code: string;
+  }> {
+    const query = category ? `?category=${encodeURIComponent(category)}` : "";
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/next-code${query}`);
+  },
 };

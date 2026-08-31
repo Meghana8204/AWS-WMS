@@ -99,13 +99,20 @@ function GateDashboard() {
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>
           ) : entries.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">No gate entries recorded yet.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              No gate entries recorded yet.
+            </p>
           ) : (
             <div className="divide-y divide-border/60">
               {entries.slice(0, 8).map((entry: any, index: number) => (
-                <div key={entry.id || index} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div
+                  key={entry.id || index}
+                  className="flex flex-wrap items-center justify-between gap-3 py-3"
+                >
                   <div>
-                    <p className="text-sm font-semibold">{entry.vehicle_number || "Vehicle pending"}</p>
+                    <p className="text-sm font-semibold">
+                      {entry.vehicle_number || "Vehicle pending"}
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {entry.gate_entry_no || "Gate entry pending"} · {entry.po_number || "No PO"}
                     </p>

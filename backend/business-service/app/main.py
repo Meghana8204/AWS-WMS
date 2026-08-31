@@ -1,6 +1,7 @@
 """
-FastAPI application entrypoint - business-service.
+FastAPI entrypoint for ams-wms-business-service.
 """
+# Reload triggered for Material Master schema update
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +23,7 @@ from app.modules.gate.infrastructure.api.router import (
 )
 from app.modules.gate.infrastructure.api.dashboard import router as dashboard_router
 from app.modules.notification.infrastructure.api.router import router as notification_router
+from app.modules.procurement.infrastructure.api.material_router import router as material_router
 from app.modules.procurement.infrastructure.api.router import router as procurement_router
 from app.modules.receiving.infrastructure.api.router import router as receiving_router
 from app.modules.returns.infrastructure.api.router import router as returns_router
@@ -696,6 +698,7 @@ def create_app() -> FastAPI:
     app.include_router(gate_preview_router)
     app.include_router(dashboard_router)
     app.include_router(procurement_router)
+    app.include_router(material_router)
 
     from fastapi.staticfiles import StaticFiles
     import os

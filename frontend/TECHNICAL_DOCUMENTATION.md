@@ -8,15 +8,15 @@ Routes under `src/routes` define screens; `src/lib/api-client.ts` is the central
 
 ## 2. Stack
 
-| Concern | Technology |
-|---|---|
-| UI/runtime | React 19, TypeScript 5.8, TanStack Start |
-| Routing/data | TanStack Router file routes, TanStack Query 5 |
-| Server/build | Vite 8, Nitro |
-| Styling/components | Tailwind CSS 4, Radix UI, local primitives |
-| Supporting UI | Lucide, Sonner, Recharts |
-| Codes/OCR | QRCode, JsBarcode, Tesseract.js |
-| Quality | ESLint, typescript-eslint, Prettier |
+| Concern            | Technology                                    |
+| ------------------ | --------------------------------------------- |
+| UI/runtime         | React 19, TypeScript 5.8, TanStack Start      |
+| Routing/data       | TanStack Router file routes, TanStack Query 5 |
+| Server/build       | Vite 8, Nitro                                 |
+| Styling/components | Tailwind CSS 4, Radix UI, local primitives    |
+| Supporting UI      | Lucide, Sonner, Recharts                      |
+| Codes/OCR          | QRCode, JsBarcode, Tesseract.js               |
+| Quality            | ESLint, typescript-eslint, Prettier           |
 
 ## 3. Runtime and source architecture
 
@@ -47,14 +47,14 @@ src/
 
 ## 4. Roles and navigation
 
-| Role | Home and navigation |
-|---|---|
+| Role                    | Home and navigation                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
 | `WAREHOUSE` / operators | `/warehouse-dashboard`: inventory, putaway, requests, arrivals, exit, docks, receiving, reports |
-| `PROCUREMENT` | `/procurement-dashboard`: suppliers, requests, RFQs, quotations, POs, ASNs |
-| `SUPPLIER` | `/supplier-dashboard`: quotations and ASN creation |
-| `FINANCE` | `/finance-dashboard`: pending approvals and reports |
-| `GATE_SECURITY` | `/gate-dashboard`: gate entry, arrivals, exit |
-| `ADMIN` | general/fallback behavior |
+| `PROCUREMENT`           | `/procurement-dashboard`: suppliers, requests, RFQs, quotations, POs, ASNs                      |
+| `SUPPLIER`              | `/supplier-dashboard`: quotations and ASN creation                                              |
+| `FINANCE`               | `/finance-dashboard`: pending approvals and reports                                             |
+| `GATE_SECURITY`         | `/gate-dashboard`: gate entry, arrivals, exit                                                   |
+| `ADMIN`                 | general/fallback behavior                                                                       |
 
 `requireRole` redirects users without a required role to their role home. Client guards control UX only; the backend must enforce authorization.
 
@@ -62,39 +62,39 @@ src/
 
 ### Shared
 
-| Route | Purpose |
-|---|---|
-| `/login`, `/` | login and role-aware entry redirect |
-| `/notifications` | role and arrival notifications |
-| `/settings`, `/reports` | settings and reporting surfaces |
+| Route                   | Purpose                             |
+| ----------------------- | ----------------------------------- |
+| `/login`, `/`           | login and role-aware entry redirect |
+| `/notifications`        | role and arrival notifications      |
+| `/settings`, `/reports` | settings and reporting surfaces     |
 
 ### Gate and warehouse
 
-| Route | Purpose |
-|---|---|
-| `/gate-dashboard`, `/gate-entry` | gate metrics and entry capture |
-| `/driver-verification`, `/vehicle-verification` | verification steps |
-| `/accept-arrival`, `/arrival-success`, `/dock-assignment` | arrival workflow steps |
-| `/warehouse-dashboard` | warehouse dashboard |
-| `/vehicle-queue`, `/dock-management` | inbound queue and dock administration |
-| `/receiving`, `/grn` | unload/check/complete receiving and post GRN |
-| `/inventory`, `/putaway-tasks` | stock/location views and putaway execution |
-| `/vehicle-exit` | warehouse approval and gate exit |
-| `/warehouse/material-requests` | create/edit material requests |
+| Route                                                     | Purpose                                      |
+| --------------------------------------------------------- | -------------------------------------------- |
+| `/gate-dashboard`, `/gate-entry`                          | gate metrics and entry capture               |
+| `/driver-verification`, `/vehicle-verification`           | verification steps                           |
+| `/accept-arrival`, `/arrival-success`, `/dock-assignment` | arrival workflow steps                       |
+| `/warehouse-dashboard`                                    | warehouse dashboard                          |
+| `/vehicle-queue`, `/dock-management`                      | inbound queue and dock administration        |
+| `/receiving`, `/grn`                                      | unload/check/complete receiving and post GRN |
+| `/inventory`, `/putaway-tasks`                            | stock/location views and putaway execution   |
+| `/vehicle-exit`                                           | warehouse approval and gate exit             |
+| `/warehouse/material-requests`                            | create/edit material requests                |
 
 ### Procurement, supplier, and finance
 
-| Route | Purpose |
-|---|---|
-| `/procurement-dashboard` | metrics, alerts, supplier/PO search |
-| `/master-data`, `/new-supplier`, `/supplier/$supplierId` | supplier list/onboarding/detail |
-| `/procurement/material-requests`, `/procurement/new-rfq`, `/procurement/rfqs` | sourcing inputs and RFQs |
-| `/procurement/quotations` | compare/evaluate/select quotations |
-| `/procurement/purchase-orders`, `/purchase-order` | PO list/detail/PDF/send |
-| `/procurement/asns`, `/procurement/asns/$asnId` | ASN list/detail |
-| `/supplier-dashboard`, `/submit-quotation`, `/supplier/asns/new` | supplier portal workflows |
-| `/finance-dashboard`, `/finance/approvals` | finance overview and approval list |
-| `/finance/approvals/$approvalId`, `/finance/approvals/compare/$rfqId` | approval detail/comparison |
+| Route                                                                         | Purpose                             |
+| ----------------------------------------------------------------------------- | ----------------------------------- |
+| `/procurement-dashboard`                                                      | metrics, alerts, supplier/PO search |
+| `/master-data`, `/new-supplier`, `/supplier/$supplierId`                      | supplier list/onboarding/detail     |
+| `/procurement/material-requests`, `/procurement/new-rfq`, `/procurement/rfqs` | sourcing inputs and RFQs            |
+| `/procurement/quotations`                                                     | compare/evaluate/select quotations  |
+| `/procurement/purchase-orders`, `/purchase-order`                             | PO list/detail/PDF/send             |
+| `/procurement/asns`, `/procurement/asns/$asnId`                               | ASN list/detail                     |
+| `/supplier-dashboard`, `/submit-quotation`, `/supplier/asns/new`              | supplier portal workflows           |
+| `/finance-dashboard`, `/finance/approvals`                                    | finance overview and approval list  |
+| `/finance/approvals/$approvalId`, `/finance/approvals/compare/$rfqId`         | approval detail/comparison          |
 
 ## 6. Backend integration
 
@@ -175,4 +175,3 @@ Manually test login/logout, role redirects, changed API failures, direct refresh
 - Implement a secure token/session lifecycle and CSP/XSS hardening.
 - Define upload limits/types, camera/OCR consent, and external-service privacy behavior.
 - Audit all route guards, responsive states, and error handling; never log tokens, documents, credentials, or personal data.
-

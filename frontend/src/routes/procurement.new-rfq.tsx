@@ -143,8 +143,11 @@ function NewRfq() {
             }));
             setItems(
               mr.items.map((it: any) => ({
-                material_code: it.materialCode,
-                material_name: it.materialName || it.materialCode,
+                material_id: it.materialId || it.material_id || null,
+                material_variant_id: it.materialVariantId || it.material_variant_id || null,
+                material_code: it.materialCode || it.material_code,
+                variant_code: it.variantCode || it.variant_code || null,
+                material_name: it.materialName || it.material_name || it.materialCode,
                 category: "Raw Materials",
                 quantity: it.quantity,
                 uom: it.uom,

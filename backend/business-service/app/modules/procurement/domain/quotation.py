@@ -16,6 +16,9 @@ class QuotationLine:
     item_code: str
     quantity: Decimal
     unit_price: Decimal
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
+    variant_code: Optional[str] = None
 
 
 @dataclass

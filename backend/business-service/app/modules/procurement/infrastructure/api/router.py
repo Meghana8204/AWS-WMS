@@ -112,7 +112,6 @@ from app.modules.procurement.infrastructure.persistence.models import (
     SupplierAddressModel,
     VendorTypeModel,
     SupplierCategoryModel,
-    RawMaterialMasterModel,
     SupplierUserModel,
     AsnModel,
     AsnLineModel,
@@ -125,6 +124,8 @@ from app.modules.procurement.infrastructure.persistence.models import (
     QuotationDocumentModel,
     PurchaseOrderModel,
     PurchaseOrderItemModel,
+    MaterialModel,
+    MaterialVariantModel,
     MaterialRequestModel,
     MaterialRequestItemModel,
     MaterialStockModel,
@@ -289,8 +290,11 @@ async def create_supplier_category(request: MasterDataCreate, uow: UnitOfWork = 
 
 @router.get("/raw-materials", response_model=List[MasterDataResponse])
 async def list_raw_materials(uow: UnitOfWork = Depends(get_uow)):
-    result = await uow.session.execute(select(RawMaterialMasterModel).order_by(RawMaterialMasterModel.name))
-    return [MasterDataResponse(id=m.id, name=m.name) for m in result.scalars().all()]
+    result = await uow.session.execute(select(MaterialModel.category).distinct().order_by(MaterialModel.category))
+    categories = [r[0] for r in result.fetchall() if r[0]]
+    if not categories:
+        categories = ["Steel & Metals", "Electrical", "Raw Materials", "Packaging", "Fasteners & Hardware"]
+    return [MasterDataResponse(id=idx + 1, name=cat) for idx, cat in enumerate(categories)]
 
 
 @router.post("/raw-materials", response_model=MasterDataResponse, status_code=status.HTTP_201_CREATED)
@@ -298,17 +302,7 @@ async def create_raw_material(request: MasterDataCreate, uow: UnitOfWork = Depen
     clean_name = request.name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
-    stmt = select(RawMaterialMasterModel).where(func.lower(RawMaterialMasterModel.name) == clean_name.lower())
-    res = await uow.session.execute(stmt)
-    existing = res.scalar_one_or_none()
-    if existing:
-        return MasterDataResponse(id=existing.id, name=existing.name)
-
-    new_mat = RawMaterialMasterModel(name=clean_name)
-    uow.session.add(new_mat)
-    await uow.commit()
-    await uow.session.refresh(new_mat)
-    return MasterDataResponse(id=new_mat.id, name=new_mat.name)
+    return MasterDataResponse(id=1, name=clean_name)
 
 
 
@@ -367,7 +361,10 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
             remarks=m.remarks,
             items=[
                 MaterialRequestItemSchema(
+                    material_id=str(it.material_id) if it.material_id else None,
+                    material_variant_id=str(it.material_variant_id) if it.material_variant_id else None,
                     material_code=it.material_code,
+                    variant_code=it.variant_code,
                     material_name=it.material_name,
                     quantity=it.quantity,
                     uom=it.uom
@@ -389,9 +386,6 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         repo = SqlAlchemyMaterialRequestRepository(uow.session)
         use_case = GetNextMaterialRequestNumberUseCase(repo)
         req_no = await use_case.handle()
-
-
-
 
     existing_codes_result = await uow.session.execute(
         select(MaterialRequestItemModel.material_code).where(
@@ -425,18 +419,52 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
     )
 
     for it in request.items:
-        if it.material_code:
-            material_code = it.material_code
-        else:
-            material_code = f"MAT-{next_material_sequence:04d}"
-            next_material_sequence += 1
+        mat_uuid = uuid.UUID(it.material_id) if it.material_id else None
+        var_uuid = uuid.UUID(it.material_variant_id) if it.material_variant_id else None
+
+        material_obj = None
+        variant_obj = None
+
+        if var_uuid:
+            var_stmt = select(MaterialVariantModel).options(selectinload(MaterialVariantModel.material)).where(MaterialVariantModel.id == var_uuid)
+            var_res = await uow.session.execute(var_stmt)
+            variant_obj = var_res.scalar_one_or_none()
+            if variant_obj:
+                material_obj = variant_obj.material
+                mat_uuid = material_obj.id if material_obj else None
+
+        if not material_obj and mat_uuid:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if material_obj and material_obj.variants and not variant_obj:
+                variant_obj = material_obj.variants[0]
+                var_uuid = variant_obj.id
+
+        if not material_obj and it.material_code:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.material_code == it.material_code)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if material_obj:
+                mat_uuid = material_obj.id
+                if material_obj.variants and not variant_obj:
+                    variant_obj = material_obj.variants[0]
+                    var_uuid = variant_obj.id
+
+        material_code = material_obj.material_code if material_obj else (it.material_code or f"MAT-{next_material_sequence:04d}")
+        material_name = material_obj.material_name if material_obj else (it.material_name or material_code)
+        variant_code = variant_obj.variant_code if variant_obj else (it.variant_code or f"{material_code}-V001")
+        uom = variant_obj.uom if variant_obj else (material_obj.base_uom if material_obj else (it.uom or "PCS"))
 
         new_mr.items.append(MaterialRequestItemModel(
             id=uuid.uuid4(),
+            material_id=mat_uuid,
+            material_variant_id=var_uuid,
             material_code=material_code,
-            material_name=it.material_name,
+            variant_code=variant_code,
+            material_name=material_name,
             quantity=it.quantity,
-            uom=it.uom
+            uom=uom
         ))
 
     uow.session.add(new_mr)
@@ -445,7 +473,13 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         "status": "success",
         "request_number": req_no,
         "items": [
-            {"material_code": item.material_code, "material_name": item.material_name}
+            {
+                "material_id": str(item.material_id) if item.material_id else None,
+                "material_variant_id": str(item.material_variant_id) if item.material_variant_id else None,
+                "material_code": item.material_code,
+                "variant_code": item.variant_code,
+                "material_name": item.material_name
+            }
             for item in new_mr.items
         ],
     }
@@ -953,7 +987,12 @@ async def create_rfq(
 
         stmt = select(RfqModel).options(
             selectinload(RfqModel.items),
-            selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+            selectinload(RfqModel.suppliers).options(
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            )
         ).where(RfqModel.id == rfq_id.value)
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
@@ -1273,16 +1312,18 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         ))
 
         for item in rfq.items:
-
             price = Decimal("0.0")
             if quotation:
-                q_line = next((l for l in quotation.lines if l.item_code == item.material_code), None)
+                q_line = next((l for l in quotation.lines if l.item_code == item.material_code or (getattr(item, 'variant_code', None) and l.item_code == item.variant_code)), None)
                 if q_line:
                     price = q_line.unit_price
 
             new_po.items.append(PurchaseOrderItemModel(
                 id=uuid.uuid4(),
+                material_id=item.material_id,
+                material_variant_id=item.material_variant_id,
                 material_code=item.material_code,
+                variant_code=getattr(item, "variant_code", None),
                 material_name=item.material_name,
                 category=item.category,
                 quantity=item.quantity,
@@ -1874,7 +1915,10 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         rejection_reason=getattr(po, "rejection_reason", None),
         items=[
             PurchaseOrderItemSchema(
+                material_id=str(it.material_id) if getattr(it, "material_id", None) else None,
+                material_variant_id=str(it.material_variant_id) if getattr(it, "material_variant_id", None) else None,
                 material_code=it.material_code,
+                variant_code=getattr(it, "variant_code", None),
                 material_name=it.material_name,
                 category=getattr(it, "category", None),
                 quantity=it.quantity,
@@ -1894,7 +1938,8 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
             )
             for h in (po.history or [])
         ],
-        created_at=po.created_at or datetime.now()
+        created_at=getattr(po, "created_at", None) or datetime.now(),
+        updated_at=getattr(po, "updated_at", None) or getattr(po, "created_at", None) or datetime.now()
     )
 
 
@@ -1905,7 +1950,12 @@ async def list_rfqs(
 ) -> List[RfqResponse]:
     stmt = select(RfqModel).options(
         selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        selectinload(RfqModel.suppliers).options(
+            selectinload(SupplierModel.address),
+            selectinload(SupplierModel.contact),
+            selectinload(SupplierModel.bank_info),
+            selectinload(SupplierModel.documents),
+        )
     ).order_by(RfqModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
@@ -1920,7 +1970,12 @@ async def get_rfq(
 ) -> RfqResponse:
     stmt = select(RfqModel).options(
         selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        selectinload(RfqModel.suppliers).options(
+            selectinload(SupplierModel.address),
+            selectinload(SupplierModel.contact),
+            selectinload(SupplierModel.bank_info),
+            selectinload(SupplierModel.documents),
+        )
     ).where(RfqModel.id == id)
     res = await uow.session.execute(stmt)
     entity = res.scalar_one_or_none()
@@ -1932,21 +1987,19 @@ async def get_rfq(
 def _to_rfq_response(rfq) -> RfqResponse:
     items = []
     for item in rfq.items:
-        if hasattr(item, "__dict__"):
-            data = {k: v for k, v in item.__dict__.items() if not k.startswith('_')}
-        else:
-
-            data = {
-                "material_code": item.material_code,
-                "material_name": item.material_name,
-                "category": item.category,
-                "quantity": item.quantity,
-                "uom": item.uom,
-                "required_delivery_date": item.required_delivery_date,
-                "warehouse": item.warehouse,
-                "special_requirements": item.special_requirements
-            }
-        items.append(RfqItemSchema(**data))
+        items.append(RfqItemSchema(
+            material_id=str(getattr(item, "material_id", None)) if getattr(item, "material_id", None) else None,
+            material_variant_id=str(getattr(item, "material_variant_id", None)) if getattr(item, "material_variant_id", None) else None,
+            material_code=item.material_code,
+            variant_code=getattr(item, "variant_code", None),
+            material_name=item.material_name,
+            category=getattr(item, "category", None),
+            quantity=item.quantity,
+            uom=item.uom,
+            required_delivery_date=getattr(item, "required_delivery_date", None),
+            warehouse=getattr(item, "warehouse", None),
+            special_requirements=getattr(item, "special_requirements", None)
+        ))
 
     suppliers_list = []
     supplier_emails = []
@@ -2275,11 +2328,14 @@ async def reject_quotation(
 def _to_quotation_response(q) -> QuotationResponse:
     lines = []
     for l in q.lines:
-        if hasattr(l, "__dict__"):
-            data = {k: v for k, v in l.__dict__.items() if not k.startswith('_')}
-        else:
-            data = {"item_code": l.item_code, "quantity": l.quantity, "unit_price": l.unit_price}
-        lines.append(QuotationLineSchema(**data))
+        lines.append(QuotationLineSchema(
+            material_id=str(getattr(l, "material_id", None)) if getattr(l, "material_id", None) else None,
+            material_variant_id=str(getattr(l, "material_variant_id", None)) if getattr(l, "material_variant_id", None) else None,
+            item_code=l.item_code,
+            variant_code=getattr(l, "variant_code", None),
+            quantity=l.quantity,
+            unit_price=l.unit_price
+        ))
 
     documents = [QuotationDocumentSchema(
         document_type=document.document_type,

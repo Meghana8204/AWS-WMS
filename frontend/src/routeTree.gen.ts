@@ -45,6 +45,7 @@ import { Route as ProcurementQuotationsRouteImport } from './routes/procurement.
 import { Route as ProcurementRfqsRouteImport } from './routes/procurement.rfqs'
 import { Route as SupplierSupplierIdRouteImport } from './routes/supplier.$supplierId'
 import { Route as WarehouseMaterialRequestsRouteImport } from './routes/warehouse.material-requests'
+import { Route as WarehouseMaterialsRouteImport } from './routes/warehouse.materials'
 import { Route as FinanceApprovalsIndexRouteImport } from './routes/finance.approvals.index'
 import { Route as FinanceApprovalsApprovalIdRouteImport } from './routes/finance.approvals.$approvalId'
 import { Route as ProcurementAsnsIndexRouteImport } from './routes/procurement.asns.index'
@@ -235,6 +236,11 @@ const WarehouseMaterialRequestsRoute =
     path: '/warehouse/material-requests',
     getParentRoute: () => rootRouteImport,
   } as any)
+const WarehouseMaterialsRoute = WarehouseMaterialsRouteImport.update({
+  id: '/warehouse/materials',
+  path: '/warehouse/materials',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FinanceApprovalsIndexRoute = FinanceApprovalsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -305,6 +311,7 @@ export interface FileRoutesByFullPath {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -347,6 +354,7 @@ export interface FileRoutesByTo {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -392,6 +400,7 @@ export interface FileRoutesById {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -438,6 +447,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -480,6 +490,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -524,6 +535,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -569,6 +581,7 @@ export interface RootRouteChildren {
   ProcurementRfqsRoute: typeof ProcurementRfqsRoute
   SupplierSupplierIdRoute: typeof SupplierSupplierIdRoute
   WarehouseMaterialRequestsRoute: typeof WarehouseMaterialRequestsRoute
+  WarehouseMaterialsRoute: typeof WarehouseMaterialsRoute
   SupplierAsnsNewRoute: typeof SupplierAsnsNewRoute
 }
 
@@ -826,6 +839,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WarehouseMaterialRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/warehouse/materials': {
+      id: '/warehouse/materials'
+      path: '/warehouse/materials'
+      fullPath: '/warehouse/materials'
+      preLoaderRoute: typeof WarehouseMaterialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/finance/approvals/': {
       id: '/finance/approvals/'
       path: '/'
@@ -937,6 +957,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProcurementRfqsRoute: ProcurementRfqsRoute,
   SupplierSupplierIdRoute: SupplierSupplierIdRoute,
   WarehouseMaterialRequestsRoute: WarehouseMaterialRequestsRoute,
+  WarehouseMaterialsRoute: WarehouseMaterialsRoute,
   SupplierAsnsNewRoute: SupplierAsnsNewRoute,
 }
 export const routeTree = rootRouteImport
