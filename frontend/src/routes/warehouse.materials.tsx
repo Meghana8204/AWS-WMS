@@ -454,9 +454,6 @@ function WarehouseMaterials() {
               <h3 className="mt-1 text-2xl font-black tabular-nums">
                 {loading ? "..." : totalMaterials}
               </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Unique Material Codes
-              </p>
             </div>
             <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
               <Database className="size-6" />
@@ -742,7 +739,7 @@ function WarehouseMaterials() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold">
                     Category <span className="text-destructive">*</span>
@@ -799,23 +796,6 @@ function WarehouseMaterials() {
                           {u}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold">Status</Label>
-                  <Select value={materialStatus} onValueChange={setMaterialStatus}>
-                    <SelectTrigger className="rounded-xl text-xs bg-background">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-xl">
-                      <SelectItem value="Active" className="text-xs text-success font-medium">
-                        Active
-                      </SelectItem>
-                      <SelectItem value="Inactive" className="text-xs text-muted-foreground">
-                        Inactive
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
