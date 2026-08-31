@@ -857,71 +857,68 @@ function WarehouseMaterials() {
                 {variantsList.map((variant, idx) => (
                   <div
                     key={idx}
-                    className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-center bg-card p-3 rounded-xl border border-border/70 shadow-2xs"
+                    className="p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs space-y-2.5 transition-all hover:border-primary/30"
                   >
-                    <div className="w-8 shrink-0 text-center font-mono font-bold text-xs text-muted-foreground">
-                      #{idx + 1}
+                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-black text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md">
+                          #{idx + 1}
+                        </span>
+                        <span className="font-mono text-xs font-bold text-primary bg-primary-soft/60 px-2.5 py-0.5 rounded-lg border border-primary/20">
+                          {variant.variant_code}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-lg inline-flex items-center gap-1"
+                        onClick={() => removeVariantRow(idx)}
+                        disabled={variantsList.length === 1}
+                        title={variantsList.length === 1 ? "At least one variant required" : "Remove variant"}
+                      >
+                        <Trash2 className="size-3.5" /> Remove
+                      </Button>
                     </div>
 
-                    <div className="flex-1 grid grid-cols-2 sm:grid-cols-6 gap-2 w-full">
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">Variant Code</Label>
-                        <Input
-                          value={variant.variant_code}
-                          readOnly
-                          disabled
-                          placeholder="MAT-001-V001"
-                          className="h-8 font-mono text-xs font-bold rounded-lg bg-muted/60 text-foreground cursor-not-allowed border-dashed"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">Size</Label>
+                    <div className="grid gap-2.5 sm:grid-cols-4">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-bold text-foreground/80">Size / Dimension</Label>
                         <Input
                           value={variant.size}
                           onChange={(e) => updateVariantRow(idx, "size", e.target.value)}
-                          placeholder="e.g. 1.5 mm, 10 mm"
-                          className="h-8 text-xs rounded-lg"
+                          placeholder="e.g. 10 mm, 25 kg Ingot"
+                          className="h-8.5 text-xs rounded-xl"
                         />
                       </div>
 
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">Color</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-bold text-foreground/80">Color</Label>
                         <Input
                           value={variant.color}
                           onChange={(e) => updateVariantRow(idx, "color", e.target.value)}
-                          placeholder="e.g. Red, Blue"
-                          className="h-8 text-xs rounded-lg"
+                          placeholder="e.g. Red, Metallic Grey"
+                          className="h-8.5 text-xs rounded-xl"
                         />
                       </div>
 
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">Grade / Spec</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-bold text-foreground/80">Grade / Standard</Label>
                         <Input
                           value={variant.grade}
                           onChange={(e) => updateVariantRow(idx, "grade", e.target.value)}
-                          placeholder="e.g. PVC, IS 2062"
-                          className="h-8 text-xs rounded-lg"
+                          placeholder="e.g. Fe 500D, SS 304"
+                          className="h-8.5 text-xs rounded-xl"
                         />
                       </div>
 
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">Specification</Label>
-                        <Input
-                          value={variant.specification}
-                          onChange={(e) => updateVariantRow(idx, "specification", e.target.value)}
-                          placeholder="Extra specs"
-                          className="h-8 text-xs rounded-lg"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-1">
-                        <Label className="text-[10px] text-muted-foreground">UOM</Label>
+                      <div className="space-y-1">
+                        <Label className="text-[11px] font-bold text-foreground/80">Packaging UOM</Label>
                         <Select
                           value={variant.uom}
                           onValueChange={(val) => updateVariantRow(idx, "uom", val)}
                         >
-                          <SelectTrigger className="h-8 rounded-lg text-xs">
+                          <SelectTrigger className="h-8.5 rounded-xl text-xs font-semibold font-mono bg-background">
                             <SelectValue placeholder="UOM" />
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
@@ -935,16 +932,15 @@ function WarehouseMaterials() {
                       </div>
                     </div>
 
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-destructive hover:bg-destructive/10 rounded-lg shrink-0"
-                      onClick={() => removeVariantRow(idx)}
-                      disabled={variantsList.length === 1}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-foreground/80">Technical Specification / Notes</Label>
+                      <Input
+                        value={variant.specification}
+                        onChange={(e) => updateVariantRow(idx, "specification", e.target.value)}
+                        placeholder="e.g. IS 1786 High Ductility TMT Reinforcement (Bundle of 10 Rods)"
+                        className="h-8.5 text-xs rounded-xl"
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1052,25 +1048,25 @@ function WarehouseMaterials() {
                 </div>
 
                 <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="w-full text-left text-xs border-collapse min-w-[820px]">
                     <thead>
                       <tr className="border-b border-border/70 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
-                        <th className="p-3">Variant Code</th>
-                        <th className="p-3">Size</th>
-                        <th className="p-3">Color</th>
-                        <th className="p-3">Grade</th>
+                        <th className="p-3 whitespace-nowrap">Variant Code</th>
+                        <th className="p-3 whitespace-nowrap">Size</th>
+                        <th className="p-3 whitespace-nowrap">Color</th>
+                        <th className="p-3 whitespace-nowrap">Grade</th>
                         <th className="p-3">Specification</th>
-                        <th className="p-3">UOM</th>
-                        <th className="p-3">Status</th>
-                        <th className="p-3 text-right">Actions</th>
+                        <th className="p-3 whitespace-nowrap">UOM</th>
+                        <th className="p-3 whitespace-nowrap">Status</th>
+                        <th className="p-3 text-right whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/50 font-medium">
                       {selectedMaterial.variants?.map((v: any) => (
                         <tr key={v.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-3 font-mono font-bold text-primary">{v.variant_code}</td>
-                          <td className="p-3 text-foreground font-medium">{v.size || "—"}</td>
-                          <td className="p-3 text-foreground">
+                          <td className="p-3 font-mono font-bold text-primary whitespace-nowrap">{v.variant_code}</td>
+                          <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.size || "—"}</td>
+                          <td className="p-3 text-foreground whitespace-nowrap">
                             {v.color ? (
                               <span className="inline-flex items-center gap-1.5">
                                 <span
@@ -1083,8 +1079,8 @@ function WarehouseMaterials() {
                               "—"
                             )}
                           </td>
-                          <td className="p-3 text-foreground font-medium">{v.grade || "—"}</td>
-                          <td className="p-3 text-muted-foreground max-w-xs">
+                          <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.grade || "—"}</td>
+                          <td className="p-3 text-muted-foreground min-w-[220px]">
                             <div>{v.specification || "—"}</div>
                             {v.attributes && Object.keys(v.attributes).length > 0 && (
                               <div className="flex flex-wrap gap-1 mt-1">
@@ -1100,13 +1096,13 @@ function WarehouseMaterials() {
                               </div>
                             )}
                           </td>
-                          <td className="p-3 font-mono font-semibold text-foreground">
+                          <td className="p-3 font-mono font-bold text-foreground whitespace-nowrap">
                             {v.uom || selectedMaterial.base_uom}
                           </td>
-                          <td className="p-3">
+                          <td className="p-3 whitespace-nowrap">
                             <StatusBadge status={v.status} />
                           </td>
-                          <td className="p-3 text-right">
+                          <td className="p-3 text-right whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1.5">
                               <Button
                                 variant="ghost"
