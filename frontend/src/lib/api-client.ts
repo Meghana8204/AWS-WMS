@@ -170,34 +170,66 @@ export const api = {
   async getInboundArrivals(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
   },
-  async getDocks(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/docks`);
+  async getDocks(status?: string, type?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    if (type) params.append("dock_type", type);
+    const query = params.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${query ? `?${query}` : ""}`);
+  },
+  async getDockOverviewMetrics(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
   },
   async createDock(payload: {
-    dock_number: string;
-    warehouse_id: string;
-    dock_type: string;
-    capacity: number;
-    status: string;
+    dock_code: string;
+    dock_name: string;
+    dock_type?: string;
+    location?: string;
+    description?: string;
+    status?: string;
   }): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/docks`, {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
-  async updateDock(
-    dockNumber: string,
-    payload: {
-      warehouse_id?: string;
-      dock_type?: string;
-      capacity?: number;
-      status?: string;
-    },
+  async updateDockStatus(
+    dockId: string,
+    status: string,
+    reason?: string,
   ): Promise<any> {
     return request<any>(
-      `${BUSINESS_API_URL}/api/gate-entries/docks/${encodeURIComponent(dockNumber)}`,
-      { method: "PATCH", body: JSON.stringify(payload) },
+      `${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(dockId)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status, reason }) },
     );
+  },
+  async updateDock(id: string, payload: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
+      method: "POST",
+      body: JSON.stringify({ allocation_request_id: allocationRequestId, dock_id: dockId }),
+    });
+  },
+  async markVehicleArrived(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/arrive`, {
+      method: "POST",
+    });
+  },
+  async releaseDock(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/release`, {
+      method: "POST",
+    });
+  },
+  async getPendingAllocations(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
+  },
+  async getDockHistory(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
   },
   async assignDock(gateEntryId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/assign-dock`, {
@@ -280,11 +312,6 @@ export const api = {
   },
   async completeReceiving(gateEntryId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-receiving`, {
-      method: "POST",
-    });
-  },
-  async releaseDock(gateEntryId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/release-dock`, {
       method: "POST",
     });
   },
@@ -760,7 +787,7 @@ export const api = {
   async getPurchaseOrder(id: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${id}`);
   },
-  async getPurchaseOrderByNumber(poNumber: str): Promise<any> {
+  async getPurchaseOrderByNumber(poNumber: string): Promise<any> {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`,
     );

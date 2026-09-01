@@ -15,6 +15,7 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
+    existing_tables = set(sa.inspect(conn).get_table_names())
 
     # 1. Add material_id, material_variant_id, variant_code to transactional tables
     target_tables = [
@@ -27,6 +28,8 @@ def upgrade():
     ]
 
     for tbl in target_tables:
+        if tbl not in existing_tables:
+            continue
         for col_name, col_type in [
             ("material_id", "UUID"),
             ("material_variant_id", "UUID"),
@@ -46,6 +49,8 @@ def upgrade():
         "return_line",
         "material_stock",
     ]:
+        if tbl not in existing_tables:
+            continue
         conn.execute(sa.text(f"""
             DO $$
             BEGIN
@@ -68,18 +73,19 @@ def upgrade():
 
     # 3. Migrate and link existing records by material_code / variant_code
     # Link material_request_item
-    conn.execute(sa.text("""
-        UPDATE material_request_item mri
-        SET material_id = m.id
-        FROM material m
-        WHERE mri.material_id IS NULL AND mri.material_code = m.material_code;
-    """))
-    conn.execute(sa.text("""
-        UPDATE material_request_item mri
-        SET material_variant_id = mv.id, variant_code = mv.variant_code
-        FROM material_variant mv
-        WHERE mri.material_variant_id IS NULL AND (mri.variant_code = mv.variant_code OR mri.material_id = mv.material_id);
-    """))
+    if "material_request_item" in existing_tables:
+        conn.execute(sa.text("""
+            UPDATE material_request_item mri
+            SET material_id = m.id
+            FROM material m
+            WHERE mri.material_id IS NULL AND mri.material_code = m.material_code;
+        """))
+        conn.execute(sa.text("""
+            UPDATE material_request_item mri
+            SET material_variant_id = mv.id, variant_code = mv.variant_code
+            FROM material_variant mv
+            WHERE mri.material_variant_id IS NULL AND (mri.variant_code = mv.variant_code OR mri.material_id = mv.material_id);
+        """))
 
     # Link rfq_item
     conn.execute(sa.text("""
@@ -110,32 +116,34 @@ def upgrade():
     """))
 
     # Link purchase_order_item
-    conn.execute(sa.text("""
-        UPDATE purchase_order_item poi
-        SET material_id = m.id
-        FROM material m
-        WHERE poi.material_id IS NULL AND poi.material_code = m.material_code;
-    """))
-    conn.execute(sa.text("""
-        UPDATE purchase_order_item poi
-        SET material_variant_id = mv.id, variant_code = mv.variant_code
-        FROM material_variant mv
-        WHERE poi.material_variant_id IS NULL AND (poi.variant_code = mv.variant_code OR poi.material_id = mv.material_id);
-    """))
+    if "purchase_order_item" in existing_tables:
+        conn.execute(sa.text("""
+            UPDATE purchase_order_item poi
+            SET material_id = m.id
+            FROM material m
+            WHERE poi.material_id IS NULL AND poi.material_code = m.material_code;
+        """))
+        conn.execute(sa.text("""
+            UPDATE purchase_order_item poi
+            SET material_variant_id = mv.id, variant_code = mv.variant_code
+            FROM material_variant mv
+            WHERE poi.material_variant_id IS NULL AND (poi.variant_code = mv.variant_code OR poi.material_id = mv.material_id);
+        """))
 
     # Link material_stock
-    conn.execute(sa.text("""
-        UPDATE material_stock ms
-        SET material_id = m.id
-        FROM material m
-        WHERE ms.material_id IS NULL AND ms.material_code = m.material_code;
-    """))
-    conn.execute(sa.text("""
-        UPDATE material_stock ms
-        SET material_variant_id = mv.id, variant_code = mv.variant_code
-        FROM material_variant mv
-        WHERE ms.material_variant_id IS NULL AND (ms.variant_code = mv.variant_code OR ms.material_id = mv.material_id);
-    """))
+    if "material_stock" in existing_tables:
+        conn.execute(sa.text("""
+            UPDATE material_stock ms
+            SET material_id = m.id
+            FROM material m
+            WHERE ms.material_id IS NULL AND ms.material_code = m.material_code;
+        """))
+        conn.execute(sa.text("""
+            UPDATE material_stock ms
+            SET material_variant_id = mv.id, variant_code = mv.variant_code
+            FROM material_variant mv
+            WHERE ms.material_variant_id IS NULL AND (ms.variant_code = mv.variant_code OR ms.material_id = mv.material_id);
+        """))
 
     # Link asn_line
     conn.execute(sa.text("""

@@ -19,6 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    existing_tables = set(sa.inspect(op.get_bind()).get_table_names())
     # -------------------------------------------------------------------------
     # 1. Fix material_stock Uniqueness:
     # Drop legacy unique constraint on material_code alone
@@ -37,16 +38,17 @@ def upgrade() -> None:
 
     # Create composite unique index on material_stock (material_variant_id, warehouse_id)
     # and on (material_id, variant_code, warehouse_id)
-    op.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS uq_material_stock_variant_wh
-        ON material_stock (material_variant_id, warehouse_id)
-        WHERE material_variant_id IS NOT NULL;
-    """)
-    op.execute("""
-        CREATE UNIQUE INDEX IF NOT EXISTS uq_material_stock_mat_var_wh
-        ON material_stock (material_id, variant_code, warehouse_id)
-        WHERE material_id IS NOT NULL AND variant_code IS NOT NULL;
-    """)
+    if "material_stock" in existing_tables:
+        op.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_material_stock_variant_wh
+            ON material_stock (material_variant_id, warehouse_id)
+            WHERE material_variant_id IS NOT NULL;
+        """)
+        op.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_material_stock_mat_var_wh
+            ON material_stock (material_id, variant_code, warehouse_id)
+            WHERE material_id IS NOT NULL AND variant_code IS NOT NULL;
+        """)
 
     # -------------------------------------------------------------------------
     # 2. Material Variant Duplicate Specifications Database Index:
@@ -94,6 +96,8 @@ def upgrade() -> None:
     ]
 
     for table, col, idx_name in fk_indexes:
+        if table not in existing_tables:
+            continue
         op.execute(f"""
             CREATE INDEX IF NOT EXISTS {idx_name}
             ON {table} ({col});

@@ -14,6 +14,7 @@ import { Route as AcceptArrivalRouteImport } from './routes/accept-arrival'
 import { Route as ArrivalSuccessRouteImport } from './routes/arrival-success'
 import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DockManagementRouteImport } from './routes/dock-management'
+import { Route as DockMasterRouteImport } from './routes/dock-master'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
 import { Route as GateDashboardRouteImport } from './routes/gate-dashboard'
@@ -76,6 +77,11 @@ const DockAssignmentRoute = DockAssignmentRouteImport.update({
 const DockManagementRoute = DockManagementRouteImport.update({
   id: '/dock-management',
   path: '/dock-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DockMasterRoute = DockMasterRouteImport.update({
+  id: '/dock-master',
+  path: '/dock-master',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DriverVerificationRoute = DriverVerificationRouteImport.update({
@@ -280,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -325,6 +332,7 @@ export interface FileRoutesByTo {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -369,6 +377,7 @@ export interface FileRoutesById {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -416,6 +425,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -461,6 +471,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -504,6 +515,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -550,6 +562,7 @@ export interface RootRouteChildren {
   ArrivalSuccessRoute: typeof ArrivalSuccessRoute
   DockAssignmentRoute: typeof DockAssignmentRoute
   DockManagementRoute: typeof DockManagementRoute
+  DockMasterRoute: typeof DockMasterRoute
   DriverVerificationRoute: typeof DriverVerificationRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   GateDashboardRoute: typeof GateDashboardRoute
@@ -620,6 +633,13 @@ declare module '@tanstack/react-router' {
       path: '/dock-management'
       fullPath: '/dock-management'
       preLoaderRoute: typeof DockManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dock-master': {
+      id: '/dock-master'
+      path: '/dock-master'
+      fullPath: '/dock-master'
+      preLoaderRoute: typeof DockMasterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/driver-verification': {
@@ -926,6 +946,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArrivalSuccessRoute: ArrivalSuccessRoute,
   DockAssignmentRoute: DockAssignmentRoute,
   DockManagementRoute: DockManagementRoute,
+  DockMasterRoute: DockMasterRoute,
   DriverVerificationRoute: DriverVerificationRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   GateDashboardRoute: GateDashboardRoute,

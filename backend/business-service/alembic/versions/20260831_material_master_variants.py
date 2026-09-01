@@ -16,6 +16,7 @@ depends_on = None
 
 def upgrade() -> None:
     conn = op.get_bind()
+    inspector = sa.inspect(conn)
 
     # 1. Evolve 'material' table
     # Check if table exists, create or alter columns
@@ -126,37 +127,31 @@ def upgrade() -> None:
     """))
 
     # 4. Add foreign keys and variant tracking to material_request_item
-    for col_def in [
-        ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
-        ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
-        ("variant_code", "VARCHAR(128)"),
-    ]:
-        try:
+    if inspector.has_table("material_request_item"):
+        for col_def in [
+            ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
+            ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
+            ("variant_code", "VARCHAR(128)"),
+        ]:
             conn.execute(sa.text(f"ALTER TABLE material_request_item ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}"))
-        except Exception:
-            pass
 
     # 5. Add foreign keys and variant tracking to purchase_order_item
-    for col_def in [
-        ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
-        ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
-        ("variant_code", "VARCHAR(128)"),
-    ]:
-        try:
+    if inspector.has_table("purchase_order_item"):
+        for col_def in [
+            ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
+            ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
+            ("variant_code", "VARCHAR(128)"),
+        ]:
             conn.execute(sa.text(f"ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}"))
-        except Exception:
-            pass
 
     # 6. Add variant tracking to material_stock
-    for col_def in [
-        ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
-        ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
-        ("variant_code", "VARCHAR(128)"),
-    ]:
-        try:
+    if inspector.has_table("material_stock"):
+        for col_def in [
+            ("material_id", "UUID REFERENCES material(id) ON DELETE SET NULL"),
+            ("material_variant_id", "UUID REFERENCES material_variant(id) ON DELETE SET NULL"),
+            ("variant_code", "VARCHAR(128)"),
+        ]:
             conn.execute(sa.text(f"ALTER TABLE material_stock ADD COLUMN IF NOT EXISTS {col_def[0]} {col_def[1]}"))
-        except Exception:
-            pass
 
 
 def downgrade() -> None:

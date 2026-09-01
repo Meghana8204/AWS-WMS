@@ -10,6 +10,7 @@ import asyncio
 import datetime
 import logging
 import uuid
+from decimal import Decimal
 from typing import Optional
 
 
@@ -741,6 +742,20 @@ async def create_gate_entry(
 
     document_data = base64.b64decode(request.document_image_base64) if request.document_image_base64 else None
     await _save_gate_entry(uow.session, entry, document_data=document_data)
+
+    try:
+        from app.modules.dock.application.service import DockAllocationService
+        await DockAllocationService.auto_create_allocation_request(
+            session=uow.session,
+            gate_pass_id=entry.gate_entry_number or str(entry.id),
+            vehicle_number=plate,
+            vendor_reference=request.supplier_name or (ocr_res.supplier_name if ocr_res else None),
+            material_description=request.material_description or (ocr_res.material_description if ocr_res else None),
+            quantity=Decimal(str(request.total_quantity)) if request.total_quantity else (Decimal(str(ocr_res.total_quantity)) if (ocr_res and ocr_res.total_quantity) else Decimal("100.0")),
+        )
+    except Exception as exc:
+        logger.warning(f"Auto-creation of dock allocation request skipped/failed: {exc}")
+
     return _to_gate_entry_response(
         entry,
         po_status=po_record.status if po_record else None,
@@ -1851,6 +1866,41 @@ async def verify_gate_entry(
     action = request.action.upper()
     if action == "APPROVE":
         entry.approve(supervisor_id=user.username, remarks=request.remarks)
+        ge_num = getattr(entry, "gate_entry_number", None) or str(entry.id)
+        veh_plate = getattr(entry, "vehicle_plate", None) or getattr(entry, "vehicle_number", "Vehicle")
+        supplier = entry.ocr_result.supplier_name if (hasattr(entry, "ocr_result") and entry.ocr_result) else None
+        po_num = getattr(entry, "po_number", "N/A")
+        mat_desc = getattr(entry, "material_description", None) or "Inbound Goods"
+        qty = getattr(entry, "total_quantity", None)
+
+        from app.modules.dock.application.service import DockAllocationService
+        await DockAllocationService.auto_create_allocation_request(
+            session=uow.session,
+            gate_pass_id=ge_num,
+            vehicle_number=veh_plate,
+            vendor_reference=supplier,
+            material_description=mat_desc,
+            quantity=qty,
+        )
+
+        unique_link = f"/dock-management?gateEntryId={entry.id.value if hasattr(entry.id, 'value') else entry.id}"
+        check_stmt = select(NotificationModel).where(
+            NotificationModel.user_role == "WAREHOUSE",
+            NotificationModel.link == unique_link
+        )
+        existing = (await uow.session.execute(check_stmt)).scalar_one_or_none()
+        if not existing:
+            msg = f"Gate Entry {ge_num} for vehicle {veh_plate} (PO: {po_num}"
+            if supplier:
+                msg += f", Supplier: {supplier}"
+            msg += ") has been approved and is Awaiting Dock assignment."
+
+            uow.session.add(NotificationModel(
+                user_role="WAREHOUSE",
+                title="Gate Entry Approved — Awaiting Dock",
+                message=msg,
+                link=unique_link,
+            ))
     elif action == "REJECT":
         reason = request.reason or request.remarks
         entry.reject(supervisor_id=user.username, reason=reason)

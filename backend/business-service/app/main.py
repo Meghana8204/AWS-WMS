@@ -17,6 +17,7 @@ from app.kafka.producer import start_producer, stop_producer
 from app.logging.logger import configure_logging, get_logger
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.request_context import RequestContextMiddleware
+from app.modules.dock.infrastructure.api.router import router as dock_router
 from app.modules.gate.infrastructure.api.router import (
     preview_router as gate_preview_router,
     router as gate_router,
@@ -332,7 +333,10 @@ async def lifespan(app: FastAPI):
                 CREATE TABLE IF NOT EXISTS material_request_item (
                     id UUID PRIMARY KEY,
                     request_id UUID REFERENCES material_request(id) ON DELETE CASCADE,
+                    material_id UUID REFERENCES material(id) ON DELETE SET NULL,
+                    material_variant_id UUID REFERENCES material_variant(id) ON DELETE SET NULL,
                     material_code VARCHAR(64) NOT NULL,
+                    variant_code VARCHAR(128),
                     material_name VARCHAR(255),
                     quantity NUMERIC(18, 4) NOT NULL,
                     uom VARCHAR(32) NOT NULL DEFAULT 'PCS'
@@ -341,6 +345,15 @@ async def lifespan(app: FastAPI):
             logger.debug("Ensured material_request_item table exists")
         except Exception as e:
             logger.warning(f"Failed to create material_request_item table: {e}")
+
+        try:
+            for tbl in ["material_request_item", "purchase_order_item", "material_stock"]:
+                await run_ddl(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS material_id UUID REFERENCES material(id) ON DELETE SET NULL")
+                await run_ddl(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS material_variant_id UUID REFERENCES material_variant(id) ON DELETE SET NULL")
+                await run_ddl(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS variant_code VARCHAR(128)")
+            logger.debug("Ensured material linkage columns exist across item tables")
+        except Exception as e:
+            logger.warning(f"Failed to alter material linkage columns: {e}")
 
 
         try:
@@ -690,6 +703,7 @@ def create_app() -> FastAPI:
 
         app.dependency_overrides[get_current_user] = get_local_dev_user
 
+    app.include_router(dock_router)
     app.include_router(receiving_router)
     app.include_router(returns_router)
     app.include_router(storage_router)
