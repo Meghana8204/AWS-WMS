@@ -224,9 +224,15 @@ function WarehouseMaterials() {
   };
 
   const addVariantRow = () => {
-    const nextIdx = variantsList.length + 1;
     const codePrefix = materialCode.trim().toUpperCase() || "MAT";
-    const nextCode = `${codePrefix}-V${String(nextIdx).padStart(3, "0")}`;
+    const existingSeqs = variantsList
+      .map((v) => {
+        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n) && n > 0);
+    const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
+    const nextCode = `${codePrefix}-V${String(maxSeq + 1).padStart(3, "0")}`;
     setVariantsList([
       ...variantsList,
       {
@@ -367,10 +373,20 @@ function WarehouseMaterials() {
     }
   };
 
-  const openAddVariantForExisting = () => {
+  const openAddVariantForExisting = async () => {
     if (!selectedMaterial) return;
-    const nextSeq = (selectedMaterial.variants?.length || 0) + 1;
-    setNewVarCode(`${selectedMaterial.material_code}-V${String(nextSeq).padStart(3, "0")}`);
+    
+    // Extract existing sequences from all existing variant codes (Active, Inactive, etc.)
+    const existingSeqs = (selectedMaterial.variants || [])
+      .map((v: any) => {
+        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n: number) => !isNaN(n) && n > 0);
+    const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
+    const initialCode = `${selectedMaterial.material_code}-V${String(maxSeq + 1).padStart(3, "0")}`;
+
+    setNewVarCode(initialCode);
     setNewVarSize("");
     setNewVarColor("");
     setNewVarGrade("");
@@ -380,6 +396,16 @@ function WarehouseMaterials() {
     setAttrKey("");
     setAttrVal("");
     setIsAddVariantModalOpen(true);
+
+    // Also fetch suggested variant code from backend API to ensure 100% synchronization
+    try {
+      const res = await api.getNextVariantCode(selectedMaterial.id);
+      if (res?.suggested_variant_code) {
+        setNewVarCode(res.suggested_variant_code);
+      }
+    } catch {
+      // Keep calculated fallback
+    }
   };
 
   const handleAddVariantSubmit = async (e: React.FormEvent) => {
