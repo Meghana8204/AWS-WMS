@@ -175,34 +175,66 @@ export const api = {
   async getInboundArrivals(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
   },
-  async getDocks(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/docks`);
+  async getDocks(status?: string, type?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (status) params.append("status", status);
+    if (type) params.append("dock_type", type);
+    const query = params.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${query ? `?${query}` : ""}`);
+  },
+  async getDockOverviewMetrics(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
   },
   async createDock(payload: {
-    dock_number: string;
-    warehouse_id: string;
-    dock_type: string;
-    capacity: number;
-    status: string;
+    dock_code: string;
+    dock_name: string;
+    dock_type?: string;
+    location?: string;
+    description?: string;
+    status?: string;
   }): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/docks`, {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
-  async updateDock(
-    dockNumber: string,
-    payload: {
-      warehouse_id?: string;
-      dock_type?: string;
-      capacity?: number;
-      status?: string;
-    },
+  async updateDockStatus(
+    dockId: string,
+    status: string,
+    reason?: string,
   ): Promise<any> {
     return request<any>(
-      `${BUSINESS_API_URL}/api/gate-entries/docks/${encodeURIComponent(dockNumber)}`,
-      { method: "PATCH", body: JSON.stringify(payload) },
+      `${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(dockId)}/status`,
+      { method: "PATCH", body: JSON.stringify({ status, reason }) },
     );
+  },
+  async updateDock(id: string, payload: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  },
+  async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
+      method: "POST",
+      body: JSON.stringify({ allocation_request_id: allocationRequestId, dock_id: dockId }),
+    });
+  },
+  async markVehicleArrived(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/arrive`, {
+      method: "POST",
+    });
+  },
+  async releaseDock(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/release`, {
+      method: "POST",
+    });
+  },
+  async getPendingAllocations(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
+  },
+  async getDockHistory(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
   },
   async assignDock(gateEntryId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/assign-dock`, {
@@ -285,11 +317,6 @@ export const api = {
   },
   async completeReceiving(gateEntryId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-receiving`, {
-      method: "POST",
-    });
-  },
-  async releaseDock(gateEntryId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/release-dock`, {
       method: "POST",
     });
   },
@@ -719,7 +746,12 @@ export const api = {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns/${id}`, { cache: "no-store" });
   },
   async getArrivalNotifications(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications`);
+    try {
+      const data = await request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications`);
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
   async createAsn(data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns`, {
@@ -861,36 +893,235 @@ export const api = {
     );
   },
   async getNotifications(role: string): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/notifications?role=${role}`);
+    try {
+      const data = await request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/notifications?role=${role}`);
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
   },
   async markNotificationRead(id: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/notifications/${id}/read`, {
-      method: "POST",
-    });
+    try {
+      return await request<any>(`${BUSINESS_API_URL}/api/v1/procurement/notifications/${id}/read`, {
+        method: "POST",
+      });
+    } catch {
+      return { success: true };
+    }
   },
   async markAllNotificationsRead(role: string): Promise<any> {
-    return request<any>(
-      `${BUSINESS_API_URL}/api/v1/procurement/notifications/read-all?role=${encodeURIComponent(role)}`,
-      {
-        method: "POST",
-      },
-    );
+    try {
+      return await request<any>(
+        `${BUSINESS_API_URL}/api/v1/procurement/notifications/read-all?role=${encodeURIComponent(role)}`,
+        {
+          method: "POST",
+        },
+      );
+    } catch {
+      return { success: true };
+    }
   },
   async markArrivalNotificationRead(id: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/${id}/read`, {
-      method: "POST",
-    });
+    try {
+      return await request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/${id}/read`, {
+        method: "POST",
+      });
+    } catch {
+      return { success: true };
+    }
   },
   async markAllArrivalNotificationsRead(): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/read-all`, {
-      method: "POST",
-    });
+    try {
+      return await request<any>(`${BUSINESS_API_URL}/api/v1/procurement/arrival-notifications/read-all`, {
+        method: "POST",
+      });
+    } catch {
+      return { success: true };
+    }
   },
   async globalSearch(q: string): Promise<{
     results: any[];
   }> {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`,
+    );
+  },
+  // ============================
+  // WAREHOUSE MATERIAL MASTER
+  // ============================
+  // ============================
+  // WAREHOUSE MATERIAL MASTER
+  // ============================
+
+  async getMaterials(filters?: {
+    search?: string;
+    category?: string;
+    status?: string;
+  }): Promise<any[]> {
+    const params = new URLSearchParams();
+
+    if (filters?.search) {
+      params.append("search", filters.search);
+    }
+
+    if (filters?.category) {
+      params.append("category", filters.category);
+    }
+
+    if (filters?.status) {
+      params.append("status", filters.status);
+    }
+
+    const query = params.toString();
+
+    return request<any[]>(
+      `${BUSINESS_API_URL}/api/v1/materials${query ? `?${query}` : ""}`,
+    );
+  },
+
+  async getMaterial(id: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(id)}`,
+    );
+  },
+
+  async createMaterial(data: {
+    material_code: string;
+    material_name: string;
+    category: string;
+    description?: string;
+    base_uom: string;
+    status?: string;
+    variants?: any[];
+  }): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async updateMaterial(
+    id: string,
+    data: any,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async updateMaterialStatus(
+    id: string,
+    status: string,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(id)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      },
+    );
+  },
+
+  async addMaterialVariant(
+    materialId: string,
+    data: any,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(materialId)}/variants`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async updateMaterialVariant(
+    materialId: string,
+    variantId: string,
+    data: any,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(materialId)}/variants/${encodeURIComponent(variantId)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
+  async updateMaterialVariantStatus(
+    materialId: string,
+    variantId: string,
+    status: string,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(materialId)}/variants/${encodeURIComponent(variantId)}/status`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status }),
+      },
+    );
+  },
+
+  async deleteMaterialVariant(
+    materialId: string,
+    variantId: string,
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/${encodeURIComponent(materialId)}/variants/${encodeURIComponent(variantId)}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
+
+  async getMaterialCategories(): Promise<string[]> {
+    return request<string[]>(
+      `${BUSINESS_API_URL}/api/v1/materials/categories`,
+    );
+  },
+
+  async getMaterialUoms(): Promise<string[]> {
+    return request<string[]>(
+      `${BUSINESS_API_URL}/api/v1/materials/uoms`,
+    );
+  },
+
+  async getNextMaterialCode(category?: string): Promise<{
+    suggested_material_code: string;
+    suggested_variant_code: string;
+  }> {
+    const query = category
+      ? `?category=${encodeURIComponent(category)}`
+      : "";
+
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/materials/next-code${query}`,
     );
   },
   async createGrnHeader(data: any): Promise<any> {

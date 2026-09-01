@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X } from "lucide-react";
-import { AppShell } from "@/components/wms/app-shell";
+import { AppShell, DockAllocationNotificationCard } from "@/components/wms/app-shell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -53,6 +53,45 @@ function parseDamageNotificationMessage(msg?: string) {
   };
 }
 
+function parseGrnNotificationDetails(n: any) {
+  if (!n) return null;
+  const msg = n.message || "";
+  const title = n.title || "";
+
+  const grnMatch = msg.match(/GRN:\s*([^\s|\n]+)/i) || msg.match(/GRN Draft Created:\s*([^\s|\n]+)/i) || msg.match(/(GRN-[A-Za-z0-9-]+)/i);
+  const poMatch = msg.match(/PO:\s*([^\s|\n]+)/i) || msg.match(/(PO-[A-Za-z0-9-]+)/i);
+  const supplierMatch = msg.match(/Supplier:\s*([^|\n]+)/i);
+  const vehicleMatch = msg.match(/vehicle:\s*([^\s|\n,]+)/i) || msg.match(/Vehicle:\s*([^\s|\n,]+)/i) || msg.match(/for\s+([A-Z0-9-]+)\s+at/i);
+  const dockMatch = msg.match(/at\s+([A-Z0-9-]+)\s+has/i) || msg.match(/Dock:\s*([^\s|\n]+)/i);
+
+  const grnNumber = n.grn_number || n.grnNumber || (grnMatch ? grnMatch[1] : null);
+  const poNumber = n.po_number || n.poNumber || (poMatch ? poMatch[1] : null);
+  const supplierName = n.supplier_name || n.supplierName || (supplierMatch ? supplierMatch[1].trim() : null);
+  const vehicleNumber = n.vehicle_number || n.vehicleNumber || (vehicleMatch ? vehicleMatch[1].trim() : null);
+  const dockCode = n.dock_code || n.dockCode || (dockMatch ? dockMatch[1].trim() : null);
+
+  let statusText = "Goods Receiving";
+  if (title.toLowerCase().includes("draft")) statusText = "GRN Draft Created";
+  else if (title.toLowerCase().includes("posted")) statusText = "GRN Posted";
+  else if (title.toLowerCase().includes("required")) statusText = "Quality Inspection Required";
+  else if (title.toLowerCase().includes("pass")) statusText = "Quality Inspection Passed";
+  else if (title.toLowerCase().includes("fail") || title.toLowerCase().includes("damage")) statusText = "Quality Failed / Damaged";
+  else if (title.toLowerCase().includes("completed")) statusText = "Receiving Completed";
+
+  return {
+    title,
+    grnNumber,
+    poNumber,
+    supplierName,
+    vehicleNumber,
+    dockCode,
+    statusText,
+    created_at: n.created_at || n.createdAt,
+    message: msg,
+    link: n.link,
+  };
+}
+
 function Notifications() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -62,6 +101,10 @@ function Notifications() {
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
+
+  // Modal State for GRN & Quality Notification Details
+  const [showGrnModal, setShowGrnModal] = useState(false);
+  const [selectedGrnNotif, setSelectedGrnNotif] = useState<any | null>(null);
 
   useEffect(() => {
     const info = localStorage.getItem("user_info");
@@ -94,21 +137,22 @@ function Notifications() {
           api.getArrivalNotifications(),
           api.getNotifications("WAREHOUSE"),
         ]);
-        const arrivals = arrivalData.map((n: any) => ({
-          id: n.id,
+        const arrivals = (Array.isArray(arrivalData) ? arrivalData : []).map((n: any) => ({
+          id: n?.id,
           title: "Arrival Notification",
           message:
-            n.message ||
-            `Truck ${n.vehicleNumber || n.vehicle_number || "not assigned"} from ${n.supplierName || n.supplier_name || "supplier not available"} is arriving.`,
+            n?.message ||
+            `Truck ${n?.vehicleNumber || n?.vehicle_number || "not assigned"} from ${n?.supplierName || n?.supplier_name || "supplier not available"} is arriving.`,
           created_at:
-            n.createdAt || n.created_at || n.expectedArrivalTime || n.expected_arrival_time,
+            n?.createdAt || n?.created_at || n?.expectedArrivalTime || n?.expected_arrival_time,
           type: "arrival",
-          is_read: (n.status || "").toUpperCase() === "ACKNOWLEDGED",
-          po_number: n.poNumber || n.po_number,
-          supplier_name: n.supplierName || n.supplier_name,
+          is_read: (n?.status || "").toUpperCase() === "ACKNOWLEDGED",
+          po_number: n?.poNumber || n?.po_number,
+          supplier_name: n?.supplierName || n?.supplier_name,
         }));
+        const workflows = Array.isArray(workflowData) ? workflowData : [];
         setNotifications(
-          [...workflowData, ...arrivals].sort(
+          [...workflows, ...arrivals].sort(
             (a: any, b: any) =>
               new Date(b.created_at || b.createdAt || 0).getTime() -
               new Date(a.created_at || a.createdAt || 0).getTime(),
@@ -116,32 +160,54 @@ function Notifications() {
         );
       } else {
         const data = await api.getNotifications(role);
-        setNotifications(data);
+        setNotifications(Array.isArray(data) ? data : []);
       }
     } catch (error) {
-      console.error("Failed to fetch notifications", error);
-      if (!quiet) toast.error("Failed to load notifications");
+      if (!quiet) console.warn("Failed to fetch notifications", error);
     } finally {
       if (!quiet) setLoading(false);
     }
   };
 
   const handleOpenNotificationDetails = (n: any) => {
+    const isDockAllocation =
+      n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
+      n.title?.toUpperCase().includes("DOCK CONFIRMED");
+
     const isDamage =
       n.title?.toLowerCase().includes("damage") ||
       n.message?.toLowerCase().includes("damage") ||
       n.type === "damaged_goods";
 
+    const isGrnOrQuality =
+      n.title?.toLowerCase().includes("grn") ||
+      n.title?.toLowerCase().includes("quality") ||
+      n.title?.toLowerCase().includes("receiving") ||
+      n.message?.toLowerCase().includes("grn") ||
+      n.message?.toLowerCase().includes("inspection");
+
     if (isDamage) {
       setSelectedDamageNotif(n);
       setShowDamageModal(true);
-    } else if (n.link) {
+    } else if (isGrnOrQuality) {
+      setSelectedGrnNotif(n);
+      setShowGrnModal(true);
+    } else if (isDockAllocation) {
+      // Dock allocation card is rendered directly on page
+    } else if (n.link && !["/warehouse-dashboard", "/receiving"].includes(n.link)) {
       window.location.href = n.link;
+    } else {
+      setSelectedGrnNotif(n);
+      setShowGrnModal(true);
     }
   };
 
   const damageDetails = selectedDamageNotif
     ? parseDamageNotificationMessage(selectedDamageNotif.message)
+    : null;
+
+  const grnDetails = selectedGrnNotif
+    ? parseGrnNotificationDetails(selectedGrnNotif)
     : null;
 
   return (
@@ -166,6 +232,14 @@ function Notifications() {
       ) : (
         <div className="grid gap-4">
           {notifications.map((n) => {
+            const isDockAllocation =
+              n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
+              n.title?.toUpperCase().includes("DOCK CONFIRMED");
+
+            if (isDockAllocation) {
+              return <DockAllocationNotificationCard key={n.id} notification={n} />;
+            }
+
             const isDamage =
               n.title?.toLowerCase().includes("damage") ||
               n.message?.toLowerCase().includes("damage");
@@ -401,6 +475,137 @@ function Notifications() {
               variant="outline"
               className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted"
               onClick={() => setShowDamageModal(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ✨ GRN & QUALITY NOTIFICATION DETAILS MODAL */}
+      <Dialog open={showGrnModal} onOpenChange={setShowGrnModal}>
+        <DialogContent className="max-w-2xl rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto border shadow-2xl">
+          {/* HEADER */}
+          <DialogHeader className="border-b pb-4 flex flex-row items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1 rounded-full text-xs font-black bg-primary/10 text-primary border border-primary/20 flex items-center gap-1.5 uppercase tracking-wider">
+                  <FileText className="size-3.5" /> {grnDetails?.statusText || "GRN Details"}
+                </span>
+                {grnDetails?.grnNumber && (
+                  <span className="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-muted text-foreground">
+                    {grnDetails.grnNumber}
+                  </span>
+                )}
+              </div>
+              <DialogTitle className="text-xl font-black text-foreground mt-2">
+                {selectedGrnNotif?.title || "GRN Notification Details"}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Date & Time:{" "}
+                <b className="text-foreground">
+                  {selectedGrnNotif?.created_at
+                    ? new Date(selectedGrnNotif.created_at).toLocaleString()
+                    : new Date().toLocaleString()}
+                </b>
+              </p>
+            </div>
+          </DialogHeader>
+
+          {/* DETAILS GRID */}
+          <div className="grid gap-3 sm:grid-cols-2 bg-muted/30 rounded-2xl p-4 border text-xs font-sans">
+            {grnDetails?.grnNumber && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                  GRN Number
+                </span>
+                <span className="font-mono text-sm font-black text-primary block">
+                  {grnDetails.grnNumber}
+                </span>
+              </div>
+            )}
+
+            {grnDetails?.poNumber && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                  PO Reference
+                </span>
+                <span className="font-mono text-sm font-bold text-foreground block">
+                  {grnDetails.poNumber}
+                </span>
+              </div>
+            )}
+
+            {grnDetails?.supplierName && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                  Supplier Name
+                </span>
+                <span className="text-xs font-bold text-foreground block">
+                  {grnDetails.supplierName}
+                </span>
+              </div>
+            )}
+
+            {grnDetails?.vehicleNumber && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                  Vehicle Number
+                </span>
+                <span className="font-mono text-xs font-bold text-foreground block">
+                  {grnDetails.vehicleNumber}
+                </span>
+              </div>
+            )}
+
+            {grnDetails?.dockCode && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                  Dock Code
+                </span>
+                <span className="font-mono text-xs font-bold text-teal-600 block">
+                  {grnDetails.dockCode}
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-0.5">
+              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
+                Notification Type
+              </span>
+              <span className="text-xs font-bold text-foreground block">
+                {grnDetails?.statusText || "Goods Receiving"}
+              </span>
+            </div>
+          </div>
+
+          {/* MESSAGE BODY */}
+          <div className="rounded-2xl border bg-card p-4 space-y-1">
+            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block">
+              Notification Message
+            </span>
+            <p className="text-sm font-medium text-foreground whitespace-pre-line leading-relaxed">
+              {selectedGrnNotif?.message}
+            </p>
+          </div>
+
+          {/* FOOTER */}
+          <DialogFooter className="pt-4 border-t flex flex-wrap items-center justify-between gap-3">
+            <Button
+              variant="default"
+              className="rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
+              onClick={() => {
+                setShowGrnModal(false);
+                window.location.href = "/grn";
+              }}
+            >
+              <FileText className="mr-1.5 size-4" /> Open GRN Management (/grn)
+            </Button>
+
+            <Button
+              variant="outline"
+              className="rounded-xl font-bold text-xs px-6"
+              onClick={() => setShowGrnModal(false)}
             >
               Close
             </Button>

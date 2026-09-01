@@ -385,12 +385,15 @@ class SqlAlchemyRfqRepository(RfqRepository):
         model.items = [
             RfqItemModel(
                 rfq_id=rfq.id.value,
+                material_id=uuid.UUID(str(item.material_id)) if item.material_id else None,
+                material_variant_id=uuid.UUID(str(item.material_variant_id)) if item.material_variant_id else None,
                 material_code=item.material_code,
+                variant_code=item.variant_code,
                 material_name=item.material_name,
                 category=item.category,
                 quantity=item.quantity,
                 uom=item.uom,
-                required_delivery_date=item.required_delivery_date,
+                required_delivery_date=item.required_delivery_date or rfq.required_delivery_date or date.today(),
                 warehouse=item.warehouse,
                 special_requirements=item.special_requirements
             )
@@ -448,10 +451,18 @@ class SqlAlchemyRfqRepository(RfqRepository):
         return [self._to_aggregate(e) for e in result.scalars().all()]
 
     def _to_aggregate(self, model: RfqModel) -> RFQ:
+        rfq_date_val = model.rfq_date
+        if not rfq_date_val:
+            from datetime import date
+            if hasattr(model, "created_at") and model.created_at:
+                rfq_date_val = model.created_at.date() if hasattr(model.created_at, "date") else date.today()
+            else:
+                rfq_date_val = date.today()
+
         return RFQ(
             id=RfqId.of(model.id),
             rfq_number=model.rfq_number,
-            rfq_date=model.rfq_date,
+            rfq_date=rfq_date_val,
             warehouse=model.warehouse,
             procurement_officer=model.procurement_officer,
             status=model.status,
@@ -463,6 +474,9 @@ class SqlAlchemyRfqRepository(RfqRepository):
                     category=it.category,
                     quantity=it.quantity,
                     uom=it.uom,
+                    material_id=str(it.material_id) if it.material_id else None,
+                    material_variant_id=str(it.material_variant_id) if it.material_variant_id else None,
+                    variant_code=it.variant_code,
                     required_delivery_date=it.required_delivery_date,
                     warehouse=it.warehouse,
                     special_requirements=it.special_requirements
@@ -521,7 +535,10 @@ class SqlAlchemyQuotationRepository(QuotationRepository):
         model.lines = [
             QuotationLineModel(
                 quotation_id=quotation.id.value,
+                material_id=uuid.UUID(str(line.material_id)) if getattr(line, "material_id", None) else None,
+                material_variant_id=uuid.UUID(str(line.material_variant_id)) if getattr(line, "material_variant_id", None) else None,
                 item_code=line.item_code,
+                variant_code=getattr(line, "variant_code", None),
                 quantity=line.quantity,
                 unit_price=line.unit_price
             )
@@ -572,7 +589,10 @@ class SqlAlchemyQuotationRepository(QuotationRepository):
                 QuotationLine(
                     item_code=line.item_code,
                     quantity=line.quantity,
-                    unit_price=line.unit_price
+                    unit_price=line.unit_price,
+                    material_id=str(line.material_id) if line.material_id else None,
+                    material_variant_id=str(line.material_variant_id) if line.material_variant_id else None,
+                    variant_code=line.variant_code
                 )
                 for line in model.lines
             ],

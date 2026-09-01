@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ClipboardCheck, Clock3, Loader2, Plus, ShieldCheck, Truck } from "lucide-react";
+import { ClipboardCheck, Clock3, Loader2, Plus, ShieldCheck, Truck, Warehouse } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { StatCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
@@ -53,7 +53,7 @@ function GateDashboard() {
         </Button>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Total arrivals"
           value={loading ? "..." : String(stats.totalArrivals || 0)}
@@ -79,6 +79,14 @@ function GateDashboard() {
           to="/gate-entry"
         />
         <StatCard
+          label="Awaiting Dock"
+          value={loading ? "..." : String(stats.awaitingDock ?? stats.awaiting_dock ?? 0)}
+          delta="Needs dock allocation"
+          icon={Clock3}
+          tone={Number(stats.awaitingDock ?? stats.awaiting_dock ?? 0) > 0 ? "warning" : "primary"}
+          to="/dock-management"
+        />
+        <StatCard
           label="Pending gate clearance"
           value={loading ? "..." : String(stats.vehiclesWaiting || 0)}
           delta="Not yet in the dock queue"
@@ -99,20 +107,43 @@ function GateDashboard() {
               <Loader2 className="size-6 animate-spin text-primary" />
             </div>
           ) : entries.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">No gate entries recorded yet.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              No gate entries recorded yet.
+            </p>
           ) : (
             <div className="divide-y divide-border/60">
-              {entries.slice(0, 8).map((entry: any, index: number) => (
-                <div key={entry.id || index} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <div>
-                    <p className="text-sm font-semibold">{entry.vehicle_number || "Vehicle pending"}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.gate_entry_no || "Gate entry pending"} · {entry.po_number || "No PO"}
-                    </p>
+              {entries.slice(0, 8).map((entry: any, index: number) => {
+                const rawDock = entry.dock_name || entry.dock_number || entry.assigned_dock_id;
+                const assignedDock =
+                  rawDock && rawDock !== "—" && rawDock.toUpperCase() !== "UNASSIGNED"
+                    ? (rawDock.startsWith("Dock") ? rawDock : `Dock ${rawDock}`)
+                    : null;
+
+                return (
+                  <div
+                    key={entry.id || index}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {entry.vehicle_number || "Vehicle pending"}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {entry.gate_entry_no || "Gate entry pending"} · {entry.po_number || "No PO"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {assignedDock && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                          <Warehouse className="size-3.5 text-primary" />
+                          {assignedDock}
+                        </span>
+                      )}
+                      <StatusBadge status={entry.status || "Waiting"} />
+                    </div>
                   </div>
-                  <StatusBadge status={entry.status || "Waiting"} />
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>

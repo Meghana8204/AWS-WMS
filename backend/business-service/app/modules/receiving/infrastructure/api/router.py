@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -355,18 +356,37 @@ async def upload_damage_evidence(
     user: CurrentUser = Depends(get_current_user),
     _perm=Depends(require_permission("receiving:write")),
 ) -> DamageEvidenceResponse:
-    file_ext = os.path.splitext(file.filename or "evidence.jpg")[1]
-    saved_filename = f"damage_{uuid.UUID(grn_line_id).hex[:8]}_{uuid.uuid4().hex[:4]}{file_ext}"
-    filepath = os.path.join(UPLOAD_DIR, saved_filename)
+    try:
+        line_uuid = uuid.UUID(grn_line_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid GRN line ID")
+
+    from app.modules.receiving.infrastructure.persistence.models import GrnLineModel
+    line = await uow.session.get(GrnLineModel, line_uuid)
+    if not line:
+        raise HTTPException(status_code=404, detail="GRN line not found")
+
+    grn_id_str = str(line.grn_id)
+    mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line.item_code or "material")[:50]
+
+    # Dedicated hierarchical storage: media_uploads/damage_evidence/<grn_id>/<grn_line_id>/
+    evidence_dir = os.path.join(os.getcwd(), "media_uploads", "damage_evidence", grn_id_str, str(line_uuid))
+    os.makedirs(evidence_dir, exist_ok=True)
+
+    file_ext = os.path.splitext(file.filename or "evidence.jpg")[1] or ".jpg"
+    unique_suffix = uuid.uuid4().hex[:8]
+    saved_filename = f"{mat_code}_{unique_suffix}{file_ext}"
+    filepath = os.path.join(evidence_dir, saved_filename)
+
     contents = await file.read()
     with open(filepath, "wb") as f:
         f.write(contents)
 
-    rel_path = f"/media/grn_documents/{saved_filename}"
+    rel_path = f"/media/damage_evidence/{grn_id_str}/{str(line_uuid)}/{saved_filename}"
 
     repo = SqlAlchemyGrnRepository(uow.session)
     evidence = await repo.add_damage_evidence(
-        grn_line_id=uuid.UUID(grn_line_id),
+        grn_line_id=line_uuid,
         damaged_quantity=Decimal(str(damaged_quantity)),
         reason=reason,
         remarks=remarks,
@@ -535,73 +555,7 @@ async def generate_damage_qrs_for_grn(
     return result
 
 
-from pathlib import Path, PurePosixPath
-import re
-
-MAX_PHOTO_BYTES = 5 * 1024 * 1024
-MAX_TOTAL_BYTES = 15 * 1024 * 1024
-MAX_PHOTOS = 10
-
-
-def collect_damage_attachments(grn, upload_dir, item_codes=None):
-    root = Path(upload_dir).resolve()
-    attachments = []
-    total = 0
-    seen = set()
-    for line in grn.lines:
-        if item_codes is not None and (not line.item_code or line.item_code.strip() not in item_codes):
-            continue
-        if not ((line.damaged_quantity or 0) > 0 or
-                (line.rejected_quantity or 0) > 0 or
-                line.quality_result == "REJECTED" or
-                line.damage_lots or
-                line.damage_evidence):
-            continue
-
-        line_photo_index = 0
-        for evidence in getattr(line, "damage_evidence", []):
-            if evidence.id in seen:
-                continue
-            seen.add(evidence.id)
-            if not evidence.file_path:
-                continue
-
-            stored = PurePosixPath(evidence.file_path)
-            if stored.parent != PurePosixPath("/media/grn_documents"):
-                continue
-
-            path = (root / stored.name).resolve()
-            if path.parent != root or not path.exists():
-                continue
-
-            try:
-                with path.open("rb") as photo:
-                    content = photo.read(MAX_PHOTO_BYTES + 1)
-            except OSError:
-                continue
-
-            if not content or len(content) > MAX_PHOTO_BYTES:
-                continue
-
-            if content.startswith(b"\xff\xd8\xff"):
-                mime, suffix = "image/jpeg", ".jpg"
-            elif content.startswith(b"\x89PNG\r\n\x1a\n"):
-                mime, suffix = "image/png", ".png"
-            elif content[:4] == b"RIFF" and content[8:12] == b"WEBP":
-                mime, suffix = "image/webp", ".webp"
-            else:
-                continue
-
-            total += len(content)
-            if total > MAX_TOTAL_BYTES or len(attachments) >= MAX_PHOTOS:
-                break
-
-            line_photo_index += 1
-            code = re.sub(r"[^A-Za-z0-9_-]", "_", line.item_code or "material")[:60]
-            filename = f"{code}_damage_{line_photo_index}{suffix}"
-            attachments.append((filename, content, mime))
-
-    return attachments
+from app.common.damage_email_attachments import collect_damage_attachments
 
 
 @router.post("/{grn_id}/notify-vendor-damage", response_model=GrnDamageVendorNotifyResponse)
@@ -746,7 +700,6 @@ async def notify_vendor_damage(
             "delivery": _clean_damage_reason(None),
         })
 
-    import re
     vendor_email = (body.supplier_email or "").strip()
     if not vendor_email or not re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", vendor_email) or "@supplier.com" in vendor_email:
         vendor_email = "obaiahkade12@gmail.com"

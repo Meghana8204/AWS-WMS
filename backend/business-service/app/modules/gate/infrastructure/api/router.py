@@ -10,6 +10,7 @@ import asyncio
 import datetime
 import logging
 import uuid
+from decimal import Decimal
 from typing import Optional
 
 
@@ -285,20 +286,19 @@ def _generate_gate_entry_number() -> str:
 def _to_gate_entry_response(
     entry: GateEntry, po_status: Optional[str] = None, asn_status: Optional[str] = None
 ) -> GateEntryResponse:
-    ocr_dto = (
-        OcrResultDto(
+    ocr_dto = None
+    if entry.ocr_result:
+        raw_items = getattr(entry.ocr_result, "line_items", ()) or ()
+        ocr_dto = OcrResultDto(
             po_number=entry.ocr_result.po_number or "",
             supplier_name=entry.ocr_result.supplier_name or "",
             material_description=entry.ocr_result.material_description or "",
             total_quantity=entry.ocr_result.total_quantity or 0.0,
             po_date=entry.ocr_result.po_date or "",
             delivery_date=entry.ocr_result.delivery_date or "",
-            confidence=entry.ocr_result.confidence,
-            line_items=list(entry.ocr_result.line_items),
+            confidence=entry.ocr_result.confidence or 0.0,
+            line_items=list(raw_items) if isinstance(raw_items, (list, tuple)) else [],
         )
-        if entry.ocr_result
-        else None
-    )
 
     mismatch_dtos = [
         FieldMismatchDto(
@@ -306,15 +306,27 @@ def _to_gate_entry_response(
             extracted_value=m.extracted_value,
             canonical_value=m.canonical_value,
         )
-        for m in entry.mismatched_fields
+        for m in (entry.mismatched_fields or [])
+        if hasattr(m, "field_name")
     ]
 
-    status_val = entry.status.value if hasattr(entry.status, "value") else str(entry.status)
+    status_val = entry.status.value if hasattr(entry.status, "value") else str(entry.status or "PENDING_VERIFICATION")
+
+    created_at_val = (
+        entry.created_at.isoformat()
+        if hasattr(entry.created_at, "isoformat")
+        else str(entry.created_at or datetime.datetime.now(datetime.timezone.utc).isoformat())
+    )
+    updated_at_val = (
+        entry.updated_at.isoformat()
+        if hasattr(entry.updated_at, "isoformat")
+        else str(entry.updated_at or datetime.datetime.now(datetime.timezone.utc).isoformat())
+    )
 
     return GateEntryResponse(
         id=entry.id,
-        gate_entry_number=entry.gate_entry_number,
-        vehicle_plate=entry.vehicle_plate,
+        gate_entry_number=entry.gate_entry_number or f"GE-{entry.id[:8]}",
+        vehicle_plate=entry.vehicle_plate or "",
         status=status_val,
         created_by=entry.created_by,
         po_id=entry.po_id,
@@ -331,8 +343,8 @@ def _to_gate_entry_response(
         ocr_result=ocr_dto,
         mismatched_fields=mismatch_dtos,
         verified_by=entry.verified_by,
-        created_at=entry.created_at.isoformat(),
-        updated_at=entry.updated_at.isoformat(),
+        created_at=created_at_val,
+        updated_at=updated_at_val,
     )
 
 
@@ -341,7 +353,9 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
     if model.ocr_po_number or model.ocr_supplier_name or model.ocr_product_material:
         line_items = list(model.ocr_line_items or ())
         full_description = ", ".join(
-            str(item.get("material_description", "")) for item in line_items if item.get("material_description")
+            str(item.get("material_description", ""))
+            for item in line_items
+            if isinstance(item, dict) and item.get("material_description")
         ) or model.ocr_raw_text or model.ocr_product_material
         ocr_result = OcrResult(
             po_number=model.ocr_po_number,
@@ -351,7 +365,7 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
             po_date=model.ocr_po_date,
             delivery_date=model.ocr_expected_delivery_date,
             confidence=float(model.ocr_confidence) if model.ocr_confidence is not None else 0.0,
-            line_items=tuple(line_items),
+            line_items=tuple(item for item in line_items if isinstance(item, dict)),
         )
     mismatches = [
         FieldMismatch(
@@ -362,11 +376,20 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
         for item in (model.mismatched_fields or [])
         if isinstance(item, dict)
     ]
+    raw_status = model.status.strip().upper().replace(" ", "_") if model.status else "PENDING_VERIFICATION"
+    try:
+        parsed_status = GateEntryStatus(raw_status)
+    except ValueError:
+        parsed_status = GateEntryStatus.PENDING_VERIFICATION
+
+    created_at = model.created_at or datetime.datetime.now(datetime.timezone.utc)
+    updated_at = model.updated_at or datetime.datetime.now(datetime.timezone.utc)
+
     return GateEntry.rehydrate(
         id=str(model.id),
         gate_entry_number=model.gate_entry_number,
-        vehicle_plate=model.vehicle_number,
-        status=GateEntryStatus(model.status),
+        vehicle_plate=model.vehicle_number or "",
+        status=parsed_status,
         created_by=model.security_officer_id,
         driver_name=model.driver_name,
         po_id=str(model.po_id) if model.po_id else None,
@@ -378,8 +401,8 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
         ocr_result=ocr_result,
         mismatched_fields=mismatches,
         verified_by=model.verified_by_user_id,
-        created_at=model.created_at,
-        updated_at=model.updated_at,
+        created_at=created_at,
+        updated_at=updated_at,
     )
 
 
@@ -733,16 +756,24 @@ async def create_gate_entry(
     if asn:
         entry.approve_gate_entry(user.username)
         asn.status = GateEntryStatus.GATE_ENTRY_APPROVED.value
-        uow.session.add(NotificationModel(
-            user_role="WAREHOUSE",
-            title="Gate Entry Approved",
-            message=f"{asn.asn_number} for vehicle {plate} has been approved at the gate and is ready for warehouse processing.",
-            link=f"/procurement/asns/{asn.id}",
-        ))
         entry.move_to_inbound_queue()
 
     document_data = base64.b64decode(request.document_image_base64) if request.document_image_base64 else None
     await _save_gate_entry(uow.session, entry, document_data=document_data)
+
+    try:
+        from app.modules.dock.application.service import DockAllocationService
+        await DockAllocationService.auto_create_allocation_request(
+            session=uow.session,
+            gate_pass_id=entry.gate_entry_number or str(entry.id),
+            vehicle_number=plate,
+            vendor_reference=request.supplier_name or (ocr_res.supplier_name if ocr_res else None),
+            material_description=request.material_description or (ocr_res.material_description if ocr_res else None),
+            quantity=Decimal(str(request.total_quantity)) if request.total_quantity else (Decimal(str(ocr_res.total_quantity)) if (ocr_res and ocr_res.total_quantity) else Decimal("100.0")),
+        )
+    except Exception as exc:
+        logger.warning(f"Auto-creation of dock allocation request skipped/failed: {exc}")
+
     return _to_gate_entry_response(
         entry,
         po_status=po_record.status if po_record else None,
@@ -1282,7 +1313,7 @@ async def record_material_conditions(
         entry = _gate_entry_from_model(model)
         entry.require_quality_inspection()
         await _save_gate_entry(uow.session, entry)
-        uow.session.add(NotificationModel(user_role="WAREHOUSE", title="Quality Inspection Required", message=f"{entry.vehicle_plate} at {entry.assigned_dock_id} has materials awaiting inspection.", link="/receiving"))
+        uow.session.add(NotificationModel(user_role="WAREHOUSE", title="Quality Inspection Required", message=f"{entry.vehicle_plate} at {entry.assigned_dock_id} has materials awaiting inspection.", link="/grn"))
     await uow.session.flush()
     return {"gate_entry_id": entry_id, "status": model.status, "checked_by": user.username, "checked_at": checked_at.isoformat(), "items": results}
 
@@ -1313,7 +1344,7 @@ async def complete_quality_inspection(
     assignment.quality_decision = request.decision
     assignment.quality_notes = request.notes
     await _save_gate_entry(uow.session, entry)
-    uow.session.add(NotificationModel(user_role="WAREHOUSE", title=f"Quality Inspection {request.decision}", message=f"Inspection {request.decision.lower()} for {entry.vehicle_plate} at {entry.assigned_dock_id}.", link="/receiving"))
+    uow.session.add(NotificationModel(user_role="WAREHOUSE", title=f"Quality Inspection {request.decision}", message=f"Inspection {request.decision.lower()} for {entry.vehicle_plate} at {entry.assigned_dock_id}.", link="/grn"))
     return {"gate_entry_id": entry_id, "status": entry.status.value, "decision": request.decision, "inspected_by": user.username, "inspected_at": inspected_at.isoformat()}
 
 
@@ -1679,7 +1710,7 @@ async def complete_gate_exit(
     uow.session.add(gate_exit)
     gate_entry.status = GateEntryStatus.GATE_EXIT_COMPLETED.value
     gate_entry.updated_at = completed_at
-    uow.session.add(NotificationModel(user_role="WAREHOUSE", title="Gate Exit Completed", message=f"{approval.vehicle_number} left the warehouse at {completed_at.isoformat()}.", link="/gate-exit-management"))
+    uow.session.add(NotificationModel(user_role="WAREHOUSE", title="Gate Exit Completed", message=f"{approval.vehicle_number} left the warehouse at {completed_at.isoformat()}.", link="/vehicle-exit"))
     await uow.session.flush()
     return {"gate_entry_id": str(gate_entry.id), "status": gate_entry.status, "vehicle_number": approval.vehicle_number,
             "gate_exit_completed_by": user.username, "gate_exit_completed_at": completed_at.isoformat()}
@@ -1928,6 +1959,22 @@ async def verify_gate_entry(
     action = request.action.upper()
     if action == "APPROVE":
         entry.approve(supervisor_id=user.username, remarks=request.remarks)
+        ge_num = getattr(entry, "gate_entry_number", None) or str(entry.id)
+        veh_plate = getattr(entry, "vehicle_plate", None) or getattr(entry, "vehicle_number", "Vehicle")
+        supplier = entry.ocr_result.supplier_name if (hasattr(entry, "ocr_result") and entry.ocr_result) else None
+        po_num = getattr(entry, "po_number", "N/A")
+        mat_desc = getattr(entry, "material_description", None) or "Inbound Goods"
+        qty = getattr(entry, "total_quantity", None)
+
+        from app.modules.dock.application.service import DockAllocationService
+        await DockAllocationService.auto_create_allocation_request(
+            session=uow.session,
+            gate_pass_id=ge_num,
+            vehicle_number=veh_plate,
+            vendor_reference=supplier,
+            material_description=mat_desc,
+            quantity=qty,
+        )
     elif action == "REJECT":
         reason = request.reason or request.remarks
         entry.reject(supervisor_id=user.username, reason=reason)
@@ -1966,13 +2013,16 @@ async def list_gate_entries(
     _user: CurrentUser = Depends(require_permission("gate:read")),
     uow: UnitOfWork = Depends(get_uow),
 ) -> list[GateEntryResponse]:
-    """List all Gate Entries with optional status filter."""
-    query = select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
-    if status:
-        query = query.where(GateEntryModel.status == status.strip().upper())
-    result = await uow.session.execute(query)
-    entries = [_gate_entry_from_model(model) for model in result.scalars().all()]
-    return [_to_gate_entry_response(e) for e in entries]
+    try:
+        query = select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
+        if status:
+            query = query.where(GateEntryModel.status == status.strip().upper())
+        result = await uow.session.execute(query)
+        entries = [_gate_entry_from_model(model) for model in result.scalars().all()]
+        return [_to_gate_entry_response(e) for e in entries]
+    except Exception as e:
+        logger.exception("Error in list_gate_entries: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to list gate entries: {str(e)}")
 
 
 @router.get("/{entry_id}/pass")

@@ -24,6 +24,18 @@ class NotificationResponse(ApiModel):
     link: Optional[str] = None
     is_read: bool = False
     created_at: datetime
+    dock_code: Optional[str] = None
+    dock_name: Optional[str] = None
+    dock_location: Optional[str] = None
+    dock_type: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    allocation_time: Optional[Union[datetime, str]] = None
+    gate_pass_number: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
+    asn_number: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 
@@ -155,7 +167,10 @@ class UpdateSupplierRequest(ApiModel):
 
 
 class RfqItemSchema(ApiModel):
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     material_code: str
+    variant_code: Optional[str] = None
     material_name: str
     category: Optional[str] = None
     quantity: Decimal
@@ -166,7 +181,7 @@ class RfqItemSchema(ApiModel):
 
 
 class CreateRfqRequest(ApiModel):
-    rfq_date: date
+    rfq_date: Optional[date] = Field(default_factory=date.today)
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
     warehouse: Optional[str] = None
@@ -178,14 +193,14 @@ class CreateRfqRequest(ApiModel):
 
 class RfqResponse(ApiModel):
     id: str
-    rfq_number: Optional[str] = None
-    rfq_date: Optional[date] = None
-    status: Optional[str] = None
+    rfq_number: str
+    rfq_date: date
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
     warehouse: Optional[str] = None
     procurement_officer: Optional[str] = None
     remarks: Optional[str] = None
+    status: str
     items: List[RfqItemSchema] = []
     suppliers: List[SupplierResponse] = []
     supplier_emails: List[str] = []
@@ -195,7 +210,10 @@ class RfqResponse(ApiModel):
 
 
 class QuotationLineSchema(ApiModel):
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     item_code: str
+    variant_code: Optional[str] = None
     quantity: Decimal
     unit_price: Decimal
 
@@ -245,7 +263,10 @@ class QuotationResponse(ApiModel):
 
 
 class AsnLineSchema(ApiModel):
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     item_code: str
+    variant_code: Optional[str] = None
     shipped_quantity: Decimal
     material_name: Optional[str] = None
     uom: Optional[str] = None
@@ -312,7 +333,10 @@ class POApprovalHistorySchema(ApiModel):
 
 
 class PurchaseOrderItemSchema(ApiModel):
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     material_code: str
+    variant_code: Optional[str] = None
     material_name: Optional[str] = None
     category: Optional[str] = None
     quantity: Decimal
@@ -328,45 +352,50 @@ class PurchaseOrderResponse(ApiModel):
     po_date: date
     status: str
     rfq_id: Optional[str] = None
-    rfq_number: Optional[str] = None
-    supplier_id: str
+    supplier_id: Optional[str] = None
     supplier_name: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    total_amount: Decimal
+    expected_delivery_date: Optional[date] = None
+    payment_terms: Optional[str] = None
+    procurement_officer: Optional[str] = None
+    department: Optional[str] = None
     supplier_code: Optional[str] = None
     supplier_contact_person: Optional[str] = None
     supplier_phone: Optional[str] = None
     supplier_email: Optional[str] = None
     supplier_gstin: Optional[str] = None
     supplier_address: Optional[str] = None
-
-    warehouse_id: Optional[str] = None
     delivery_warehouse_name: Optional[str] = None
     delivery_address: Optional[str] = None
-    department: Optional[str] = None
-
-    total_amount: Decimal
     subtotal: Decimal = Decimal("0.0")
     discount_amount: Decimal = Decimal("0.0")
     tax_amount: Decimal = Decimal("0.0")
-    tax_percentage: Decimal = Decimal("0.0")
     freight_charges: Decimal = Decimal("0.0")
     additional_charges: Decimal = Decimal("0.0")
-
-    expected_delivery_date: Optional[date] = None
-    payment_terms: Optional[str] = None
-    procurement_officer: Optional[str] = None
+    rfq_number: Optional[str] = None
+    tax_percentage: Decimal = Decimal("0.0")
     selection_reason: Optional[str] = None
     procurement_comments: Optional[str] = None
+    selection_date: Optional[datetime] = None
     selected_by: Optional[str] = None
     rejection_reason: Optional[str] = None
     items: List[PurchaseOrderItemSchema] = []
     history: List[POApprovalHistorySchema] = []
-    created_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class FinanceApprovalResponse(ApiModel):
     id: str
     po_id: str
+    po_number: str
+    rfq_id: Optional[str] = None
+    rfq_number: Optional[str] = None
+    supplier_name: str
+    total_amount: Decimal
     status: str
+    requested_by: str
     requested_at: datetime
     approved_at: Optional[datetime] = None
     approver_name: Optional[str] = None
@@ -377,7 +406,10 @@ class FinanceApprovalResponse(ApiModel):
 
 
 class MaterialRequestItemSchema(ApiModel):
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     material_code: Optional[str] = None
+    variant_code: Optional[str] = None
     material_name: Optional[str] = None
     quantity: Decimal
     uom: str
@@ -414,7 +446,10 @@ class MaterialRequestResponse(ApiModel):
 
 class MaterialStockResponse(ApiModel):
     id: str
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
     material_code: str
+    variant_code: Optional[str] = None
     material_name: str
     category: str
     on_hand: Decimal

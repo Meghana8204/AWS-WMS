@@ -61,20 +61,36 @@ async def get_current_user(
                 permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
+        elif token == "mock-jwt-warehouse-token":
+            return CurrentUser(
+                subject="warehouse",
+                username="warehouse",
+                roles=["WAREHOUSE", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-gate-entry-token" or token == "mock-jwt-grn-token":
+            return CurrentUser(
+                subject="gate_operator",
+                username="gate_operator",
+                roles=["GATE_OPERATOR", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                raw_claims={},
+            )
         elif token == "mock-jwt-procurement-token":
             return CurrentUser(
                 subject="procurement",
                 username="procurement",
-                roles=["PROCUREMENT"],
-                permissions=[],
+                roles=["PROCUREMENT", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
         elif token == "mock-jwt-finance-token":
             return CurrentUser(
                 subject="finance",
                 username="finance",
-                roles=["FINANCE"],
-                permissions=[],
+                roles=["FINANCE", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
 

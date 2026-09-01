@@ -94,6 +94,9 @@ class RfqItemCommand:
     category: str
     quantity: Decimal
     uom: str
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
+    variant_code: Optional[str] = None
     required_delivery_date: Optional[date] = None
     warehouse: Optional[str] = None
     special_requirements: Optional[str] = None
@@ -118,6 +121,9 @@ class QuotationLineCommand:
     item_code: str
     quantity: Decimal
     unit_price: Decimal
+    material_id: Optional[str] = None
+    material_variant_id: Optional[str] = None
+    variant_code: Optional[str] = None
 
 
 @dataclass(frozen=True)

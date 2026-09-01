@@ -24,7 +24,7 @@ export const Route = createFileRoute("/dock-assignment")({
       {
         name: "description",
         content:
-          "Warehouse dock map with live availability, occupancy and ETA to assign an unloading bay to the accepted truck.",
+          "Warehouse dock map with live availability, occupancy and ETA to assign an unloading dock to the accepted truck.",
       },
       { property: "og:title", content: "Dock Assignment · NexusWMS" },
       {
@@ -69,7 +69,7 @@ function DockAssignment() {
                 { c: "bg-success", l: "Available" },
                 { c: "bg-destructive", l: "Occupied" },
                 { c: "bg-warning", l: "Reserved" },
-                { c: "bg-muted-foreground", l: "Cleaning" },
+                { c: "bg-muted-foreground", l: "Maintenance" },
               ].map((k) => (
                 <span key={k.l} className="flex items-center gap-1.5">
                   <span className={cn("size-2.5 rounded-full", k.c)} /> {k.l}
@@ -101,7 +101,7 @@ function DockAssignment() {
                         d.status === "Available" && "bg-success",
                         d.status === "Occupied" && "bg-destructive",
                         d.status === "Reserved" && "bg-warning",
-                        d.status === "Cleaning" && "bg-muted-foreground",
+                        (d.status === "Cleaning" || (d.status as string) === "Maintenance") && "bg-muted-foreground",
                       )}
                     />
                   </button>
@@ -109,7 +109,7 @@ function DockAssignment() {
               })}
             </div>
             <div className="mt-5 rounded-xl border border-dashed border-border bg-card/60 py-6 text-center text-xs text-muted-foreground">
-              Inbound yard · staging lanes S1–S6 · holding bay B
+              Inbound yard · staging lanes S1–S6
             </div>
           </div>
         </SectionCard>

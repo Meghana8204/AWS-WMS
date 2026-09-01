@@ -32,7 +32,6 @@ def upgrade() -> None:
 
     op.drop_table('purchase_order_approval_log')
     op.drop_table('purchase_order_line')
-    op.drop_table('purchase_order')
 
 
 def downgrade() -> None:

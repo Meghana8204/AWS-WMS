@@ -228,6 +228,12 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
                 except ValueError:
                     pass
 
+        raw_status = entity.status.strip().upper().replace(" ", "_") if entity.status else "PENDING_VERIFICATION"
+        try:
+            parsed_status = GateEntryStatus(raw_status)
+        except ValueError:
+            parsed_status = GateEntryStatus.PENDING_VERIFICATION
+
         v_res = None
         if entity.verification_type:
             try:
@@ -235,7 +241,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
             except ValueError:
                 v_type = VerificationResultType.MISMATCHED
             v_res = VerificationResult(
-                status=GateEntryStatus(entity.status),
+                status=parsed_status,
                 verification_type=v_type,
                 mismatched_fields=mismatched_enums,
                 reasons=entity.reasons if isinstance(entity.reasons, list) else [],
@@ -255,7 +261,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
             driver_photo_path=entity.driver_photo_path,
             po_document_path=entity.po_document_path,
             vehicle_photo_path=entity.vehicle_photo_path,
-            status=GateEntryStatus(entity.status),
+            status=parsed_status,
             anpr_result=anpr_res,
             ocr_result=ocr_res,
             verification_result=v_res,

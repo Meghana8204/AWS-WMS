@@ -22,6 +22,7 @@ import {
   FileBadge,
   Loader2,
   ShieldCheck,
+  Sliders,
   PanelLeft,
   PanelLeftClose,
   AlertTriangle,
@@ -45,7 +46,7 @@ const grnNav = [
 ];
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
-  { label: "Goods Receiving (GRN)", to: "/grn", icon: PackageCheck },
+  { label: "Material Master", to: "/warehouse/materials", icon: Database },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
@@ -149,14 +150,20 @@ export function AppShell({
             if (role === "WAREHOUSE") {
               const data = await api.getArrivalNotifications();
               setUnreadNotifications(
-                data.filter((n) => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length,
+                Array.isArray(data)
+                  ? data.filter((n) => String(n?.status || "").toUpperCase() !== "ACKNOWLEDGED").length
+                  : 0,
               );
             } else {
               const data = await api.getNotifications(role);
-              setUnreadNotifications(data.filter((n) => !(n.is_read ?? n.isRead)).length);
+              setUnreadNotifications(
+                Array.isArray(data)
+                  ? data.filter((n) => !(n?.is_read ?? n?.isRead)).length
+                  : 0,
+              );
             }
-          } catch (e) {
-            console.error("Failed to fetch notifications", e);
+          } catch {
+            // Silently ignore during background polling
           }
         };
         void fetchNotifications();
@@ -529,8 +536,11 @@ export function StatusBadge({ status }: { status: string }) {
     Occupied: "bg-danger-soft text-destructive border-destructive/25",
     AVAILABLE: "bg-success-soft text-success border-success/30",
     OCCUPIED: "bg-danger-soft text-destructive border-destructive/25",
-    MAINTENANCE: "bg-muted text-muted-foreground border-border",
+    RESERVED: "bg-warning-soft text-warning-foreground border-warning/30",
     Reserved: "bg-warning-soft text-warning-foreground border-warning/30",
+    MAINTENANCE: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
+    "Under Maintenance": "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
+    UNDER_MAINTENANCE: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
     Cleaning: "bg-muted text-muted-foreground border-border",
     SUBMITTED: "bg-primary-soft text-primary border-primary/25",
     DRAFT: "bg-muted text-muted-foreground border-border",
@@ -560,5 +570,221 @@ export function StatusBadge({ status }: { status: string }) {
       )}
       {status.replace(/_/g, " ")}
     </Badge>
+  );
+}
+
+export function parseDockAllocationDetails(n: any) {
+  const msg = n?.message || "";
+
+  const gatePass =
+    n?.gate_pass_number ||
+    n?.gatePassNumber ||
+    msg.match(/Gate Pass:\s*([^\n]+)/i)?.[1]?.trim() ||
+    "N/A";
+  const vehicle =
+    n?.vehicle_number ||
+    n?.vehicleNumber ||
+    msg.match(/Vehicle:\s*([^\n]+)/i)?.[1]?.trim() ||
+    "N/A";
+  const driverName =
+    n?.driver_name ||
+    n?.driverName ||
+    msg.match(/Driver:\s*([^\n]+)/i)?.[1]?.trim();
+  const driverPhone =
+    n?.driver_phone ||
+    n?.driverPhone ||
+    msg.match(/Driver Phone:\s*([^\n]+)/i)?.[1]?.trim() ||
+    msg.match(/Phone:\s*([^\n]+)/i)?.[1]?.trim();
+  const asnNumber =
+    n?.asn_number ||
+    n?.asnNumber ||
+    msg.match(/ASN:\s*([^\n]+)/i)?.[1]?.trim();
+  const poNumber =
+    n?.po_number ||
+    n?.poNumber ||
+    msg.match(/PO:\s*([^\n]+)/i)?.[1]?.trim();
+
+  const dockCode =
+    n?.dock_code ||
+    n?.dockCode ||
+    msg.match(/Dock Code:\s*([^\n]+)/i)?.[1]?.trim() ||
+    msg.match(/Proceed (?:directly )?to Dock\s*([^\n.]+)/i)?.[1]?.trim() ||
+    "D-01";
+  const dockName =
+    n?.dock_name ||
+    n?.dockName ||
+    msg.match(/Dock Name:\s*([^\n]+)/i)?.[1]?.trim() ||
+    `Inbound Dock ${dockCode}`;
+  const dockLocation =
+    n?.dock_location ||
+    n?.dockLocation ||
+    msg.match(/Location:\s*([^\n]+)/i)?.[1]?.trim() ||
+    "Receiving Bay - A";
+  const dockType =
+    n?.dock_type ||
+    n?.dockType ||
+    msg.match(/Dock Type:\s*([^\n]+)/i)?.[1]?.trim() ||
+    "Inbound";
+  const warehouseName =
+    n?.warehouse_name ||
+    n?.warehouseName ||
+    msg.match(/Warehouse:\s*([^\n]+)/i)?.[1]?.trim() ||
+    "Main Warehouse";
+
+  const rawTime =
+    n?.allocation_time ||
+    n?.allocationTime ||
+    msg.match(/Allocated At:\s*([^\n]+)/i)?.[1]?.trim() ||
+    n?.created_at ||
+    n?.createdAt;
+  let allocatedAt = "N/A";
+  if (rawTime) {
+    const d = new Date(rawTime);
+    if (!isNaN(d.getTime())) {
+      allocatedAt = d
+        .toLocaleString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        })
+        .replace(",", "");
+    } else {
+      allocatedAt = String(rawTime);
+    }
+  }
+
+  return {
+    gatePass,
+    vehicle,
+    driverName: driverName && driverName !== "N/A" ? driverName : null,
+    driverPhone: driverPhone && driverPhone !== "N/A" ? driverPhone : null,
+    asnNumber: asnNumber && asnNumber !== "N/A" ? asnNumber : null,
+    poNumber: poNumber && poNumber !== "N/A" ? poNumber : null,
+    dockCode,
+    dockName,
+    dockLocation,
+    dockType,
+    warehouseName,
+    allocatedAt,
+  };
+}
+
+export function DockAllocationNotificationCard({ notification }: { notification: any }) {
+  const details = parseDockAllocationDetails(notification);
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-teal-500/30 bg-teal-500/5 p-5 shadow-sm space-y-4 font-sans text-foreground">
+      <div className="absolute left-0 top-0 h-full w-1 bg-teal-600 dark:bg-teal-400" />
+      
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-teal-500/20 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="grid size-9 place-items-center rounded-xl bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Warehouse className="size-5" />
+          </div>
+          <div>
+            <h3 className="font-black text-base tracking-tight text-foreground uppercase">
+              DOCK ALLOCATION CONFIRMED
+            </h3>
+            <p className="text-xs text-muted-foreground">Vehicle assigned & dock allocated</p>
+          </div>
+        </div>
+        <Badge variant="outline" className="bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/30 font-extrabold text-[11px] px-2.5 py-0.5 rounded-full">
+          Dock Allocated
+        </Badge>
+      </div>
+
+      {/* Details Grid */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {/* Vehicle Details */}
+        <div className="space-y-2 rounded-xl bg-card/80 p-3.5 border border-border/50 text-xs shadow-2xs">
+          <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block border-b border-border/40 pb-1">
+            Vehicle Details
+          </span>
+          <div className="space-y-1.5 pt-1 font-medium">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Gate Pass:</span>
+              <span className="font-mono font-bold text-foreground">{details.gatePass}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Vehicle:</span>
+              <span className="font-mono font-bold text-primary">{details.vehicle}</span>
+            </div>
+            {details.driverName && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Driver:</span>
+                <span className="font-semibold text-foreground">{details.driverName}</span>
+              </div>
+            )}
+            {details.driverPhone && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Driver Phone:</span>
+                <span className="font-mono text-foreground">{details.driverPhone}</span>
+              </div>
+            )}
+            {details.asnNumber && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">ASN:</span>
+                <span className="font-mono font-semibold text-foreground">{details.asnNumber}</span>
+              </div>
+            )}
+            {details.poNumber && (
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">PO:</span>
+                <span className="font-mono font-semibold text-foreground">{details.poNumber}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Allocated Dock Details */}
+        <div className="space-y-2 rounded-xl bg-card/80 p-3.5 border border-border/50 text-xs shadow-2xs">
+          <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block border-b border-border/40 pb-1">
+            Allocated Dock Details
+          </span>
+          <div className="space-y-1.5 pt-1 font-medium">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Dock Code:</span>
+              <span className="font-mono font-bold text-teal-600 dark:text-teal-400">{details.dockCode}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Dock Name:</span>
+              <span className="font-semibold text-foreground">{details.dockName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Location:</span>
+              <span className="text-foreground">{details.dockLocation}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Dock Type:</span>
+              <span className="text-foreground">{details.dockType}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Warehouse:</span>
+              <span className="text-foreground">{details.warehouseName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Allocated At:</span>
+              <span className="text-foreground">{details.allocatedAt}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Instruction Banner */}
+      <div className="rounded-xl border border-teal-500/20 bg-teal-500/10 p-3 text-xs flex items-center justify-between">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-wider block text-teal-700 dark:text-teal-300">
+            Instruction
+          </span>
+          <p className="font-extrabold text-teal-900 dark:text-teal-100 mt-0.5">
+            Proceed directly to Dock {details.dockCode}.
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }

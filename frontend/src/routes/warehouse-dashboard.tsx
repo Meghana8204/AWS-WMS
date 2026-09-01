@@ -126,10 +126,10 @@ function WarehouseDashboard() {
         </>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           label="Total arrivals"
-          value={loading ? "..." : String(stats.totalArrivals)}
+          value={loading ? "..." : String(stats.totalArrivals || 0)}
           delta="Live from gate"
           icon={Truck}
           tone="primary"
@@ -137,7 +137,7 @@ function WarehouseDashboard() {
         />
         <StatCard
           label="Verified POs"
-          value={loading ? "..." : String(stats.verifiedArrivals)}
+          value={loading ? "..." : String(stats.verifiedArrivals || 0)}
           delta="Matched in DB"
           icon={Clock3}
           tone="success"
@@ -145,15 +145,23 @@ function WarehouseDashboard() {
         />
         <StatCard
           label="Unscheduled"
-          value={loading ? "..." : String(stats.unscheduledArrivals)}
+          value={loading ? "..." : String(stats.unscheduledArrivals || 0)}
           delta="Manual review"
           icon={CircleDot}
           tone="warning"
           to="/gate-entry"
         />
         <StatCard
+          label="Awaiting Dock"
+          value={loading ? "..." : String(stats.awaitingDock ?? stats.awaiting_dock ?? 0)}
+          delta="Needs dock allocation"
+          icon={Clock3}
+          tone={Number(stats.awaitingDock ?? stats.awaiting_dock ?? 0) > 0 ? "warning" : "primary"}
+          to="/dock-management"
+        />
+        <StatCard
           label="Dock occupancy"
-          value={loading ? ".../8" : stats.occupiedDocks}
+          value={loading ? ".../8" : (stats.occupiedDocks || "0/8")}
           delta="Real-time status"
           icon={Warehouse}
           tone="teal"
@@ -161,7 +169,7 @@ function WarehouseDashboard() {
         />
         <StatCard
           label="Vehicles waiting"
-          value={loading ? "..." : String(stats.vehiclesWaiting)}
+          value={loading ? "..." : String(stats.vehiclesWaiting || 0)}
           delta="Avg wait 12 min"
           icon={ListOrdered}
           tone="danger"
@@ -340,61 +348,80 @@ function WarehouseDashboard() {
                     <th className="pb-3 font-medium">Supplier & Material</th>
                     <th className="pb-3 font-medium">PO / Qty</th>
                     <th className="pb-3 font-medium">Arrival</th>
+                    <th className="pb-3 font-medium">Allocated Dock</th>
                     <th className="pb-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredItems.map((a: any) => (
-                    <tr
-                      key={a.id}
-                      className="group border-b border-border/60 last:border-0 hover:bg-muted/20"
-                    >
-                      <td className="py-3">
-                        <div className="size-12 overflow-hidden rounded-lg border border-border/40 bg-muted/30">
-                          {a.truck_photo_base64 ? (
-                            <img
-                              src={`data:image/jpeg;base64,${a.truck_photo_base64}`}
-                              alt="Truck"
-                              className="h-full w-full object-cover"
-                            />
+                  {filteredItems.map((a: any) => {
+                    const rawDock = a.dock_name || a.dock_number || a.assigned_dock_id;
+                    const assignedDock =
+                      rawDock && rawDock !== "—" && rawDock.toUpperCase() !== "UNASSIGNED"
+                        ? (rawDock.startsWith("Dock") ? rawDock : `Dock ${rawDock}`)
+                        : null;
+
+                    return (
+                      <tr
+                        key={a.id}
+                        className="group border-b border-border/60 last:border-0 hover:bg-muted/20"
+                      >
+                        <td className="py-3">
+                          <div className="size-12 overflow-hidden rounded-lg border border-border/40 bg-muted/30">
+                            {a.truck_photo_base64 ? (
+                              <img
+                                src={`data:image/jpeg;base64,${a.truck_photo_base64}`}
+                                alt="Truck"
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="grid h-full w-full place-items-center text-muted-foreground/40">
+                                <Truck className="size-5" />
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <p className="font-mono text-[10px] text-muted-foreground uppercase leading-tight">
+                            {a.gate_entry_no}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <span className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary border border-primary/20">
+                              {a.vehicle_number}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          <p className="max-w-[200px] truncate font-bold text-xs">{a.vendor}</p>
+                          <p className="max-w-[200px] truncate text-[11px] text-muted-foreground">
+                            {a.material}
+                          </p>
+                        </td>
+                        <td className="py-3">
+                          <p className="font-mono text-xs font-medium">{a.po_number}</p>
+                          <p className="text-[11px] text-muted-foreground">{a.quantity} Units</p>
+                        </td>
+                        <td className="py-3">
+                          <div className="flex items-center gap-1.5 text-xs tabular-nums">
+                            <Clock3 className="size-3 text-muted-foreground" />
+                            {a.arrival_time}
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          {assignedDock ? (
+                            <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-soft px-2 py-0.5 text-xs font-semibold text-primary">
+                              <Warehouse className="size-3" />
+                              {assignedDock}
+                            </span>
                           ) : (
-                            <div className="grid h-full w-full place-items-center text-muted-foreground/40">
-                              <Truck className="size-5" />
-                            </div>
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <p className="font-mono text-[10px] text-muted-foreground uppercase leading-tight">
-                          {a.gate_entry_no}
-                        </p>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <span className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary border border-primary/20">
-                            {a.vehicle_number}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <p className="max-w-[200px] truncate font-bold text-xs">{a.vendor}</p>
-                        <p className="max-w-[200px] truncate text-[11px] text-muted-foreground">
-                          {a.material}
-                        </p>
-                      </td>
-                      <td className="py-3">
-                        <p className="font-mono text-xs font-medium">{a.po_number}</p>
-                        <p className="text-[11px] text-muted-foreground">{a.quantity} Units</p>
-                      </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-1.5 text-xs tabular-nums">
-                          <Clock3 className="size-3 text-muted-foreground" />
-                          {a.arrival_time}
-                        </div>
-                      </td>
-                      <td className="py-3">
-                        <StatusBadge status={a.status} />
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                        <td className="py-3">
+                          <StatusBadge status={a.status} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

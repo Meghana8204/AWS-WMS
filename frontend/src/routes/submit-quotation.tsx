@@ -68,6 +68,17 @@ function SubmitQuotation() {
       file_url: string;
     }>
   >([]);
+  const getItemKey = (item: any, idx?: number) => {
+    return (
+      item.variantCode ||
+      item.variant_code ||
+      item.materialVariantId ||
+      item.material_variant_id ||
+      item.id ||
+      (item.materialCode ? `${item.materialCode}_${idx ?? 0}` : `item_${idx ?? 0}`)
+    );
+  };
+
   useEffect(() => {
     const userInfoStr = localStorage.getItem("user_info");
     if (!userInfoStr) {
@@ -110,13 +121,34 @@ function SubmitQuotation() {
             setRejectionReason("");
           }
           const mappedItems: any = {};
-          existing.lines?.forEach((line: any) => {
-            const price = parseFloat(line.unitPrice || line.unit_price || "0");
-            const qty = parseFloat(line.quantity || "0");
-            mappedItems[line.itemCode || line.item_code] = {
-              unitPrice: String(Math.floor(price)),
-              availableQty: String(Math.floor(qty)),
-            };
+          rfqData.items?.forEach((rfqItem: any, idx: number) => {
+            const key = getItemKey(rfqItem, idx);
+            const matchingLine = existing.lines?.find((line: any) => {
+              const lineCode = line.itemCode || line.item_code || line.variantCode || line.variant_code;
+              const rfqVariantCode = rfqItem.variantCode || rfqItem.variant_code;
+              const rfqMatCode = rfqItem.materialCode || rfqItem.material_code;
+              const rfqVarId = rfqItem.materialVariantId || rfqItem.material_variant_id;
+              const lineVarId = line.materialVariantId || line.material_variant_id;
+
+              if (rfqVarId && lineVarId && rfqVarId === lineVarId) return true;
+              if (rfqVariantCode && lineCode === rfqVariantCode) return true;
+              if (lineCode === rfqMatCode) return true;
+              return false;
+            }) || existing.lines?.[idx];
+
+            if (matchingLine) {
+              const price = parseFloat(matchingLine.unitPrice || matchingLine.unit_price || "0");
+              const qty = parseFloat(matchingLine.quantity || "0");
+              mappedItems[key] = {
+                unitPrice: price > 0 ? String(Math.floor(price)) : "",
+                availableQty: String(Math.floor(qty || rfqItem.quantity)),
+              };
+            } else {
+              mappedItems[key] = {
+                unitPrice: "",
+                availableQty: String(Math.floor(rfqItem.quantity)),
+              };
+            }
           });
           setItemsData(mappedItems);
           setMetaData({
@@ -134,8 +166,9 @@ function SubmitQuotation() {
           setUploadedDocs(existing.documents || []);
         } else {
           const initialItems: any = {};
-          rfqData.items?.forEach((item: any) => {
-            initialItems[item.materialCode] = {
+          rfqData.items?.forEach((item: any, idx: number) => {
+            const key = getItemKey(item, idx);
+            initialItems[key] = {
               unitPrice: "",
               availableQty: String(Math.floor(item.quantity)),
             };
@@ -151,15 +184,15 @@ function SubmitQuotation() {
     fetchRfqAndQuotation();
   }, [rfqId]);
   const handleItemChange = (
-    itemCode: string,
+    key: string,
     field: "unitPrice" | "availableQty",
     value: string,
   ) => {
     if (isLocked) return;
     let finalValue = value;
     if (field === "availableQty" && rfq) {
-      const item = rfq.items.find(
-        (it: any) => it.materialCode === itemCode || it.material_code === itemCode,
+      const item = rfq.items?.find(
+        (it: any, idx: number) => getItemKey(it, idx) === key,
       );
       if (item) {
         const requestedQty = Math.floor(item.quantity);
@@ -171,8 +204,8 @@ function SubmitQuotation() {
     }
     setItemsData((prev) => ({
       ...prev,
-      [itemCode]: {
-        ...prev[itemCode],
+      [key]: {
+        ...prev[key],
         [field]: finalValue,
       },
     }));
@@ -232,11 +265,17 @@ function SubmitQuotation() {
         rfq_id: rfq.id,
         supplier_id: supplierId,
         status: "DRAFT",
-        lines: rfq.items.map((item: any) => ({
-          item_code: item.materialCode,
-          quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
-          unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
-        })),
+        lines: rfq.items.map((item: any, idx: number) => {
+          const key = getItemKey(item, idx);
+          return {
+            material_id: item.materialId || item.material_id || null,
+            material_variant_id: item.materialVariantId || item.material_variant_id || null,
+            item_code: item.variantCode || item.variant_code || item.materialCode || item.material_code,
+            variant_code: item.variantCode || item.variant_code || null,
+            quantity: parseFloat(itemsData[key]?.availableQty) || item.quantity,
+            unit_price: parseFloat(itemsData[key]?.unitPrice) || 0,
+          };
+        }),
         discount: parseFloat(metaData.discount) || 0,
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
@@ -258,10 +297,10 @@ function SubmitQuotation() {
   };
   const handleSave = async (status: "SUBMITTED") => {
     if (!rfq || isLocked) return;
-    const lineCodes = Object.keys(itemsData);
+    const lineKeys = Object.keys(itemsData);
     if (
-      lineCodes.some(
-        (code) => !itemsData[code].unitPrice || parseFloat(itemsData[code].unitPrice) <= 0,
+      lineKeys.some(
+        (key) => !itemsData[key]?.unitPrice || parseFloat(itemsData[key]?.unitPrice) <= 0,
       )
     ) {
       toast.error("Please enter a valid unit price for all items before submitting");
@@ -272,12 +311,14 @@ function SubmitQuotation() {
       toast.error("GST percentage must be between 0 and 100");
       return;
     }
-    for (const item of rfq.items) {
-      const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
+    for (let idx = 0; idx < rfq.items.length; idx++) {
+      const item = rfq.items[idx];
+      const key = getItemKey(item, idx);
+      const quoted = parseFloat(itemsData[key]?.availableQty) || 0;
       const requested = Math.floor(item.quantity);
       if (quoted < requested) {
         toast.error(
-          `Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`,
+          `Quoted quantity for ${item.materialName || item.material_name} cannot be less than the requested quantity (${requested})`,
         );
         return;
       }
@@ -288,11 +329,17 @@ function SubmitQuotation() {
         rfq_id: rfq.id,
         supplier_id: supplierId,
         status: status,
-        lines: rfq.items.map((item: any) => ({
-          item_code: item.materialCode,
-          quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
-          unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
-        })),
+        lines: rfq.items.map((item: any, idx: number) => {
+          const key = getItemKey(item, idx);
+          return {
+            material_id: item.materialId || item.material_id || null,
+            material_variant_id: item.materialVariantId || item.material_variant_id || null,
+            item_code: item.variantCode || item.variant_code || item.materialCode || item.material_code,
+            variant_code: item.variantCode || item.variant_code || null,
+            quantity: parseFloat(itemsData[key]?.availableQty) || item.quantity,
+            unit_price: parseFloat(itemsData[key]?.unitPrice) || 0,
+          };
+        }),
         discount: parseFloat(metaData.discount) || 0,
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
@@ -449,71 +496,77 @@ function SubmitQuotation() {
           icon={Package}
         >
           <div className="space-y-6">
-            {rfq.items?.map((item: any, idx: number) => (
-              <div key={idx} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="text-sm font-bold text-foreground">{item.materialName}</h4>
-                    <span className="text-[10px] font-mono text-muted-foreground uppercase">
-                      {item.materialCode} · {item.category}
+            {rfq.items?.map((item: any, idx: number) => {
+              const itemKey = getItemKey(item, idx);
+              return (
+                <div key={itemKey} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-foreground">
+                        {item.materialName || item.material_name}
+                      </h4>
+                      <span className="text-[10px] font-mono text-muted-foreground uppercase">
+                        {item.variantCode || item.variant_code || item.materialCode || item.material_code}
+                        {item.category ? ` · ${item.category}` : ""}
+                      </span>
+                    </div>
+                    <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
+                      Requested: {Math.floor(item.quantity)} {item.uom}
                     </span>
                   </div>
-                  <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
-                    Requested: {Math.floor(item.quantity)} {item.uom}
-                  </span>
-                </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Unit Price (INR)*</Label>
-                    <div className="relative">
+                  <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Unit Price (INR)*</Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          placeholder="0"
+                          className="rounded-xl h-10 font-mono"
+                          disabled={isLocked}
+                          value={itemsData[itemKey]?.unitPrice || ""}
+                          onChange={(e) =>
+                            handleItemChange(itemKey, "unitPrice", e.target.value)
+                          }
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Requested Qty</Label>
                       <Input
                         type="number"
                         min="0"
+                        className="rounded-xl h-10 font-mono bg-muted/50"
+                        disabled
+                        value={Math.floor(item.quantity)}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Quoted Quantity*</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={Math.floor(item.quantity)}
                         step="1"
-                        placeholder="0"
+                        placeholder="Enter quantity"
                         className="rounded-xl h-10 font-mono"
                         disabled={isLocked}
-                        value={itemsData[item.materialCode]?.unitPrice || ""}
+                        value={itemsData[itemKey]?.availableQty || ""}
                         onChange={(e) =>
-                          handleItemChange(item.materialCode, "unitPrice", e.target.value)
+                          handleItemChange(itemKey, "availableQty", e.target.value)
                         }
                         required
                       />
                     </div>
                   </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Requested Qty</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      className="rounded-xl h-10 font-mono bg-muted/50"
-                      disabled
-                      value={Math.floor(item.quantity)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Quoted Quantity*</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={Math.floor(item.quantity)}
-                      step="1"
-                      placeholder="Enter quantity"
-                      className="rounded-xl h-10 font-mono"
-                      disabled={isLocked}
-                      value={itemsData[item.materialCode]?.availableQty || ""}
-                      onChange={(e) =>
-                        handleItemChange(item.materialCode, "availableQty", e.target.value)
-                      }
-                      required
-                    />
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </SectionCard>
 

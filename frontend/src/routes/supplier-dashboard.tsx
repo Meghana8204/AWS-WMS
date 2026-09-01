@@ -25,7 +25,13 @@ import { AppShell } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 export const Route = createFileRoute("/supplier-dashboard")({
@@ -227,8 +233,8 @@ function SupplierDashboard() {
                                   isRejected || isDeclined
                                     ? "bg-destructive/10 text-destructive"
                                     : hasBid
-                                    ? "bg-success-soft/30 text-success"
-                                    : "bg-amber-soft/30 text-amber-500 animate-pulse",
+                                      ? "bg-success-soft/30 text-success"
+                                      : "bg-amber-soft/30 text-amber-500 animate-pulse",
                                 )}
                               >
                                 {isRejected
@@ -265,7 +271,12 @@ function SupplierDashboard() {
                                 </Link>
                               </Button>
                             ) : isDeclined ? (
-                              <Button variant="outline" size="sm" className="rounded-xl text-xs" disabled>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-xl text-xs"
+                                disabled
+                              >
                                 RFQ Declined
                               </Button>
                             ) : hasBid ? (
@@ -334,58 +345,60 @@ function SupplierDashboard() {
                         .findLast((line) => line.startsWith("Rejected by "));
                       const quotationRfqId = q.rfqId || q.rfq_id;
                       return (
-                      <div
-                        key={q.id || `quo-${idx}`}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold">
-                              Quote Reference: {q.id.substring(0, 8).toUpperCase()}
-                            </h4>
-                            <span
-                              className={cn(
-                                "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-                                isRejected || isDeclined
-                                  ? "bg-destructive/10 text-destructive"
-                                  : "bg-success-soft/30 text-success",
-                              )}
-                            >
-                              {q.status}
-                            </span>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>RFQ ID: {quotationRfqId}</span>
-                            <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
-                          </div>
-                          {(isRejected || isDeclined) && (
-                            <div className="max-w-xl rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs">
-                              <p className="flex items-center gap-1.5 font-bold text-destructive">
-                                <AlertCircle className="size-3.5" />
-                                {isDeclined ? "Your decline reason" : "Rejection reason"}
-                              </p>
-                              <p className="mt-1 text-muted-foreground">
-                                {rejectionReason || q.remarks || "Please contact procurement for more details."}
-                              </p>
+                        <div
+                          key={q.id || `quo-${idx}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold">
+                                Quote Reference: {q.id.substring(0, 8).toUpperCase()}
+                              </h4>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+                                  isRejected || isDeclined
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-success-soft/30 text-success",
+                                )}
+                              >
+                                {q.status}
+                              </span>
                             </div>
-                          )}
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>RFQ ID: {quotationRfqId}</span>
+                              <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {(isRejected || isDeclined) && (
+                              <div className="max-w-xl rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs">
+                                <p className="flex items-center gap-1.5 font-bold text-destructive">
+                                  <AlertCircle className="size-3.5" />
+                                  {isDeclined ? "Your decline reason" : "Rejection reason"}
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                  {rejectionReason ||
+                                    q.remarks ||
+                                    "Please contact procurement for more details."}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-foreground">
+                              INR {parseFloat(q.total_amount || 0).toLocaleString()}
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground mt-0.5">
+                              {q.lines?.length || 0} items quoted
+                            </span>
+                            {isRejected && quotationRfqId && (
+                              <Button asChild size="sm" className="mt-3 rounded-xl text-xs">
+                                <Link to="/submit-quotation" search={{ rfqId: quotationRfqId }}>
+                                  Revise & Resubmit
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-sm font-extrabold text-foreground">
-                            INR {parseFloat(q.total_amount || 0).toLocaleString()}
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground mt-0.5">
-                            {q.lines?.length || 0} items quoted
-                          </span>
-                          {isRejected && quotationRfqId && (
-                            <Button asChild size="sm" className="mt-3 rounded-xl text-xs">
-                              <Link to="/submit-quotation" search={{ rfqId: quotationRfqId }}>
-                                Revise & Resubmit
-                              </Link>
-                            </Button>
-                          )}
-                        </div>
-                      </div>
                       );
                     })}
                   </div>

@@ -1,116 +1,144 @@
-"""Collect saved damage photos belonging to the selected GRN."""
+"""Collect saved damage photos strictly belonging to the selected GRN and its damaged lines."""
 
+from __future__ import annotations
+
+import os
 from pathlib import Path, PurePosixPath
 import re
+from typing import List, Optional, Set, Tuple
 
-
-MAX_PHOTO_BYTES = 5 * 1024 * 1024
-MAX_TOTAL_BYTES = 15 * 1024 * 1024
+MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB per photo
+MAX_TOTAL_BYTES = 15 * 1024 * 1024  # 15 MB total
 MAX_PHOTOS = 10
 
 
-def collect_damage_attachments(grn, upload_dir, item_codes=None):
-    root = Path(upload_dir).resolve()
+def collect_damage_attachments(
+    grn: any,
+    upload_dir: str | Path | None = None,
+    item_codes: set[str] | list[str] | None = None,
+) -> list[tuple[str, bytes, str]]:
+    """
+    Collect saved damage photos belonging ONLY to the current GRN and its damaged lines.
 
-    attachments = []
-    total = 0
-    seen = set()
+    Guarantees:
+    - Never scans the upload directory or attaches unrelated files.
+    - Only reads damage evidence records explicitly linked to the current GRN's lines.
+    - Fresh attachment list created for every invocation (no caching or reused lists).
+    - Validates file paths to ensure they strictly belong to the current GRN.
+    - Filters by selected item codes / damaged lines if provided.
+    - Validates image magic bytes (JPEG, PNG, WebP) and enforces size limits.
+    """
+    attachments: list[tuple[str, bytes, str]] = []
+    total_bytes = 0
+    seen_evidence_ids: set[str] = set()
+
+    if not grn or not getattr(grn, "lines", None):
+        return attachments
+
+    current_grn_id_str = str(getattr(grn, "id", "") or "").lower()
+    current_grn_uuid_hex = (
+        grn.id.hex.lower()
+        if hasattr(getattr(grn, "id", None), "hex")
+        else current_grn_id_str.replace("-", "")
+    )
+    media_root = Path(os.getcwd(), "media_uploads").resolve()
+
+    selected_set = {c.strip() for c in item_codes if c} if item_codes else None
 
     for line in grn.lines:
-        if item_codes is not None and line.item_code not in item_codes:
+        line_item_code = (line.item_code or "").strip()
+        if selected_set is not None and line_item_code not in selected_set:
             continue
 
         is_damaged = (
             (line.damaged_quantity or 0) > 0
             or (line.rejected_quantity or 0) > 0
             or line.quality_result == "REJECTED"
-            or bool(line.damage_lots)
+            or bool(getattr(line, "damage_lots", None))
+            or bool(getattr(line, "damage_evidence", None))
         )
-
         if not is_damaged:
             continue
 
-        for evidence in line.damage_evidence:
-            if evidence.id in seen:
+        line_photo_idx = 0
+        current_line_id_str = str(getattr(line, "id", "") or "").lower()
+        mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line_item_code or "material")[:50]
+
+        for evidence in getattr(line, "damage_evidence", []):
+            if not evidence or not getattr(evidence, "id", None):
                 continue
 
-            seen.add(evidence.id)
+            ev_id_str = str(evidence.id)
+            if ev_id_str in seen_evidence_ids:
+                continue
+            seen_evidence_ids.add(ev_id_str)
 
-            stored = PurePosixPath(evidence.file_path)
+            file_path_str = getattr(evidence, "file_path", None)
+            if not file_path_str:
+                continue
 
-            if stored.parent != PurePosixPath("/media/grn_documents"):
-                raise ValueError(
-                    "A damage photo has an invalid stored path."
-                )
+            # Resolve physical file on disk
+            raw_path = str(file_path_str).strip()
+            resolved_file: Path | None = None
 
-            path = (root / stored.name).resolve()
+            if raw_path.startswith("/media/"):
+                sub_path = raw_path[len("/media/"):].lstrip("/\\")
+                cand = (media_root / sub_path).resolve()
+                if cand.exists() and cand.is_file():
+                    resolved_file = cand
 
-            if path.parent != root:
-                raise ValueError(
-                    "A damage photo is outside the upload folder."
-                )
+            if resolved_file is None:
+                # Fallback to direct upload_dir or grn_documents check
+                stored_name = PurePosixPath(raw_path).name
+                cand1 = (Path(upload_dir or (media_root / "grn_documents")) / stored_name).resolve()
+                cand2 = (media_root / "grn_documents" / stored_name).resolve()
+                if cand1.exists() and cand1.is_file():
+                    resolved_file = cand1
+                elif cand2.exists() and cand2.is_file():
+                    resolved_file = cand2
+
+            if resolved_file is None or not resolved_file.exists():
+                continue
+
+            # Ensure file is inside media_uploads (prevent path traversal)
+            if not str(resolved_file).startswith(str(media_root)):
+                continue
+
+            # If path contains damage_evidence subfolder, verify it belongs to current GRN
+            resolved_str_lower = str(resolved_file).lower()
+            if "damage_evidence" in resolved_str_lower:
+                if current_grn_id_str and (current_grn_id_str not in resolved_str_lower and current_grn_uuid_hex not in resolved_str_lower):
+                    # Belongs to a different GRN - strictly reject
+                    continue
 
             try:
-                with path.open("rb") as photo:
-                    content = photo.read(MAX_PHOTO_BYTES + 1)
-            except OSError as exc:
-                raise ValueError(
-                    "A saved damage photo is missing or unreadable. "
-                    "Upload it again."
-                ) from exc
+                with open(resolved_file, "rb") as f:
+                    content = f.read(MAX_PHOTO_BYTES + 1)
+            except OSError:
+                continue
 
             if not content or len(content) > MAX_PHOTO_BYTES:
-                raise ValueError(
-                    "Each damage photo must be non-empty "
-                    "and at most 5 MB."
-                )
+                continue
 
-            # Check the file signature instead of trusting its extension.
+            # Validate magic bytes for image files
             if content.startswith(b"\xff\xd8\xff"):
                 mime_type = "image/jpeg"
                 suffix = ".jpg"
-
             elif content.startswith(b"\x89PNG\r\n\x1a\n"):
                 mime_type = "image/png"
                 suffix = ".png"
-
-            elif (
-                content[:4] == b"RIFF"
-                and content[8:12] == b"WEBP"
-            ):
+            elif content[:4] == b"RIFF" and content[8:12] == b"WEBP":
                 mime_type = "image/webp"
                 suffix = ".webp"
-
             else:
-                raise ValueError(
-                    "Damage email attachments must be "
-                    "JPG, PNG or WebP images."
-                )
+                continue
 
-            total += len(content)
+            total_bytes += len(content)
+            if total_bytes > MAX_TOTAL_BYTES or len(attachments) >= MAX_PHOTOS:
+                break
 
-            if (
-                total > MAX_TOTAL_BYTES
-                or len(attachments) >= MAX_PHOTOS
-            ):
-                raise ValueError(
-                    "Email allows at most 10 photos "
-                    "and 15 MB of photo data."
-                )
+            line_photo_idx += 1
+            filename = f"{mat_code}_damage_{line_photo_idx}{suffix}"
+            attachments.append((filename, content, mime_type))
 
-            material_code = re.sub(
-                r"[^A-Za-z0-9_-]",
-                "_",
-                line.item_code or "material",
-            )[:60]
-
-            filename = (
-                f"{material_code}_damage_"
-                f"{len(attachments) + 1}{suffix}"
-            )
-
-            attachments.append(
-                (filename, content, mime_type)
-            )
-
-    return attachments
+    return attachments

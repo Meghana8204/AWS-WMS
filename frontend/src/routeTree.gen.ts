@@ -14,6 +14,7 @@ import { Route as AcceptArrivalRouteImport } from './routes/accept-arrival'
 import { Route as ArrivalSuccessRouteImport } from './routes/arrival-success'
 import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DockManagementRouteImport } from './routes/dock-management'
+import { Route as DockMasterRouteImport } from './routes/dock-master'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
 import { Route as GateDashboardRouteImport } from './routes/gate-dashboard'
@@ -45,6 +46,7 @@ import { Route as ProcurementQuotationsRouteImport } from './routes/procurement.
 import { Route as ProcurementRfqsRouteImport } from './routes/procurement.rfqs'
 import { Route as SupplierSupplierIdRouteImport } from './routes/supplier.$supplierId'
 import { Route as WarehouseMaterialRequestsRouteImport } from './routes/warehouse.material-requests'
+import { Route as WarehouseMaterialsRouteImport } from './routes/warehouse.materials'
 import { Route as FinanceApprovalsIndexRouteImport } from './routes/finance.approvals.index'
 import { Route as FinanceApprovalsApprovalIdRouteImport } from './routes/finance.approvals.$approvalId'
 import { Route as ProcurementAsnsIndexRouteImport } from './routes/procurement.asns.index'
@@ -75,6 +77,11 @@ const DockAssignmentRoute = DockAssignmentRouteImport.update({
 const DockManagementRoute = DockManagementRouteImport.update({
   id: '/dock-management',
   path: '/dock-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DockMasterRoute = DockMasterRouteImport.update({
+  id: '/dock-master',
+  path: '/dock-master',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DriverVerificationRoute = DriverVerificationRouteImport.update({
@@ -235,6 +242,11 @@ const WarehouseMaterialRequestsRoute =
     path: '/warehouse/material-requests',
     getParentRoute: () => rootRouteImport,
   } as any)
+const WarehouseMaterialsRoute = WarehouseMaterialsRouteImport.update({
+  id: '/warehouse/materials',
+  path: '/warehouse/materials',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FinanceApprovalsIndexRoute = FinanceApprovalsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -274,6 +286,7 @@ export interface FileRoutesByFullPath {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -305,6 +318,7 @@ export interface FileRoutesByFullPath {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -318,6 +332,7 @@ export interface FileRoutesByTo {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -347,6 +362,7 @@ export interface FileRoutesByTo {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -361,6 +377,7 @@ export interface FileRoutesById {
   '/arrival-success': typeof ArrivalSuccessRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
+  '/dock-master': typeof DockMasterRoute
   '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
@@ -392,6 +409,7 @@ export interface FileRoutesById {
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
+  '/warehouse/materials': typeof WarehouseMaterialsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
   '/supplier/asns/new': typeof SupplierAsnsNewRoute
@@ -407,6 +425,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -438,6 +457,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -451,6 +471,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -480,6 +501,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -493,6 +515,7 @@ export interface FileRouteTypes {
     | '/arrival-success'
     | '/dock-assignment'
     | '/dock-management'
+    | '/dock-master'
     | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
@@ -524,6 +547,7 @@ export interface FileRouteTypes {
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
     | '/warehouse/material-requests'
+    | '/warehouse/materials'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
     | '/supplier/asns/new'
@@ -538,6 +562,7 @@ export interface RootRouteChildren {
   ArrivalSuccessRoute: typeof ArrivalSuccessRoute
   DockAssignmentRoute: typeof DockAssignmentRoute
   DockManagementRoute: typeof DockManagementRoute
+  DockMasterRoute: typeof DockMasterRoute
   DriverVerificationRoute: typeof DriverVerificationRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   GateDashboardRoute: typeof GateDashboardRoute
@@ -569,6 +594,7 @@ export interface RootRouteChildren {
   ProcurementRfqsRoute: typeof ProcurementRfqsRoute
   SupplierSupplierIdRoute: typeof SupplierSupplierIdRoute
   WarehouseMaterialRequestsRoute: typeof WarehouseMaterialRequestsRoute
+  WarehouseMaterialsRoute: typeof WarehouseMaterialsRoute
   SupplierAsnsNewRoute: typeof SupplierAsnsNewRoute
 }
 
@@ -607,6 +633,13 @@ declare module '@tanstack/react-router' {
       path: '/dock-management'
       fullPath: '/dock-management'
       preLoaderRoute: typeof DockManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dock-master': {
+      id: '/dock-master'
+      path: '/dock-master'
+      fullPath: '/dock-master'
+      preLoaderRoute: typeof DockMasterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/driver-verification': {
@@ -826,6 +859,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WarehouseMaterialRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/warehouse/materials': {
+      id: '/warehouse/materials'
+      path: '/warehouse/materials'
+      fullPath: '/warehouse/materials'
+      preLoaderRoute: typeof WarehouseMaterialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/finance/approvals/': {
       id: '/finance/approvals/'
       path: '/'
@@ -906,6 +946,7 @@ const rootRouteChildren: RootRouteChildren = {
   ArrivalSuccessRoute: ArrivalSuccessRoute,
   DockAssignmentRoute: DockAssignmentRoute,
   DockManagementRoute: DockManagementRoute,
+  DockMasterRoute: DockMasterRoute,
   DriverVerificationRoute: DriverVerificationRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   GateDashboardRoute: GateDashboardRoute,
@@ -937,6 +978,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProcurementRfqsRoute: ProcurementRfqsRoute,
   SupplierSupplierIdRoute: SupplierSupplierIdRoute,
   WarehouseMaterialRequestsRoute: WarehouseMaterialRequestsRoute,
+  WarehouseMaterialsRoute: WarehouseMaterialsRoute,
   SupplierAsnsNewRoute: SupplierAsnsNewRoute,
 }
 export const routeTree = rootRouteImport

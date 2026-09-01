@@ -286,7 +286,10 @@ class CreateRfqUseCase:
                 category=item.category,
                 quantity=item.quantity,
                 uom=item.uom,
-                required_delivery_date=item.required_delivery_date or command.required_delivery_date,
+                material_id=item.material_id,
+                material_variant_id=item.material_variant_id,
+                variant_code=item.variant_code,
+                required_delivery_date=item.required_delivery_date or command.required_delivery_date or date.today(),
                 warehouse=item.warehouse or command.warehouse,
                 special_requirements=item.special_requirements,
             )
@@ -332,14 +335,22 @@ class SubmitQuotationUseCase:
         if not rfq:
             raise NotFoundException(f"RFQ not found: {command.rfq_id}")
 
-        lines = [
-            QuotationLine(
-                item_code=l.item_code,
-                quantity=l.quantity,
-                unit_price=l.unit_price,
+        lines = []
+        for l in command.lines:
+            rfq_match = next((item for item in rfq.items if item.material_code == l.item_code or (item.variant_code and item.variant_code == l.item_code) or (item.material_id and str(item.material_id) == str(l.material_id))), None)
+            mat_id = l.material_id or (str(rfq_match.material_id) if rfq_match and rfq_match.material_id else None)
+            var_id = l.material_variant_id or (str(rfq_match.material_variant_id) if rfq_match and rfq_match.material_variant_id else None)
+            var_code = l.variant_code or (rfq_match.variant_code if rfq_match else None)
+            lines.append(
+                QuotationLine(
+                    item_code=l.item_code,
+                    quantity=l.quantity,
+                    unit_price=l.unit_price,
+                    material_id=mat_id,
+                    material_variant_id=var_id,
+                    variant_code=var_code,
+                )
             )
-            for l in command.lines
-        ]
         from app.modules.procurement.domain.quotation import QuotationDocument
         documents = []
         if command.documents:

@@ -901,6 +901,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         now = datetime.now(timezone.utc)
 
+        if line.good_quantity <= Decimal("0"):
+            return []
+
         # 1. Reuse existing QR for material if present, otherwise create a new material QR
         qr_res = await self._session.execute(
             select(GrnBatchQrModel).where(GrnBatchQrModel.item_code == line.item_code)
@@ -908,12 +911,15 @@ class SqlAlchemyGrnRepository(GrnRepository):
         qr = qr_res.scalar_one_or_none()
         if not qr:
             qr_payload = (
-                f"📦 WMS MATERIAL QR\n"
+                f"📦 WMS GOOD STOCK QR\n"
                 f"----------------------------------------\n"
                 f"• Material Code : {line.item_code}\n"
                 f"• Material Name : {line.material_name or line.item_code}\n"
-                f"• Category      : {line.material_category or 'Raw Materials'}\n"
+                f"• Good Quantity : {line.good_quantity} {line.uom or 'PCS'}\n"
                 f"• UOM           : {line.uom or 'PCS'}\n"
+                f"• Category      : {line.material_category or 'Raw Materials'}\n"
+                f"• Quality Status: GOOD / ACCEPTED\n"
+                f"• QR ID         : QR-MAT-{line.item_code}\n"
                 f"----------------------------------------"
             )
             qr = GrnBatchQrModel(
@@ -993,7 +999,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 reason_text = line.damage_evidence[0].reason if line.damage_evidence and line.damage_evidence[0].reason else (reasons[0] if reasons else "Damaged/Rejected during receiving inspection")
                 qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
                 qr_payload = (
-                    f"⚠️ WMS DAMAGED / QUARANTINE GOODS QR\n"
+                    f"⚠️ WMS DAMAGED / REJECTED GOODS QR\n"
                     f"----------------------------------------\n"
                     f"• GRN Number      : {grn.grn_number}\n"
                     f"• Material Code   : {line.item_code}\n"
@@ -1002,9 +1008,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     f"• Damaged Qty     : {lot.damaged_quantity} {line.uom or 'PCS'}\n"
                     f"• UOM             : {line.uom or 'PCS'}\n"
                     f"• Damage Reason   : {reason_text}\n"
-                    f"• QA Status       : {lot.qa_status or 'REJECTED'}\n"
+                    f"• Quality Status  : DAMAGED / REJECTED\n"
                     f"• Quarantine Loc  : {lot.quarantine_location or 'QUARANTINE-ZONE-A'}\n"
-                    f"• Status          : {lot.status}\n"
+                    f"• QR ID           : {qr_code_str}\n"
                     f"----------------------------------------"
                 )
 
@@ -1053,7 +1059,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
             # 3. Create unique Damage QR
             qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
             qr_payload = (
-                f"⚠️ WMS DAMAGED / QUARANTINE GOODS QR\n"
+                f"⚠️ WMS DAMAGED / REJECTED GOODS QR\n"
                 f"----------------------------------------\n"
                 f"• GRN Number      : {grn.grn_number}\n"
                 f"• Material Code   : {line.item_code}\n"
@@ -1062,9 +1068,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 f"• Damaged Qty     : {damaged_qty} {line.uom or 'PCS'}\n"
                 f"• UOM             : {line.uom or 'PCS'}\n"
                 f"• Damage Reason   : {reason_text}\n"
-                f"• QA Status       : {lot.qa_status}\n"
+                f"• Quality Status  : DAMAGED / REJECTED\n"
                 f"• Quarantine Loc  : {lot.quarantine_location}\n"
-                f"• Status          : {lot.status}\n"
+                f"• QR ID           : {qr_code_str}\n"
                 f"----------------------------------------"
             )
             qr = GrnDamageQrModel(

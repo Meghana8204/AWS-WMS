@@ -24,6 +24,7 @@ from sqlalchemy.orm import aliased, selectinload, joinedload
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
 
 from app.common.domain.exceptions import DomainRuleViolationException, NotFoundException
+from app.config.settings import get_settings
 from app.logging.logger import get_logger
 
 from app.database.session import UnitOfWork, get_uow
@@ -116,7 +117,6 @@ from app.modules.procurement.infrastructure.persistence.models import (
     SupplierAddressModel,
     VendorTypeModel,
     SupplierCategoryModel,
-    RawMaterialMasterModel,
     SupplierUserModel,
     AsnModel,
     AsnLineModel,
@@ -129,6 +129,8 @@ from app.modules.procurement.infrastructure.persistence.models import (
     QuotationDocumentModel,
     PurchaseOrderModel,
     PurchaseOrderItemModel,
+    MaterialModel,
+    MaterialVariantModel,
     MaterialRequestModel,
     MaterialRequestItemModel,
     MaterialStockModel,
@@ -293,8 +295,11 @@ async def create_supplier_category(request: MasterDataCreate, uow: UnitOfWork = 
 
 @router.get("/raw-materials", response_model=List[MasterDataResponse])
 async def list_raw_materials(uow: UnitOfWork = Depends(get_uow)):
-    result = await uow.session.execute(select(RawMaterialMasterModel).order_by(RawMaterialMasterModel.name))
-    return [MasterDataResponse(id=m.id, name=m.name) for m in result.scalars().all()]
+    result = await uow.session.execute(select(MaterialModel.category).distinct().order_by(MaterialModel.category))
+    categories = [r[0] for r in result.fetchall() if r[0]]
+    if not categories:
+        categories = ["Steel & Metals", "Electrical", "Raw Materials", "Packaging", "Fasteners & Hardware"]
+    return [MasterDataResponse(id=idx + 1, name=cat) for idx, cat in enumerate(categories)]
 
 
 @router.post("/raw-materials", response_model=MasterDataResponse, status_code=status.HTTP_201_CREATED)
@@ -302,17 +307,7 @@ async def create_raw_material(request: MasterDataCreate, uow: UnitOfWork = Depen
     clean_name = request.name.strip()
     if not clean_name:
         raise HTTPException(status_code=400, detail="Name cannot be empty")
-    stmt = select(RawMaterialMasterModel).where(func.lower(RawMaterialMasterModel.name) == clean_name.lower())
-    res = await uow.session.execute(stmt)
-    existing = res.scalar_one_or_none()
-    if existing:
-        return MasterDataResponse(id=existing.id, name=existing.name)
-
-    new_mat = RawMaterialMasterModel(name=clean_name)
-    uow.session.add(new_mat)
-    await uow.commit()
-    await uow.session.refresh(new_mat)
-    return MasterDataResponse(id=new_mat.id, name=new_mat.name)
+    return MasterDataResponse(id=1, name=clean_name)
 
 
 
@@ -371,7 +366,10 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
             remarks=m.remarks,
             items=[
                 MaterialRequestItemSchema(
+                    material_id=str(it.material_id) if it.material_id else None,
+                    material_variant_id=str(it.material_variant_id) if it.material_variant_id else None,
                     material_code=it.material_code,
+                    variant_code=it.variant_code,
                     material_name=it.material_name,
                     quantity=it.quantity,
                     uom=it.uom
@@ -393,9 +391,6 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         repo = SqlAlchemyMaterialRequestRepository(uow.session)
         use_case = GetNextMaterialRequestNumberUseCase(repo)
         req_no = await use_case.handle()
-
-
-
 
     existing_codes_result = await uow.session.execute(
         select(MaterialRequestItemModel.material_code).where(
@@ -429,18 +424,52 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
     )
 
     for it in request.items:
-        if it.material_code:
-            material_code = it.material_code
-        else:
-            material_code = f"MAT-{next_material_sequence:04d}"
-            next_material_sequence += 1
+        mat_uuid = uuid.UUID(it.material_id) if it.material_id else None
+        var_uuid = uuid.UUID(it.material_variant_id) if it.material_variant_id else None
+
+        material_obj = None
+        variant_obj = None
+
+        if var_uuid:
+            var_stmt = select(MaterialVariantModel).options(selectinload(MaterialVariantModel.material)).where(MaterialVariantModel.id == var_uuid)
+            var_res = await uow.session.execute(var_stmt)
+            variant_obj = var_res.scalar_one_or_none()
+            if variant_obj:
+                material_obj = variant_obj.material
+                mat_uuid = material_obj.id if material_obj else None
+
+        if not material_obj and mat_uuid:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if material_obj and material_obj.variants and not variant_obj:
+                variant_obj = material_obj.variants[0]
+                var_uuid = variant_obj.id
+
+        if not material_obj and it.material_code:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.material_code == it.material_code)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if material_obj:
+                mat_uuid = material_obj.id
+                if material_obj.variants and not variant_obj:
+                    variant_obj = material_obj.variants[0]
+                    var_uuid = variant_obj.id
+
+        material_code = material_obj.material_code if material_obj else (it.material_code or f"MAT-{next_material_sequence:04d}")
+        material_name = material_obj.material_name if material_obj else (it.material_name or material_code)
+        variant_code = variant_obj.variant_code if variant_obj else (it.variant_code or f"{material_code}-V001")
+        uom = variant_obj.uom if variant_obj else (material_obj.base_uom if material_obj else (it.uom or "PCS"))
 
         new_mr.items.append(MaterialRequestItemModel(
             id=uuid.uuid4(),
+            material_id=mat_uuid,
+            material_variant_id=var_uuid,
             material_code=material_code,
-            material_name=it.material_name,
+            variant_code=variant_code,
+            material_name=material_name,
             quantity=it.quantity,
-            uom=it.uom
+            uom=uom
         ))
 
     uow.session.add(new_mr)
@@ -449,7 +478,13 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         "status": "success",
         "request_number": req_no,
         "items": [
-            {"material_code": item.material_code, "material_name": item.material_name}
+            {
+                "material_id": str(item.material_id) if item.material_id else None,
+                "material_variant_id": str(item.material_variant_id) if item.material_variant_id else None,
+                "material_code": item.material_code,
+                "variant_code": item.variant_code,
+                "material_name": item.material_name
+            }
             for item in new_mr.items
         ],
     }
@@ -957,7 +992,12 @@ async def create_rfq(
 
         stmt = select(RfqModel).options(
             selectinload(RfqModel.items),
-            selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+            selectinload(RfqModel.suppliers).options(
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            )
         ).where(RfqModel.id == rfq_id.value)
         res = await uow.session.execute(stmt)
         entity = res.scalar_one_or_none()
@@ -1138,15 +1178,157 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
 
 async def _send_email_logged(to_email: str, subject: str, body: str, html_body: str, context: str) -> None:
-    """Background delivery boundary: failures are logged without delaying the API response."""
+    """Background delivery boundary: logs attempts, delivery results, and errors with full context."""
+    logger.info(f"Initiating email dispatch: context={context}, recipient={to_email}, subject={subject}")
     try:
         delivered = await send_email(to_email, subject, body, html_body)
         if delivered:
-            logger.info(f"{context} email delivered to {to_email}")
+            logger.info(f"Email successfully delivered: context={context}, recipient={to_email}")
         else:
-            logger.warning(f"{context} email skipped because SMTP is not configured")
+            logger.warning(f"Email delivery skipped (SMTP not configured or placeholder credentials): context={context}, recipient={to_email}")
     except Exception as error:
-        logger.error(f"{context} email delivery failed for {to_email}: {error}", exc_info=True)
+        logger.error(f"Email delivery failed: context={context}, recipient={to_email}, reason={error}", exc_info=True)
+
+
+def _dispatch_asn_email(
+    asn: AsnModel,
+    po_obj: PurchaseOrderModel | None,
+    supplier_name: str,
+    warehouse_name: str,
+    background_tasks: BackgroundTasks | None = None,
+    is_resubmit: bool = False,
+) -> None:
+    """Generate and queue the Advance Shipment Notice (ASN) email notification."""
+    settings = get_settings()
+
+    expected_arrival_str = (
+        asn.expected_arrival_at.strftime("%d-%m-%Y %I:%M %p")
+        if asn.expected_arrival_at
+        else "Not specified"
+    )
+    shipment_date_str = (
+        asn.shipment_date.strftime("%d-%m-%Y")
+        if asn.shipment_date
+        else "Not specified"
+    )
+
+    action_label = "updated" if is_resubmit else "submitted"
+    subject_suffix = " (UPDATED)" if is_resubmit else ""
+    email_subject = f"NEXUSWMS · ADVANCE SHIPMENT NOTICE{subject_suffix} – {asn.asn_number}"
+
+    details_for_render: list[tuple[str, str]] = [
+        ("ASN Number", asn.asn_number),
+        ("PO Number", asn.po_number or "N/A"),
+        ("Supplier Name", supplier_name),
+        ("Warehouse", warehouse_name),
+        ("Expected Arrival", expected_arrival_str),
+        ("Shipment Date", shipment_date_str),
+        ("Vehicle Number", asn.vehicle_number or "Not specified"),
+        ("Driver Name", asn.driver_name or "Not specified"),
+        ("Driver Phone", asn.driver_contact or "Not specified"),
+        ("ASN Status", asn.status or "SUBMITTED"),
+    ]
+    if asn.transporter:
+        details_for_render.append(("Transporter", asn.transporter))
+    if asn.number_of_packages:
+        details_for_render.append(("Packages", f"{asn.number_of_packages} ({asn.package_type or 'Standard'})"))
+
+    items_for_render: list[dict[str, str]] = [
+        {
+            "material": f"{l.item_code} - {l.material_name or l.item_code}",
+            "quantity": f"{float(l.shipped_quantity):.4f} {l.uom or 'PCS'}",
+            "delivery": expected_arrival_str,
+            "warehouse": warehouse_name,
+        }
+        for l in (asn.lines or [])
+    ]
+
+    materials_text_lines = [
+        f"• {l.item_code} | {l.material_name or l.item_code} | Qty: {float(l.shipped_quantity):.4f} {l.uom or 'PCS'}"
+        for l in (asn.lines or [])
+    ]
+    materials_text = "\n".join(materials_text_lines) if materials_text_lines else "No materials listed"
+
+    email_body = (
+        f"Advance Shipment Notice\n\n"
+        f"ASN Number: {asn.asn_number}\n"
+        f"PO Number: {asn.po_number or 'N/A'}\n"
+        f"Supplier: {supplier_name}\n"
+        f"Warehouse: {warehouse_name}\n"
+        f"Expected Arrival: {expected_arrival_str}\n"
+        f"Vehicle: {asn.vehicle_number or 'Not specified'}\n"
+        f"Driver: {asn.driver_name or 'Not specified'}\n"
+        f"Driver Phone: {asn.driver_contact or 'Not specified'}\n"
+        f"Status: {asn.status or 'SUBMITTED'}\n\n"
+        f"Shipment Materials:\n"
+        f"Material Code | Material Name | Quantity | UOM\n"
+        f"{materials_text}\n"
+    )
+
+    asn_link = f"http://localhost:8080/procurement/asns/{asn.id}"
+    email_html = render_premium_email(
+        eyebrow="ADVANCE SHIPMENT NOTICE",
+        title=f"Advance Shipment Notice · {asn.asn_number}",
+        greeting="Dear Warehouse & Procurement Team,",
+        intro=f"Supplier {supplier_name} has {action_label} an Advance Shipment Notice (ASN) for PO {asn.po_number or 'N/A'}. The shipment is in transit with the schedule and materials detailed below:",
+        details=details_for_render,
+        items=items_for_render,
+        items_title="Shipment Materials",
+        col_headers=("Material Code & Name", "Shipped Quantity", "Expected Arrival", "Destination Warehouse"),
+        primary_cta=("View ASN in Portal", asn_link),
+        note="Please notify inbound receiving and dock management teams to prepare for unloading and inspection upon vehicle arrival.",
+        signoff="NexusWMS Logistics & Inbound Operations",
+    )
+
+    os.makedirs(os.path.join("media_uploads", "emails"), exist_ok=True)
+    email_preview_path = os.path.join("media_uploads", "emails", f"asn_{asn.asn_number}.html")
+    try:
+        with open(email_preview_path, "w", encoding="utf-8") as f:
+            f.write(email_html)
+    except Exception as fe:
+        logger.warning(f"Failed to write mock ASN email preview: {fe}")
+
+    recipient_email = (
+        getattr(settings, "warehouse_email", None)
+        or getattr(settings, "procurement_email", None)
+        or getattr(settings, "email_host_user", None)
+        or "obaiahkade223@gmail.com"
+    )
+    if recipient_email:
+        recipient_email = recipient_email.strip()
+
+    if not recipient_email or "@" not in recipient_email:
+        logger.warning(f"ASN {asn.asn_number} notification skipped: No valid recipient email configured")
+        return
+
+    if po_obj and po_obj.supplier_email and recipient_email.lower() == po_obj.supplier_email.strip().lower():
+        logger.warning(
+            f"ASN {asn.asn_number} notification skipped: Configured recipient {recipient_email} matches supplier email instead of warehouse/procurement"
+        )
+        return
+
+    logger.info(
+        f"Dispatching ASN notification email: ASN={asn.asn_number}, recipient={recipient_email}, subject={email_subject}"
+    )
+    if background_tasks is not None:
+        background_tasks.add_task(
+            _send_email_logged,
+            recipient_email,
+            email_subject,
+            email_body,
+            email_html,
+            f"ASN {asn.asn_number}",
+        )
+    else:
+        asyncio.create_task(
+            _send_email_logged(
+                recipient_email,
+                email_subject,
+                email_body,
+                email_html,
+                f"ASN {asn.asn_number}",
+            )
+        )
 
 
 @router.post("/rfqs/{rfq_id}/select-supplier")
@@ -1277,16 +1459,18 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         ))
 
         for item in rfq.items:
-
             price = Decimal("0.0")
             if quotation:
-                q_line = next((l for l in quotation.lines if l.item_code == item.material_code), None)
+                q_line = next((l for l in quotation.lines if l.item_code == item.material_code or (getattr(item, 'variant_code', None) and l.item_code == item.variant_code)), None)
                 if q_line:
                     price = q_line.unit_price
 
             new_po.items.append(PurchaseOrderItemModel(
                 id=uuid.uuid4(),
+                material_id=item.material_id,
+                material_variant_id=item.material_variant_id,
                 material_code=item.material_code,
+                variant_code=getattr(item, "variant_code", None),
                 material_name=item.material_name,
                 category=item.category,
                 quantity=item.quantity,
@@ -1572,11 +1756,13 @@ async def get_po_damaged_goods(po_identifier: str, uow: UnitOfWork = Depends(get
                 photos = []
                 for ev in (line.damage_evidence or []):
                     filename = ev.file_name or "damage_photo.jpg"
-                    if ev.file_path and "/media/grn_documents/" in ev.file_path:
+                    if ev.file_path and ev.file_path.startswith("/media/"):
+                        url = ev.file_path
+                    elif ev.file_path and "/media/grn_documents/" in ev.file_path:
                         fname = PurePosixPath(ev.file_path).name
-                        url = f"/api/receiving/media/grn_documents/{fname}"
+                        url = f"/media/grn_documents/{fname}"
                     else:
-                        url = f"/api/receiving/media/grn_documents/{filename}"
+                        url = f"/media/grn_documents/{filename}"
                     photos.append(DamagedMaterialPhotoSchema(id=str(ev.id), file_name=filename, url=url))
 
                 dmg_qty = float(line.damaged_quantity or line.rejected_quantity or Decimal("0"))
@@ -2031,7 +2217,10 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         rejection_reason=getattr(po, "rejection_reason", None),
         items=[
             PurchaseOrderItemSchema(
+                material_id=str(it.material_id) if getattr(it, "material_id", None) else None,
+                material_variant_id=str(it.material_variant_id) if getattr(it, "material_variant_id", None) else None,
                 material_code=it.material_code,
+                variant_code=getattr(it, "variant_code", None),
                 material_name=it.material_name,
                 category=getattr(it, "category", None),
                 quantity=it.quantity,
@@ -2051,7 +2240,8 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
             )
             for h in (po.history or [])
         ],
-        created_at=po.created_at or datetime.now()
+        created_at=getattr(po, "created_at", None) or datetime.now(),
+        updated_at=getattr(po, "updated_at", None) or getattr(po, "created_at", None) or datetime.now()
     )
 
 
@@ -2062,7 +2252,12 @@ async def list_rfqs(
 ) -> List[RfqResponse]:
     stmt = select(RfqModel).options(
         selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        selectinload(RfqModel.suppliers).options(
+            selectinload(SupplierModel.address),
+            selectinload(SupplierModel.contact),
+            selectinload(SupplierModel.bank_info),
+            selectinload(SupplierModel.documents),
+        )
     ).order_by(RfqModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
@@ -2077,7 +2272,12 @@ async def get_rfq(
 ) -> RfqResponse:
     stmt = select(RfqModel).options(
         selectinload(RfqModel.items),
-        selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact)
+        selectinload(RfqModel.suppliers).options(
+            selectinload(SupplierModel.address),
+            selectinload(SupplierModel.contact),
+            selectinload(SupplierModel.bank_info),
+            selectinload(SupplierModel.documents),
+        )
     ).where(RfqModel.id == id)
     res = await uow.session.execute(stmt)
     entity = res.scalar_one_or_none()
@@ -2089,21 +2289,19 @@ async def get_rfq(
 def _to_rfq_response(rfq) -> RfqResponse:
     items = []
     for item in rfq.items:
-        if hasattr(item, "__dict__"):
-            data = {k: v for k, v in item.__dict__.items() if not k.startswith('_')}
-        else:
-
-            data = {
-                "material_code": item.material_code,
-                "material_name": item.material_name,
-                "category": item.category,
-                "quantity": item.quantity,
-                "uom": item.uom,
-                "required_delivery_date": item.required_delivery_date,
-                "warehouse": item.warehouse,
-                "special_requirements": item.special_requirements
-            }
-        items.append(RfqItemSchema(**data))
+        items.append(RfqItemSchema(
+            material_id=str(getattr(item, "material_id", None)) if getattr(item, "material_id", None) else None,
+            material_variant_id=str(getattr(item, "material_variant_id", None)) if getattr(item, "material_variant_id", None) else None,
+            material_code=item.material_code,
+            variant_code=getattr(item, "variant_code", None),
+            material_name=item.material_name,
+            category=getattr(item, "category", None),
+            quantity=item.quantity,
+            uom=item.uom,
+            required_delivery_date=getattr(item, "required_delivery_date", None),
+            warehouse=getattr(item, "warehouse", None),
+            special_requirements=getattr(item, "special_requirements", None)
+        ))
 
     suppliers_list = []
     supplier_emails = []
@@ -2134,10 +2332,24 @@ def _to_rfq_response(rfq) -> RfqResponse:
                     supplier_name=getattr(s, "supplier_name", "Unknown")
                 ))
 
+    rfq_date_val = getattr(rfq, "rfq_date", None)
+    if not rfq_date_val:
+        from datetime import date
+        created_at = getattr(rfq, "created_at", None)
+        if hasattr(created_at, "date"):
+            rfq_date_val = created_at.date()
+        elif isinstance(created_at, str) and len(created_at) >= 10:
+            try:
+                rfq_date_val = date.fromisoformat(created_at[:10])
+            except ValueError:
+                rfq_date_val = date.today()
+        else:
+            rfq_date_val = date.today()
+
     return RfqResponse(
         id=str(rfq.id),
         rfq_number=getattr(rfq, "rfq_number", None),
-        rfq_date=getattr(rfq, "rfq_date", None),
+        rfq_date=rfq_date_val,
         status=getattr(rfq, "status", None),
         material_request_number=getattr(rfq, "material_request_number", None),
         required_delivery_date=getattr(rfq, "required_delivery_date", None),
@@ -2432,11 +2644,14 @@ async def reject_quotation(
 def _to_quotation_response(q) -> QuotationResponse:
     lines = []
     for l in q.lines:
-        if hasattr(l, "__dict__"):
-            data = {k: v for k, v in l.__dict__.items() if not k.startswith('_')}
-        else:
-            data = {"item_code": l.item_code, "quantity": l.quantity, "unit_price": l.unit_price}
-        lines.append(QuotationLineSchema(**data))
+        lines.append(QuotationLineSchema(
+            material_id=str(getattr(l, "material_id", None)) if getattr(l, "material_id", None) else None,
+            material_variant_id=str(getattr(l, "material_variant_id", None)) if getattr(l, "material_variant_id", None) else None,
+            item_code=l.item_code,
+            variant_code=getattr(l, "variant_code", None),
+            quantity=l.quantity,
+            unit_price=l.unit_price
+        ))
 
     documents = [QuotationDocumentSchema(
         document_type=document.document_type,
@@ -2469,6 +2684,7 @@ def _to_quotation_response(q) -> QuotationResponse:
 @router.post("/asns", response_model=AsnResponse, status_code=status.HTTP_201_CREATED)
 async def create_asn(
     request: CreateAsnRequest,
+    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> AsnResponse:
@@ -2482,8 +2698,6 @@ async def create_asn(
         if supplier_id:
             supplier_id = str(supplier_id)
 
-
-
         if not supplier_id and request.po_id:
             try:
                 supplier_result = await uow.session.execute(
@@ -2496,21 +2710,20 @@ async def create_asn(
             except ValueError:
                 pass
 
-
         expected_arrival = None
         if request.expected_arrival_at:
             try:
-
                 dt = datetime.fromisoformat(request.expected_arrival_at.replace("Z", "+00:00"))
                 expected_arrival = dt.replace(tzinfo=None)
-            except: pass
+            except Exception:
+                pass
 
         ship_date = None
         if request.shipment_date:
             try:
-
                 ship_date = datetime.fromisoformat(request.shipment_date.split("T")[0]).date()
-            except: pass
+            except Exception:
+                pass
 
         command = CreateAsnCommand(
             asn_number=request.asn_number,
@@ -2542,6 +2755,9 @@ async def create_asn(
         )
         asn_id = await use_case.handle(command)
 
+        po_obj = None
+        supplier_name = "Supplier"
+        warehouse_name = "Main Warehouse"
 
         if request.po_id:
             try:
@@ -2554,7 +2770,8 @@ async def create_asn(
                 po_obj = po_res.scalar_one_or_none()
                 if po_obj:
                     po_obj.status = "SHIPPED"
-
+                    supplier_name = po_obj.supplier_name or supplier_name
+                    warehouse_name = po_obj.delivery_warehouse_name or po_obj.warehouse_id or warehouse_name
 
                     po_obj.history.append(POApprovalHistoryModel(
                         id=uuid.uuid4(),
@@ -2562,7 +2779,6 @@ async def create_asn(
                         actor_name=_user.username or "supplier",
                         comments=f"ASN {request.asn_number} submitted. Shipment is in transit."
                     ))
-
 
                     uow.session.add(NotificationModel(
                         id=uuid.uuid4(),
@@ -2574,13 +2790,37 @@ async def create_asn(
             except Exception as po_err:
                 logger.warning(f"Failed to update PO status on ASN submission: {po_err}")
 
+        # Commit transaction FIRST before triggering external email dispatch
+        await uow.commit()
 
+        # Load persisted ASN with lines & documents
         stmt = select(AsnModel).options(
             selectinload(AsnModel.lines),
             selectinload(AsnModel.documents)
         ).where(AsnModel.id == asn_id.value)
         res = await uow.session.execute(stmt)
         asn = res.scalar_one()
+
+        if supplier_name == "Supplier" and asn.supplier_id:
+            try:
+                sup_res = await uow.session.execute(
+                    select(SupplierModel).where(SupplierModel.id == uuid.UUID(str(asn.supplier_id)))
+                )
+                sup = sup_res.scalar_one_or_none()
+                if sup and sup.supplier_name:
+                    supplier_name = sup.supplier_name
+            except Exception:
+                pass
+
+        # Trigger ASN email notification to warehouse/procurement
+        _dispatch_asn_email(
+            asn=asn,
+            po_obj=po_obj,
+            supplier_name=supplier_name,
+            warehouse_name=warehouse_name,
+            background_tasks=background_tasks,
+            is_resubmit=False,
+        )
 
         return AsnResponse(
             id=str(asn.id),
@@ -2803,6 +3043,7 @@ async def get_asn(id: str, uow: UnitOfWork = Depends(get_uow)):
 async def resubmit_asn(
     id: str,
     request: CreateAsnRequest,
+    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ):
@@ -2859,7 +3100,6 @@ async def resubmit_asn(
         asn.shipping_method = request.shipping_method
         asn.status = "DISPATCHED"
 
-
         notification = NotificationModel(
             id=uuid.uuid4(),
             user_role="PROCUREMENT",
@@ -2907,6 +3147,29 @@ async def resubmit_asn(
 
         await uow.commit()
         await uow.session.refresh(asn, attribute_names=["lines", "documents"])
+
+        # Fetch PO if linked
+        po_obj = None
+        warehouse_name = "Main Warehouse"
+        if asn.po_id:
+            try:
+                po_res = await uow.session.execute(
+                    select(PurchaseOrderModel).where(cast(PurchaseOrderModel.id, String) == str(asn.po_id))
+                )
+                po_obj = po_res.scalar_one_or_none()
+                if po_obj:
+                    warehouse_name = po_obj.delivery_warehouse_name or po_obj.warehouse_id or warehouse_name
+            except Exception:
+                pass
+
+        _dispatch_asn_email(
+            asn=asn,
+            po_obj=po_obj,
+            supplier_name=supplier_name or "Supplier",
+            warehouse_name=warehouse_name,
+            background_tasks=background_tasks,
+            is_resubmit=True,
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -3010,6 +3273,18 @@ async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(g
             link=n.link,
             is_read=n.is_read,
             created_at=n.created_at,
+            dock_code=getattr(n, "dock_code", None),
+            dock_name=getattr(n, "dock_name", None),
+            dock_location=getattr(n, "dock_location", None),
+            dock_type=getattr(n, "dock_type", None),
+            warehouse_name=getattr(n, "warehouse_name", None),
+            allocation_time=getattr(n, "allocation_time", None),
+            gate_pass_number=getattr(n, "gate_pass_number", None),
+            vehicle_number=getattr(n, "vehicle_number", None),
+            driver_name=getattr(n, "driver_name", None),
+            driver_phone=getattr(n, "driver_phone", None),
+            asn_number=getattr(n, "asn_number", None),
+            po_number=getattr(n, "po_number", None),
         )
         for n in notifications
     ]

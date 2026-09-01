@@ -496,6 +496,15 @@ function GrnPageWorkflow() {
       toast.error("Enter valid, non-negative receiving quantities.");
       return;
     }
+    const invalidLine = materials.find(
+      (m) => (m.good_quantity || 0) + (m.damaged_quantity || 0) > m.po_quantity
+    );
+    if (invalidLine) {
+      toast.error(
+        `Good Quantity + Damaged Quantity for ${invalidLine.material_name} (${(invalidLine.good_quantity || 0) + (invalidLine.damaged_quantity || 0)}) cannot exceed PO/Received Quantity (${invalidLine.po_quantity}).`
+      );
+      return;
+    }
     saveLock.current = true;
     ++contextRequest.current;
     setBusyAction(true);
@@ -568,8 +577,9 @@ function GrnPageWorkflow() {
 
   function buildDamageQrPayload(m: GrnLineItem, reasonText: string) {
     const lotNum = `DMG-LOT-${header.grn_number || "2026-0001"}-${m.item_code}`;
-    const damagedQty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.balance_quantity || 0);
-    return `⚠️ WMS DAMAGED / QUARANTINE GOODS QR
+    const damagedQty = m.damaged_quantity || 0;
+    const qrCodeStr = `DMG-${header.grn_number || "2026-0001"}-${m.item_code}-01`;
+    return `⚠️ WMS DAMAGED / REJECTED GOODS QR
 ----------------------------------------
 • GRN Number      : ${header.grn_number || "GRN-2026-0001"}
 • Material Code   : ${m.item_code}
@@ -578,9 +588,9 @@ function GrnPageWorkflow() {
 • Damaged Qty     : ${damagedQty} ${m.uom || "PCS"}
 • UOM             : ${m.uom || "PCS"}
 • Damage Reason   : ${reasonText}
-• QA Status       : ${m.quality_result || "REJECTED"}
+• Quality Status  : DAMAGED / REJECTED
 • Quarantine Loc  : QUARANTINE-ZONE-A
-• Status          : DAMAGED
+• QR ID           : ${qrCodeStr}
 ----------------------------------------`;
   }
 
@@ -847,19 +857,22 @@ function GrnPageWorkflow() {
     toast.success(`Exported ${listToExport.length} GRN records to CSV spreadsheet`);
   }
 
-  // Helper to format payload string for material QR encoding and scanning
   function buildMaterialQrPayload(itemCode: string, batch?: BatchEntry) {
     const mat = materials.find((m) => m.item_code === itemCode);
     const bList = materialBatches[itemCode] || [];
-    const b = batch || bList[0] || { batch_number: `BATCH-${itemCode}-001`, batch_quantity: mat?.good_quantity || 100 };
-    return `📦 WMS MATERIAL BATCH QR
+    const b = batch || bList[0] || { batch_number: `BATCH-${itemCode}-001`, batch_quantity: mat?.good_quantity || 0 };
+    const qrId = `QR-MAT-${itemCode}`;
+    return `📦 WMS GOOD STOCK QR
 ----------------------------------------
-• PO Number     : ${header.po_number || "N/A"}
-• ASN Number    : ${header.asn_number || "N/A"}
+• GRN Number    : ${header.grn_number || "N/A"}
+• Material Code : ${itemCode}
 • Material Name : ${mat?.material_name || itemCode}
 • Category      : ${mat?.material_category || "Raw Materials"}
 • Batch Number  : ${b.batch_number}
-• Batch Quantity: ${b.batch_quantity} ${mat?.uom || "PCS"}
+• Good Quantity : ${b.batch_quantity} ${mat?.uom || "PCS"}
+• UOM           : ${mat?.uom || "PCS"}
+• Quality Status: GOOD / ACCEPTED
+• QR ID         : ${qrId}
 ----------------------------------------`;
   }
 
@@ -1034,18 +1047,19 @@ function GrnPageWorkflow() {
       void (async () => {
         const generated: Record<string, { qr_id: string; data_url: string; payload: string }> = {};
         for (const m of materials) {
+          if ((m.good_quantity || 0) <= 0) continue;
           const code = m.item_code;
           if (generated[code]) continue;
 
           const bList = effectiveBatches[code] || [];
-          const b = bList[0] || { batch_number: `BATCH-${code}-001`, batch_quantity: m.good_quantity || 100 };
+          const b = bList[0] || { batch_number: `BATCH-${code}-001`, batch_quantity: m.good_quantity };
           const qrId = `QR-MAT-${code}`;
           const url = await generateQrForMaterial(code, b);
           const payload = buildMaterialQrPayload(code, b);
           generated[code] = { qr_id: qrId, data_url: url, payload };
         }
         const damageGenerated: DamageQrEntry[] = [];
-        const damagedLines = materials.filter(m => (m.damaged_quantity || 0) > 0 || (m.balance_quantity || 0) > 0 || m.quality_result === "REJECTED");
+        const damagedLines = materials.filter(m => (m.damaged_quantity || 0) > 0);
         for (const m of damagedLines) {
           const photo = damagePhotos[m.item_code];
           const reasonText = (photo && photo.reason)
@@ -1064,7 +1078,7 @@ function GrnPageWorkflow() {
           } catch (e) {
             console.error("Damage QR generation error:", e);
           }
-          const qty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.balance_quantity || 0);
+          const qty = m.damaged_quantity || 0;
           damageGenerated.push({
             damage_lot_id: `dmg_lot_${m.item_code}`,
             damage_lot_number: `DMG-LOT-${header.grn_number || "2026-0001"}-${m.item_code}`,
@@ -2584,17 +2598,26 @@ function GrnPageWorkflow() {
                 </div>
               </div>
 
-              {/* Material-wise Batch QR Labels Grid */}
+              {/* Material-wise Batch QR Labels Grid (Good Stock) */}
               <div className="space-y-8">
-                {(selectedQrMaterialCode === "ALL"
-                  ? materials
-                  : materials.filter((m) => m.item_code === selectedQrMaterialCode)
-                ).map((mat, matIdx) => {
-                  const matBatches = materialBatches[mat.item_code];
-                  const bList = (matBatches && matBatches.length > 0)
-                    ? matBatches
-                    : [{ batch_number: `BATCH-${mat.item_code}-001`, batch_quantity: mat.good_quantity || 100 }];
-                  return (
+                {(() => {
+                  const goodMaterials = (selectedQrMaterialCode === "ALL"
+                    ? materials.filter((m) => (m.good_quantity || 0) > 0)
+                    : materials.filter((m) => m.item_code === selectedQrMaterialCode && (m.good_quantity || 0) > 0)
+                  );
+                  if (goodMaterials.length === 0) {
+                    return (
+                      <div className="p-4 rounded-xl border border-blue-200 bg-blue-50/50 text-center text-xs text-blue-800 font-medium">
+                        No Good Quantity stock recorded for QR generation (Good Quantity = 0).
+                      </div>
+                    );
+                  }
+                  return goodMaterials.map((mat, matIdx) => {
+                    const matBatches = materialBatches[mat.item_code];
+                    const bList = (matBatches && matBatches.length > 0)
+                      ? matBatches.filter((b) => (b.batch_quantity || 0) > 0)
+                      : [{ batch_number: `BATCH-${mat.item_code}-001`, batch_quantity: mat.good_quantity }];
+                    return (
                     <div key={mat.item_code} className="space-y-4 rounded-2xl border p-4 bg-muted/10">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
                         <div>
@@ -2714,7 +2737,8 @@ function GrnPageWorkflow() {
                       )}
                     </div>
                   );
-                })}
+                });
+                })()}
               </div>
 
               {/* ⚠️ DAMAGED & REJECTED GOODS QR LABELS (QUARANTINE) SECTION */}

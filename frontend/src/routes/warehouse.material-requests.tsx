@@ -40,9 +40,23 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
 });
-const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "ROL", "SQM", "SET", "NOS"];
+const UOM_OPTIONS = [
+  "PCS",
+  "MTR",
+  "KG",
+  "LTR",
+  "BOX",
+  "PKT",
+  "ROL",
+  "SQM",
+  "SET",
+  "NOS",
+  "TON",
+  "BUNDLE",
+];
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
+  const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -60,13 +74,25 @@ function WarehouseMaterialRequests() {
     remarks: "",
   });
   const [items, setItems] = useState<any[]>([
-    { material_code: "", material_name: "", quantity: 1, uom: "PCS" },
+    {
+      material_id: "",
+      material_variant_id: "",
+      material_code: "",
+      variant_code: "",
+      material_name: "",
+      quantity: 1,
+      uom: "PCS",
+    },
   ]);
   const fetchData = async () => {
     try {
       setLoading(true);
-      const data = await api.getMaterialRequests();
-      setRequests(data);
+      const [reqData, matData] = await Promise.all([
+        api.getMaterialRequests(),
+        api.getMaterials({ status: "Active" }).catch(() => []),
+      ]);
+      setRequests(reqData);
+      setMasterMaterials(matData);
     } catch (error) {
       toast.error("Failed to load requests");
     } finally {
@@ -84,7 +110,18 @@ function WarehouseMaterialRequests() {
   const addItem = () => {
     const nextSeq = baseMaterialSequence + items.length;
     const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
-    setItems([...items, { material_code: code, material_name: "", quantity: 1, uom: "PCS" }]);
+    setItems([
+      ...items,
+      {
+        material_id: "",
+        material_variant_id: "",
+        material_code: code,
+        variant_code: "",
+        material_name: "",
+        quantity: 1,
+        uom: "PCS",
+      },
+    ]);
   };
   const removeItem = (idx: number) => {
     if (items.length === 1) return;
@@ -92,6 +129,59 @@ function WarehouseMaterialRequests() {
   };
   const handleItemChange = (idx: number, field: string, value: any) => {
     setItems(items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+  };
+  const handleSelectMasterMaterial = (idx: number, matId: string) => {
+    const foundMat = masterMaterials.find((m) => m.id === matId);
+    if (!foundMat) return;
+    const defaultVariant =
+      foundMat.variants && foundMat.variants.length > 0 ? foundMat.variants[0] : null;
+    const specDetails = defaultVariant
+      ? [defaultVariant.size, defaultVariant.color, defaultVariant.grade].filter(Boolean).join(", ")
+      : "";
+    const nameWithSpec = specDetails
+      ? `${foundMat.material_name} (${specDetails})`
+      : foundMat.material_name;
+
+    setItems(
+      items.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              material_id: foundMat.id,
+              material_variant_id: defaultVariant?.id || "",
+              material_code: foundMat.material_code,
+              variant_code: defaultVariant?.variant_code || "",
+              material_name: nameWithSpec,
+              uom: defaultVariant?.uom || foundMat.base_uom || "PCS",
+            }
+          : it,
+      ),
+    );
+  };
+  const handleSelectVariant = (idx: number, variantId: string) => {
+    const currentItem = items[idx];
+    const foundMat = masterMaterials.find((m) => m.id === currentItem.material_id);
+    if (!foundMat) return;
+    const foundVar = foundMat.variants?.find((v: any) => v.id === variantId);
+    if (!foundVar) return;
+    const specDetails = [foundVar.size, foundVar.color, foundVar.grade].filter(Boolean).join(", ");
+    const nameWithSpec = specDetails
+      ? `${foundMat.material_name} (${specDetails})`
+      : foundMat.material_name;
+
+    setItems(
+      items.map((it, i) =>
+        i === idx
+          ? {
+              ...it,
+              material_variant_id: foundVar.id,
+              variant_code: foundVar.variant_code,
+              material_name: nameWithSpec,
+              uom: foundVar.uom || foundMat.base_uom || "PCS",
+            }
+          : it,
+      ),
+    );
   };
   const handleEditItemChange = (idx: number, field: string, value: any) => {
     if (!selectedRequest) return;
@@ -122,7 +212,17 @@ function WarehouseMaterialRequests() {
       await api.createMaterialRequest({ ...formData, items });
       toast.success("Material request submitted to Procurement");
       setIsCreating(false);
-      setItems([{ material_code: "", material_name: "", quantity: 1, uom: "PCS" }]);
+      setItems([
+        {
+          material_id: "",
+          material_variant_id: "",
+          material_code: "",
+          variant_code: "",
+          material_name: "",
+          quantity: 1,
+          uom: "PCS",
+        },
+      ]);
       setFormData((prev) => ({ ...prev, request_number: "" }));
       fetchData();
     } catch (error: any) {
@@ -139,7 +239,17 @@ function WarehouseMaterialRequests() {
       setBaseMaterialSequence(nextMaterialSequence || 1);
       const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(4, "0")}`;
       setFormData((prev) => ({ ...prev, request_number: requestNumber }));
-      setItems([{ material_code: initialCode, material_name: "", quantity: 1, uom: "PCS" }]);
+      setItems([
+        {
+          material_id: "",
+          material_variant_id: "",
+          material_code: initialCode,
+          variant_code: "",
+          material_name: "",
+          quantity: 1,
+          uom: "PCS",
+        },
+      ]);
       setIsCreating(true);
     } catch (error) {
       toast.error("Failed to generate request number");
@@ -258,67 +368,143 @@ function WarehouseMaterialRequests() {
                   </Button>
                 </div>
 
-                <div className="space-y-2">
-                  {items.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 items-end">
-                      <div className="flex-[2] space-y-1">
-                        <Label className="text-[10px]">Material Code</Label>
-                        <Input
-                          placeholder="MAT-XXXX"
-                          className="h-9 rounded-lg font-mono text-xs bg-muted/50"
-                          value={item.material_code}
-                          readOnly
-                        />
-                      </div>
-                      <div className="flex-[3] space-y-1">
-                        <Label className="text-[10px]">Material Name</Label>
-                        <Input
-                          placeholder="Steel Pipe..."
-                          className="h-9 rounded-lg text-xs"
-                          value={item.material_name}
-                          onChange={(e) => handleItemChange(idx, "material_name", e.target.value)}
-                        />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-[10px]">Qty</Label>
-                        <Input
-                          type="number"
-                          min="1"
-                          className="h-9 rounded-lg text-xs"
-                          value={item.quantity}
-                          onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
-                        />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <Label className="text-[10px]">UOM</Label>
-                        <Select
-                          value={item.uom}
-                          onValueChange={(value) => handleItemChange(idx, "uom", value)}
-                        >
-                          <SelectTrigger className="h-9 rounded-lg text-xs bg-background">
-                            <SelectValue placeholder="UOM" />
-                          </SelectTrigger>
-                          <SelectContent className="rounded-xl">
-                            {UOM_OPTIONS.map((uom) => (
-                              <SelectItem key={uom} value={uom} className="text-xs rounded-lg">
-                                {uom}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-9 rounded-lg text-destructive disabled:opacity-30 disabled:pointer-events-none"
-                        onClick={() => removeItem(idx)}
-                        disabled={items.length === 1}
+                <div className="space-y-3">
+                  {items.map((item, idx) => {
+                    const selectedMat = masterMaterials.find((m) => m.id === item.material_id);
+                    return (
+                      <div
+                        key={idx}
+                        className="flex flex-col sm:flex-row gap-3 items-end p-3 rounded-xl border border-border/60 bg-muted/10"
                       >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
+                        {masterMaterials.length > 0 && (
+                          <div className="w-full sm:w-48 space-y-1">
+                            <Label className="text-[10px] font-bold">Select Material Master</Label>
+                            <Select
+                              value={item.material_id || "CUSTOM"}
+                              onValueChange={(val) => {
+                                if (val === "CUSTOM") {
+                                  setItems(
+                                    items.map((it, i) =>
+                                      i === idx
+                                        ? {
+                                            ...it,
+                                            material_id: "",
+                                            material_variant_id: "",
+                                            variant_code: "",
+                                          }
+                                        : it,
+                                    ),
+                                  );
+                                } else {
+                                  handleSelectMasterMaterial(idx, val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-9 rounded-lg text-xs bg-background">
+                                <SelectValue placeholder="Pick Master Material" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                <SelectItem
+                                  value="CUSTOM"
+                                  className="text-xs text-muted-foreground italic"
+                                >
+                                  Manual / Custom Item
+                                </SelectItem>
+                                {masterMaterials.map((m) => (
+                                  <SelectItem key={m.id} value={m.id} className="text-xs">
+                                    <span className="font-mono font-bold text-primary mr-1">
+                                      {m.material_code}
+                                    </span>{" "}
+                                    — {m.material_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        {selectedMat && selectedMat.variants && selectedMat.variants.length > 0 && (
+                          <div className="w-full sm:w-48 space-y-1">
+                            <Label className="text-[10px] font-bold text-teal-600">
+                              Select Variant
+                            </Label>
+                            <Select
+                              value={item.material_variant_id || selectedMat.variants[0]?.id}
+                              onValueChange={(val) => handleSelectVariant(idx, val)}
+                            >
+                              <SelectTrigger className="h-9 rounded-lg text-xs bg-background border-teal-500/30">
+                                <SelectValue placeholder="Select Variant" />
+                              </SelectTrigger>
+                              <SelectContent className="rounded-xl">
+                                {selectedMat.variants.map((v: any) => {
+                                  const spec = [v.size, v.color, v.grade]
+                                    .filter(Boolean)
+                                    .join(" · ");
+                                  return (
+                                    <SelectItem key={v.id} value={v.id} className="text-xs">
+                                      <span className="font-mono font-bold">{v.variant_code}</span>{" "}
+                                      {spec && `(${spec})`}
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+
+                        <div className="flex-1 space-y-1 w-full">
+                          <Label className="text-[10px]">Material Description</Label>
+                          <Input
+                            placeholder="e.g. Wire 1.5mm Red PVC..."
+                            className="h-9 rounded-lg text-xs bg-background"
+                            value={item.material_name}
+                            onChange={(e) => handleItemChange(idx, "material_name", e.target.value)}
+                          />
+                        </div>
+
+                        <div className="w-20 space-y-1">
+                          <Label className="text-[10px]">Qty</Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            className="h-9 rounded-lg text-xs bg-background text-center"
+                            value={item.quantity}
+                            onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
+                          />
+                        </div>
+
+                        <div className="w-24 space-y-1">
+                          <Label className="text-[10px]">UOM</Label>
+                          <Select
+                            value={item.uom}
+                            onValueChange={(value) => handleItemChange(idx, "uom", value)}
+                          >
+                            <SelectTrigger className="h-9 rounded-lg text-xs bg-background">
+                              <SelectValue placeholder="UOM" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                              {UOM_OPTIONS.map((uom) => (
+                                <SelectItem key={uom} value={uom} className="text-xs rounded-lg">
+                                  {uom}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="size-9 rounded-lg text-destructive disabled:opacity-30 disabled:pointer-events-none shrink-0"
+                          onClick={() => removeItem(idx)}
+                          disabled={items.length === 1}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -528,7 +714,10 @@ function WarehouseMaterialRequests() {
                             Material Code
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
-                            Material Name
+                            Variant Code
+                          </th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                            Material Name & Specs
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">
                             Qty
@@ -539,93 +728,74 @@ function WarehouseMaterialRequests() {
                           {isEditing && <th className="p-3 w-10"></th>}
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-border/60">
                         {selectedRequest.items?.map((item: any, idx: number) => (
-                          <tr
-                            key={idx}
-                            className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
-                          >
-                            <td className="p-3 font-mono text-xs font-bold text-primary">
-                              {isEditing ? (
-                                <Input
-                                  value={item.materialCode}
-                                  className="h-8 rounded-lg text-[10px] font-mono bg-muted/50"
-                                  readOnly
-                                />
-                              ) : (
-                                item.materialCode
-                              )}
+                          <tr key={idx}>
+                            <td className="p-3 font-mono font-bold text-xs text-primary">
+                              {item.materialCode || item.material_code}
                             </td>
-                            <td className="p-3">
+                            <td className="p-3 font-mono text-xs text-teal-600 font-semibold">
+                              {item.variantCode || item.variant_code || "—"}
+                            </td>
+                            <td className="p-3 font-medium text-xs">
                               {isEditing ? (
                                 <Input
-                                  value={item.materialName}
+                                  value={item.materialName || item.material_name}
                                   onChange={(e) =>
                                     handleEditItemChange(idx, "materialName", e.target.value)
                                   }
-                                  className="h-8 rounded-lg text-[10px]"
+                                  className="h-8 text-xs"
                                 />
                               ) : (
-                                <span className="font-medium text-foreground">
-                                  {item.materialName}
-                                </span>
+                                item.materialName || item.material_name
                               )}
                             </td>
-                            <td className="p-3 text-center">
+                            <td className="p-3 text-center font-bold text-xs">
                               {isEditing ? (
                                 <Input
                                   type="number"
-                                  min="1"
-                                  step="1"
-                                  value={Math.floor(item.quantity)}
+                                  value={item.quantity}
                                   onChange={(e) =>
                                     handleEditItemChange(idx, "quantity", e.target.value)
                                   }
-                                  className="h-8 rounded-lg text-[10px] text-center"
+                                  className="h-8 text-xs text-center"
                                 />
                               ) : (
-                                <span className="font-bold text-orange-600 tabular-nums">
-                                  {Math.floor(item.quantity)}
-                                </span>
+                                item.quantity
                               )}
                             </td>
-                            <td className="p-3">
+                            <td className="p-3 text-muted-foreground font-mono text-xs">
                               {isEditing ? (
                                 <Select
                                   value={item.uom}
                                   onValueChange={(val) => handleEditItemChange(idx, "uom", val)}
                                 >
-                                  <SelectTrigger className="h-8 rounded-lg text-[10px] bg-background">
-                                    <SelectValue placeholder="UOM" />
+                                  <SelectTrigger className="h-8 text-xs">
+                                    <SelectValue />
                                   </SelectTrigger>
-                                  <SelectContent className="rounded-xl">
+                                  <SelectContent>
                                     {UOM_OPTIONS.map((uom) => (
-                                      <SelectItem
-                                        key={uom}
-                                        value={uom}
-                                        className="text-[10px] rounded-lg"
-                                      >
+                                      <SelectItem key={uom} value={uom} className="text-xs">
                                         {uom}
                                       </SelectItem>
                                     ))}
                                   </SelectContent>
                                 </Select>
                               ) : (
-                                <span className="text-[10px] font-black uppercase text-muted-foreground">
-                                  {item.uom}
-                                </span>
+                                item.uom
                               )}
                             </td>
                             {isEditing && (
-                              <td className="p-2">
+                              <td className="p-3 text-right">
                                 <Button
+                                  type="button"
                                   variant="ghost"
                                   size="icon"
-                                  className="size-8 rounded-lg text-destructive hover:bg-destructive/10 disabled:opacity-30 disabled:pointer-events-none"
+                                  className="size-7 text-destructive"
                                   onClick={() => removeEditItem(idx)}
                                   disabled={selectedRequest.items.length <= 1}
                                 >
-                                  <Trash2 className="size-4" />
+                                  <Trash2 className="size-3.5" />
                                 </Button>
                               </td>
                             )}
