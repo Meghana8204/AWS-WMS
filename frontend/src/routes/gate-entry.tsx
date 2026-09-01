@@ -30,13 +30,55 @@ import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 
-function QrThumbnail({ value }: { value: string }) {
+function QrThumbnail({ value, onOpen }: { value: string; onOpen: () => void }) {
   const [url, setUrl] = useState<string>("");
   useEffect(() => {
-    void QRCode.toDataURL(value, { margin: 1, width: 80 }).then(setUrl);
+    void QRCode.toDataURL(value, { margin: 2, width: 160, errorCorrectionLevel: "H" }).then(setUrl);
   }, [value]);
-  if (!url) return <div className="size-12 bg-muted animate-pulse rounded-lg border border-border/50" />;
-  return <img src={url} alt="QR" className="size-12 border border-border/40 rounded-lg p-1 bg-white shadow-sm shrink-0" />;
+  if (!url)
+    return <div className="size-12 bg-muted animate-pulse rounded-lg border border-border/50" />;
+  return (
+    <img
+      src={url}
+      alt={`Open QR code for ${value}`}
+      className="size-12 cursor-zoom-in border border-border/40 rounded-lg p-1 bg-white shadow-sm shrink-0 transition-transform hover:scale-105"
+      role="button"
+      tabIndex={0}
+      title="Open QR code"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onOpen();
+      }}
+    />
+  );
+}
+
+function LargeQrCode({ value }: { value: string }) {
+  const [url, setUrl] = useState<string>("");
+  useEffect(() => {
+    setUrl("");
+    void QRCode.toDataURL(value, {
+      margin: 4,
+      width: 640,
+      errorCorrectionLevel: "H",
+      color: { dark: "#000000", light: "#ffffff" },
+    }).then(setUrl);
+  }, [value]);
+  if (!url) return <div className="size-72 animate-pulse rounded-lg bg-muted" />;
+  return (
+    <img
+      src={url}
+      alt={`Gate pass QR code ${value}`}
+      className="size-72 sm:size-80 bg-white object-contain"
+    />
+  );
 }
 import {
   Dialog,
@@ -47,6 +89,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { PoCameraScanner } from "@/components/wms/PoCameraScanner";
+
+function gateQrPayload(gateEntryNumber: string) {
+  return `NEXUSWMS:GATE_ENTRY:${gateEntryNumber.trim().toUpperCase()}`;
+}
 
 export const Route = createFileRoute("/gate-entry")({
   beforeLoad: () => requireRole("GATE_SECURITY"),
@@ -124,6 +170,7 @@ function GateEntry() {
   const [lastCreatedEntry, setLastCreatedEntry] = useState<GateEntryRecord | null>(null);
   const [lastQrCode, setLastQrCode] = useState<string | null>(null);
   const [isDockModalOpen, setIsDockModalOpen] = useState(false);
+  const [qrModalEntry, setQrModalEntry] = useState<GateEntryRecord | null>(null);
   const [docks, setDocks] = useState<any[]>([]);
   const [loadingDocks, setLoadingDocks] = useState(false);
   const [selectedDockId, setSelectedDockId] = useState<string | null>(null);
@@ -137,10 +184,13 @@ function GateEntry() {
     // Generate QR Code for the success pass
     const generateQr = async () => {
       try {
-        const url = await QRCode.toDataURL(lastCreatedEntry.gate_entry_number || lastCreatedEntry.id, {
-          width: 200,
-          margin: 1,
-        });
+        const url = await QRCode.toDataURL(
+          lastCreatedEntry.gate_entry_number || lastCreatedEntry.id,
+          {
+            width: 200,
+            margin: 1,
+          },
+        );
         setLastQrCode(url);
       } catch (err) {
         console.error("Failed to generate pass QR", err);
@@ -779,11 +829,7 @@ function GateEntry() {
                     </div>
                     <div className="aspect-[4/3] rounded-xl border border-border/60 overflow-hidden bg-muted/20">
                       {poDocument?.type === "application/pdf" ? (
-                        <iframe
-                          src={poPreview}
-                          title="PO PDF preview"
-                          className="h-full w-full"
-                        />
+                        <iframe src={poPreview} title="PO PDF preview" className="h-full w-full" />
                       ) : (
                         <img
                           src={poPreview}
@@ -1135,7 +1181,10 @@ function GateEntry() {
                       </div>
                     )}
 
-                    <QrThumbnail value={entry.gate_entry_number || entry.id} />
+                    <QrThumbnail
+                      value={gateQrPayload(entry.gate_entry_number || entry.id)}
+                      onOpen={() => setQrModalEntry(entry)}
+                    />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
@@ -1150,10 +1199,10 @@ function GateEntry() {
                       </p>
                       {entry.gate_entry_number && (
                         <div className="mt-1.5 flex items-center gap-1.5">
-                           <ScanLine className="size-3 text-muted-foreground" />
-                           <p className="font-mono text-[9px] text-muted-foreground/70 uppercase">
-                             {entry.gate_entry_number}
-                           </p>
+                          <ScanLine className="size-3 text-muted-foreground" />
+                          <p className="font-mono text-[9px] text-muted-foreground/70 uppercase">
+                            {entry.gate_entry_number}
+                          </p>
                         </div>
                       )}
                       {entry.verificationResult?.reasons?.[0] && (
@@ -1182,6 +1231,32 @@ function GateEntry() {
           )}
         </SectionCard>
       </div>
+      <Dialog open={!!qrModalEntry} onOpenChange={(open) => !open && setQrModalEntry(null)}>
+        <DialogContent className="max-w-md overflow-hidden rounded-2xl p-0">
+          <DialogHeader className="border-b border-border px-6 py-5 text-left">
+            <DialogTitle>Gate Entry QR Code</DialogTitle>
+            <DialogDescription>
+              {qrModalEntry?.vehiclePlate || "Vehicle gate pass"}
+            </DialogDescription>
+          </DialogHeader>
+          {qrModalEntry && (
+            <div className="flex flex-col items-center bg-white px-6 py-7 text-slate-950">
+              <LargeQrCode value={gateQrPayload(qrModalEntry.gate_entry_number || qrModalEntry.id)} />
+              <p className="mt-4 font-mono text-lg font-black tracking-wide">
+                {qrModalEntry.gate_entry_number || qrModalEntry.id}
+              </p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">
+                {qrModalEntry.poNumber} · {qrModalEntry.driverName}
+              </p>
+            </div>
+          )}
+          <DialogFooter className="border-t border-border px-6 py-4">
+            <Button className="w-full" onClick={() => setQrModalEntry(null)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {scanning && (
         <CameraScanner
           kind={scanning}
@@ -1224,7 +1299,9 @@ function GateEntry() {
               </div>
               <div>
                 <h3 className="text-lg font-bold tracking-tight">Gate Entry Approved</h3>
-                <p className="text-xs text-muted-foreground">Warehouse Manager notified in real-time.</p>
+                <p className="text-xs text-muted-foreground">
+                  Warehouse Manager notified in real-time.
+                </p>
               </div>
             </div>
 
@@ -1232,7 +1309,11 @@ function GateEntry() {
               {/* Left Column - QR Pass */}
               {lastQrCode && (
                 <div className="sm:col-span-5 flex flex-col items-center justify-center bg-white p-4 rounded-xl border border-border/50 shadow-sm h-full">
-                  <img src={lastQrCode} alt="QR Code" className="size-36 sm:size-40 object-contain" />
+                  <img
+                    src={lastQrCode}
+                    alt="QR Code"
+                    className="size-36 sm:size-40 object-contain"
+                  />
                   <span className="mt-3 text-[9px] font-black uppercase tracking-[0.2em] text-muted-foreground text-center">
                     Digital Verification Pass
                   </span>
@@ -1273,7 +1354,9 @@ function GateEntry() {
                       PO Verification
                     </span>
                     <div className="mt-1.5">
-                      <StatusBadge status={lastCreatedEntry.verificationStatus || "UNSCHEDULED_ARRIVAL"} />
+                      <StatusBadge
+                        status={lastCreatedEntry.verificationStatus || "UNSCHEDULED_ARRIVAL"}
+                      />
                     </div>
                   </div>
                   <div>
@@ -1319,10 +1402,7 @@ function GateEntry() {
               <Button
                 className="rounded-xl font-bold shadow-glow px-6"
                 onClick={() =>
-                  void api.downloadGatePass(
-                    lastCreatedEntry.id,
-                    lastCreatedEntry.gate_entry_number,
-                  )
+                  void api.downloadGatePass(lastCreatedEntry.id, lastCreatedEntry.gate_entry_number)
                 }
               >
                 <Printer className="mr-2 size-4" /> Print Pass
@@ -1341,7 +1421,10 @@ function GateEntry() {
                 <TableIcon className="size-7" /> Dock Allocation
               </DialogTitle>
               <DialogDescription className="text-white/80 font-medium text-base mt-2">
-                Select an available unloading bay for <span className="text-white font-black underline underline-offset-4">{vehicleNumber}</span>
+                Select an available unloading bay for{" "}
+                <span className="text-white font-black underline underline-offset-4">
+                  {vehicleNumber}
+                </span>
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -1351,15 +1434,21 @@ function GateEntry() {
             <div className="flex flex-wrap gap-4 p-4 rounded-2xl bg-muted/30 border border-border/40">
               <div className="flex items-center gap-2">
                 <div className="size-4 rounded-full bg-success" />
-                <span className="text-[10px] font-black uppercase text-muted-foreground">Available</span>
+                <span className="text-[10px] font-black uppercase text-muted-foreground">
+                  Available
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-4 rounded-full bg-destructive" />
-                <span className="text-[10px] font-black uppercase text-muted-foreground">Occupied</span>
+                <span className="text-[10px] font-black uppercase text-muted-foreground">
+                  Occupied
+                </span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="size-4 rounded-full bg-orange-500" />
-                <span className="text-[10px] font-black uppercase text-muted-foreground">Maintenance</span>
+                <span className="text-[10px] font-black uppercase text-muted-foreground">
+                  Maintenance
+                </span>
               </div>
             </div>
 
@@ -1389,31 +1478,56 @@ function GateEntry() {
                             ? "border-success/20 bg-success/5 hover:border-success hover:bg-success/10 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
                             : isOccupied
                               ? "border-destructive/10 bg-destructive/5 opacity-60 cursor-not-allowed"
-                              : "border-orange-200 bg-orange-50/50 opacity-60 cursor-not-allowed"
+                              : "border-orange-200 bg-orange-50/50 opacity-60 cursor-not-allowed",
                       )}
                     >
                       {(isAvailable || selectedDockId === dock.id) && (
-                        <div className={cn(
-                          "absolute top-2 right-2 transition-opacity",
-                          selectedDockId === dock.id ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-                        )}>
-                          <CheckCircle2 className={cn("size-4", selectedDockId === dock.id ? "text-primary" : "text-success")} />
+                        <div
+                          className={cn(
+                            "absolute top-2 right-2 transition-opacity",
+                            selectedDockId === dock.id
+                              ? "opacity-100"
+                              : "opacity-0 group-hover:opacity-100",
+                          )}
+                        >
+                          <CheckCircle2
+                            className={cn(
+                              "size-4",
+                              selectedDockId === dock.id ? "text-primary" : "text-success",
+                            )}
+                          />
                         </div>
                       )}
-                      <span className="text-[10px] font-black uppercase text-muted-foreground/60 tracking-widest mb-1">Dock</span>
-                      <span className={cn(
-                        "text-2xl font-black mb-3",
-                        isAvailable ? "text-success" : isOccupied ? "text-destructive" : "text-orange-600"
-                      )}>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground/60 tracking-widest mb-1">
+                        Dock
+                      </span>
+                      <span
+                        className={cn(
+                          "text-2xl font-black mb-3",
+                          isAvailable
+                            ? "text-success"
+                            : isOccupied
+                              ? "text-destructive"
+                              : "text-orange-600",
+                        )}
+                      >
                         {dock.dock_number}
                       </span>
 
                       <div className="mt-auto pt-4 border-t border-border/20 flex flex-col gap-1">
-                        <span className="text-[9px] font-bold text-muted-foreground truncate uppercase">{dock.dock_type || "General"}</span>
-                        <span className={cn(
-                          "text-[9px] font-black uppercase px-2 py-0.5 rounded-full w-fit",
-                          isAvailable ? "bg-success/10 text-success" : isOccupied ? "bg-destructive/10 text-destructive" : "bg-orange-100 text-orange-700"
-                        )}>
+                        <span className="text-[9px] font-bold text-muted-foreground truncate uppercase">
+                          {dock.dock_type || "General"}
+                        </span>
+                        <span
+                          className={cn(
+                            "text-[9px] font-black uppercase px-2 py-0.5 rounded-full w-fit",
+                            isAvailable
+                              ? "bg-success/10 text-success"
+                              : isOccupied
+                                ? "bg-destructive/10 text-destructive"
+                                : "bg-orange-100 text-orange-700",
+                          )}
+                        >
                           {status.replace("_", " ")}
                         </span>
                       </div>
@@ -1442,7 +1556,11 @@ function GateEntry() {
               disabled={!selectedDockId || submitting}
               onClick={() => selectedDockId && handleDockAssignment(selectedDockId)}
             >
-              {submitting ? <Loader2 className="size-4 animate-spin mr-2" /> : <TableIcon className="size-4 mr-2" />}
+              {submitting ? (
+                <Loader2 className="size-4 animate-spin mr-2" />
+              ) : (
+                <TableIcon className="size-4 mr-2" />
+              )}
               Assign Dock
             </Button>
           </DialogFooter>
@@ -1747,7 +1865,12 @@ function CameraScanner({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/50 px-4 py-3 sm:px-6 sm:py-4">
           <div className="min-w-0">
-            <h3 id="vehicle-camera-title" className="truncate text-base font-bold tracking-tight sm:text-lg">{title}</h3>
+            <h3
+              id="vehicle-camera-title"
+              className="truncate text-base font-bold tracking-tight sm:text-lg"
+            >
+              {title}
+            </h3>
             <p className="text-xs text-muted-foreground">
               Keep the complete vehicle and number plate inside the frame.
             </p>
