@@ -18,8 +18,8 @@ export const Route = createFileRoute("/notifications")({
 function parseDamageNotificationMessage(msg?: string) {
   if (!msg) return { grnNumber: "", poNumber: "", supplierName: "", warehouseName: "", reportedBy: "", customRemarks: "", items: [] };
 
-  const grnMatch = msg.match(/GRN:\s*([^\s|]+)/i);
-  const poMatch = msg.match(/PO:\s*([^\s|]+)/i);
+  const grnMatch = msg.match(/GRN:\s*([^\s|\n]+)/i) || msg.match(/for GRN\s+([^\s|\n]+)/i);
+  const poMatch = msg.match(/PO:\s*([^\s|\n]+)/i) || msg.match(/against PO\s+([^\s|\.\n]+)/i);
   const supplierMatch = msg.match(/Supplier:\s*([^|\n]+)/i);
   const warehouseMatch = msg.match(/Warehouse:\s*([^|\n]+)/i);
   const remarksMatch = msg.match(/Inspector Remarks:\s*([^\n]+)/i);

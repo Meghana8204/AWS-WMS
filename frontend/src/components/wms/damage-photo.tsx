@@ -7,6 +7,7 @@ type Props = {
     lineId?: string;
     damagedQuantity: number;
     reason?: string;
+    onSuccess?: (evidence: { evidenceId: string; fileName?: string; filePath?: string; file?: File }) => void;
 };
 
 // Reset photo/save state when the material, quantity or reason changes.
@@ -19,7 +20,7 @@ export function DamagePhoto(props: Props) {
     );
 }
 
-function PhotoEditor({ lineId, damagedQuantity, reason }: Props) {
+function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const mounted = useRef(false);
     const uploadLock = useRef(false);
@@ -292,6 +293,12 @@ function PhotoEditor({ lineId, damagedQuantity, reason }: Props) {
 
             setSaved(true);
             toast.success("Damage photo saved.");
+            onSuccess?.({
+                evidenceId: String(evidenceId),
+                fileName: file.name,
+                filePath: result?.file_path || result?.filePath || "",
+                file,
+            });
         } catch (cause) {
             report(
                 cause instanceof Error

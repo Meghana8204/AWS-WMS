@@ -1786,8 +1786,8 @@ async def get_po_damaged_goods(po_identifier: str, uow: UnitOfWork = Depends(get
             else datetime.now().strftime("%d-%m-%Y %I:%M %p")
         )
 
-        supplier_email = getattr(po, "supplier_email", None) or "obaiahkade12@gmail.com"
-        procurement_email = "obaiahkade223@gmail.com"
+        supplier_email = getattr(po, "supplier_email", None) or "spoorthiharakuni@gmail.com"
+        procurement_email = "spoorthiharakuni55@gmail.com"
 
         notif_history = [
             NotificationHistoryItemSchema(

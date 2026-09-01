@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path, PurePosixPath
 import re
-from typing import List, Optional, Set, Tuple
+from typing import Any, Iterable, List, Optional, Set, Tuple
 
 MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB per photo
 MAX_TOTAL_BYTES = 15 * 1024 * 1024  # 15 MB total
@@ -13,18 +13,20 @@ MAX_PHOTOS = 10
 
 
 def collect_damage_attachments(
-    grn: any,
+    grn: Any,
     upload_dir: str | Path | None = None,
     item_codes: set[str] | list[str] | None = None,
+    photo_ids: Iterable[str | Any] | None = None,
 ) -> list[tuple[str, bytes, str]]:
     """
-    Collect saved damage photos belonging ONLY to the current GRN and its damaged lines.
+    Collect saved damage photos belonging ONLY to the current GRN, damaged lines, and photo IDs.
 
     Guarantees:
     - Never scans the upload directory or attaches unrelated files.
     - Only reads damage evidence records explicitly linked to the current GRN's lines.
+    - If photo_ids are provided, strictly limits attachments to those photo/evidence IDs.
     - Fresh attachment list created for every invocation (no caching or reused lists).
-    - Validates file paths to ensure they strictly belong to the current GRN.
+    - Validates file paths to ensure they strictly belong to the current GRN and are within media root.
     - Filters by selected item codes / damaged lines if provided.
     - Validates image magic bytes (JPEG, PNG, WebP) and enforces size limits.
     """
@@ -43,7 +45,8 @@ def collect_damage_attachments(
     )
     media_root = Path(os.getcwd(), "media_uploads").resolve()
 
-    selected_set = {c.strip() for c in item_codes if c} if item_codes else None
+    selected_set = {str(c).strip() for c in item_codes if c} if item_codes else None
+    photo_id_set = {str(pid).strip().lower() for pid in photo_ids if pid} if photo_ids is not None else None
 
     for line in grn.lines:
         line_item_code = (line.item_code or "").strip()
@@ -61,16 +64,19 @@ def collect_damage_attachments(
             continue
 
         line_photo_idx = 0
-        current_line_id_str = str(getattr(line, "id", "") or "").lower()
-        mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line_item_code or "material")[:50]
+        mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line_item_code or "material")[:60]
 
         for evidence in getattr(line, "damage_evidence", []):
             if not evidence or not getattr(evidence, "id", None):
                 continue
 
-            ev_id_str = str(evidence.id)
+            ev_id_str = str(evidence.id).strip().lower()
             if ev_id_str in seen_evidence_ids:
                 continue
+
+            if photo_id_set is not None and ev_id_str not in photo_id_set:
+                continue
+
             seen_evidence_ids.add(ev_id_str)
 
             file_path_str = getattr(evidence, "file_path", None)
@@ -100,8 +106,11 @@ def collect_damage_attachments(
             if resolved_file is None or not resolved_file.exists():
                 continue
 
-            # Ensure file is inside media_uploads (prevent path traversal)
-            if not str(resolved_file).startswith(str(media_root)):
+            # Ensure file is inside media root or upload_dir (prevent path traversal)
+            allowed_roots = [media_root]
+            if upload_dir:
+                allowed_roots.append(Path(upload_dir).resolve())
+            if not any(str(resolved_file).startswith(str(ar)) for ar in allowed_roots):
                 continue
 
             # If path contains damage_evidence subfolder, verify it belongs to current GRN
@@ -141,4 +150,4 @@ def collect_damage_attachments(
             filename = f"{mat_code}_damage_{line_photo_idx}{suffix}"
             attachments.append((filename, content, mime_type))
 
-    return attachments
+    return attachments

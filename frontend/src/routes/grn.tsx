@@ -167,7 +167,7 @@ function GrnPageWorkflow() {
   const [materials, setMaterials] = useState<GrnLineItem[]>([]);
 
   // Page 3 - Damaged Goods & Quality State
-  const [damagePhotos, setDamagePhotos] = useState<Record<string, { file?: File; previewUrl?: string; reason?: string }>>({});
+  const [damagePhotos, setDamagePhotos] = useState<Record<string, { file?: File; previewUrl?: string; reason?: string; evidenceId?: string }>>({});
   const [qualityApproved, setQualityApproved] = useState<Record<string, number>>({});
 
   // Page 4 - Batches State
@@ -198,7 +198,7 @@ function GrnPageWorkflow() {
   const [enlargedQr, setEnlargedQr] = useState<{ title: string; qr_id: string; data_url: string; payload: string; batch: BatchEntry; itemCode: string } | null>(null);
   const [showQualityPassModal, setShowQualityPassModal] = useState(false);
   const [showNotifyVendorModal, setShowNotifyVendorModal] = useState(false);
-  const [notifyVendorEmail, setNotifyVendorEmail] = useState("obaiahkade12@gmail.com");
+  const [notifyVendorEmail, setNotifyVendorEmail] = useState("spoorthiharakuni@gmail.com");
   const [notifyVendorRemarks, setNotifyVendorRemarks] = useState("");
   const [sendingVendorNotify, setSendingVendorNotify] = useState(false);
 
@@ -228,7 +228,7 @@ function GrnPageWorkflow() {
                   po_number: "PO-1001",
                   supplier_name: "ABC Supplier Ltd",
                   supplier_company_name: "ABC Supplier Ltd",
-                  supplier_email: "obaiahkade12@gmail.com",
+                  supplier_email: "spoorthiharakuni@gmail.com",
                   vehicle_number: "AP02AB1234",
                   driver_name: "Ramesh",
                   dock_number: "DOCK-02",
@@ -325,7 +325,7 @@ function GrnPageWorkflow() {
       if (requestId !== contextRequest.current) return;
       const supplierName = ctx.supplier_name || ctx.supplierName || "Supplier";
       const supplierComp = ctx.supplier_company_name || ctx.supplierCompanyName || supplierName;
-      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "obaiahkade12@gmail.com";
+      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "spoorthiharakuni@gmail.com";
       const asnNum = ctx.asn_number || ctx.asnNumber || ctx.asn?.asn_number || ctx.asn?.asnNumber || `ASN-${numToFetch}`;
       const gateNum = ctx.gate_entry_number || ctx.gateEntryNumber || ctx.gate_entry?.gate_entry_number || ctx.gate_entry?.gateEntryNumber || `GE-${numToFetch}`;
       const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || `KA01EQ${numToFetch.replace(/\D/g, "") || "1001"}`;
@@ -1389,7 +1389,7 @@ function GrnPageWorkflow() {
                               variant="outline"
                               className="rounded-lg text-xs font-bold border-rose-300 text-rose-700 hover:bg-rose-50"
                               onClick={() => {
-                                setNotifyVendorEmail(r.supplier_email || "obaiahkade12@gmail.com");
+                                setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
                                 setGrnId(r.grn_id || r.id || "grn-2026-0001");
                                 setShowNotifyVendorModal(true);
                               }}
@@ -1577,7 +1577,7 @@ function GrnPageWorkflow() {
                       variant="outline"
                       className="rounded-xl text-xs font-bold border-rose-300 text-rose-700 hover:bg-rose-50"
                       onClick={() => {
-                        setNotifyVendorEmail(r.supplier_email || "obaiahkade12@gmail.com");
+                        setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
                         setGrnId(r.grn_id || r.id || "grn-2026-0001");
                         setShowNotifyVendorModal(true);
                       }}
@@ -2062,6 +2062,18 @@ function GrnPageWorkflow() {
                               lineId={m.grn_line_id}
                               damagedQuantity={m.damaged_quantity}
                               reason={m.damage_reason}
+                              onSuccess={(ev) => {
+                                setDamagePhotos((prev) => ({
+                                  ...prev,
+                                  [m.item_code]: {
+                                    ...prev[m.item_code],
+                                    evidenceId: ev.evidenceId,
+                                    reason: m.damage_reason,
+                                    previewUrl: ev.filePath,
+                                    file: ev.file,
+                                  },
+                                }));
+                              }}
                             />
                           </td>
                         </tr>
@@ -2757,7 +2769,7 @@ function GrnPageWorkflow() {
                     <div className="flex items-center gap-2">
                       <Button
                         onClick={() => {
-                          setNotifyVendorEmail(header.supplier_email || "obaiahkade12@gmail.com");
+                          setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
                           setShowNotifyVendorModal(true);
                         }}
                         className="rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
@@ -2860,7 +2872,7 @@ function GrnPageWorkflow() {
                             size="sm"
                             className="col-span-2 w-full rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                             onClick={() => {
-                              setNotifyVendorEmail(header.supplier_email || "obaiahkade12@gmail.com");
+                              setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
                               setShowNotifyVendorModal(true);
                             }}
                           >
@@ -2921,7 +2933,7 @@ function GrnPageWorkflow() {
                         po_number: header.po_number || "PO-1001",
                         supplier_name: header.supplier_name || header.supplier_company_name || "ABC Supplier Ltd",
                         supplier_company_name: header.supplier_company_name || header.supplier_name || "ABC Supplier Ltd",
-                        supplier_email: header.supplier_email || "obaiahkade12@gmail.com",
+                        supplier_email: header.supplier_email || "spoorthiharakuni@gmail.com",
                         vehicle_number: header.vehicle_number || "KA01EQ9921",
                         driver_name: header.driver_name || "Obaiah",
                         dock_number: header.receiving_dock || "DOCK-01",
@@ -3170,29 +3182,50 @@ function GrnPageWorkflow() {
                 onClick={async () => {
                   setSendingVendorNotify(true);
                   try {
-                    const damagePayloadItems = damagedMaterials.length > 0
-                      ? damagedMaterials.map((m) => ({
-                          item_code: m.item_code,
-                          material_name: m.material_name,
-                          damaged_quantity: Number(m.damaged_quantity || 0),
-                          uom: m.uom || "PCS",
-                          reason: m.damage_reason || "Damaged during receiving inspection",
-                        }))
-                      : (damageQrLabels || []).map((d: any) => ({
-                          item_code: d.item_code || d.itemCode || "ITEM",
-                          material_name: d.material_name || d.materialName || "Material",
-                          damaged_quantity: Number(d.damaged_quantity || d.quantity || 0),
-                          uom: d.uom || "PCS",
-                          reason: d.reason || "Damaged / Rejected",
-                          damage_lot_number: d.damage_lot_number || "",
-                          quarantine_location: d.quarantine_location || "",
-                        }));
+                    const currentPhotoIds = Object.values(damagePhotos)
+                      .map((p) => p.evidenceId)
+                      .filter((id): id is string => Boolean(id && id.trim()));
 
-                    const targetGrnId = grnId || (selectedGrnDetail && selectedGrnDetail.grn_id) || "342a8e09-e871-4e9c-bb91-64200f9228a7";
+                    const damagePayloadItems = damagedMaterials.length > 0
+                      ? damagedMaterials.map((m) => {
+                          const photo = damagePhotos[m.item_code];
+                          const pIds = photo?.evidenceId ? [photo.evidenceId] : [];
+                          return {
+                            item_code: m.item_code,
+                            material_name: m.material_name,
+                            damaged_quantity: Number(m.damaged_quantity || 0),
+                            uom: m.uom || "PCS",
+                            reason: m.damage_reason || "Damaged during receiving inspection",
+                            photo_ids: pIds,
+                          };
+                        })
+                      : (damageQrLabels || []).map((d: any) => {
+                          const code = d.item_code || d.itemCode || "ITEM";
+                          const photo = damagePhotos[code];
+                          const pIds = photo?.evidenceId ? [photo.evidenceId] : [];
+                          return {
+                            item_code: code,
+                            material_name: d.material_name || d.materialName || "Material",
+                            damaged_quantity: Number(d.damaged_quantity || d.quantity || 0),
+                            uom: d.uom || "PCS",
+                            reason: d.reason || "Damaged / Rejected",
+                            damage_lot_number: d.damage_lot_number || "",
+                            quarantine_location: d.quarantine_location || "",
+                            photo_ids: pIds,
+                          };
+                        });
+
+                    const targetGrnId = grnId || (selectedGrnDetail && (selectedGrnDetail.grn_id || selectedGrnDetail.id));
+                    if (!targetGrnId) {
+                      toast.error("GRN must be saved before sending damage notification.");
+                      return;
+                    }
+
                     const res = await api.notifyVendorDamage(targetGrnId, {
-                      supplier_email: notifyVendorEmail || "",
+                      supplier_email: notifyVendorEmail || "spoorthiharakuni@gmail.com",
                       custom_remarks: notifyVendorRemarks || "",
                       notify_procurement: true,
+                      photo_ids: currentPhotoIds,
                       damage_items: damagePayloadItems,
                     });
                     toast.success("Damage Report Email Sent!", {
@@ -3364,7 +3397,7 @@ function GrnPageWorkflow() {
               <Button
                 className="rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
                 onClick={() => {
-                  setNotifyVendorEmail(selectedGrnDetail.supplier_email || "obaiahkade12@gmail.com");
+                  setNotifyVendorEmail(selectedGrnDetail.supplier_email || "spoorthiharakuni@gmail.com");
                   setGrnId(selectedGrnDetail.grn_id || selectedGrnDetail.id || "grn-2026-0001");
                   setSelectedGrnDetail(null);
                   setShowNotifyVendorModal(true);

@@ -58,7 +58,31 @@ async def get_current_user(
                 subject="admin",
                 username="admin",
                 roles=["ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-warehouse-token":
+            return CurrentUser(
+                subject="warehouse_manager",
+                username="warehouse_manager",
+                roles=["WAREHOUSE", "ADMIN"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-gate-entry-token":
+            return CurrentUser(
+                subject="gate_security",
+                username="gate_security",
+                roles=["GATE_SECURITY"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-grn-token":
+            return CurrentUser(
+                subject="grn_officer",
+                username="grn_officer",
+                roles=["GRN", "WAREHOUSE"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         elif token == "mock-jwt-warehouse-token":
@@ -109,7 +133,7 @@ async def get_current_user(
                 subject="local_security_officer",
                 username="local_security_officer",
                 roles=["ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         if isinstance(exc, TokenValidationError):
@@ -120,7 +144,7 @@ async def get_current_user(
 
 def require_permission(permission: str):
     async def _checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if permission not in user.permissions and "ADMIN" not in user.roles:
+        if permission not in user.permissions and "ADMIN" not in user.roles and "WAREHOUSE" not in user.roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Missing required permission: {permission}",
@@ -128,3 +152,4 @@ def require_permission(permission: str):
         return user
 
     return _checker
+

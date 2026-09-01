@@ -93,7 +93,7 @@ class Settings(BaseSettings):
     email_host_user: str = Field(default="")
     email_host_password: str = Field(default="")
     email_from_name: str = Field(default="NexusWMS Procurement")
-    procurement_email: str = Field(default="obaiahkade223@gmail.com")
+    procurement_email: str = Field(default="spoorthiharakuni55@gmail.com")
     warehouse_email: str = Field(default="")
 
 

@@ -496,6 +496,8 @@ class DamageItemPayload(ApiModel):
     reason: str | None = None
     damage_lot_number: str | None = None
     quarantine_location: str | None = None
+    photo_ids: list[str] = []
+    photo_id: str | None = None
 
 
 class GrnDamageVendorNotifyRequest(ApiModel):
@@ -503,6 +505,7 @@ class GrnDamageVendorNotifyRequest(ApiModel):
     custom_remarks: str | None = None
     notify_procurement: bool = True
     damage_items: list[DamageItemPayload] = []
+    photo_ids: list[str] = []
 
 
 class GrnDamageVendorNotifyResponse(ApiModel):

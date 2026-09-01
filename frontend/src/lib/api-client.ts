@@ -175,44 +175,133 @@ export const api = {
   async getInboundArrivals(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
   },
-  async getDocks(status?: string, type?: string): Promise<any[]> {
-    const params = new URLSearchParams();
-    if (status) params.append("status", status);
-    if (type) params.append("dock_type", type);
-    const query = params.toString();
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${query ? `?${query}` : ""}`);
+  async getDocks(statusOrParams?: string | { dock_type?: string; status?: string }, type?: string): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (typeof statusOrParams === "object" && statusOrParams !== null) {
+      if (statusOrParams.dock_type && statusOrParams.dock_type !== "ALL") query.append("dock_type", statusOrParams.dock_type);
+      if (statusOrParams.status && statusOrParams.status !== "ALL") query.append("status", statusOrParams.status);
+    } else {
+      if (statusOrParams && statusOrParams !== "ALL") query.append("status", statusOrParams);
+      if (type && type !== "ALL") query.append("dock_type", type);
+    }
+    const qs = query.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${qs ? `?${qs}` : ""}`);
   },
   async getDockOverviewMetrics(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
   },
+  async getPendingAllocations(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
+  },
+  async getDockAllocationRequests(statusFilter?: string): Promise<any[]> {
+    const query = statusFilter && statusFilter !== "ALL" ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests${query}`);
+  },
+  async getDockHistory(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
+  },
+  async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ allocation_request_id: allocationRequestId, dock_id: dockId }),
+    });
+  },
+  async reassignDock(allocationRequestId: string, newDockId: string, reason?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/reassign`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ new_dock_id: newDockId, reason }),
+    });
+  },
+  async markVehicleArrived(allocationRequestId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/arrive`, {
+      method: "POST",
+    });
+  },
+  async startReceiving(allocationRequestId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/start-receiving`, {
+      method: "POST",
+    });
+  },
+  async completeReceiving(allocationRequestId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/complete`, {
+      method: "POST",
+    });
+  },
+  async releaseDockAssignment(allocationRequestId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/release`, {
+      method: "POST",
+    });
+  },
+  async cancelDockAllocation(allocationRequestId: string, reason?: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reason }),
+    });
+  },
   async createDock(payload: {
-    dock_code: string;
-    dock_name: string;
-    dock_type?: string;
+    dock_code?: string;
+    dock_number?: string;
+    dock_name?: string;
+    dock_type: string;
     location?: string;
     description?: string;
     status?: string;
+    is_active?: boolean;
+    warehouse_id?: string;
+    capacity?: number;
   }): Promise<any> {
+    const code = (payload.dock_code || payload.dock_number || "D-01").trim().toUpperCase();
+    const name = (payload.dock_name || code).trim();
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks`, {
       method: "POST",
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dock_code: code,
+        dock_name: name,
+        dock_type: payload.dock_type,
+        location: payload.location || null,
+        description: payload.description || null,
+        status: payload.status || "AVAILABLE",
+        is_active: payload.is_active !== undefined ? payload.is_active : true,
+      }),
     });
   },
-  async updateDockStatus(
-    dockId: string,
-    status: string,
-    reason?: string,
+  async updateDock(
+    dockIdOrNumber: string,
+    payload: {
+      dock_code?: string;
+      dock_number?: string;
+      dock_name?: string;
+      dock_type?: string;
+      location?: string;
+      description?: string;
+      status?: string;
+      is_active?: boolean;
+      warehouse_id?: string;
+      capacity?: number;
+    } | any,
   ): Promise<any> {
     return request<any>(
-      `${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(dockId)}/status`,
-      { method: "PATCH", body: JSON.stringify({ status, reason }) },
+      `${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(dockIdOrNumber)}`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
     );
   },
-  async updateDock(id: string, payload: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(id)}`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
+  async updateDockStatus(dockId: string, status: string, reason?: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/warehouse/docks/${encodeURIComponent(dockId)}/status`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status, reason }),
+      },
+    );
   },
   async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
@@ -1054,6 +1143,13 @@ export const api = {
     );
   },
 
+  async createMaterialVariant(
+    materialId: string,
+    data: any,
+  ): Promise<any> {
+    return this.addMaterialVariant(materialId, data);
+  },
+
   async updateMaterialVariant(
     materialId: string,
     variantId: string,
@@ -1192,7 +1288,7 @@ export const api = {
   async getGrnDetail(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
   },
-  async notifyVendorDamage(grnId: string, payload: { supplier_email?: string; custom_remarks?: string; notify_procurement?: boolean; damage_items?: any[] }): Promise<any> {
+  async notifyVendorDamage(grnId: string, payload: { supplier_email?: string; custom_remarks?: string; notify_procurement?: boolean; damage_items?: any[]; photo_ids?: string[] }): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/notify-vendor-damage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

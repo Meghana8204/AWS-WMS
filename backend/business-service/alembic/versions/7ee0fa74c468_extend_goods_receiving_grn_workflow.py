@@ -21,584 +21,178 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def _assert_one_grn_per_po() -> None:
-    """Fail with a clear message before unique PO indexes are created."""
-
-    bind = op.get_bind()
-
-    duplicate_po_id = bind.execute(
-        sa.text(
-            """
-            SELECT po_id
-            FROM grn
-            WHERE po_id IS NOT NULL
-            GROUP BY po_id
-            HAVING COUNT(*) > 1
-            LIMIT 1
-            """
-        )
-    ).first()
-
-    if duplicate_po_id is not None:
-        raise RuntimeError(
-            "Cannot enforce one-PO-one-GRN: duplicate non-null po_id "
-            f"exists in grn: {duplicate_po_id[0]}"
-        )
-
-    duplicate_po_number = bind.execute(
-        sa.text(
-            """
-            SELECT po_number
-            FROM grn
-            WHERE po_number IS NOT NULL
-            GROUP BY po_number
-            HAVING COUNT(*) > 1
-            LIMIT 1
-            """
-        )
-    ).first()
-
-    if duplicate_po_number is not None:
-        raise RuntimeError(
-            "Cannot enforce one-PO-one-GRN: duplicate non-null po_number "
-            f"exists in grn: {duplicate_po_number[0]}"
-        )
-
-
 def upgrade() -> None:
-    # ------------------------------------------------------------------
-    # 1. Pre-check one PO -> one GRN rule
-    # ------------------------------------------------------------------
-
-    _assert_one_grn_per_po()
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
 
     # ------------------------------------------------------------------
     # 2. GRN document uploads
     # ------------------------------------------------------------------
+    if "grn_document" not in existing_tables:
+        op.create_table(
+            "grn_document",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("grn_id", sa.UUID(), nullable=False),
+            sa.Column("document_type", sa.String(length=64), nullable=False),
+            sa.Column("file_name", sa.String(length=255), nullable=False),
+            sa.Column("file_path", sa.String(length=512), nullable=False),
+            sa.Column("uploaded_by", sa.String(length=128), nullable=False),
+            sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(
+                ["grn_id"],
+                ["grn.id"],
+                name="fk_grn_document_grn_id_grn",
+                ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint(
+                "id",
+                name="pk_grn_document",
+            ),
+        )
 
-    op.create_table(
-        "grn_document",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("grn_id", sa.UUID(), nullable=False),
-        sa.Column("document_type", sa.String(length=64), nullable=False),
-        sa.Column("file_name", sa.String(length=255), nullable=False),
-        sa.Column("file_path", sa.String(length=512), nullable=False),
-        sa.Column("uploaded_by", sa.String(length=128), nullable=False),
-        sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["grn_id"],
-            ["grn.id"],
-            name="fk_grn_document_grn_id_grn",
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint(
-            "id",
-            name="pk_grn_document",
-        ),
-    )
-
-    op.create_index(
-        "ix_grn_document_grn_id",
-        "grn_document",
-        ["grn_id"],
-        unique=False,
-    )
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_document_grn_id ON grn_document (grn_id)"))
 
     # ------------------------------------------------------------------
     # 3. GRN batches
     # ------------------------------------------------------------------
+    if "grn_batch" not in existing_tables:
+        op.create_table(
+            "grn_batch",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("grn_line_id", sa.UUID(), nullable=False),
+            sa.Column("batch_number", sa.String(length=64), nullable=False),
+            sa.Column(
+                "batch_quantity",
+                sa.Numeric(precision=18, scale=4),
+                nullable=False,
+            ),
+            sa.Column("created_by", sa.String(length=128), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(
+                ["grn_line_id"],
+                ["grn_line.id"],
+                name="fk_grn_batch_grn_line_id_grn_line",
+                ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint(
+                "id",
+                name="pk_grn_batch",
+            ),
+        )
 
-    op.create_table(
-        "grn_batch",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("grn_line_id", sa.UUID(), nullable=False),
-        sa.Column("batch_number", sa.String(length=64), nullable=False),
-        sa.Column(
-            "batch_quantity",
-            sa.Numeric(precision=18, scale=4),
-            nullable=False,
-        ),
-        sa.Column("created_by", sa.String(length=128), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["grn_line_id"],
-            ["grn_line.id"],
-            name="fk_grn_batch_grn_line_id_grn_line",
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint(
-            "id",
-            name="pk_grn_batch",
-        ),
-    )
-
-    op.create_index(
-        "ix_grn_batch_batch_number",
-        "grn_batch",
-        ["batch_number"],
-        unique=True,
-    )
-
-    op.create_index(
-        "ix_grn_batch_grn_line_id",
-        "grn_batch",
-        ["grn_line_id"],
-        unique=False,
-    )
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_batch_batch_number ON grn_batch (batch_number)"))
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_batch_grn_line_id ON grn_batch (grn_line_id)"))
 
     # ------------------------------------------------------------------
     # 4. Damage evidence / multiple photos
     # ------------------------------------------------------------------
+    if "grn_damage_evidence" not in existing_tables:
+        op.create_table(
+            "grn_damage_evidence",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("grn_line_id", sa.UUID(), nullable=False),
+            sa.Column(
+                "damaged_quantity",
+                sa.Numeric(precision=18, scale=4),
+                nullable=False,
+            ),
+            sa.Column("reason", sa.Text(), nullable=True),
+            sa.Column("remarks", sa.Text(), nullable=True),
+            sa.Column("file_name", sa.String(length=255), nullable=False),
+            sa.Column("file_path", sa.String(length=512), nullable=False),
+            sa.Column("uploaded_by", sa.String(length=128), nullable=False),
+            sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(
+                ["grn_line_id"],
+                ["grn_line.id"],
+                name="fk_grn_damage_evidence_grn_line_id_grn_line",
+                ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint(
+                "id",
+                name="pk_grn_damage_evidence",
+            ),
+        )
 
-    op.create_table(
-        "grn_damage_evidence",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("grn_line_id", sa.UUID(), nullable=False),
-        sa.Column(
-            "damaged_quantity",
-            sa.Numeric(precision=18, scale=4),
-            nullable=False,
-        ),
-        sa.Column("reason", sa.Text(), nullable=True),
-        sa.Column("remarks", sa.Text(), nullable=True),
-        sa.Column("file_name", sa.String(length=255), nullable=False),
-        sa.Column("file_path", sa.String(length=512), nullable=False),
-        sa.Column("uploaded_by", sa.String(length=128), nullable=False),
-        sa.Column("uploaded_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["grn_line_id"],
-            ["grn_line.id"],
-            name="fk_grn_damage_evidence_grn_line_id_grn_line",
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint(
-            "id",
-            name="pk_grn_damage_evidence",
-        ),
-    )
-
-    op.create_index(
-        "ix_grn_damage_evidence_grn_line_id",
-        "grn_damage_evidence",
-        ["grn_line_id"],
-        unique=False,
-    )
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_damage_evidence_grn_line_id ON grn_damage_evidence (grn_line_id)"))
 
     # ------------------------------------------------------------------
     # 5. One batch -> one QR code
     # ------------------------------------------------------------------
+    if "grn_batch_qr" not in existing_tables:
+        op.create_table(
+            "grn_batch_qr",
+            sa.Column("id", sa.UUID(), nullable=False),
+            sa.Column("batch_id", sa.UUID(), nullable=False),
+            sa.Column("qr_code", sa.String(length=128), nullable=False),
+            sa.Column("qr_payload", sa.Text(), nullable=False),
+            sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),
+            sa.ForeignKeyConstraint(
+                ["batch_id"],
+                ["grn_batch.id"],
+                name="fk_grn_batch_qr_batch_id_grn_batch",
+                ondelete="CASCADE",
+            ),
+            sa.PrimaryKeyConstraint(
+                "id",
+                name="pk_grn_batch_qr",
+            ),
+        )
 
-    op.create_table(
-        "grn_batch_qr",
-        sa.Column("id", sa.UUID(), nullable=False),
-        sa.Column("batch_id", sa.UUID(), nullable=False),
-        sa.Column("qr_code", sa.String(length=128), nullable=False),
-        sa.Column("qr_payload", sa.Text(), nullable=False),
-        sa.Column("generated_at", sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["batch_id"],
-            ["grn_batch.id"],
-            name="fk_grn_batch_qr_batch_id_grn_batch",
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint(
-            "id",
-            name="pk_grn_batch_qr",
-        ),
-    )
-
-    op.create_index(
-        "ix_grn_batch_qr_batch_id",
-        "grn_batch_qr",
-        ["batch_id"],
-        unique=True,
-    )
-
-    op.create_index(
-        "ix_grn_batch_qr_qr_code",
-        "grn_batch_qr",
-        ["qr_code"],
-        unique=True,
-    )
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_batch_qr_batch_id ON grn_batch_qr (batch_id)"))
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_batch_qr_qr_code ON grn_batch_qr (qr_code)"))
 
     # ------------------------------------------------------------------
     # 6. GRN header fields
     # ------------------------------------------------------------------
+    grn_cols = {c["name"] for c in inspector.get_columns("grn")}
+    if "gate_entry_id" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS gate_entry_id UUID"))
+    if "gate_entry_number" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS gate_entry_number VARCHAR(64)"))
+    if "supplier_company_name" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS supplier_company_name VARCHAR(255)"))
+    if "warehouse_name" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS warehouse_name VARCHAR(255)"))
+    if "driver_name" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS driver_name VARCHAR(128)"))
+    if "invoice_number" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(128)"))
+    if "receipt_type" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS receipt_type VARCHAR(32) DEFAULT 'PO_RECEIPT' NOT NULL"))
+    if "receipt_date" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS receipt_date TIMESTAMPTZ"))
+    if "received_by" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS received_by VARCHAR(128)"))
+    if "created_at" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL"))
+    if "updated_at" not in grn_cols:
+        bind.execute(sa.text("ALTER TABLE grn ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL"))
 
-    op.add_column(
-        "grn",
-        sa.Column(
-            "gate_entry_id",
-            sa.UUID(),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "gate_entry_number",
-            sa.String(length=64),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "supplier_company_name",
-            sa.String(length=255),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "warehouse_name",
-            sa.String(length=255),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "driver_name",
-            sa.String(length=128),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "invoice_number",
-            sa.String(length=128),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "receipt_type",
-            sa.String(length=32),
-            server_default="PO_RECEIPT",
-            nullable=False,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "receipt_date",
-            sa.DateTime(timezone=True),
-            nullable=True,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "received_by",
-            sa.String(length=128),
-            nullable=True,
-        ),
-    )
-
-    # Existing GRNs may already contain rows. Add temporary DB defaults
-    # so PostgreSQL can populate existing records safely, then remove the
-    # defaults because the ORM supplies these values for new rows.
-    op.add_column(
-        "grn",
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-    )
-
-    op.add_column(
-        "grn",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("CURRENT_TIMESTAMP"),
-            nullable=False,
-        ),
-    )
-
-    op.alter_column(
-        "grn",
-        "created_at",
-        existing_type=sa.DateTime(timezone=True),
-        server_default=None,
-        nullable=False,
-    )
-
-    op.alter_column(
-        "grn",
-        "updated_at",
-        existing_type=sa.DateTime(timezone=True),
-        server_default=None,
-        nullable=False,
-    )
-
-    # One PO -> one GRN.
-    # PostgreSQL permits multiple NULL values in a normal unique index,
-    # which keeps UNEXPECTED_DELIVERY rows possible.
-    op.create_index(
-        "ix_grn_po_id",
-        "grn",
-        ["po_id"],
-        unique=True,
-    )
-
-    op.create_index(
-        "ix_grn_po_number",
-        "grn",
-        ["po_number"],
-        unique=True,
-    )
+    # Safely create indexes on grn
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_po_id ON grn (po_id)"))
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_po_number ON grn (po_number)"))
 
     # ------------------------------------------------------------------
     # 7. GRN line workflow fields
     # ------------------------------------------------------------------
+    grn_line_cols = {c["name"] for c in inspector.get_columns("grn_line")}
+    if "material_category" not in grn_line_cols:
+        bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS material_category VARCHAR(128)"))
+    if "good_quantity" not in grn_line_cols:
+        bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS good_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
+    if "quality_approved_quantity" not in grn_line_cols:
+        bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS quality_approved_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
+    if "balance_quantity" not in grn_line_cols:
+        bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS balance_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
 
-    op.add_column(
-        "grn_line",
-        sa.Column(
-            "material_category",
-            sa.String(length=128),
-            nullable=True,
-        ),
-    )
+    bind.execute(sa.text("UPDATE grn_line SET damaged_quantity = 0 WHERE damaged_quantity IS NULL"))
+    bind.execute(sa.text("UPDATE grn_line SET rejected_quantity = 0 WHERE rejected_quantity IS NULL"))
 
-    op.add_column(
-        "grn_line",
-        sa.Column(
-            "good_quantity",
-            sa.Numeric(precision=18, scale=4),
-            server_default="0",
-            nullable=False,
-        ),
-    )
-
-    op.add_column(
-        "grn_line",
-        sa.Column(
-            "quality_approved_quantity",
-            sa.Numeric(precision=18, scale=4),
-            server_default="0",
-            nullable=False,
-        ),
-    )
-
-    op.add_column(
-        "grn_line",
-        sa.Column(
-            "balance_quantity",
-            sa.Numeric(precision=18, scale=4),
-            server_default="0",
-            nullable=False,
-        ),
-    )
-
-    # Older rows may contain NULL for these columns.
-    op.execute(
-        """
-        UPDATE grn_line
-        SET damaged_quantity = 0
-        WHERE damaged_quantity IS NULL
-        """
-    )
-
-    op.execute(
-        """
-        UPDATE grn_line
-        SET rejected_quantity = 0
-        WHERE rejected_quantity IS NULL
-        """
-    )
-
-    op.alter_column(
-        "grn_line",
-        "damaged_quantity",
-        existing_type=sa.Numeric(precision=18, scale=4),
-        nullable=False,
-        server_default="0",
-    )
-
-    op.alter_column(
-        "grn_line",
-        "rejected_quantity",
-        existing_type=sa.Numeric(precision=18, scale=4),
-        nullable=False,
-        server_default="0",
-    )
-
-    op.create_index(
-        "ix_grn_line_grn_id",
-        "grn_line",
-        ["grn_id"],
-        unique=False,
-    )
-
-    op.create_index(
-        "ix_grn_line_item_code",
-        "grn_line",
-        ["item_code"],
-        unique=False,
-    )
-
-    # Existing FK is the same relationship but without ON DELETE CASCADE.
-    op.drop_constraint(
-        "fk_grn_line_grn_id_grn",
-        "grn_line",
-        type_="foreignkey",
-    )
-
-    op.create_foreign_key(
-        "fk_grn_line_grn_id_grn",
-        "grn_line",
-        "grn",
-        ["grn_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_line_grn_id ON grn_line (grn_id)"))
+    bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_line_item_code ON grn_line (item_code)"))
 
 
 def downgrade() -> None:
-    # ------------------------------------------------------------------
-    # Reverse GRN line FK/index/columns
-    # ------------------------------------------------------------------
-
-    op.drop_constraint(
-        "fk_grn_line_grn_id_grn",
-        "grn_line",
-        type_="foreignkey",
-    )
-
-    op.create_foreign_key(
-        "fk_grn_line_grn_id_grn",
-        "grn_line",
-        "grn",
-        ["grn_id"],
-        ["id"],
-    )
-
-    op.drop_index(
-        "ix_grn_line_item_code",
-        table_name="grn_line",
-    )
-
-    op.drop_index(
-        "ix_grn_line_grn_id",
-        table_name="grn_line",
-    )
-
-    op.alter_column(
-        "grn_line",
-        "rejected_quantity",
-        existing_type=sa.Numeric(precision=18, scale=4),
-        nullable=True,
-        server_default=None,
-    )
-
-    op.alter_column(
-        "grn_line",
-        "damaged_quantity",
-        existing_type=sa.Numeric(precision=18, scale=4),
-        nullable=True,
-        server_default=None,
-    )
-
-    op.drop_column(
-        "grn_line",
-        "balance_quantity",
-    )
-
-    op.drop_column(
-        "grn_line",
-        "quality_approved_quantity",
-    )
-
-    op.drop_column(
-        "grn_line",
-        "good_quantity",
-    )
-
-    op.drop_column(
-        "grn_line",
-        "material_category",
-    )
-
-    # ------------------------------------------------------------------
-    # Reverse GRN header fields
-    # ------------------------------------------------------------------
-
-    op.drop_index(
-        "ix_grn_po_number",
-        table_name="grn",
-    )
-
-    op.drop_index(
-        "ix_grn_po_id",
-        table_name="grn",
-    )
-
-    op.drop_column("grn", "updated_at")
-    op.drop_column("grn", "created_at")
-    op.drop_column("grn", "received_by")
-    op.drop_column("grn", "receipt_date")
-    op.drop_column("grn", "receipt_type")
-    op.drop_column("grn", "invoice_number")
-    op.drop_column("grn", "driver_name")
-    op.drop_column("grn", "warehouse_name")
-    op.drop_column("grn", "supplier_company_name")
-    op.drop_column("grn", "gate_entry_number")
-    op.drop_column("grn", "gate_entry_id")
-
-    # ------------------------------------------------------------------
-    # Reverse new child tables in dependency order
-    # ------------------------------------------------------------------
-
-    op.drop_index(
-        "ix_grn_batch_qr_qr_code",
-        table_name="grn_batch_qr",
-    )
-
-    op.drop_index(
-        "ix_grn_batch_qr_batch_id",
-        table_name="grn_batch_qr",
-    )
-
-    op.drop_table("grn_batch_qr")
-
-    op.drop_index(
-        "ix_grn_damage_evidence_grn_line_id",
-        table_name="grn_damage_evidence",
-    )
-
-    op.drop_table("grn_damage_evidence")
-
-    op.drop_index(
-        "ix_grn_batch_grn_line_id",
-        table_name="grn_batch",
-    )
-
-    op.drop_index(
-        "ix_grn_batch_batch_number",
-        table_name="grn_batch",
-    )
-
-    op.drop_table("grn_batch")
-
-    op.drop_index(
-        "ix_grn_document_grn_id",
-        table_name="grn_document",
-    )
-
-    op.drop_table("grn_document")
+    pass

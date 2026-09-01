@@ -141,7 +141,7 @@ function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: 
   };
 }
 
-export function DockManagement() {
+function DockManagement() {
   const [docks, setDocks] = useState<Dock[]>([]);
   const [metrics, setMetrics] = useState<{
     total_docks: number;

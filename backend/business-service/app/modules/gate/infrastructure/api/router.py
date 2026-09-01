@@ -1742,7 +1742,7 @@ async def list_grn_drafts(
             "asn_number": grn.asn_number or "ASN-001",
             "supplier_name": grn.supplier_name or "Supplier",
             "supplier_company_name": grn.supplier_company_name or grn.supplier_name or "Supplier",
-            "supplier_email": getattr(grn, "supplier_email", None) or "obaiahkade12@gmail.com",
+            "supplier_email": getattr(grn, "supplier_email", None) or "spoorthiharakuni@gmail.com",
             "vehicle_number": grn.vehicle_number or "N/A",
             "driver_name": grn.driver_name or "N/A",
             "invoice_number": grn.invoice_number or "N/A",

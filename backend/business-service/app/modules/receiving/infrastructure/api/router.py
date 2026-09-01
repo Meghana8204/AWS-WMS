@@ -585,19 +585,35 @@ async def notify_vendor_damage(
 
     grn_number = grn.grn_number or str(grn.id)
     po_number = grn.po_number or "Not specified"
-    supplier_name = grn.supplier_name or "Supplier"
-    warehouse_name = grn.warehouse_name or "Not specified"
+    supplier_name = (grn.supplier_name or "").strip() or "Supplier"
+    supplier_company_name = (grn.supplier_company_name or "").strip() or supplier_name
+    warehouse_name = (grn.warehouse_name or "").strip() or "Not specified"
     
     selected_codes = {item.item_code.strip() for item in body.damage_items if item.item_code} if body.damage_items else None
     grn_codes = {line.item_code.strip() for line in grn.lines if line.item_code}
     if selected_codes and grn_codes and not selected_codes.intersection(grn_codes):
         raise HTTPException(status_code=400, detail="Damage items do not belong to this GRN.")
 
+    selected_photo_ids = set()
+    if getattr(body, "photo_ids", None):
+        for pid in body.photo_ids:
+            if pid:
+                selected_photo_ids.add(str(pid).strip().lower())
+    if body.damage_items:
+        for item in body.damage_items:
+            if getattr(item, "photo_ids", None):
+                for pid in item.photo_ids:
+                    if pid:
+                        selected_photo_ids.add(str(pid).strip().lower())
+            if getattr(item, "photo_id", None) and item.photo_id:
+                selected_photo_ids.add(str(item.photo_id).strip().lower())
+    photo_filter = selected_photo_ids if selected_photo_ids else None
+
     attachments = []
     try:
         import anyio
         attachments = await anyio.to_thread.run_sync(
-            collect_damage_attachments, grn, UPLOAD_DIR, selected_codes
+            collect_damage_attachments, grn, UPLOAD_DIR, selected_codes, photo_filter
         )
     except Exception:
         attachments = []
@@ -607,6 +623,7 @@ async def notify_vendor_damage(
         ("GRN Number", grn_number),
         ("PO Number", po_number),
         ("Supplier Name", supplier_name),
+        ("Supplier Company", supplier_company_name),
         ("Warehouse / Facility", warehouse_name),
     ]
 
@@ -702,7 +719,7 @@ async def notify_vendor_damage(
 
     vendor_email = (body.supplier_email or "").strip()
     if not vendor_email or not re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", vendor_email) or "@supplier.com" in vendor_email:
-        vendor_email = "obaiahkade12@gmail.com"
+        vendor_email = "spoorthiharakuni@gmail.com"
 
     intro_msg = f"Official Damaged & Rejected Goods Notification for GRN {grn_number} (PO Ref: {po_number}).\n\n"
     if body.custom_remarks:
@@ -764,9 +781,9 @@ async def notify_vendor_damage(
     items_summary_str = "\n".join(items_summary_lines)
 
     procurement_msg = (
-        f"Damaged goods reported during receiving inspection.\n"
+        f"Damaged/rejected goods were identified for GRN {grn_number} against PO {po_number}.\n"
         f"GRN: {grn_number} | PO: {po_number}\n"
-        f"Supplier: {supplier_name} | Warehouse: {warehouse_name}\n"
+        f"Supplier: {supplier_name} ({supplier_company_name}) | Warehouse: {warehouse_name}\n"
         f"Damaged Items:\n{items_summary_str}"
     )
     if body.custom_remarks:
@@ -775,9 +792,9 @@ async def notify_vendor_damage(
     procurement_notif = NotificationModel(
         id=uuid.uuid4(),
         user_role="PROCUREMENT",
-        title="Damaged Goods Reported",
+        title="Damaged / Rejected Goods Detected",
         message=procurement_msg,
-        link=None,
+        link="/notifications",
         is_read=False,
         created_at=datetime.now(),
     )
@@ -785,21 +802,23 @@ async def notify_vendor_damage(
     await uow.commit()
 
     settings = get_settings()
-    procurement_email = getattr(settings, "procurement_email", None) or "obaiahkade223@gmail.com"
-    procurement_subject = f"Damaged Goods Alert – {grn_number} | PO {po_number}"
+    procurement_email = getattr(settings, "procurement_email", None) or "spoorthiharakuni55@gmail.com"
+    procurement_subject = f"WMS Damaged Goods Notification - {grn_number} (PO: {po_number})"
     reported_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     procurement_intro = (
-        f"Official Damaged Goods Alert for PO {po_number}.\n\n"
+        f"Dear Procurement Team,\n\n"
+        f"Damaged/rejected goods were identified during quality inspection.\n\n"
         f"Reported Date & Time: {reported_at_str}\n"
-        f"GRN Number: {grn_number}\n"
-        f"PO Reference: {po_number}\n"
-        f"Supplier Name: {supplier_name}\n"
+        f"GRN: {grn_number}\n"
+        f"PO: {po_number}\n"
+        f"Supplier: {supplier_name}\n"
+        f"Supplier Company: {supplier_company_name}\n"
         f"Warehouse / Facility: {warehouse_name}\n\n"
     )
     if body.custom_remarks:
         procurement_intro += f"Inspector Remarks: {body.custom_remarks}\n\n"
-    procurement_intro += f"A total of {count_damaged or 1} material line(s) containing damaged items were recorded during inbound receiving inspection. Details below:"
+    procurement_intro += f"Please review the damaged/rejected goods record in NexusWMS."
 
     procurement_html = render_premium_email(
         eyebrow="PROCUREMENT DAMAGE ALERT",
@@ -808,7 +827,7 @@ async def notify_vendor_damage(
         intro=procurement_intro,
         details=details_for_render,
         items=items_for_render,
-        items_title="Damaged Materials Breakdown",
+        items_title="Damaged & Rejected Materials Breakdown",
         col_headers=("Material Code & Name", "Damaged Qty", "Damage Reason"),
         signoff="NexusWMS Inbound Receiving & Quality Team",
     )
