@@ -107,6 +107,8 @@ class GateEntryResponse(ApiModel):
     vehicle_plate: str
     status: str
     created_by: str
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
     po_id: Optional[str] = None
     po_number: Optional[str] = None
     po_status: Optional[str] = None
