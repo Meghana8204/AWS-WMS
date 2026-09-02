@@ -522,9 +522,6 @@ function WarehouseMaterials() {
               <h3 className="mt-1 text-2xl font-black tabular-nums text-teal-600">
                 {loading ? "..." : totalVariants}
               </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Stockable SKUs / Specs
-              </p>
             </div>
             <div className="grid size-12 place-items-center rounded-2xl bg-teal-soft text-teal">
               <Layers className="size-6" />
