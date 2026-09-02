@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { DamagePhoto } from "@/components/wms/damage-photo";
@@ -6,11 +6,15 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  ArrowUpRight,
   BarChart3,
+  Boxes,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
   Clock,
+  Clock3,
+  Database,
   DoorOpen,
   Download,
   Eye,
@@ -39,8 +43,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -1315,486 +1321,438 @@ function GrnPageWorkflow() {
 
   return (
     <AppShell
-      title="Goods Receiving (GRN) Console"
-      subtitle="Connected Flow: Procurement PO → ASN → Gate Entry → GRN → Quality → Batch QR"
+      title="Goods Receiving (GRN)"
+      subtitle="Inbound Operations · Reconcile PO lines, inspect materials, and generate batch QRs"
       actions={
-        <div className="flex items-center gap-2">
-          <Button
-            variant={activeTab === "dashboard" ? "default" : "outline"}
-            className="rounded-xl font-semibold"
-            onClick={() => setActiveTab("dashboard")}
-          >
-            <LayoutDashboard className="mr-2 size-4" /> GRN Dashboard
-          </Button>
+        <>
           <Button
             variant={activeTab === "records" ? "default" : "outline"}
-            className="rounded-xl font-medium"
-            onClick={() => setActiveTab("records")}
+            className="rounded-xl"
+            onClick={() => setActiveTab(activeTab === "records" ? "dashboard" : "records")}
           >
-            <ClipboardList className="mr-2 size-4" /> GRN Records
+            <ClipboardList className="size-4" /> {activeTab === "records" ? "Dashboard View" : "All GRN Records"}
           </Button>
           <Button
-            variant={activeTab === "wizard" ? "default" : "outline"}
-            className="rounded-xl font-medium bg-primary text-primary-foreground shadow-sm"
+            className="rounded-xl shadow-glow"
             onClick={() => {
               setActiveTab("wizard");
               setCurrentPage(1);
             }}
           >
-            <Plus className="mr-2 size-4" /> New Entry
+            <Plus className="size-4" /> New GRN Entry
           </Button>
-        </div>
+        </>
       }
     >
       {/* 📊 GRN OPERATIONS DASHBOARD TAB */}
       {activeTab === "dashboard" && (
         <div className="space-y-6">
-          {/* USER WELCOME & HERO DASHBOARD BANNER */}
-          <Card className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 p-6 text-white shadow-2xl relative overflow-hidden">
-            <div className="absolute -right-10 -top-10 size-72 rounded-full bg-primary/20 blur-3xl pointer-events-none" />
-            <div className="absolute right-1/3 -bottom-10 size-60 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none" />
-            <div className="relative z-10 flex flex-wrap items-center justify-between gap-6">
-              <div className="space-y-2 max-w-2xl">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-3 py-1 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-widest flex items-center gap-2 shadow-sm">
-                    <span className="relative flex size-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full size-2 bg-emerald-500"></span>
-                    </span>
-                    INBOUND RECEIVING CONSOLE • ONLINE
-                  </span>
-                  <span className="text-xs text-slate-300 font-mono flex items-center gap-1 bg-white/5 px-2.5 py-1 rounded-full border border-white/10" suppressHydrationWarning>
-                    <User className="size-3 text-primary" /> Officer: <b className="text-white" suppressHydrationWarning>{loggedInUserName}</b>
-                  </span>
-                </div>
-                <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
-                  <Warehouse className="size-7 text-primary" /> Goods Receiving Console
-                </h2>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  Automated PO line reconciliation, Quality Inspection tracking, lot/batch allocation, document attachments, and damaged goods quarantine management.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  className="rounded-xl font-extrabold bg-gradient-to-r from-primary via-indigo-600 to-indigo-500 hover:from-primary/90 hover:to-indigo-600 text-white px-5 shadow-lg shadow-primary/30 border border-white/10"
-                  onClick={() => {
-                    setActiveTab("wizard");
-                    setCurrentPage(1);
-                  }}
-                >
-                  <Plus className="mr-2 size-4" /> Start New GRN Entry
-                </Button>
-                <Button
-                  variant="outline"
-                  className="rounded-xl font-bold border-slate-700 bg-slate-900/60 hover:bg-slate-800 text-slate-200"
-                  onClick={() => exportGrnRecordsCsv()}
-                >
-                  <Download className="mr-2 size-4 text-emerald-400" /> Export Spreadsheet
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {/* KPI METRICS WIDGETS */}
+          {/* TOP STAT CARDS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card
-              className="rounded-2xl p-5 border bg-card/90 backdrop-blur-md shadow-sm hover:border-primary/60 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden"
-              onClick={() => {
-                setSearchTerm("");
-                setActiveTab("records");
-                toast.info("Viewing All Monthly GRN Receipts (48 Records)");
-              }}
-            >
-              <div className="absolute right-0 top-0 size-24 bg-primary/5 rounded-bl-full pointer-events-none group-hover:bg-primary/10 transition-colors" />
-              <div className="flex items-center justify-between relative z-10">
-                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-primary transition-colors">
-                  Monthly GRN Receipts
-                </span>
-                <span className="rounded-xl bg-primary/10 p-2.5 text-primary group-hover:bg-primary group-hover:text-white transition-all shadow-sm">
-                  <ClipboardList className="size-5" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline justify-between relative z-10">
-                <p className="font-mono text-3xl font-black tracking-tight text-foreground">48</p>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-bold flex items-center gap-1 border border-emerald-500/20">
-                  <TrendingUp className="size-3.5" /> +12.5%
-                </span>
-              </div>
-              <div className="mt-3 text-[11px] text-muted-foreground font-medium flex items-center justify-between border-t pt-2.5">
-                <span>Reconciled against POs</span>
-                <span className="text-primary font-bold group-hover:translate-x-0.5 transition-transform flex items-center">View All <ChevronRight className="size-3 ml-0.5" /></span>
-              </div>
-            </Card>
-
-            <Card
-              className="rounded-2xl p-5 border bg-card/90 backdrop-blur-md shadow-sm hover:border-amber-400/60 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden"
-              onClick={() => {
-                setSearchTerm("PARTIALLY");
-                setActiveTab("records");
-                toast.info("Filtered: Partially Completed GRNs (3 Pending Balance Receipts)");
-              }}
-            >
-              <div className="absolute right-0 top-0 size-24 bg-amber-500/5 rounded-bl-full pointer-events-none group-hover:bg-amber-500/10 transition-colors" />
-              <div className="flex items-center justify-between relative z-10">
-                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-amber-700 transition-colors">
-                  Partially Completed
-                </span>
-                <span className="rounded-xl bg-amber-500/10 p-2.5 text-amber-700 group-hover:bg-amber-500 group-hover:text-white transition-all shadow-sm">
-                  <Clock className="size-5" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline justify-between relative z-10">
-                <p className="font-mono text-3xl font-black tracking-tight text-amber-600">3</p>
-                <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-700 text-xs font-bold border border-amber-500/20">
-                  Pending Balances
-                </span>
-              </div>
-              <div className="mt-3 text-[11px] text-muted-foreground font-medium flex items-center justify-between border-t pt-2.5">
-                <span>Partial delivery POs</span>
-                <span className="text-amber-700 font-bold group-hover:translate-x-0.5 transition-transform flex items-center">Filter List <ChevronRight className="size-3 ml-0.5" /></span>
-              </div>
-            </Card>
-
-            <Card
-              className="rounded-2xl p-5 border bg-card/90 backdrop-blur-md shadow-sm hover:border-emerald-400/60 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden"
-              onClick={() => {
-                setShowQualityPassModal(true);
-                toast.info("Opening Quality Pass Rate & Audit Breakdown");
-              }}
-            >
-              <div className="absolute right-0 top-0 size-24 bg-emerald-500/5 rounded-bl-full pointer-events-none group-hover:bg-emerald-500/10 transition-colors" />
-              <div className="flex items-center justify-between relative z-10">
-                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-emerald-700 transition-colors">
-                  Quality Pass Rate
-                </span>
-                <span className="rounded-xl bg-emerald-500/10 p-2.5 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-all shadow-sm">
-                  <ShieldCheck className="size-5" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline justify-between relative z-10">
-                <p className="font-mono text-3xl font-black tracking-tight text-emerald-600">99.3%</p>
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-700 text-xs font-bold border border-emerald-500/20">
-                  18,450 Sound Units
-                </span>
-              </div>
-              <div className="mt-3 text-[11px] text-muted-foreground font-medium flex items-center justify-between border-t pt-2.5">
-                <span>120 Quarantined Units</span>
-                <span className="text-emerald-700 font-bold group-hover:translate-x-0.5 transition-transform flex items-center">Audit Report <ChevronRight className="size-3 ml-0.5" /></span>
-              </div>
-            </Card>
-
-            <Card
-              className="rounded-2xl p-5 border bg-card/90 backdrop-blur-md shadow-sm hover:border-rose-400/60 hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden"
-              onClick={() => {
-                setShowNotifyVendorModal(true);
-                toast.info("Opening Damaged Goods Vendor Notification Console");
-              }}
-            >
-              <div className="absolute right-0 top-0 size-24 bg-rose-500/5 rounded-bl-full pointer-events-none group-hover:bg-rose-500/10 transition-colors" />
-              <div className="flex items-center justify-between relative z-10">
-                <span className="text-xs font-black uppercase tracking-wider text-muted-foreground group-hover:text-rose-700 transition-colors">
-                  Damaged Quarantine Lots
-                </span>
-                <span className="rounded-xl bg-rose-500/10 p-2.5 text-rose-700 group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm">
-                  <AlertTriangle className="size-5" />
-                </span>
-              </div>
-              <div className="mt-3 flex items-baseline justify-between relative z-10">
-                <p className="font-mono text-3xl font-black tracking-tight text-rose-600">4 Lots</p>
-                <span className="px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-700 text-xs font-bold border border-rose-500/20">
-                  Zone A Quarantine
-                </span>
-              </div>
-              <div className="mt-3 text-[11px] text-muted-foreground font-medium flex items-center justify-between border-t pt-2.5">
-                <span>Unique Damage QR Assigned</span>
-                <span className="text-rose-700 font-bold group-hover:translate-x-0.5 transition-transform flex items-center">Notify Vendor <ChevronRight className="size-3 ml-0.5" /></span>
-              </div>
-            </Card>
+            <StatCard
+              label="Total GRN receipts"
+              value={loadingRecords ? "..." : String(grnRecords.length || 48)}
+              delta="+12.5% vs last month"
+              icon={ClipboardList}
+              tone="primary"
+              to="/grn"
+            />
+            <StatCard
+              label="Fully completed"
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "COMPLETED").length || 45)}
+              delta="100% sound lines posted"
+              icon={CheckCircle2}
+              tone="success"
+              to="/grn"
+            />
+            <StatCard
+              label="Partially completed"
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "PARTIALLY COMPLETED").length || 3)}
+              delta="Pending balance receipts"
+              icon={Clock3}
+              tone="warning"
+              to="/grn"
+            />
+            <StatCard
+              label="Quarantine lots"
+              value="4 Lots"
+              delta="Zone A · Damage QR"
+              icon={AlertTriangle}
+              tone="danger"
+              to="/grn"
+            />
           </div>
 
-          {/* RECENT GRN TRANSACTIONS TABLE & QUICK FILTERS */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-extrabold text-foreground uppercase tracking-wider flex items-center gap-2">
-                <ClipboardList className="size-4 text-primary" /> Recent Inbound Goods Receipts
-              </h3>
+          {/* MAIN 2-COLUMN GRID (Matching Procurement & Warehouse Dashboards) */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Left 2 Cols: Inbound Goods Receipts Table */}
+            <div className="space-y-6 lg:col-span-2">
+              <SectionCard
+                title="Inbound Goods Receipts"
+                description="Recent PO receipts, batch allocations, and inspection statuses"
+                icon={ClipboardList}
+                actions={
+                  <div className="flex items-center gap-2">
+                    {["ALL", "COMPLETED", "PARTIALLY COMPLETED"].map((st) => (
+                      <Button
+                        key={st}
+                        variant={dashboardStatusFilter === st ? "default" : "outline"}
+                        size="sm"
+                        className="rounded-xl text-xs h-8"
+                        onClick={() => setDashboardStatusFilter(st)}
+                      >
+                        {st === "ALL" ? "All" : st === "PARTIALLY COMPLETED" ? "Partial" : "Completed"}
+                      </Button>
+                    ))}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs font-semibold text-primary h-8"
+                      onClick={() => setActiveTab("records")}
+                    >
+                      View All ({grnRecords.length || 48}) →
+                    </Button>
+                  </div>
+                }
+              >
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search by GRN Number, PO Number, Supplier, Vehicle..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-9 rounded-xl text-xs"
+                    />
+                  </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {["ALL", "COMPLETED", "PARTIALLY COMPLETED"].map((st) => (
-                  <button
-                    key={st}
-                    onClick={() => setDashboardStatusFilter(st)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${dashboardStatusFilter === st
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "bg-muted text-muted-foreground hover:bg-muted/80"
-                      }`}
-                  >
-                    {st === "ALL" ? "All Receipts" : st}
-                  </button>
-                ))}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs font-bold text-primary hover:underline"
-                  onClick={() => setActiveTab("records")}
-                >
-                  View All ({grnRecords.length || 48}) →
-                </Button>
-              </div>
+                  <div className="overflow-hidden rounded-xl border border-border/70">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-muted/50 font-semibold uppercase text-muted-foreground text-[11px] tracking-wider border-b border-border/70">
+                        <tr>
+                          <th className="px-4 py-3">GRN Number</th>
+                          <th className="px-4 py-3">PO Reference</th>
+                          <th className="px-4 py-3">Supplier Name</th>
+                          <th className="px-4 py-3">Vehicle</th>
+                          <th className="px-4 py-3">Status</th>
+                          <th className="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {(dashboardStatusFilter === "ALL"
+                          ? grnRecords.slice(0, 6)
+                          : grnRecords.filter((r) => r.status === dashboardStatusFilter).slice(0, 6)
+                        ).map((r, i) => (
+                          <tr key={r.grn_id || r.grn_number || `rec_row_${i}`} className="hover:bg-accent/40 transition-colors">
+                            <td className="px-4 py-3 font-mono font-bold text-primary">
+                              {r.grn_number || `GRN-2026-000${i + 1}`}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-semibold text-foreground">
+                              {r.po_number || `PO-100${i + 1}`}
+                            </td>
+                            <td className="px-4 py-3 font-medium text-foreground">
+                              {r.supplier_name || "ABC Supplier"}
+                            </td>
+                            <td className="px-4 py-3 font-mono text-muted-foreground">
+                              {r.vehicle_number || "KA01EQ9921"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <StatusBadge status={r.status || (i % 2 === 0 ? "PARTIALLY COMPLETED" : "COMPLETED")} />
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg text-xs h-7"
+                                  onClick={() => {
+                                    void handleViewGrnDetail(r);
+                                  }}
+                                >
+                                  <FileText className="mr-1 size-3.5 text-primary" /> Details
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg text-xs h-7 border-rose-300 text-rose-700 hover:bg-rose-50"
+                                  onClick={() => {
+                                    setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
+                                    setGrnId(r.grn_id || r.id || "grn-2026-0001");
+                                    setShowNotifyVendorModal(true);
+                                  }}
+                                >
+                                  <Send className="mr-1 size-3.5 text-rose-600" /> Vendor
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {grnRecords.length === 0 && (
+                          <>
+                            <tr className="hover:bg-accent/40">
+                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0001</td>
+                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1001</td>
+                              <td className="px-4 py-3 font-medium text-foreground">ABC Supplier Ltd</td>
+                              <td className="px-4 py-3 font-mono text-muted-foreground">AP02AB1234</td>
+                              <td className="px-4 py-3">
+                                <StatusBadge status="PARTIALLY COMPLETED" />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg text-xs h-7"
+                                  onClick={() => {
+                                    setActiveTab("wizard");
+                                    setCurrentPage(grnId ? 2 : 1);
+                                  }}
+                                >
+                                  Open Entry
+                                </Button>
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-accent/40">
+                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0002</td>
+                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1002</td>
+                              <td className="px-4 py-3 font-medium text-foreground">XYZ Industrial Supplies</td>
+                              <td className="px-4 py-3 font-mono text-muted-foreground">KA01EQ9921</td>
+                              <td className="px-4 py-3">
+                                <StatusBadge status="COMPLETED" />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-muted-foreground">
+                                  Posted
+                                </Button>
+                              </td>
+                            </tr>
+                          </>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </SectionCard>
             </div>
 
-            <Card className="rounded-2xl overflow-hidden border shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs text-left">
-                  <thead className="bg-muted/60 font-bold uppercase text-muted-foreground text-[11px] tracking-wider border-b">
-                    <tr>
-                      <th className="px-4 py-3.5">GRN Number</th>
-                      <th className="px-4 py-3.5">PO Reference</th>
-                      <th className="px-4 py-3.5">Supplier Name</th>
-                      <th className="px-4 py-3.5">Vehicle Info</th>
-                      <th className="px-4 py-3.5">Status</th>
-                      <th className="px-4 py-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y font-medium">
-                    {(dashboardStatusFilter === "ALL"
-                      ? grnRecords.slice(0, 6)
-                      : grnRecords.filter((r) => r.status === dashboardStatusFilter).slice(0, 6)
-                    ).map((r, i) => (
-                      <tr key={r.grn_id || r.grn_number || `rec_row_${i}`} className="hover:bg-muted/20 transition-colors">
-                        <td className="px-4 py-3.5 font-mono font-bold text-primary">
-                          {r.grn_number || `GRN-2026-000${i + 1}`}
-                        </td>
-                        <td className="px-4 py-3.5 font-mono text-foreground font-semibold">
-                          {r.po_number || `PO-100${i + 1}`}
-                        </td>
-                        <td className="px-4 py-3.5 font-bold text-foreground">
-                          {r.supplier_name || "ABC Supplier"}
-                        </td>
-                        <td className="px-4 py-3.5 font-mono text-muted-foreground">
-                          {r.vehicle_number || "KA01EQ9921"}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <StatusBadge status={r.status || (i % 2 === 0 ? "PARTIALLY COMPLETED" : "COMPLETED")} />
-                        </td>
-                        <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-lg text-xs font-bold"
-                              onClick={() => {
-                                void handleViewGrnDetail(r);
-                              }}
-                            >
-                              <FileText className="mr-1 size-3.5" /> Details
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-lg text-xs font-bold border-rose-300 text-rose-700 hover:bg-rose-50"
-                              onClick={() => {
-                                setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
-                                setGrnId(r.grn_id || r.id || "grn-2026-0001");
-                                setShowNotifyVendorModal(true);
-                              }}
-                            >
-                              <Send className="mr-1 size-3.5 text-rose-600" /> Vendor Email
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {grnRecords.length === 0 && (
-                      <>
-                        <tr className="hover:bg-muted/20">
-                          <td className="px-4 py-3.5 font-mono font-bold text-primary">GRN-2026-0001</td>
-                          <td className="px-4 py-3.5 font-mono text-foreground font-semibold">PO-1001</td>
-                          <td className="px-4 py-3.5 font-bold text-foreground">ABC Supplier Ltd</td>
-                          <td className="px-4 py-3.5 font-mono text-muted-foreground">AP02AB1234</td>
-                          <td className="px-4 py-3.5">
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                              PARTIALLY COMPLETED
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-lg text-xs font-bold text-primary"
-                              onClick={() => {
-                                setActiveTab("wizard");
-                                setCurrentPage(grnId ? 2 : 1);
-                              }}
-                            >
-                              Open Entry
-                            </Button>
-                          </td>
-                        </tr>
-                        <tr className="hover:bg-muted/20">
-                          <td className="px-4 py-3.5 font-mono font-bold text-primary">GRN-2026-0002</td>
-                          <td className="px-4 py-3.5 font-mono text-foreground font-semibold">PO-1002</td>
-                          <td className="px-4 py-3.5 font-bold text-foreground">XYZ Industrial Supplies</td>
-                          <td className="px-4 py-3.5 font-mono text-muted-foreground">KA01EQ9921</td>
-                          <td className="px-4 py-3.5">
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              COMPLETED
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5 text-right">
-                            <Button size="sm" variant="ghost" className="rounded-lg text-xs font-bold text-muted-foreground">
-                              Posted
-                            </Button>
-                          </td>
-                        </tr>
-                      </>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+            {/* Right 1 Col: Quick Actions, Quality Health, Activity Timeline */}
+            <div className="space-y-6">
+              <SectionCard title="Quick Actions" icon={PackageCheck}>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Material Master", to: "/warehouse/materials", icon: Database },
+                    { label: "Dock Management", to: "/dock-management", icon: Warehouse },
+                    { label: "Go to Receiving", to: "/receiving", icon: PackageCheck },
+                    { label: "View Inventory", to: "/inventory", icon: Boxes },
+                  ].map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <Link
+                        key={action.to}
+                        to={action.to}
+                        className="flex items-center gap-2 rounded-xl border border-border/70 p-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                      >
+                        <Icon className="size-4 text-primary" />
+                        <span>{action.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Quality Inspection Health" icon={ShieldCheck}>
+                <div className="space-y-3">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-2xl font-bold font-mono tracking-tight text-emerald-600">99.3%</span>
+                    <span className="text-xs font-semibold text-muted-foreground">18,450 Sound Units</span>
+                  </div>
+                  <Progress value={99.3} className="h-2 rounded-full" />
+                  <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                    <span>Quarantined: 120 Units (4 Lots)</span>
+                    <span className="font-semibold text-emerald-600">Grade ISI Compliant</span>
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Recent Receiving Activity" icon={Clock3}>
+                <Timeline
+                  items={
+                    grnRecords.length > 0
+                      ? grnRecords.slice(0, 4).map((r, idx) => ({
+                          time: r.receipt_date || "Today",
+                          title: `${r.grn_number || `GRN-000${idx + 1}`} · ${r.supplier_name || "Supplier"}`,
+                          detail: `PO ${r.po_number || "N/A"} · ${r.vehicle_number || "Dock arrival"}`,
+                          tone: r.status === "COMPLETED" ? "success" : r.status === "PARTIALLY COMPLETED" ? "warning" : "primary",
+                        }))
+                      : [
+                          {
+                            time: "Just now",
+                            title: "GRN-2026-0001 · ABC Supplier Ltd",
+                            detail: "PO-1001 · Dock DOCK-02 (COMPLETED)",
+                            tone: "success",
+                          },
+                          {
+                            time: "15m ago",
+                            title: "GRN-2026-0002 · XYZ Industrial Supplies",
+                            detail: "PO-1002 · Dock DOCK-01 (PARTIALLY COMPLETED)",
+                            tone: "warning",
+                          },
+                          {
+                            time: "1h ago",
+                            title: "GRN-2026-0003 · SteelCo India Ltd",
+                            detail: "PO-1003 · Dock DOCK-03 (COMPLETED)",
+                            tone: "primary",
+                          },
+                        ]
+                  }
+                />
+              </SectionCard>
+            </div>
           </div>
         </div>
       )}
 
       {/* 📋 RECORDS OVERVIEW TAB */}
       {activeTab === "records" && (
-        <div className="space-y-5">
-          {/* SEARCH & ACTION CONTROL BAR */}
-          <Card className="rounded-2xl p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="relative flex-1 min-w-[280px]">
+        <div className="space-y-6">
+          <SectionCard
+            title="All Goods Receipt Notes (GRN)"
+            description="Complete register of all inbound material receipts, inspection outcomes, and certificates"
+            icon={ClipboardList}
+            actions={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs h-8"
+                  onClick={() => exportGrnRecordsCsv()}
+                >
+                  <Download className="mr-1.5 size-3.5 text-primary" /> Export CSV
+                </Button>
+                <Button variant="outline" size="sm" className="rounded-xl text-xs h-8" onClick={() => void loadRecords()}>
+                  <RefreshCw className="mr-1.5 size-3.5" /> Refresh
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              <div className="relative">
                 <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
                 <Input
                   placeholder="Search by GRN Number, PO Number, Supplier, Vehicle, Driver, Dock..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9 rounded-xl text-xs font-medium"
+                  className="pl-9 rounded-xl text-xs"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  className="rounded-xl text-xs font-bold"
-                  onClick={() => exportGrnRecordsCsv()}
-                >
-                  <Download className="mr-1.5 size-4 text-primary" /> Export CSV Spreadsheet
-                </Button>
-                <Button variant="outline" className="rounded-xl text-xs font-bold" onClick={() => void loadRecords()}>
-                  <RefreshCw className="mr-1.5 size-4" /> Refresh
-                </Button>
-              </div>
-            </div>
-          </Card>
-
-          {loadingRecords ? (
-            <div className="grid h-64 place-items-center">
-              <Loader2 className="size-8 animate-spin text-primary" />
-            </div>
-          ) : grnRecords.length === 0 ? (
-            <Card className="grid h-64 place-items-center rounded-2xl p-6 text-center text-muted-foreground shadow-sm">
-              <div>
-                <FileCheck2 className="mx-auto mb-3 size-10 text-muted-foreground/60" />
-                <h3 className="text-base font-semibold text-foreground">No Real GRN Records Found</h3>
-                <p className="mt-1 text-xs">Start a new Goods Receiving entry to post material receipts directly into the database.</p>
-                <Button
-                  className="mt-4 rounded-xl font-bold"
-                  onClick={() => {
-                    setActiveTab("wizard");
-                    setCurrentPage(1);
-                  }}
-                >
-                  <Plus className="mr-2 size-4" /> Start New GRN
-                </Button>
-              </div>
-            </Card>
-          ) : (
-            <div className="grid gap-4">
-              {grnRecords.map((r, idx) => (
-                <Card key={r.grn_id || r.grn_number || r.id || `grn_rec_${idx}`} className="rounded-2xl p-5 border hover:shadow-md transition-all space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-extrabold uppercase text-muted-foreground tracking-wider">Goods Receipt Note</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-primary/10 text-primary">
-                          Ref: {r.po_number || "PO-1001"}
-                        </span>
-                      </div>
-                      <h3 className="font-mono text-xl font-black text-primary mt-0.5">{r.grn_number || "GRN-0001"}</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Supplier: <b className="text-foreground">{r.supplier_name || "ABC Supplier"}</b>
-                      </p>
-                    </div>
-                    <StatusBadge status={r.status} />
-                  </div>
-
-                  <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 text-xs sm:grid-cols-2 lg:grid-cols-4 font-mono">
-                    <div>
-                      <span className="text-muted-foreground block text-[10px] uppercase font-sans">PO Reference</span>
-                      <span className="font-bold text-foreground">{r.po_number || "PO-1001"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-[10px] uppercase font-sans">Receiving Dock</span>
-                      <span className="font-bold text-foreground">Dock {r.dock_number || "DOCK-02"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-[10px] uppercase font-sans">Vehicle Reg / Driver</span>
-                      <span className="font-bold text-foreground">{r.vehicle_number || "AP02AB1234"} ({r.driver_name || "Driver"})</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block text-[10px] uppercase font-sans">Received Date / Officer</span>
-                      <span className="font-bold text-foreground">{r.receipt_date || "2026-08-30"} ({r.received_by || "Officer"})</span>
-                    </div>
-                  </div>
-
-                  {/* REAL ACTION BUTTONS PER RECORD */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl text-xs font-bold border-primary/40 text-primary hover:bg-primary/5"
-                        onClick={() => void handleViewGrnDetail(r)}
-                      >
-                        <FileText className="mr-1.5 size-3.5" /> View Details Drawer
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl text-xs font-bold"
-                        onClick={() => printGrnCertificate(r)}
-                      >
-                        <Printer className="mr-1.5 size-3.5" /> Print Official GRN PDF
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="rounded-xl text-xs font-bold"
-                        onClick={() => printAllPoQrLabels(materials[0]?.item_code)}
-                      >
-                        <QrCode className="mr-1.5 size-3.5 text-primary" /> Print Batch QR Labels
-                      </Button>
-                    </div>
-
+              {loadingRecords ? (
+                <div className="grid h-64 place-items-center">
+                  <Loader2 className="size-8 animate-spin text-primary" />
+                </div>
+              ) : grnRecords.length === 0 ? (
+                <div className="grid h-64 place-items-center rounded-xl border border-dashed p-6 text-center text-muted-foreground">
+                  <div>
+                    <FileCheck2 className="mx-auto mb-3 size-10 text-muted-foreground/60" />
+                    <h3 className="text-base font-semibold text-foreground">No Real GRN Records Found</h3>
+                    <p className="mt-1 text-xs">Start a new Goods Receiving entry to post material receipts directly into the database.</p>
                     <Button
-                      size="sm"
-                      variant="outline"
-                      className="rounded-xl text-xs font-bold border-rose-300 text-rose-700 hover:bg-rose-50"
+                      className="mt-4 rounded-xl font-bold shadow-glow"
                       onClick={() => {
-                        setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
-                        setGrnId(r.grn_id || r.id || "grn-2026-0001");
-                        setShowNotifyVendorModal(true);
+                        setActiveTab("wizard");
+                        setCurrentPage(1);
                       }}
                     >
-                      <Send className="mr-1.5 size-3.5 text-rose-600" /> Send Vendor Damage Email
+                      <Plus className="mr-2 size-4" /> Start New GRN
                     </Button>
                   </div>
-                </Card>
-              ))}
+                </div>
+              ) : (
+                <div className="grid gap-4">
+                  {grnRecords.map((r, idx) => (
+                    <Card key={r.grn_id || r.grn_number || r.id || `grn_rec_${idx}`} className="rounded-2xl p-5 border border-border/70 hover:shadow-soft transition-all space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Goods Receipt Note</span>
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-primary-soft text-primary">
+                              Ref: {r.po_number || "PO-1001"}
+                            </span>
+                          </div>
+                          <h3 className="font-mono text-xl font-bold text-primary mt-0.5">{r.grn_number || "GRN-0001"}</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Supplier: <b className="text-foreground">{r.supplier_name || "ABC Supplier"}</b>
+                          </p>
+                        </div>
+                        <StatusBadge status={r.status} />
+                      </div>
+
+                      <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-xs sm:grid-cols-2 lg:grid-cols-4 font-mono">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">PO Reference</span>
+                          <span className="font-bold text-foreground">{r.po_number || "PO-1001"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Receiving Dock</span>
+                          <span className="font-bold text-foreground">Dock {r.dock_number || "DOCK-02"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Vehicle Reg / Driver</span>
+                          <span className="font-bold text-foreground">{r.vehicle_number || "AP02AB1234"} ({r.driver_name || "Driver"})</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Received Date / Officer</span>
+                          <span className="font-bold text-foreground">{r.receipt_date || "2026-08-30"} ({r.received_by || "Officer"})</span>
+                        </div>
+                      </div>
+
+                      {/* REAL ACTION BUTTONS PER RECORD */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold border-primary/40 text-primary hover:bg-primary-soft"
+                            onClick={() => void handleViewGrnDetail(r)}
+                          >
+                            <FileText className="mr-1.5 size-3.5" /> View Details
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold"
+                            onClick={() => printGrnCertificate(r)}
+                          >
+                            <Printer className="mr-1.5 size-3.5" /> Official Certificate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold"
+                            onClick={() => printAllPoQrLabels(materials[0]?.item_code)}
+                          >
+                            <QrCode className="mr-1.5 size-3.5 text-primary" /> Batch QR Labels
+                          </Button>
+                        </div>
+
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
+                          onClick={() => {
+                            setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
+                            setGrnId(r.grn_id || r.id || "grn-2026-0001");
+                            setShowNotifyVendorModal(true);
+                          }}
+                        >
+                          <Send className="mr-1.5 size-3.5 text-rose-600" /> Vendor Damage Notice
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </SectionCard>
         </div>
       )}
 
