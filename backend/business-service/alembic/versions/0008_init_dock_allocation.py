@@ -15,6 +15,20 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # Local environments may already have these tables because application
+    # startup registers the dock ORM models and runs metadata.create_all().
+    # Treat that complete schema as migrated instead of failing on the first
+    # duplicate table.
+    existing_tables = set(sa.inspect(op.get_bind()).get_table_names())
+    expected_tables = {
+        "dock_masters",
+        "dock_allocation_requests",
+        "dock_allocation_history",
+        "dock_status_history",
+    }
+    if expected_tables.issubset(existing_tables):
+        return
+
     # 1. Create dock_masters table
     op.create_table(
         "dock_masters",

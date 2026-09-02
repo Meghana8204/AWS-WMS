@@ -88,6 +88,63 @@ async def lifespan(app: FastAPI):
                 await session.execute(text(ddl_query))
                 await session.commit()
 
+        # Upgrade legacy Material Data columns to the canonical Warehouse
+        # Material Master shape. create_all() intentionally does not alter an
+        # existing table, so older developer databases need this data-safe,
+        # idempotent compatibility step before the material API can query it.
+        for column, column_type in [
+            ("material_code", "VARCHAR(64)"),
+            ("material_name", "VARCHAR(256)"),
+            ("base_uom", "VARCHAR(32) DEFAULT 'PCS'"),
+            ("status", "VARCHAR(32) DEFAULT 'Active'"),
+            ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("created_by", "VARCHAR(64)"),
+            ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("updated_by", "VARCHAR(64)"),
+        ]:
+            await run_ddl(
+                f"ALTER TABLE material ADD COLUMN IF NOT EXISTS {column} {column_type}"
+            )
+
+        await run_ddl("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'code'
+                ) THEN
+                    UPDATE material
+                    SET material_code = code
+                    WHERE material_code IS NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'name'
+                ) THEN
+                    UPDATE material
+                    SET material_name = name
+                    WHERE material_name IS NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'uom'
+                ) THEN
+                    UPDATE material
+                    SET base_uom = COALESCE(NULLIF(base_uom, ''), uom, 'PCS');
+                END IF;
+            END $$;
+        """)
+        await run_ddl(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_material_material_code "
+            "ON material (material_code) WHERE material_code IS NOT NULL"
+        )
+        logger.info("Ensured canonical Material Master columns and legacy data mapping")
+
         # Add columns to asn
         for col in [
             ("shipment_date", "DATE DEFAULT CURRENT_DATE"),
