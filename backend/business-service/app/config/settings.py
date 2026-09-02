@@ -12,7 +12,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=(".env", "business-service/.env", "../business-service/.env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
     # --- Service identity -------------------------------------------------
     service_name: str = "business-service"
@@ -76,6 +80,8 @@ class Settings(BaseSettings):
     finance_password: str = Field(default="finance")
     warehouse_username: str = Field(default="warehouse")
     warehouse_password: str = Field(default="warehouse")
+    assembly_manager_username: str = Field(default="assembly_manager")
+    assembly_manager_password: str = Field(default="assembly123")
     gate_security_username: str = Field(default="gate_entry")
     gate_security_password: str = Field(default="gate123")
     gate_entry_username: str = Field(default="gate_entry")
@@ -85,7 +91,8 @@ class Settings(BaseSettings):
 
     # --- Email SMTP Settings ----------------------------------------------------
     email_host: str = Field(default="smtp.gmail.com")
-    email_port: int = Field(default=587)
+    email_port: int = Field(default=465)
+    email_timeout_seconds: int = Field(default=8, ge=1, le=60)
     email_host_user: str = Field(default="")
     email_host_password: str = Field(default="")
     email_from_name: str = Field(default="NexusWMS Procurement")

@@ -15,7 +15,7 @@ import {
   User,
   Warehouse,
   CreditCard,
-  Send
+  Send,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
@@ -34,7 +34,10 @@ export const Route = createFileRoute("/purchase-order")({
   head: () => ({
     meta: [
       { title: "Purchase Order Details · NexusWMS" },
-      { name: "description", content: "Comprehensive Purchase Order details and supplier communication." },
+      {
+        name: "description",
+        content: "Comprehensive Purchase Order details and supplier communication.",
+      },
     ],
   }),
   validateSearch: (search: Record<string, unknown>): POSearch => {
@@ -74,9 +77,10 @@ function PurchaseOrder() {
     try {
       setSending(true);
       const result = await api.sendPoToSupplier(poId as string);
-      toast.success(result.resent
-        ? "Purchase Order resent to supplier successfully!"
-        : "Purchase Order sent to supplier successfully!");
+      toast.success(
+        result.message ||
+          (result.resent ? "Purchase Order resent successfully." : "Purchase Order sent successfully."),
+      );
       fetchPo();
     } catch (e: any) {
       toast.error("Failed to send PO: " + e.message);
@@ -106,6 +110,20 @@ function PurchaseOrder() {
     );
   }
 
+  const subtotal = Number(poData.subtotal) || 0;
+  const discountAmount = Number(poData.discountAmount) || 0;
+  const freightCharges = Number(poData.freightCharges) || 0;
+  const taxAmount = Number(poData.taxAmount) || 0;
+  const taxableAmount = subtotal - discountAmount;
+  const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
+
   return (
     <AppShell
       title={`Purchase Order: ${poData.poNumber}`}
@@ -118,7 +136,11 @@ function PurchaseOrder() {
               onClick={handleSendToSupplier}
               disabled={sending}
             >
-              {sending ? <Loader2 className="size-4 animate-spin mr-2" /> : <Send className="size-4 mr-2" />}
+              {sending ? (
+                <Loader2 className="size-4 animate-spin mr-2" />
+              ) : (
+                <Send className="size-4 mr-2" />
+              )}
               Send to Supplier
             </Button>
           )}
@@ -129,7 +151,11 @@ function PurchaseOrder() {
               onClick={handleSendToSupplier}
               disabled={sending}
             >
-              {sending ? <Loader2 className="size-4 animate-spin mr-2" /> : <Send className="size-4 mr-2" />}
+              {sending ? (
+                <Loader2 className="size-4 animate-spin mr-2" />
+              ) : (
+                <Send className="size-4 mr-2" />
+              )}
               Resend to Supplier
             </Button>
           )}
@@ -149,7 +175,11 @@ function PurchaseOrder() {
               }
             }}
           >
-            {downloading ? <Loader2 className="size-4 animate-spin mr-2" /> : <Download className="size-4 mr-2" />}
+            {downloading ? (
+              <Loader2 className="size-4 animate-spin mr-2" />
+            ) : (
+              <Download className="size-4 mr-2" />
+            )}
             Download PDF
           </Button>
         </>
@@ -200,19 +230,28 @@ function PurchaseOrder() {
                     <tr key={idx} className="group hover:bg-muted/5 transition-colors">
                       <td className="py-4">
                         <p className="font-bold text-foreground">{l.materialName}</p>
-                        <p className="font-mono text-[10px] text-muted-foreground">{l.materialCode}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground">
+                          {l.materialCode}
+                        </p>
                       </td>
                       <td className="py-4 text-right tabular-nums">{Math.floor(l.quantity)}</td>
                       <td className="py-4 text-muted-foreground">{l.uom}</td>
-                      <td className="py-4 text-right tabular-nums">₹ {parseFloat(l.unitPrice).toLocaleString()}</td>
-                      <td className="py-4 text-right tabular-nums font-bold text-foreground">₹ {(Math.floor(parseFloat(l.quantity)) * parseFloat(l.unitPrice)).toLocaleString()}</td>
+                      <td className="py-4 text-right tabular-nums">
+                        ₹ {parseFloat(l.unitPrice).toLocaleString()}
+                      </td>
+                      <td className="py-4 text-right tabular-nums font-bold text-foreground">
+                        ₹{" "}
+                        {(
+                          Math.floor(parseFloat(l.quantity)) * parseFloat(l.unitPrice)
+                        ).toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="mt-8 border-t border-border pt-6">
+            <div className="hidden" aria-hidden="true">
               <div className="ml-auto max-w-xs space-y-3">
                 <SummaryRow label="Subtotal" value={poData.subtotal} />
                 <SummaryRow label="Discount" value={poData.discountAmount} isNegative />
@@ -220,9 +259,42 @@ function PurchaseOrder() {
                 <SummaryRow label="Additional Charges" value={poData.additionalCharges} />
                 <div className="pt-3 border-t border-primary/20 flex items-center justify-between">
                   <span className="text-sm font-black text-foreground uppercase">Grand Total</span>
-                  <span className="text-xl font-black text-primary">₹ {parseFloat(poData.totalAmount).toLocaleString()}</span>
+                  <span className="text-xl font-black text-primary">
+                    ₹ {parseFloat(poData.totalAmount).toLocaleString()}
+                  </span>
                 </div>
               </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="RFQ Response Summary"
+            description="Selected supplier quotation totals and commercial terms"
+            icon={CheckCircle2}
+          >
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <SummaryMetric label="Items quoted" value={`${poData.items?.length || 0}`} />
+              <SummaryMetric label="Subtotal" value={formatCurrency(subtotal)} />
+              <SummaryMetric
+                label={`Discount (${discountPercentage.toFixed(2)}%)`}
+                value={`− ${formatCurrency(discountAmount)}`}
+                valueClassName="text-destructive"
+              />
+              <SummaryMetric
+                label={`GST (${taxPercentage.toFixed(2)}%)`}
+                value={formatCurrency(taxAmount)}
+              />
+              <SummaryMetric label="Freight charges" value={formatCurrency(freightCharges)} />
+              <SummaryMetric
+                label="Quotation total"
+                value={formatCurrency(Number(poData.totalAmount) || 0)}
+                valueClassName="text-primary"
+                emphasis
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+              <span>Expected delivery: {poData.expectedDeliveryDate || "Not specified"}</span>
+              <span>Payment: {poData.paymentTerms || "Not specified"}</span>
             </div>
           </SectionCard>
 
@@ -230,7 +302,10 @@ function PurchaseOrder() {
             <SectionCard title="Delivery Details" icon={Warehouse}>
               <div className="grid gap-3">
                 <Field label="Delivery Warehouse" value={poData.deliveryWarehouseName} />
-                <Field label="Expected Delivery" value={poData.expectedDeliveryDate || "As per schedule"} />
+                <Field
+                  label="Expected Delivery"
+                  value={poData.expectedDeliveryDate || "As per schedule"}
+                />
                 <Field label="Delivery Address" value={poData.deliveryAddress} />
               </div>
             </SectionCard>
@@ -259,8 +334,13 @@ function PurchaseOrder() {
               "{poData.rejectionReason}"
             </p>
             <div className="mt-4 p-3 bg-white/50 rounded-lg border border-destructive/10">
-              <p className="text-xs text-destructive font-bold uppercase tracking-tighter">Status: Permanent Rejection</p>
-              <p className="text-[11px] text-muted-foreground mt-1">This Purchase Order has been rejected by Finance and is permanently closed. It cannot be modified or resubmitted.</p>
+              <p className="text-xs text-destructive font-bold uppercase tracking-tighter">
+                Status: Permanent Rejection
+              </p>
+              <p className="text-[11px] text-muted-foreground mt-1">
+                This Purchase Order has been rejected by Finance and is permanently closed. It
+                cannot be modified or resubmitted.
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -275,22 +355,40 @@ function PurchaseOrder() {
                   {idx < poData.history.length - 1 && (
                     <div className="absolute left-[15px] top-7 bottom-0 w-0.5 bg-border/40" />
                   )}
-                  <div className={cn(
-                    "grid size-8 shrink-0 place-items-center rounded-full border text-[10px] font-bold",
-                    (h.status === "APPROVED" || h.status === "Approved") ? "bg-success-soft text-success border-success/30" :
-                    (h.status === "REJECTED" || h.status === "Rejected" || h.status === "FINANCE_REJECTED") ? "bg-danger-soft text-destructive border-destructive/30" :
-                    (h.status === "SHIPPED" || h.status === "Shipped" || h.status === "IN_TRANSIT" || h.status === "ASN_SUBMITTED") ? "bg-teal-soft text-teal border-teal/30" :
-                    "bg-muted text-muted-foreground"
-                  )}>
+                  <div
+                    className={cn(
+                      "grid size-8 shrink-0 place-items-center rounded-full border text-[10px] font-bold",
+                      h.status === "APPROVED" || h.status === "Approved"
+                        ? "bg-success-soft text-success border-success/30"
+                        : h.status === "REJECTED" ||
+                            h.status === "Rejected" ||
+                            h.status === "FINANCE_REJECTED"
+                          ? "bg-danger-soft text-destructive border-destructive/30"
+                          : h.status === "SHIPPED" ||
+                              h.status === "Shipped" ||
+                              h.status === "IN_TRANSIT" ||
+                              h.status === "ASN_SUBMITTED"
+                            ? "bg-teal-soft text-teal border-teal/30"
+                            : "bg-muted text-muted-foreground",
+                    )}
+                  >
                     {idx + 1}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-bold">{h.status}</p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{new Date(h.created_at).toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground font-mono">
+                        {new Date(h.created_at).toLocaleString()}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground font-medium italic">By {h.actor_name}</p>
-                    {h.comments && <p className="mt-1 text-xs text-foreground/70 bg-muted/30 p-2 rounded-lg">{h.comments}</p>}
+                    <p className="text-xs text-muted-foreground font-medium italic">
+                      By {h.actor_name}
+                    </p>
+                    {h.comments && (
+                      <p className="mt-1 text-xs text-foreground/70 bg-muted/30 p-2 rounded-lg">
+                        {h.comments}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
@@ -309,6 +407,22 @@ function SummaryRow({ label, value, isNegative = false }: any) {
       <span className={cn("font-mono font-bold", isNegative && "text-destructive")}>
         {isNegative ? "- " : ""}₹ {parseFloat(value || 0).toLocaleString()}
       </span>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, valueClassName, emphasis = false }: any) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border/60 bg-muted/20 p-4",
+        emphasis && "border-primary/30 bg-primary-soft/15",
+      )}
+    >
+      <p className={cn("text-xs font-medium text-muted-foreground", emphasis && "font-bold text-primary")}>
+        {label}
+      </p>
+      <p className={cn("mt-1 text-lg font-bold", valueClassName)}>{value}</p>
     </div>
   );
 }

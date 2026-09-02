@@ -37,7 +37,9 @@ export function StatCard({
         </div>
         <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
         <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
-        {delta && <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">{delta}</p>}
+        {delta && (
+          <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">{delta}</p>
+        )}
       </Card>
     </Link>
   );
@@ -46,8 +48,12 @@ export function StatCard({
 export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className={cn("mt-1 truncate text-sm font-medium", mono && "font-mono tracking-tight")}>{value}</div>
+      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <div className={cn("mt-1 truncate text-sm font-medium", mono && "font-mono tracking-tight")}>
+        {value}
+      </div>
     </div>
   );
 }

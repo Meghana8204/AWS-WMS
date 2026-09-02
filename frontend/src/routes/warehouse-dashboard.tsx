@@ -36,9 +36,17 @@ export const Route = createFileRoute("/warehouse-dashboard")({
   head: () => ({
     meta: [
       { title: "Warehouse Dashboard · NexusWMS Pune DC" },
-      { name: "description", content: "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress at Pune Distribution Centre." },
+      {
+        name: "description",
+        content:
+          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress at Pune Distribution Centre.",
+      },
       { property: "og:title", content: "Warehouse Dashboard · NexusWMS Pune DC" },
-      { property: "og:description", content: "Live truck arrivals, dock occupancy and receiving progress for warehouse managers." },
+      {
+        property: "og:description",
+        content:
+          "Live truck arrivals, dock occupancy and receiving progress for warehouse managers.",
+      },
     ],
   }),
   component: WarehouseDashboard,
@@ -84,9 +92,10 @@ function WarehouseDashboard() {
 
   // Filter items based on status toggle and search term
   const filteredItems = rawItems.filter((item: any) => {
-    const matchesFilter = activeFilter === "ALL" ||
-                         (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
-                         (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
+    const matchesFilter =
+      activeFilter === "ALL" ||
+      (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
+      (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
 
     if (!matchesFilter) return false;
 
@@ -108,8 +117,8 @@ function WarehouseDashboard() {
 
   return (
     <AppShell
-      title="Good morning, Rohit"
-      subtitle="Friday, 31 July 2026 · Pune Distribution Centre · Shift A (06:00 – 14:00)"
+      title="Warehouse Dashboard"
+      subtitle="Pune Distribution Centre · Real-time Inbound & Operations Overview"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>
@@ -126,11 +135,46 @@ function WarehouseDashboard() {
       }
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Total arrivals" value={loading ? "..." : String(stats.totalArrivals)} delta="Live from gate" icon={Truck} tone="primary" to="/vehicle-queue" />
-        <StatCard label="Verified POs" value={loading ? "..." : String(stats.verifiedArrivals)} delta="Matched in DB" icon={Clock3} tone="success" to="/vehicle-queue" />
-        <StatCard label="Unscheduled" value={loading ? "..." : String(stats.unscheduledArrivals)} delta="Manual review" icon={CircleDot} tone="warning" to="/gate-entry" />
-        <StatCard label="Dock occupancy" value={loading ? ".../8" : stats.occupiedDocks} delta="Real-time status" icon={Warehouse} tone="teal" to="/dock-assignment" />
-        <StatCard label="Vehicles waiting" value={loading ? "..." : String(stats.vehiclesWaiting)} delta="Avg wait 12 min" icon={ListOrdered} tone="danger" to="/vehicle-queue" />
+        <StatCard
+          label="Total arrivals"
+          value={loading ? "..." : String(stats.totalArrivals)}
+          delta="Live from gate"
+          icon={Truck}
+          tone="primary"
+          to="/receiving"
+        />
+        <StatCard
+          label="Verified POs"
+          value={loading ? "..." : String(stats.verifiedArrivals)}
+          delta="Matched in DB"
+          icon={Clock3}
+          tone="success"
+          to="/receiving"
+        />
+        <StatCard
+          label="Unscheduled"
+          value={loading ? "..." : String(stats.unscheduledArrivals)}
+          delta="Manual review"
+          icon={CircleDot}
+          tone="warning"
+          to="/gate-entry"
+        />
+        <StatCard
+          label="Dock occupancy"
+          value={loading ? ".../8" : stats.occupiedDocks}
+          delta="Real-time status"
+          icon={Warehouse}
+          tone="teal"
+          to="/dock-assignment"
+        />
+        <StatCard
+          label="Vehicles waiting"
+          value={loading ? "..." : String(stats.vehiclesWaiting)}
+          delta="Avg wait 12 min"
+          icon={ListOrdered}
+          tone="danger"
+          to="/receiving"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 xl:grid-cols-3">
@@ -139,7 +183,11 @@ function WarehouseDashboard() {
           description="Vehicles processed per hour — Shift A"
           icon={BarChart3}
           className="xl:col-span-2"
-          actions={<span className="rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-success">Live</span>}
+          actions={
+            <span className="rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-success">
+              Live
+            </span>
+          }
         >
           <div className="h-[248px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -154,9 +202,24 @@ function WarehouseDashboard() {
                     <stop offset="100%" stopColor="var(--color-chart-2)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--color-border)" />
-                <XAxis dataKey="hour" tickLine={false} axisLine={false} fontSize={11} stroke="var(--color-muted-foreground)" />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} stroke="var(--color-muted-foreground)" />
+                <CartesianGrid
+                  strokeDasharray="4 4"
+                  vertical={false}
+                  stroke="var(--color-border)"
+                />
+                <XAxis
+                  dataKey="hour"
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="var(--color-muted-foreground)"
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  fontSize={11}
+                  stroke="var(--color-muted-foreground)"
+                />
                 <RTooltip
                   contentStyle={{
                     borderRadius: 12,
@@ -165,14 +228,30 @@ function WarehouseDashboard() {
                     fontSize: 12,
                   }}
                 />
-                <Area type="monotone" dataKey="arrivals" stroke="var(--color-chart-1)" strokeWidth={2.5} fill="url(#gA)" />
-                <Area type="monotone" dataKey="received" stroke="var(--color-chart-2)" strokeWidth={2.5} fill="url(#gB)" />
+                <Area
+                  type="monotone"
+                  dataKey="arrivals"
+                  stroke="var(--color-chart-1)"
+                  strokeWidth={2.5}
+                  fill="url(#gA)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="received"
+                  stroke="var(--color-chart-2)"
+                  strokeWidth={2.5}
+                  fill="url(#gB)"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </SectionCard>
 
-        <SectionCard title="Quick actions" description="Frequent warehouse manager tasks" icon={Plus}>
+        <SectionCard
+          title="Quick actions"
+          description="Frequent warehouse manager tasks"
+          icon={Plus}
+        >
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map((a) => (
               <Link
@@ -190,10 +269,14 @@ function WarehouseDashboard() {
           <div className="mt-4 rounded-2xl border border-border/70 p-4">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">Shift receiving target</span>
-              <span className="font-semibold tabular-nums">{loading ? "..." : `${targetProgress.current} / ${targetProgress.target}`}</span>
+              <span className="font-semibold tabular-nums">
+                {loading ? "..." : `${targetProgress.current} / ${targetProgress.target}`}
+              </span>
             </div>
             <Progress value={loading ? 0 : targetProgress.percentage} className="mt-3 h-2" />
-            <p className="mt-2 text-xs text-muted-foreground">{loading ? "..." : `${targetProgress.percentage}% of planned inbound completed.`}</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {loading ? "..." : `${targetProgress.percentage}% of planned inbound completed.`}
+            </p>
           </div>
         </SectionCard>
       </div>
@@ -216,7 +299,7 @@ function WarehouseDashboard() {
                 />
               </div>
               <Button variant="ghost" size="sm" className="rounded-lg" asChild>
-                <Link to="/vehicle-queue">
+                <Link to="/receiving">
                   View all <ArrowUpRight className="size-3.5" />
                 </Link>
               </Button>
@@ -270,7 +353,10 @@ function WarehouseDashboard() {
                 </thead>
                 <tbody>
                   {filteredItems.map((a: any) => (
-                    <tr key={a.id} className="group border-b border-border/60 last:border-0 hover:bg-muted/20">
+                    <tr
+                      key={a.id}
+                      className="group border-b border-border/60 last:border-0 hover:bg-muted/20"
+                    >
                       <td className="py-3">
                         <div className="size-12 overflow-hidden rounded-lg border border-border/40 bg-muted/30">
                           {a.truck_photo_base64 ? (
@@ -287,7 +373,9 @@ function WarehouseDashboard() {
                         </div>
                       </td>
                       <td className="py-3">
-                        <p className="font-mono text-[10px] text-muted-foreground uppercase leading-tight">{a.gate_entry_no}</p>
+                        <p className="font-mono text-[10px] text-muted-foreground uppercase leading-tight">
+                          {a.gate_entry_no}
+                        </p>
                         <div className="mt-1 flex items-center gap-1.5">
                           <span className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary border border-primary/20">
                             {a.vehicle_number}
@@ -296,7 +384,9 @@ function WarehouseDashboard() {
                       </td>
                       <td className="py-3">
                         <p className="max-w-[200px] truncate font-bold text-xs">{a.vendor}</p>
-                        <p className="max-w-[200px] truncate text-[11px] text-muted-foreground">{a.material}</p>
+                        <p className="max-w-[200px] truncate text-[11px] text-muted-foreground">
+                          {a.material}
+                        </p>
                       </td>
                       <td className="py-3">
                         <p className="font-mono text-xs font-medium">{a.po_number}</p>
@@ -319,7 +409,11 @@ function WarehouseDashboard() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Recent activity" description="Gate, dock and receiving events" icon={CircleDot}>
+        <SectionCard
+          title="Recent activity"
+          description="Gate, dock and receiving events"
+          icon={CircleDot}
+        >
           <Timeline items={activeActivity} />
         </SectionCard>
       </div>
@@ -332,7 +426,7 @@ function FilterButton({
   count,
   active,
   onClick,
-  tone = "primary"
+  tone = "primary",
 }: {
   label: string;
   count: number;
@@ -357,14 +451,16 @@ function FilterButton({
       onClick={onClick}
       className={cn(
         "flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold transition-all",
-        active ? activeTones[tone] : inactiveTones[tone]
+        active ? activeTones[tone] : inactiveTones[tone],
       )}
     >
       {label}
-      <span className={cn(
-        "ml-1 grid size-5 place-items-center rounded-full text-[10px] font-black",
-        active ? "bg-white/20" : "bg-muted"
-      )}>
+      <span
+        className={cn(
+          "ml-1 grid size-5 place-items-center rounded-full text-[10px] font-black",
+          active ? "bg-white/20" : "bg-muted",
+        )}
+      >
         {count}
       </span>
     </button>

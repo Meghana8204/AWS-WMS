@@ -12,13 +12,15 @@ from sqlalchemy.orm import selectinload
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+from app.security.dependencies import get_current_user, CurrentUser
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    uow: UnitOfWork = Depends(get_uow)
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
 ) -> dict:
     """
     Get real-time dashboard metrics from the gate repository.

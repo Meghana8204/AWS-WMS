@@ -24,23 +24,31 @@ import {
   FileQuestion,
   FileBadge,
   Loader2,
+  Factory,
+  Users,
+  Menu,
+  AlertTriangle,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Material Data", to: "/material-data", icon: Database },
   { label: "Inventory", to: "/inventory", icon: Boxes },
+  { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
+  { label: "Pick Tasks", to: "/pick-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
-  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
+  { label: "GRN", to: "/grn", icon: FileCheck2 },
+  { label: "Damage Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
 
 const procurementNav = [
@@ -51,12 +59,16 @@ const procurementNav = [
   { label: "Quotations", to: "/procurement/quotations", icon: FileBadge },
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
+  { label: "Quality Issues", to: "/procurement/quality-issues", icon: AlertTriangle },
+  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
+  { label: "Quality Issues", to: "/supplier/quality-issues", icon: AlertTriangle },
+  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
 const financeNav = [
@@ -68,11 +80,54 @@ const financeNav = [
 const gateSecurityNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
-  { label: "Arrival Mgmt", to: "/notifications", icon: Truck },
-  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
-  { label: "Gate Exit Mgmt", to: "/gate-exit-management", icon: DoorOpen },
+  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
+  { label: "Unscheduled Arrivals", to: "/unscheduled-arrivals", icon: FileQuestion },
+  { label: "Replacement Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
+
+const assemblyNav = [
+  { label: "Dashboard", to: "/assembly-dashboard", icon: LayoutDashboard },
+  { label: "Assembly Orders", to: "/assembly-orders", icon: Factory },
+  { label: "Material Requirements", to: "/assembly-material-requirements", icon: ClipboardList },
+  { label: "Material Reservations", to: "/assembly-material-reservations", icon: Boxes },
+  { label: "Material Issues", to: "/assembly-material-issues", icon: PackageCheck },
+  { label: "Work Orders", to: "/assembly-work-orders", icon: Factory },
+  { label: "Assembly Teams", to: "/assembly-workforce", icon: Users },
+  { label: "Assembly Progress", to: "/assembly-progress", icon: BarChart3 },
+  { label: "Material Consumption", to: "/assembly-material-consumption", icon: Boxes },
+  { label: "Scrap / Wastage", to: "/assembly-scrap-wastage", icon: FileText },
+  { label: "Quality Inspection", to: "/assembly-quality-inspection", icon: FileCheck2 },
+  { label: "Rework", to: "/assembly-rework", icon: Settings },
+  { label: "Finished Goods", to: "/assembly-finished-goods", icon: Warehouse },
+  { label: "Reports", to: "/assembly-reports", icon: BarChart3 },
+  { label: "Notifications", to: "/notifications", icon: Bell },
+];
+
+function isActiveRoute(path: string, target: string): boolean {
+  return path === target || path.startsWith(`${target}/`);
+}
+
+function isActiveNavItem(
+  path: string,
+  currentSearch: Record<string, unknown>,
+  item: { to: string; search?: Record<string, unknown> },
+  navItems: ReadonlyArray<{ to: string; search?: Record<string, unknown> }>,
+): boolean {
+  if (!isActiveRoute(path, item.to)) return false;
+
+  if (item.search) {
+    return Object.entries(item.search).every(([key, value]) => currentSearch[key] === value);
+  }
+
+  // A base link and a filtered link can share a pathname. Keep the base link
+  // inactive while one of its sibling filters is selected.
+  const siblingSearchKeys = navItems
+    .filter((navItem) => navItem.to === item.to && navItem.search)
+    .flatMap((navItem) => Object.keys(navItem.search ?? {}));
+
+  return siblingSearchKeys.every((key) => currentSearch[key] == null);
+}
 
 export function AppShell({
   children,
@@ -86,9 +141,15 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const path = useRouterState({ select: (s) => s.location.pathname });
+  const { path, currentSearch } = useRouterState({
+    select: (s) => ({
+      path: s.location.pathname,
+      currentSearch: s.location.search as Record<string, unknown>,
+    }),
+  });
   const navigate = useNavigate();
   const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -133,18 +194,25 @@ export function AppShell({
         setUser(u);
 
         // Fetch notifications for the user's role
-        const role = u.roles?.includes("SUPPLIER") ? "SUPPLIER"
-          : u.roles?.includes("FINANCE") ? "FINANCE"
-          : u.roles?.includes("PROCUREMENT") ? "PROCUREMENT"
-          : "WAREHOUSE";
+        const role = u.roles?.includes("SUPPLIER")
+          ? "SUPPLIER"
+          : u.roles?.includes("FINANCE")
+            ? "FINANCE"
+            : u.roles?.includes("PROCUREMENT")
+              ? "PROCUREMENT"
+              : u.roles?.includes("ASSEMBLY_MANAGER")
+                ? "ASSEMBLY_MANAGER"
+                : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE") {
               const data = await api.getArrivalNotifications();
-              setUnreadNotifications(data.filter(n => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length);
+              setUnreadNotifications(
+                data.filter((n) => String(n.status || "").toUpperCase() !== "ACKNOWLEDGED").length,
+              );
             } else {
               const data = await api.getNotifications(role);
-              setUnreadNotifications(data.filter(n => !(n.is_read ?? n.isRead)).length);
+              setUnreadNotifications(data.filter((n) => !(n.is_read ?? n.isRead)).length);
             }
           } catch (e) {
             console.error("Failed to fetch notifications", e);
@@ -165,25 +233,64 @@ export function AppShell({
     }
   }, [dark]);
 
-  // The current route is available during server rendering, so procurement/supplier/finance
+  // The current route is available during server rendering, so each module
   // pages can select their sidebar immediately rather than waiting for the
   // client-side localStorage role lookup.
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
-  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
+  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
-  const isWarehouseRoute = path === "/warehouse-dashboard" || [
-    "/inventory", "/warehouse/material-requests", "/gate-entry", "/notifications", "/vehicle-queue", "/receiving", "/reports"
-  ].some(p => path.startsWith(p));
+  const isGateSecurityRoute =
+    path === "/gate-entry" || path === "/vehicle-exit" || path === "/unscheduled-arrivals";
+  const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
+  const isWarehouseRoute =
+    path === "/warehouse-dashboard" ||
+    [
+      "/inventory",
+      "/material-data",
+      "/warehouse-storage",
+      "/warehouse/material-requests",
+      "/notifications",
+      "/receiving",
+      "/grn",
+      "/reports",
+    ].some((p) => path.startsWith(p));
 
-  const nav = isSupplierRoute || (mounted && user?.roles?.includes("SUPPLIER"))
+  // Keep each module's navigation isolated. The current route takes precedence
+  // over role order so multi-role (or stale localStorage) users do not see the
+  // Supplier menu on Procurement pages, or vice versa.
+  const routeNav = isSupplierRoute
     ? supplierNav
-    : (isFinanceRoute || (mounted && user?.roles?.includes("FINANCE"))
+    : isProcurementRoute
+      ? procurementNav
+      : isFinanceRoute
+        ? financeNav
+        : isGateSecurityRoute
+          ? gateSecurityNav
+          : isAssemblyRoute
+            ? assemblyNav
+            : isWarehouseRoute
+              ? warehouseNav
+              : null;
+
+  const roleNav = user?.roles?.includes("SUPPLIER")
+    ? supplierNav
+    : user?.roles?.includes("FINANCE")
       ? financeNav
-      : (isProcurementRoute || (mounted && user?.roles?.includes("PROCUREMENT"))
-          ? procurementNav
-          : (mounted && user?.roles?.includes("GATE_SECURITY")
-              ? gateSecurityNav
-              : warehouseNav)));
+      : user?.roles?.includes("PROCUREMENT")
+        ? procurementNav
+        : user?.roles?.includes("GATE_SECURITY")
+          ? gateSecurityNav
+          : user?.roles?.includes("ASSEMBLY_MANAGER")
+            ? assemblyNav
+            : warehouseNav;
+
+  const nav = routeNav ?? (mounted ? roleNav : warehouseNav);
+
+  const moduleLabel = isSupplierRoute
+    ? "Supplier Portal"
+    : isProcurementRoute
+      ? "Procurement Portal"
+      : "Warehouse navigation";
 
   const handleLogout = () => {
     api.logout();
@@ -213,12 +320,14 @@ export function AppShell({
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {nav.map((item) => {
-            const active = path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
+            const active = isActiveNavItem(path, currentSearch, item, nav);
             return (
               <Link
-                key={item.to}
+                key={`${item.label}-${item.to}`}
                 to={item.to}
+                search={item.search}
                 title={item.label}
+                aria-current={active ? "page" : undefined}
                 className={cn(
                   "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-all",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
@@ -239,13 +348,21 @@ export function AppShell({
 
         <div className="border-t border-sidebar-border p-3 space-y-1">
           <button
+            type="button"
+            suppressHydrationWarning
             onClick={() => setCollapsed((c) => !c)}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
           >
-            {collapsed ? <PanelLeft className="size-[18px]" /> : <PanelLeftClose className="size-[18px]" />}
+            {collapsed ? (
+              <PanelLeft className="size-[18px]" />
+            ) : (
+              <PanelLeftClose className="size-[18px]" />
+            )}
             {!collapsed && <span>Collapse</span>}
           </button>
           <button
+            type="button"
+            suppressHydrationWarning
             onClick={handleLogout}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
           >
@@ -255,15 +372,67 @@ export function AppShell({
         </div>
       </aside>
 
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="flex w-[300px] flex-col gap-0 border-sidebar-border bg-sidebar p-0 sm:max-w-[320px]">
+          <SheetTitle className="sr-only">{moduleLabel}</SheetTitle>
+          <SheetDescription className="sr-only">Navigate within the current module</SheetDescription>
+          <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
+            <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+              <Warehouse className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold tracking-tight">NexusWMS</p>
+              <p className="text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+            </div>
+          </div>
+          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            {nav.map((item) => {
+              const active = isActiveNavItem(path, currentSearch, item, nav);
+              return (
+                <Link
+                  key={`${item.label}-${item.to}`}
+                  to={item.to}
+                  search={item.search}
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
+                    active && "bg-primary-soft text-primary",
+                  )}
+                >
+                  <item.icon className="size-[18px] shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-sidebar-border p-3">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive hover:bg-danger-soft"
+            >
+              <LogOut className="size-[18px]" /> Logout
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-            <Link to={nav[0].to} className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden">
-              <Warehouse className="size-4" />
-            </Link>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
+              className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground shadow-sm md:hidden"
+            >
+              <Menu className="size-5" />
+            </button>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
+                suppressHydrationWarning
                 placeholder="Search truck no, PO, vendor, gate entry…"
                 className="h-10 w-full rounded-xl border border-border bg-muted/60 pl-9 pr-16 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:bg-card focus:ring-2 focus:ring-ring/40"
                 value={searchTerm}
@@ -277,10 +446,7 @@ export function AppShell({
               {/* Search Results Dropdown */}
               {showSearch && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
-                    onClick={() => setShowSearch(false)}
-                  />
+                  <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
                   <div className="absolute top-full left-0 mt-2 w-full min-w-[320px] max-h-[480px] overflow-y-auto z-50 rounded-2xl border border-border bg-card shadow-2xl backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="p-2">
                       {searchResults.length > 0 ? (
@@ -296,12 +462,19 @@ export function AppShell({
                               className="flex flex-col gap-0.5 rounded-xl px-4 py-2.5 transition-colors hover:bg-accent"
                             >
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold tracking-tight">{result.title}</span>
-                                <Badge variant="outline" className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30">
+                                <span className="text-sm font-bold tracking-tight">
+                                  {result.title}
+                                </span>
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-black uppercase py-0 leading-tight border-primary/20 text-primary bg-primary-soft/30"
+                                >
                                   {result.type.replace("_", " ")}
                                 </Badge>
                               </div>
-                              <span className="text-[11px] text-muted-foreground line-clamp-1">{result.subtitle}</span>
+                              <span className="text-[11px] text-muted-foreground line-clamp-1">
+                                {result.subtitle}
+                              </span>
                             </Link>
                           ))}
                         </div>
@@ -320,6 +493,8 @@ export function AppShell({
 
             <div className="ml-auto flex items-center gap-1.5">
               <button
+                type="button"
+                suppressHydrationWarning
                 onClick={() => setDark((d) => !d)}
                 aria-label="Toggle dark mode"
                 className="grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -340,17 +515,25 @@ export function AppShell({
               </Link>
               <div className="group relative ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3 transition-colors hover:bg-accent/50">
                 <span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-                  {user?.username?.substring(0, 2).toUpperCase() || "RS"}
+                  {user?.username?.substring(0, 2).toUpperCase() || "AO"}
                 </span>
                 <div className="hidden leading-tight lg:block">
-                  <p className="text-xs font-semibold">{user?.username || "Rohit Sharma"}</p>
+                  <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
                   <p className="text-[10px] text-muted-foreground">
-                    {user?.roles?.includes("PROCUREMENT") ? "Procurement Manager" :
-                     user?.roles?.includes("FINANCE") ? "Finance Manager" :
-                     user?.roles?.includes("GATE_SECURITY") ? "Security Officer" : "Warehouse Manager"}
+                    {user?.roles?.includes("PROCUREMENT")
+                      ? "Procurement Manager"
+                      : user?.roles?.includes("FINANCE")
+                        ? "Finance Manager"
+                        : user?.roles?.includes("GATE_SECURITY")
+                          ? "Security Officer"
+                          : user?.roles?.includes("ASSEMBLY_MANAGER")
+                            ? "Assembly Manager"
+                          : "Operations Manager"}
                   </p>
                 </div>
                 <button
+                  type="button"
+                  suppressHydrationWarning
                   onClick={handleLogout}
                   className="ml-2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                   title="Logout"
@@ -375,24 +558,6 @@ export function AppShell({
           </div>
         </main>
 
-        <nav className="sticky bottom-0 z-30 grid grid-cols-5 border-t border-border glass-strong md:hidden">
-          {nav.slice(0, 5).map((item) => {
-            const active = path === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium text-muted-foreground",
-                  active && "text-primary",
-                )}
-              >
-                <item.icon className="size-[18px]" />
-                {item.label.split(" ")[0]}
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </div>
   );
@@ -458,7 +623,7 @@ export function StatusBadge({ status }: { status: string }) {
       className={cn(
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map["Hold"],
-        isLive && "pl-5"
+        isLive && "pl-5",
       )}
     >
       {isLive && (

@@ -35,9 +35,11 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['supplier_id'], ['supplier.id'], name=op.f('fk_supplier_material_link_supplier_id_supplier'), ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('supplier_id', 'material_id', name=op.f('pk_supplier_material_link'))
     )
-    op.drop_table('purchase_requisition_line')
-    op.drop_table('purchase_requisition')
-    op.add_column('asn', sa.Column('supplier_id', app.database.base.GUID(length=36), nullable=True))
+    conn = op.get_bind()
+    conn.execute(sa.text("DROP TABLE IF EXISTS purchase_requisition_line CASCADE"))
+    conn.execute(sa.text("DROP TABLE IF EXISTS purchase_requisition CASCADE"))
+    conn.execute(sa.text("ALTER TABLE asn ADD COLUMN IF NOT EXISTS shipment_date DATE DEFAULT CURRENT_DATE"))
+    conn.execute(sa.text("ALTER TABLE asn ADD COLUMN IF NOT EXISTS supplier_id UUID"))
     op.alter_column('asn', 'po_id',
                existing_type=sa.UUID(),
                type_=sa.String(length=64),
@@ -53,6 +55,10 @@ def upgrade() -> None:
     op.alter_column('grn', 'po_id',
                existing_type=sa.UUID(),
                nullable=True)
+    conn.execute(sa.text("ALTER TABLE rfq ADD COLUMN IF NOT EXISTS rfq_number VARCHAR(64)"))
+    conn.execute(sa.text("ALTER TABLE rfq ADD COLUMN IF NOT EXISTS rfq_date DATE DEFAULT CURRENT_DATE"))
+    conn.execute(sa.text("ALTER TABLE rfq ADD COLUMN IF NOT EXISTS warehouse VARCHAR(128)"))
+    conn.execute(sa.text("ALTER TABLE rfq ADD COLUMN IF NOT EXISTS procurement_officer VARCHAR(128)"))
     op.alter_column('rfq', 'rfq_number',
                existing_type=sa.VARCHAR(length=64),
                nullable=False)
@@ -65,6 +71,10 @@ def upgrade() -> None:
     op.alter_column('rfq', 'procurement_officer',
                existing_type=sa.VARCHAR(length=128),
                nullable=False)
+    conn.execute(sa.text("ALTER TABLE supplier ADD COLUMN IF NOT EXISTS rating NUMERIC(3,2) DEFAULT 0"))
+    conn.execute(sa.text("ALTER TABLE supplier ADD COLUMN IF NOT EXISTS performance_score NUMERIC(5,2) DEFAULT 0"))
+    conn.execute(sa.text("ALTER TABLE supplier ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"))
+    conn.execute(sa.text("ALTER TABLE supplier ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"))
     op.alter_column('supplier', 'rating',
                existing_type=sa.NUMERIC(precision=3, scale=2),
                nullable=False,

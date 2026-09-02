@@ -1,10 +1,13 @@
+"""
+SQLAlchemy ORM models for the Storage module (Putaway & Locations).
+"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 import uuid
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base, GUID
@@ -33,6 +36,7 @@ class PutawayTaskModel(Base):
     task_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     grn_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("grn.id", ondelete="RESTRICT"), nullable=False, index=True)
     grn_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    handling_unit_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("handling_unit.id", ondelete="RESTRICT"), nullable=True, unique=True, index=True)
     item_code: Mapped[str] = mapped_column(String(64), nullable=False)
     material_name: Mapped[str] = mapped_column(String(256), nullable=False)
     quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
@@ -45,13 +49,45 @@ class PutawayTaskModel(Base):
     destination_bin: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     location_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PUTAWAY_PENDING", index=True)
+    assigned_to: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    material_category: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    handling_requirement: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    rotation_policy: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    placement_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN", index=True)
     started_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class HandlingUnitModel(Base):
+    __tablename__ = "handling_unit"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    hu_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    barcode_value: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    receiving_line_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("receiving_line.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True)
+    grn_line_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("grn_line.id", ondelete="RESTRICT"), nullable=True, unique=True, index=True)
+    item_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False)
+    batch_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    supplier_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    po_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    asn_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    grn_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    current_location: Mapped[str] = mapped_column(String(128), nullable=False, default="RECEIVING_AREA")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="LABEL_GENERATED", index=True)
+    generated_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class PutawayMovementModel(Base):
@@ -61,6 +97,13 @@ class PutawayMovementModel(Base):
     putaway_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("putaway_task.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True)
     material_scan: Mapped[str] = mapped_column(String(64), nullable=False)
     location_scan: Mapped[str] = mapped_column(String(64), nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    source_location: Mapped[str] = mapped_column(String(128), nullable=False)
+    destination_location: Mapped[str] = mapped_column(String(128), nullable=False)
+    batch_lot: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    serial_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    container_pallet: Mapped[str | None] = mapped_column(String(128), nullable=True)
     confirmed_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     uom: Mapped[str] = mapped_column(String(32), nullable=False)
     inventory_available_before: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)

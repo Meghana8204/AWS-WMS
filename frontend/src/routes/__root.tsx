@@ -95,14 +95,17 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
   }),
   beforeLoad: ({ location }) => {
-    // List of routes that don't require authentication
-    const publicRoutes = ["/login"];
+    // Skip server-side redirects for localStorage-based auth to prevent refresh redirects to login
+    if (typeof window === "undefined") return;
 
-    if (!publicRoutes.includes(location.pathname) && !isAuthenticated()) {
+    // List of routes that don't require authentication
+    const publicRoutes = new Set(["/login"]);
+
+    if (!publicRoutes.has(location.pathname) && !isAuthenticated()) {
       throw redirect({
         to: "/login",
         search: {
-          redirect: location.pathname,
+          redirect: `${location.pathname}${location.searchStr}${location.hash}`,
         },
       });
     }
@@ -115,11 +118,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>

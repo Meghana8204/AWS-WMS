@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -14,8 +14,6 @@ import {
   Info,
   Download,
   MessageSquare,
-  Sparkles,
-  ArrowRight
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -38,7 +36,6 @@ function ApprovalDetail() {
   const [processing, setProcessing] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
-  const [hasRelatedProposals, setHasRelatedProposals] = useState(false);
 
   const fetchPo = async () => {
     try {
@@ -46,12 +43,6 @@ function ApprovalDetail() {
       const data = await api.getPurchaseOrder(approvalId);
       setPo(data);
 
-      // Check for related proposals if rfqId exists
-      if (data.rfqId) {
-        const allApprovals = await api.getFinanceApprovals();
-        const related = allApprovals.filter((p: any) => p.rfqId === data.rfqId && p.id !== approvalId);
-        setHasRelatedProposals(related.length > 0);
-      }
     } catch (error) {
       console.error("Failed to fetch PO:", error);
       toast.error("Failed to load purchase order details");
@@ -107,12 +98,23 @@ function ApprovalDetail() {
 
   if (!po) return null;
 
+  const subtotal = Number(po.subtotal) || 0;
+  const discountAmount = Number(po.discountAmount) || 0;
+  const taxAmount = Number(po.taxAmount) || 0;
+  const taxableAmount = subtotal - discountAmount;
+  const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+
   return (
     <AppShell
       title={`Review PO Proposal: ${po.poNumber}`}
       subtitle={`Submitted on ${new Date(po.createdAt).toLocaleString()}`}
       actions={
-        <Button variant="outline" className="rounded-xl" onClick={() => navigate({ to: "/finance/approvals" })}>
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => navigate({ to: "/finance/approvals" })}
+        >
           <ArrowLeft className="mr-2 size-4" /> Back to Queue
         </Button>
       }
@@ -120,32 +122,13 @@ function ApprovalDetail() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left Column: PO Info & Material Details */}
         <div className="lg:col-span-2 space-y-6">
-          {hasRelatedProposals && (
-            <Card className="bg-primary/5 border-primary/20 shadow-soft overflow-hidden">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Sparkles className="size-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm">Related Proposals Found</h4>
-                    <p className="text-xs text-muted-foreground">Multiple suppliers were selected for RFQ: {po.rfqId}</p>
-                  </div>
-                </div>
-                <Button size="sm" className="rounded-xl shadow-glow bg-primary font-bold" asChild>
-                  <Link to="/finance/approvals/compare/$rfqId" params={{ rfqId: po.rfqId }}>
-                    Open Comparison Matrix <ArrowRight className="ml-2 size-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
                 <Info className="size-4 text-primary" />
-                <CardTitle className="text-sm font-bold uppercase tracking-wider">PO Information</CardTitle>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  PO Information
+                </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-6">
@@ -155,7 +138,11 @@ function ApprovalDetail() {
                 <InfoField label="Supplier" value={po.supplierName} icon={Building2} />
                 <InfoField label="Warehouse" value={po.warehouseId} icon={Warehouse} />
                 <InfoField label="Procurement Officer" value={po.procurementOfficer} icon={User} />
-                <InfoField label="Expected Delivery" value={po.expectedDeliveryDate || "Not Specified"} icon={Calendar} />
+                <InfoField
+                  label="Expected Delivery"
+                  value={po.expectedDeliveryDate || "Not Specified"}
+                  icon={Calendar}
+                />
               </div>
             </CardContent>
           </Card>
@@ -164,7 +151,9 @@ function ApprovalDetail() {
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
                 <FileText className="size-4 text-primary" />
-                <CardTitle className="text-sm font-bold uppercase tracking-wider">Material Details</CardTitle>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  Material Details
+                </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -183,12 +172,21 @@ function ApprovalDetail() {
                     <tr key={idx} className="hover:bg-muted/5 transition-colors">
                       <td className="p-4">
                         <p className="font-semibold text-foreground">{item.materialName}</p>
-                        <span className="font-mono text-[10px] text-muted-foreground">{item.materialCode}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {item.materialCode}
+                        </span>
                       </td>
-                      <td className="p-4 text-right font-mono font-bold">{Math.floor(item.quantity)}</td>
+                      <td className="p-4 text-right font-mono font-bold">
+                        {Math.floor(item.quantity)}
+                      </td>
                       <td className="p-4 font-semibold text-muted-foreground">{item.uom}</td>
-                      <td className="p-4 text-right font-mono">₹ {parseFloat(item.unitPrice).toLocaleString()}</td>
-                      <td className="p-4 text-right font-mono font-bold">₹ {(Math.floor(item.quantity) * parseFloat(item.unitPrice)).toLocaleString()}</td>
+                      <td className="p-4 text-right font-mono">
+                        ₹ {parseFloat(item.unitPrice).toLocaleString()}
+                      </td>
+                      <td className="p-4 text-right font-mono font-bold">
+                        ₹{" "}
+                        {(Math.floor(item.quantity) * parseFloat(item.unitPrice)).toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -200,19 +198,25 @@ function ApprovalDetail() {
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
                 <MessageSquare className="size-4 text-primary" />
-                <CardTitle className="text-sm font-bold uppercase tracking-wider">Supporting Information</CardTitle>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  Supporting Information
+                </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-6">
               <div>
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Procurement Selection Reason</Label>
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                  Procurement Selection Reason
+                </Label>
                 <p className="mt-1 text-sm font-medium text-foreground bg-primary-soft/10 p-3 rounded-xl border border-primary/10">
                   {po.selectionReason || "No reason provided"}
                 </p>
               </div>
               {po.procurementComments && (
                 <div>
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Procurement Comments</Label>
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                    Procurement Comments
+                  </Label>
                   <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
                     {po.procurementComments}
                   </p>
@@ -228,25 +232,40 @@ function ApprovalDetail() {
             <CardHeader className="bg-primary text-primary-foreground">
               <div className="flex items-center gap-2">
                 <CreditCard className="size-4" />
-                <CardTitle className="text-sm font-bold uppercase tracking-wider">Financial Summary</CardTitle>
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  Financial Summary
+                </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Selected supplier quotation totals
+              </p>
               <SummaryRow label="Subtotal" value={po.subtotal} />
-              <SummaryRow label="Discount" value={po.discountAmount} isNegative />
-              <SummaryRow label="Tax (GST)" value={po.taxAmount} />
+              <SummaryRow
+                label={`Discount (${discountPercentage.toFixed(2)}%)`}
+                value={po.discountAmount}
+                isNegative
+              />
+              <SummaryRow label={`Tax (GST ${taxPercentage.toFixed(2)}%)`} value={po.taxAmount} />
               <SummaryRow label="Freight" value={po.freightCharges} />
 
               <div className="pt-4 border-t border-border mt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-foreground uppercase tracking-tight">Grand Total</span>
-                  <span className="text-xl font-black text-primary">₹ {parseFloat(po.totalAmount).toLocaleString()}</span>
+                  <span className="text-sm font-bold text-foreground uppercase tracking-tight">
+                    Grand Total
+                  </span>
+                  <span className="text-xl font-black text-primary">
+                    ₹ {parseFloat(po.totalAmount).toLocaleString()}
+                  </span>
                 </div>
               </div>
 
               {po.paymentTerms && (
                 <div className="mt-4 p-3 rounded-xl bg-muted/30 border border-border/60">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Payment Terms</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
+                    Payment Terms
+                  </p>
                   <p className="text-sm font-semibold">{po.paymentTerms}</p>
                 </div>
               )}
@@ -259,7 +278,11 @@ function ApprovalDetail() {
                       onClick={handleApprove}
                       disabled={processing}
                     >
-                      {processing ? <Loader2 className="size-4 animate-spin mr-2" /> : <CheckCircle2 className="size-4 mr-2" />}
+                      {processing ? (
+                        <Loader2 className="size-4 animate-spin mr-2" />
+                      ) : (
+                        <CheckCircle2 className="size-4 mr-2" />
+                      )}
                       Approve PO Proposal
                     </Button>
                     <Button
@@ -275,7 +298,9 @@ function ApprovalDetail() {
                 ) : (
                   <div className="space-y-4 animate-in slide-in-from-right-4">
                     <div className="space-y-2">
-                      <Label className="text-xs font-bold text-destructive">Rejection Reason*</Label>
+                      <Label className="text-xs font-bold text-destructive">
+                        Rejection Reason*
+                      </Label>
                       <Textarea
                         placeholder="Please specify why this PO is being rejected..."
                         className="rounded-xl min-h-[100px] border-destructive/20 focus-visible:ring-destructive/20"
@@ -316,7 +341,9 @@ function InfoField({ label, value, icon: Icon, mono = false }: any) {
       <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold flex items-center gap-1.5">
         {Icon && <Icon className="size-3" />} {label}
       </p>
-      <p className={cn("text-sm font-semibold text-foreground", mono && "font-mono")}>{value || "—"}</p>
+      <p className={cn("text-sm font-semibold text-foreground", mono && "font-mono")}>
+        {value || "—"}
+      </p>
     </div>
   );
 }

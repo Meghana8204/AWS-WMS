@@ -10,9 +10,16 @@ export const Route = createFileRoute("/arrival-success")({
   head: () => ({
     meta: [
       { title: "Arrival Confirmed · NexusWMS" },
-      { name: "description", content: "Arrival confirmation with gate entry number, assigned dock, arrival time and next step to start receiving." },
+      {
+        name: "description",
+        content:
+          "Arrival confirmation with gate entry number, assigned dock, arrival time and next step to start receiving.",
+      },
       { property: "og:title", content: "Arrival Confirmed · NexusWMS" },
-      { property: "og:description", content: "Truck accepted and dock assigned — ready to start receiving." },
+      {
+        property: "og:description",
+        content: "Truck accepted and dock assigned — ready to start receiving.",
+      },
     ],
   }),
   component: ArrivalSuccess,
@@ -21,12 +28,17 @@ export const Route = createFileRoute("/arrival-success")({
 function ArrivalSuccess() {
   const a = activeArrival;
   return (
-    <AppShell title="Arrival confirmed" subtitle="The vehicle has been accepted and a dock is reserved">
+    <AppShell
+      title="Arrival confirmed"
+      subtitle="The vehicle has been accepted and a dock is reserved"
+    >
       <Card className="surface-mesh mx-auto max-w-2xl items-center gap-0 rounded-2xl border-border/70 p-10 text-center shadow-lift">
         <span className="grid size-20 place-items-center rounded-full bg-success-soft text-success animate-pulse-ring">
           <CheckCircle2 className="size-10" />
         </span>
-        <h2 className="mt-6 text-2xl font-semibold tracking-tight">Arrival accepted successfully</h2>
+        <h2 className="mt-6 text-2xl font-semibold tracking-tight">
+          Arrival accepted successfully
+        </h2>
         <p className="mt-2 max-w-md text-sm text-muted-foreground">
           {a.truckNo} has been called forward to dock D-04. The receiving team has been notified.
         </p>

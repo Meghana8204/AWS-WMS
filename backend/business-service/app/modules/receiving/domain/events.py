@@ -29,16 +29,16 @@ class GoodsReceivedEvent(DomainEvent):
 class PostedInventoryLine:
     item_code: str
     material_name: str
-    quantity: Decimal
+    quantity: Decimal | float | int
     uom: str
 
 
 @dataclass(frozen=True, kw_only=True)
 class GrnPostedEvent(DomainEvent):
     grn_id: str
-    grn_number: str
-    po_number: str
-    asn_number: str
-    supplier_name: str
-    warehouse_id: str
+    grn_number: str | None = None
+    po_number: str | None = None
+    asn_number: str | None = None
+    supplier_name: str | None = None
+    warehouse_id: str | None = None
     lines: list[PostedInventoryLine]

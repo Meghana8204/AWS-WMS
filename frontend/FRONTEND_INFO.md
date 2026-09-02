@@ -3,9 +3,11 @@
 ## 1) Main frontend folder
 
 Project root:
+
 - D:\ams-wms-platform
 
 Main frontend folder:
+
 - D:\ams-wms-platform\frontend
 
 ## 2) Frontend architecture
@@ -19,38 +21,49 @@ This workspace contains:
 ## 3) Frontend technology stack
 
 Framework:
+
 - React
 
 Build tool:
+
 - Vite
 
 Language:
+
 - TypeScript
 
 Routing:
+
 - TanStack Router
 
 State/data:
+
 - TanStack Query
 
 UI styling:
+
 - Tailwind CSS
 
 Component library:
+
 - Radix UI + custom components
 
 ## 4) Main app entry
 
 Package file:
+
 - D:\ams-wms-platform\frontend\package.json
 
 Main source folder:
+
 - D:\ams-wms-platform\frontend\src
 
 Main route entry:
+
 - D:\ams-wms-platform\frontend\src/router.tsx
 
 App shell:
+
 - D:\ams-wms-platform\frontend\src/routes/__root.tsx
 
 ## 5) Start the frontend locally
@@ -64,6 +77,7 @@ npm run dev
 ```
 
 Then open the local app URL shown in the terminal, usually:
+
 - http://localhost:8080
 
 ## 6) Useful frontend scripts
@@ -80,6 +94,7 @@ npm run lint
 ## 7) App behavior and purpose
 
 This frontend is a warehouse management system UI for workflows such as:
+
 - arrival management
 - gate entry
 - dock assignment
@@ -87,14 +102,17 @@ This frontend is a warehouse management system UI for workflows such as:
 - notifications and dashboards
 
 The project includes route files under:
+
 - D:\ams-wms-platform\frontend\src\routes
 
 ## 8) Backend integration
 
 The frontend talks to the backend service on:
+
 - http://localhost:8000
 
 The API client is likely configured in:
+
 - D:\ams-wms-platform\frontend\src\lib\api-client.ts
 
 ## 9) Quick summary

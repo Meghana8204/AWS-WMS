@@ -35,11 +35,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -187,21 +183,28 @@ function NewSupplier() {
       const gstin = formData.gstin.trim();
 
       if (!name) newErrors.supplierName = "Supplier Display Name is required";
-      else if (name.length < 2 || name.length > 100) newErrors.supplierName = "Must be between 2 and 100 characters";
+      else if (name.length < 2 || name.length > 100)
+        newErrors.supplierName = "Must be between 2 and 100 characters";
 
       if (!regName) newErrors.registeredCompanyName = "Registered Company Name is required";
-      else if (regName.length < 2 || regName.length > 200) newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
+      else if (regName.length < 2 || regName.length > 200)
+        newErrors.registeredCompanyName = "Must be between 2 and 200 characters";
 
       if (!formData.vendorType) newErrors.vendorType = "Please select a Vendor Type";
-      if (formData.category.length === 0) newErrors.category = "Please select at least one Category";
-      if (formData.mainMaterials.length === 0) newErrors.mainMaterials = "Please select at least one material";
+      if (formData.category.length === 0)
+        newErrors.category = "Please select at least one Category";
+      if (formData.mainMaterials.length === 0)
+        newErrors.mainMaterials = "Please select at least one material";
 
       if (!industry) newErrors.industry = "Industry is required";
-      else if (industry.length < 2 || industry.length > 100) newErrors.industry = "Must be between 2 and 100 characters";
+      else if (industry.length < 2 || industry.length > 100)
+        newErrors.industry = "Must be between 2 and 100 characters";
 
       if (!gstin) newErrors.gstin = "GSTIN is required";
       else if (gstin.length !== 15) newErrors.gstin = "Must be exactly 15 characters";
-      else if (!(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase()))) {
+      else if (
+        !/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin.toUpperCase())
+      ) {
         newErrors.gstin = "Invalid GSTIN format (e.g. 29ABCDE1234F1Z5)";
       }
 
@@ -210,9 +213,10 @@ function NewSupplier() {
         try {
           const existence = await api.checkSupplierExistence({
             company_name: regName,
-            gstin: gstin
+            gstin: gstin,
           });
-          if (existence.company_name) newErrors.registeredCompanyName = "This company is already registered";
+          if (existence.company_name)
+            newErrors.registeredCompanyName = "This company is already registered";
           if (existence.gstin) newErrors.gstin = "This GSTIN is already registered";
         } catch (e) {
           console.error("Duplicate check failed", e);
@@ -233,30 +237,39 @@ function NewSupplier() {
       const secondaryEmail = formData.contact.secondaryEmail.trim();
 
       // Address Validation (Strict validation removed for registered address)
-      if (addr && addr.length > 500) newErrors["address.registeredAddress"] = "Must be under 500 characters";
+      if (addr && addr.length > 500)
+        newErrors["address.registeredAddress"] = "Must be under 500 characters";
 
       if (!city) newErrors["address.city"] = "City is required";
-      else if (city.length < 2 || city.length > 100) newErrors["address.city"] = "Must be between 2 and 100 characters";
-      else if (!/^[a-zA-Z\s-]+$/.test(city)) newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
+      else if (city.length < 2 || city.length > 100)
+        newErrors["address.city"] = "Must be between 2 and 100 characters";
+      else if (!/^[a-zA-Z\s-]+$/.test(city))
+        newErrors["address.city"] = "Only letters, spaces and hyphens allowed";
 
-      if (state && (state.length < 2 || state.length > 100)) newErrors["address.state"] = "Must be between 2 and 100 characters";
+      if (state && (state.length < 2 || state.length > 100))
+        newErrors["address.state"] = "Must be between 2 and 100 characters";
 
       if (!pincode) newErrors["address.pincode"] = "Pincode is required";
       else if (!/^\d{6}$/.test(pincode)) newErrors["address.pincode"] = "Must be exactly 6 digits";
 
       // Contact Validation
-      if (!contactName) newErrors["contact.primaryContactName"] = "Primary Contact Name is required";
-      else if (contactName.length < 2 || contactName.length > 100) newErrors["contact.primaryContactName"] = "Must be between 2 and 100 characters";
-      else if (!/^[a-zA-Z\s]+$/.test(contactName)) newErrors["contact.primaryContactName"] = "Only letters and spaces allowed";
+      if (!contactName)
+        newErrors["contact.primaryContactName"] = "Primary Contact Name is required";
+      else if (contactName.length < 2 || contactName.length > 100)
+        newErrors["contact.primaryContactName"] = "Must be between 2 and 100 characters";
+      else if (!/^[a-zA-Z\s]+$/.test(contactName))
+        newErrors["contact.primaryContactName"] = "Only letters and spaces allowed";
 
-      if (designation && (designation.length < 2 || designation.length > 100)) newErrors["contact.designation"] = "Must be between 2 and 100 characters";
+      if (designation && (designation.length < 2 || designation.length > 100))
+        newErrors["contact.designation"] = "Must be between 2 and 100 characters";
 
       if (!phone) newErrors["contact.phone"] = "Phone number is required";
-      else if (!/^[6-9]\d{9}$/.test(phone)) newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
+      else if (!/^[6-9]\d{9}$/.test(phone))
+        newErrors["contact.phone"] = "Must be a 10-digit Indian mobile number";
 
       if (website) {
         try {
-          new URL(website.startsWith('http') ? website : `https://${website}`);
+          new URL(website.startsWith("http") ? website : `https://${website}`);
         } catch (_) {
           newErrors["contact.website"] = "Please enter a valid URL";
         }
@@ -264,16 +277,18 @@ function NewSupplier() {
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!primaryEmail) newErrors["contact.primaryEmail"] = "Primary Email is required";
-      else if (!emailRegex.test(primaryEmail)) newErrors["contact.primaryEmail"] = "Invalid email format";
+      else if (!emailRegex.test(primaryEmail))
+        newErrors["contact.primaryEmail"] = "Invalid email format";
 
-      if (secondaryEmail && !emailRegex.test(secondaryEmail)) newErrors["contact.secondaryEmail"] = "Invalid email format";
+      if (secondaryEmail && !emailRegex.test(secondaryEmail))
+        newErrors["contact.secondaryEmail"] = "Invalid email format";
 
       // Backend Duplicate Check
       if (Object.keys(newErrors).length === 0) {
         try {
           const existence = await api.checkSupplierExistence({
             email: primaryEmail,
-            phone: phone
+            phone: phone,
           });
           if (existence.email) newErrors["contact.primaryEmail"] = "This email is already in use";
           if (existence.phone) newErrors["contact.phone"] = "This phone number is already in use";
@@ -294,8 +309,10 @@ function NewSupplier() {
       if (!bankName) newErrors["bankInfo.bankName"] = "Bank name is required";
 
       if (!accNo) newErrors["bankInfo.accountNumber"] = "Account number is required";
-      else if (accNo.length < 9 || accNo.length > 18) newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
-      else if (!/^\d+$/.test(accNo)) newErrors["bankInfo.accountNumber"] = "Must contain only digits";
+      else if (accNo.length < 9 || accNo.length > 18)
+        newErrors["bankInfo.accountNumber"] = "Must be between 9 and 18 digits";
+      else if (!/^\d+$/.test(accNo))
+        newErrors["bankInfo.accountNumber"] = "Must contain only digits";
 
       if (!ifsc) newErrors["bankInfo.ifsc"] = "IFSC code is required";
       else if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc.toUpperCase())) {
@@ -303,7 +320,8 @@ function NewSupplier() {
       }
 
       if (!holder) newErrors["bankInfo.accountHolderName"] = "Account holder name is required";
-      else if (!/^[a-zA-Z\s.]+$/.test(holder)) newErrors["bankInfo.accountHolderName"] = "Invalid characters in name";
+      else if (!/^[a-zA-Z\s.]+$/.test(holder))
+        newErrors["bankInfo.accountHolderName"] = "Invalid characters in name";
 
       if (!branch) newErrors["bankInfo.branch"] = "Branch name is required";
 
@@ -316,9 +334,10 @@ function NewSupplier() {
         try {
           const existence = await api.checkSupplierExistence({
             account_number: accNo,
-            swift: swift
+            swift: swift,
           });
-          if (existence.account_number) newErrors["bankInfo.accountNumber"] = "This bank account is already registered";
+          if (existence.account_number)
+            newErrors["bankInfo.accountNumber"] = "This bank account is already registered";
           if (existence.swift) newErrors["bankInfo.swiftBic"] = "This SWIFT/BIC is already in use";
         } catch (e) {
           console.error("Duplicate check failed", e);
@@ -327,7 +346,9 @@ function NewSupplier() {
     }
 
     if (step === 4) {
-      const hasCancelledCheque = formData.documents.some(d => d.document_type === "Cancelled Cheque");
+      const hasCancelledCheque = formData.documents.some(
+        (d) => d.document_type === "Cancelled Cheque",
+      );
       if (!hasCancelledCheque) {
         newErrors["documents"] = "Cancelled Cheque is mandatory";
         toast.error("Cancelled Cheque is mandatory for registration");
@@ -367,9 +388,9 @@ function NewSupplier() {
         storage_path: response.storage_path,
         upload_id: response.upload_id,
       };
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        documents: [...prev.documents, newDoc]
+        documents: [...prev.documents, newDoc],
       }));
       toast.success(`${type} uploaded successfully`);
     } catch (e: any) {
@@ -381,9 +402,9 @@ function NewSupplier() {
   };
 
   const removeDocument = (index: number) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      documents: prev.documents.filter((_, i) => i !== index)
+      documents: prev.documents.filter((_, i) => i !== index),
     }));
   };
 
@@ -400,9 +421,7 @@ function NewSupplier() {
   const toggleCategory = (cat: string) => {
     setFormData((prev) => {
       const current = prev.category || [];
-      const updated = current.includes(cat)
-        ? current.filter((c) => c !== cat)
-        : [...current, cat];
+      const updated = current.includes(cat) ? current.filter((c) => c !== cat) : [...current, cat];
       return { ...prev, category: updated };
     });
   };
@@ -504,14 +523,14 @@ function NewSupplier() {
           ...formData.address,
           registeredAddress: formData.address.registeredAddress.trim(),
           city: formData.address.city.trim(),
-          pincode: formData.address.pincode.trim()
+          pincode: formData.address.pincode.trim(),
         },
         contact: {
           ...formData.contact,
           primaryContactName: formData.contact.primaryContactName.trim(),
           primaryEmail: formData.contact.primaryEmail.trim(),
-          phone: formData.contact.phone.trim()
-        }
+          phone: formData.contact.phone.trim(),
+        },
       };
       await api.createSupplier(finalData);
       toast.success("Supplier registered successfully", {
@@ -544,8 +563,8 @@ function NewSupplier() {
                     currentStep === step.id
                       ? "border-primary bg-primary text-primary-foreground shadow-glow"
                       : currentStep > step.id
-                      ? "border-success bg-success text-success-foreground"
-                      : "border-muted bg-muted text-muted-foreground"
+                        ? "border-success bg-success text-success-foreground"
+                        : "border-muted bg-muted text-muted-foreground",
                   )}
                 >
                   {currentStep > step.id ? (
@@ -557,7 +576,7 @@ function NewSupplier() {
                 <span
                   className={cn(
                     "text-xs font-medium",
-                    currentStep === step.id ? "text-primary" : "text-muted-foreground"
+                    currentStep === step.id ? "text-primary" : "text-muted-foreground",
                   )}
                 >
                   {step.name}
@@ -567,7 +586,7 @@ function NewSupplier() {
                 <div
                   className={cn(
                     "h-px flex-1 bg-muted transition-all",
-                    currentStep > step.id && "bg-success"
+                    currentStep > step.id && "bg-success",
                   )}
                 />
               )}
@@ -582,7 +601,9 @@ function NewSupplier() {
               <h3 className="text-lg font-semibold">Company Profile</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="supplierName">Supplier Display Name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="supplierName">
+                    Supplier Display Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="supplierName"
                     value={formData.supplierName}
@@ -591,12 +612,20 @@ function NewSupplier() {
                       updateFormData("root", "supplierName", sanitized);
                     }}
                     placeholder="e.g. Acme Corp"
-                    className={cn(errors.supplierName && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors.supplierName && "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors.supplierName && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.supplierName}</p>}
+                  {errors.supplierName && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.supplierName}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="regName">Registered Company Name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="regName">
+                    Registered Company Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="regName"
                     value={formData.registeredCompanyName}
@@ -605,17 +634,30 @@ function NewSupplier() {
                       updateFormData("root", "registeredCompanyName", sanitized);
                     }}
                     placeholder="Full legal name"
-                    className={cn(errors.registeredCompanyName && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors.registeredCompanyName &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors.registeredCompanyName && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.registeredCompanyName}</p>}
+                  {errors.registeredCompanyName && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.registeredCompanyName}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Vendor Type <span className="text-destructive">*</span></Label>
+                  <Label>
+                    Vendor Type <span className="text-destructive">*</span>
+                  </Label>
                   <Select
                     onValueChange={(v) => updateFormData("root", "vendorType", v)}
                     value={formData.vendorType}
                   >
-                    <SelectTrigger className={cn(errors.vendorType && "border-destructive focus:ring-destructive")}>
+                    <SelectTrigger
+                      className={cn(
+                        errors.vendorType && "border-destructive focus:ring-destructive",
+                      )}
+                    >
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -639,16 +681,25 @@ function NewSupplier() {
                       </div>
                     </SelectContent>
                   </Select>
-                  {errors.vendorType && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.vendorType}</p>}
+                  {errors.vendorType && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.vendorType}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Category <span className="text-destructive">*</span></Label>
+                  <Label>
+                    Category <span className="text-destructive">*</span>
+                  </Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
-                        className={cn("w-full justify-between rounded-xl h-10 px-3 font-normal", errors.category && "border-destructive")}
+                        className={cn(
+                          "w-full justify-between rounded-xl h-10 px-3 font-normal",
+                          errors.category && "border-destructive",
+                        )}
                       >
                         <span className="truncate">
                           {formData.category?.length > 0
@@ -671,10 +722,7 @@ function NewSupplier() {
                               checked={formData.category?.includes(cat)}
                               onCheckedChange={() => toggleCategory(cat)}
                             />
-                            <Label
-                              htmlFor={`cat-${cat}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
+                            <Label htmlFor={`cat-${cat}`} className="text-sm cursor-pointer w-full">
                               {cat}
                             </Label>
                           </div>
@@ -695,16 +743,25 @@ function NewSupplier() {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  {errors.category && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.category}</p>}
+                  {errors.category && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.category}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Main Raw Materials <span className="text-destructive">*</span></Label>
+                  <Label>
+                    Main Raw Materials <span className="text-destructive">*</span>
+                  </Label>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
                         variant="outline"
                         role="combobox"
-                        className={cn("w-full justify-between rounded-xl h-10 px-3 font-normal", errors.mainMaterials && "border-destructive")}
+                        className={cn(
+                          "w-full justify-between rounded-xl h-10 px-3 font-normal",
+                          errors.mainMaterials && "border-destructive",
+                        )}
                       >
                         <span className="truncate">
                           {formData.mainMaterials?.length > 0
@@ -727,10 +784,7 @@ function NewSupplier() {
                               checked={formData.mainMaterials?.includes(mat)}
                               onCheckedChange={() => toggleMainMaterial(mat)}
                             />
-                            <Label
-                              htmlFor={`mat-${mat}`}
-                              className="text-sm cursor-pointer w-full"
-                            >
+                            <Label htmlFor={`mat-${mat}`} className="text-sm cursor-pointer w-full">
                               {mat}
                             </Label>
                           </div>
@@ -751,21 +805,35 @@ function NewSupplier() {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  {errors.mainMaterials && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.mainMaterials}</p>}
+                  {errors.mainMaterials && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.mainMaterials}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="industry">Industry <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="industry">
+                    Industry <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="industry"
                     value={formData.industry}
                     onChange={(e) => updateFormData("root", "industry", e.target.value)}
                     placeholder="e.g. Chemical, Electronics"
-                    className={cn(errors.industry && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors.industry && "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors.industry && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.industry}</p>}
+                  {errors.industry && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.industry}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="gstin">GSTIN <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="gstin">
+                    GSTIN <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="gstin"
                     value={formData.gstin}
@@ -775,9 +843,16 @@ function NewSupplier() {
                       updateFormData("root", "gstin", val);
                     }}
                     placeholder="15-digit GST number"
-                    className={cn("font-mono", errors.gstin && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      "font-mono",
+                      errors.gstin && "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors.gstin && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors.gstin}</p>}
+                  {errors.gstin && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors.gstin}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -795,20 +870,36 @@ function NewSupplier() {
                     value={formData.address.registeredAddress}
                     onChange={(e) => updateFormData("address", "registeredAddress", e.target.value)}
                     placeholder="Plot no, Building, Street..."
-                    className={cn(errors["address.registeredAddress"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors["address.registeredAddress"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["address.registeredAddress"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.registeredAddress"]}</p>}
+                  {errors["address.registeredAddress"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["address.registeredAddress"]}
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
-                    <Label htmlFor="city">City <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="city">
+                      City <span className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="city"
                       value={formData.address.city}
                       onChange={(e) => updateFormData("address", "city", e.target.value)}
-                      className={cn(errors["address.city"] && "border-destructive focus-visible:ring-destructive")}
+                      className={cn(
+                        errors["address.city"] &&
+                          "border-destructive focus-visible:ring-destructive",
+                      )}
                     />
-                    {errors["address.city"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.city"]}</p>}
+                    {errors["address.city"] && (
+                      <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                        <AlertCircle className="size-3" /> {errors["address.city"]}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="state">State</Label>
@@ -816,7 +907,11 @@ function NewSupplier() {
                       onValueChange={(v) => updateFormData("address", "state", v)}
                       value={formData.address.state}
                     >
-                      <SelectTrigger className={cn(errors["address.state"] && "border-destructive focus:ring-destructive")}>
+                      <SelectTrigger
+                        className={cn(
+                          errors["address.state"] && "border-destructive focus:ring-destructive",
+                        )}
+                      >
                         <SelectValue placeholder="Select state" />
                       </SelectTrigger>
                       <SelectContent>
@@ -827,10 +922,16 @@ function NewSupplier() {
                         ))}
                       </SelectContent>
                     </Select>
-                    {errors["address.state"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.state"]}</p>}
+                    {errors["address.state"] && (
+                      <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                        <AlertCircle className="size-3" /> {errors["address.state"]}
+                      </p>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="pincode">Pincode <span className="text-destructive">*</span></Label>
+                    <Label htmlFor="pincode">
+                      Pincode <span className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="pincode"
                       value={formData.address.pincode}
@@ -839,23 +940,41 @@ function NewSupplier() {
                         const val = e.target.value.replace(/\D/g, "").substring(0, 6);
                         updateFormData("address", "pincode", val);
                       }}
-                      className={cn(errors["address.pincode"] && "border-destructive focus-visible:ring-destructive")}
+                      className={cn(
+                        errors["address.pincode"] &&
+                          "border-destructive focus-visible:ring-destructive",
+                      )}
                       placeholder="6-digit PIN"
                     />
-                    {errors["address.pincode"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["address.pincode"]}</p>}
+                    {errors["address.pincode"] && (
+                      <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                        <AlertCircle className="size-3" /> {errors["address.pincode"]}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="border-t pt-4 mt-4">
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="contactName">Primary Contact Name <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="contactName">
+                        Primary Contact Name <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="contactName"
                         value={formData.contact.primaryContactName}
-                        onChange={(e) => updateFormData("contact", "primaryContactName", e.target.value)}
-                        className={cn(errors["contact.primaryContactName"] && "border-destructive focus-visible:ring-destructive")}
+                        onChange={(e) =>
+                          updateFormData("contact", "primaryContactName", e.target.value)
+                        }
+                        className={cn(
+                          errors["contact.primaryContactName"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                       />
-                      {errors["contact.primaryContactName"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.primaryContactName"]}</p>}
+                      {errors["contact.primaryContactName"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.primaryContactName"]}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="designation">Designation</Label>
@@ -863,12 +982,21 @@ function NewSupplier() {
                         id="designation"
                         value={formData.contact.designation}
                         onChange={(e) => updateFormData("contact", "designation", e.target.value)}
-                        className={cn(errors["contact.designation"] && "border-destructive focus-visible:ring-destructive")}
+                        className={cn(
+                          errors["contact.designation"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                       />
-                      {errors["contact.designation"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.designation"]}</p>}
+                      {errors["contact.designation"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.designation"]}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="phone">Phone <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="phone">
+                        Phone <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="phone"
                         value={formData.contact.phone}
@@ -877,10 +1005,17 @@ function NewSupplier() {
                           const val = e.target.value.replace(/\D/g, "").substring(0, 10);
                           updateFormData("contact", "phone", val);
                         }}
-                        className={cn(errors["contact.phone"] && "border-destructive focus-visible:ring-destructive")}
+                        className={cn(
+                          errors["contact.phone"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                         placeholder="10-digit mobile number"
                       />
-                      {errors["contact.phone"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.phone"]}</p>}
+                      {errors["contact.phone"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.phone"]}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="website">Website</Label>
@@ -889,13 +1024,22 @@ function NewSupplier() {
                         type="url"
                         value={formData.contact.website}
                         onChange={(e) => updateFormData("contact", "website", e.target.value)}
-                        className={cn(errors["contact.website"] && "border-destructive focus-visible:ring-destructive")}
+                        className={cn(
+                          errors["contact.website"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                         placeholder="https://example.com"
                       />
-                      {errors["contact.website"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.website"]}</p>}
+                      {errors["contact.website"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.website"]}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="primaryEmail">Primary Email (Main) <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="primaryEmail">
+                        Primary Email (Main) <span className="text-destructive">*</span>
+                      </Label>
                       <Input
                         id="primaryEmail"
                         type="email"
@@ -908,9 +1052,12 @@ function NewSupplier() {
                           // Run-time validation
                           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                           if (val && !emailRegex.test(val)) {
-                            setErrors(prev => ({ ...prev, ["contact.primaryEmail"]: "Invalid email format" }));
+                            setErrors((prev) => ({
+                              ...prev,
+                              ["contact.primaryEmail"]: "Invalid email format",
+                            }));
                           } else {
-                            setErrors(prev => {
+                            setErrors((prev) => {
                               const next = { ...prev };
                               delete next["contact.primaryEmail"];
                               return next;
@@ -918,9 +1065,16 @@ function NewSupplier() {
                           }
                         }}
                         placeholder="main@company.com"
-                        className={cn(errors["contact.primaryEmail"] && "border-destructive focus-visible:ring-destructive")}
+                        className={cn(
+                          errors["contact.primaryEmail"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                       />
-                      {errors["contact.primaryEmail"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.primaryEmail"]}</p>}
+                      {errors["contact.primaryEmail"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.primaryEmail"]}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="secondaryEmail">Secondary Email (Reference)</Label>
@@ -936,9 +1090,12 @@ function NewSupplier() {
                           // Run-time validation
                           const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
                           if (val && !emailRegex.test(val)) {
-                            setErrors(prev => ({ ...prev, ["contact.secondaryEmail"]: "Invalid email format" }));
+                            setErrors((prev) => ({
+                              ...prev,
+                              ["contact.secondaryEmail"]: "Invalid email format",
+                            }));
                           } else {
-                            setErrors(prev => {
+                            setErrors((prev) => {
                               const next = { ...prev };
                               delete next["contact.secondaryEmail"];
                               return next;
@@ -946,9 +1103,16 @@ function NewSupplier() {
                           }
                         }}
                         placeholder="reference@company.com"
-                        className={cn(errors["contact.secondaryEmail"] && "border-destructive focus-visible:ring-destructive")}
+                        className={cn(
+                          errors["contact.secondaryEmail"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
                       />
-                      {errors["contact.secondaryEmail"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["contact.secondaryEmail"]}</p>}
+                      {errors["contact.secondaryEmail"] && (
+                        <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                          <AlertCircle className="size-3" /> {errors["contact.secondaryEmail"]}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -962,17 +1126,28 @@ function NewSupplier() {
               <h3 className="text-lg font-semibold">Banking Information</h3>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="bankName">Bank Name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="bankName">
+                    Bank Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="bankName"
                     value={formData.bankInfo.bankName}
                     onChange={(e) => updateFormData("bankInfo", "bankName", e.target.value)}
-                    className={cn(errors["bankInfo.bankName"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors["bankInfo.bankName"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["bankInfo.bankName"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.bankName"]}</p>}
+                  {errors["bankInfo.bankName"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.bankName"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="accNo">Account Number <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="accNo">
+                    Account Number <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="accNo"
                     value={formData.bankInfo.accountNumber}
@@ -984,11 +1159,16 @@ function NewSupplier() {
                       // Run-time validation for duplicates
                       if (val.length >= 9) {
                         try {
-                          const existence = await api.checkSupplierExistence({ account_number: val });
+                          const existence = await api.checkSupplierExistence({
+                            account_number: val,
+                          });
                           if (existence.account_number) {
-                            setErrors(prev => ({ ...prev, ["bankInfo.accountNumber"]: "This account number already exists" }));
+                            setErrors((prev) => ({
+                              ...prev,
+                              ["bankInfo.accountNumber"]: "This account number already exists",
+                            }));
                           } else {
-                            setErrors(prev => {
+                            setErrors((prev) => {
                               const next = { ...prev };
                               delete next["bankInfo.accountNumber"];
                               return next;
@@ -999,44 +1179,84 @@ function NewSupplier() {
                         }
                       }
                     }}
-                    className={cn(errors["bankInfo.accountNumber"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors["bankInfo.accountNumber"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["bankInfo.accountNumber"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.accountNumber"]}</p>}
+                  {errors["bankInfo.accountNumber"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.accountNumber"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="ifsc">IFSC Code <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="ifsc">
+                    IFSC Code <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="ifsc"
                     value={formData.bankInfo.ifsc}
                     maxLength={11}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "").substring(0, 11).toUpperCase();
+                      const val = e.target.value
+                        .replace(/[^a-zA-Z0-9]/g, "")
+                        .substring(0, 11)
+                        .toUpperCase();
                       updateFormData("bankInfo", "ifsc", val);
                     }}
-                    className={cn("font-mono", errors["bankInfo.ifsc"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      "font-mono",
+                      errors["bankInfo.ifsc"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                     placeholder="e.g. SBIN0012345"
                   />
-                  {errors["bankInfo.ifsc"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.ifsc"]}</p>}
+                  {errors["bankInfo.ifsc"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.ifsc"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="holder">Account Holder Name <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="holder">
+                    Account Holder Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="holder"
                     value={formData.bankInfo.accountHolderName}
-                    onChange={(e) => updateFormData("bankInfo", "accountHolderName", e.target.value)}
-                    className={cn(errors["bankInfo.accountHolderName"] && "border-destructive focus-visible:ring-destructive")}
+                    onChange={(e) =>
+                      updateFormData("bankInfo", "accountHolderName", e.target.value)
+                    }
+                    className={cn(
+                      errors["bankInfo.accountHolderName"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["bankInfo.accountHolderName"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.accountHolderName"]}</p>}
+                  {errors["bankInfo.accountHolderName"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.accountHolderName"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="branch">Branch <span className="text-destructive">*</span></Label>
+                  <Label htmlFor="branch">
+                    Branch <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     id="branch"
                     value={formData.bankInfo.branch}
                     onChange={(e) => updateFormData("bankInfo", "branch", e.target.value)}
-                    className={cn(errors["bankInfo.branch"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      errors["bankInfo.branch"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["bankInfo.branch"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.branch"]}</p>}
+                  {errors["bankInfo.branch"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.branch"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="swiftBic">SWIFT / BIC</Label>
@@ -1045,12 +1265,23 @@ function NewSupplier() {
                     value={formData.bankInfo.swiftBic}
                     maxLength={11}
                     onChange={(e) => {
-                      const val = e.target.value.replace(/[^a-zA-Z0-9]/g, "").substring(0, 11).toUpperCase();
+                      const val = e.target.value
+                        .replace(/[^a-zA-Z0-9]/g, "")
+                        .substring(0, 11)
+                        .toUpperCase();
                       updateFormData("bankInfo", "swiftBic", val);
                     }}
-                    className={cn("font-mono", errors["bankInfo.swiftBic"] && "border-destructive focus-visible:ring-destructive")}
+                    className={cn(
+                      "font-mono",
+                      errors["bankInfo.swiftBic"] &&
+                        "border-destructive focus-visible:ring-destructive",
+                    )}
                   />
-                  {errors["bankInfo.swiftBic"] && <p className="text-[11px] font-medium text-destructive flex items-center gap-1"><AlertCircle className="size-3" /> {errors["bankInfo.swiftBic"]}</p>}
+                  {errors["bankInfo.swiftBic"] && (
+                    <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
+                      <AlertCircle className="size-3" /> {errors["bankInfo.swiftBic"]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="tdsSection">TDS Section</Label>
@@ -1078,14 +1309,16 @@ function NewSupplier() {
           {currentStep === 4 && (
             <div className="space-y-4 animate-fade-in">
               <h3 className="text-lg font-semibold">Supporting Documents</h3>
-              <p className="text-sm text-muted-foreground">Upload copies of legal and tax documents for verification.</p>
+              <p className="text-sm text-muted-foreground">
+                Upload copies of legal and tax documents for verification.
+              </p>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {[
                   { name: "GST Certificate", mandatory: false },
                   { name: "Cancelled Cheque", mandatory: true },
                   { name: "Vendor Code of Conduct", mandatory: false },
-                  { name: "Other", mandatory: false }
+                  { name: "Other", mandatory: false },
                 ].map((doc) => (
                   <div key={doc.name} className="relative">
                     <input
@@ -1128,14 +1361,19 @@ function NewSupplier() {
                   <Label className="text-xs text-muted-foreground">Uploaded Documents</Label>
                   <div className="grid gap-2">
                     {formData.documents.map((doc, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50">
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50"
+                      >
                         <div className="flex items-center gap-3">
                           <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                             <FileIcon className="size-4" />
                           </div>
                           <div>
                             <div className="text-sm font-medium">{doc.file_name}</div>
-                            <div className="text-[10px] text-muted-foreground uppercase">{doc.document_type}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase">
+                              {doc.document_type}
+                            </div>
                           </div>
                         </div>
                         <Button
@@ -1178,7 +1416,9 @@ function NewSupplier() {
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Created By</Label>
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+                      Created By
+                    </Label>
                     <div className="text-sm font-medium flex items-center gap-2">
                       <div className="size-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] text-primary font-bold">
                         P
@@ -1187,9 +1427,15 @@ function NewSupplier() {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">Registration Date</Label>
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold">
+                      Registration Date
+                    </Label>
                     <div className="text-sm font-medium">
-                      {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      {new Date().toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1253,7 +1499,11 @@ function NewSupplier() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddVendorType(false)} className="rounded-xl">
+            <Button
+              variant="outline"
+              onClick={() => setShowAddVendorType(false)}
+              className="rounded-xl"
+            >
               Cancel
             </Button>
             <Button onClick={handleAddVendorType} className="rounded-xl bg-primary shadow-glow">
@@ -1284,7 +1534,11 @@ function NewSupplier() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddCategory(false)} className="rounded-xl">
+            <Button
+              variant="outline"
+              onClick={() => setShowAddCategory(false)}
+              className="rounded-xl"
+            >
               Cancel
             </Button>
             <Button onClick={handleAddCategory} className="rounded-xl bg-primary shadow-glow">
@@ -1315,7 +1569,11 @@ function NewSupplier() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddRawMaterial(false)} className="rounded-xl">
+            <Button
+              variant="outline"
+              onClick={() => setShowAddRawMaterial(false)}
+              className="rounded-xl"
+            >
               Cancel
             </Button>
             <Button onClick={handleAddRawMaterial} className="rounded-xl bg-primary shadow-glow">

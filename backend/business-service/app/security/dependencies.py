@@ -77,6 +77,28 @@ async def get_current_user(
                 permissions=[],
                 raw_claims={},
             )
+        elif token == "mock-jwt-warehouse-token":
+            return CurrentUser(
+                subject="warehouse",
+                username="warehouse",
+                roles=["WAREHOUSE"],
+                permissions=[
+                    "gate:read",
+                    "gate:write",
+                    "gate:verify",
+                    "gate:approve",
+                    "receiving:read",
+                ],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-gate-entry-token":
+            return CurrentUser(
+                subject="gate_security",
+                username="gate_security",
+                roles=["GATE_SECURITY"],
+                permissions=["gate:read", "gate:write", "gate:verify", "receiving:read"],
+                raw_claims={},
+            )
 
     try:
         claims = await decode_and_validate(token)

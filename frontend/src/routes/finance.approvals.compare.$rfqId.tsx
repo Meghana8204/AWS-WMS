@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -12,7 +12,13 @@ import {
   X,
   XCircle,
   ShieldCheck,
-  CreditCard
+  CreditCard,
+  TrendingDown,
+  Clock,
+  Wallet,
+  Truck,
+  AlertCircle,
+  Trophy,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -24,7 +30,9 @@ import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/finance/approvals/compare/$rfqId")({
-  beforeLoad: () => requireRole("FINANCE"),
+  beforeLoad: () => {
+    requireRole("FINANCE");
+  },
   component: FinanceComparison,
 });
 
@@ -97,15 +105,27 @@ function FinanceComparison() {
 
   // Group items for comparison
   const uniqueItemCodes = Array.from(
-    new Set(approvals.flatMap((po) => po.items?.map((l: any) => l.materialCode || l.item_code) || []))
+    new Set(
+      approvals.flatMap((po) => po.items?.map((l: any) => l.materialCode || l.item_code) || []),
+    ),
   ).filter(Boolean);
+
+  const bestProposalId = approvals.length > 0
+    ? approvals.reduce((prev, curr) =>
+        (parseFloat(curr.totalAmount) < parseFloat(prev.totalAmount) ? curr : prev), approvals[0]
+      )?.id
+    : null;
 
   return (
     <AppShell
       title="Finance Comparison Matrix"
       subtitle={`Comparing PO proposals for RFQ: ${approvals[0]?.rfqNumber || rfqId}`}
       actions={
-        <Button variant="outline" className="rounded-xl" onClick={() => navigate({ to: "/finance/approvals" })}>
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => navigate({ to: "/finance/approvals" })}
+        >
           <ArrowLeft className="mr-2 size-4" /> Back to Queue
         </Button>
       }
@@ -118,165 +138,380 @@ function FinanceComparison() {
         <Card className="flex h-64 flex-col items-center justify-center p-6 text-center border-dashed border-border/50 bg-muted/20">
           <ShieldCheck className="size-12 text-muted-foreground/30 mb-4" />
           <h3 className="text-lg font-semibold text-muted-foreground">No proposals found</h3>
-          <p className="text-sm text-muted-foreground/70">There are no pending proposals for this RFQ.</p>
+          <p className="text-sm text-muted-foreground/70">
+            There are no pending proposals for this RFQ.
+          </p>
         </Card>
       ) : (
         <div className="space-y-6">
-          <Card className="border-border/40 shadow-soft overflow-hidden">
-            <CardHeader className="bg-muted/10 border-b border-border/60">
-              <div className="flex items-center gap-2">
-                <TableIcon className="size-4 text-primary" />
-                <CardTitle className="text-sm font-extrabold uppercase tracking-wider">Proposal Comparison Matrix</CardTitle>
+          <div className="rounded-3xl border border-border/40 bg-card shadow-soft overflow-hidden">
+            <div className="bg-primary/5 p-6 border-b border-border/40 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 rounded-2xl bg-primary/10 text-primary">
+                  <TableIcon className="size-6" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black tracking-tight text-foreground uppercase">
+                    Quotation Comparison Matrix
+                  </h2>
+                  <p className="text-sm text-muted-foreground font-medium">
+                    Side-by-side analysis of supplier proposals for procurement authorization
+                  </p>
+                </div>
               </div>
-              <CardDescription className="text-xs">Compare all selected supplier proposals side-by-side before final financial authorization.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0 overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-success/10 rounded-xl border border-success/20">
+                <Trophy className="size-4 text-success" />
+                <span className="text-[10px] font-black uppercase text-success tracking-wider">
+                  Best Value Highlighted
+                </span>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
                 <thead>
-                  <tr className="bg-muted/40 border-b border-border/60">
-                    <th className="p-4 font-extrabold uppercase tracking-wider w-[200px] border-r border-border/60">Parameter</th>
-                    {approvals.map((po, idx) => (
-                      <th key={po.id} className={cn(
-                        "p-4 font-bold border-r border-border/60 min-w-[240px]",
-                        (po.status === "APPROVED" || po.status === "SENT") && "bg-success-soft/10"
-                      )}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <span className="block text-sm font-bold text-foreground">{po.supplierName}</span>
-                            <span className="block text-[10px] text-muted-foreground uppercase">{po.poNumber}</span>
+                  <tr>
+                    <th className="p-6 bg-muted/20 w-[240px] border-r border-border/40 sticky left-0 z-10 backdrop-blur-md">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
+                        Parameter Details
+                      </span>
+                    </th>
+                    {approvals.map((po) => (
+                      <th
+                        key={po.id}
+                        className={cn(
+                          "p-6 min-w-[280px] border-r border-border/40 relative group",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        {bestProposalId === po.id && (
+                          <div className="absolute top-0 left-0 right-0 h-1 bg-primary" />
+                        )}
+                        <div className="flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <StatusBadge status={po.status} />
+                            {bestProposalId === po.id && (
+                              <span className="flex items-center gap-1 text-[9px] font-black text-primary uppercase bg-primary-soft/20 px-2 py-0.5 rounded-md">
+                                <Trophy className="size-3" /> Recommended
+                              </span>
+                            )}
                           </div>
-                          <StatusBadge status={po.status} />
+                          <div>
+                            <h3 className="font-black text-base text-foreground leading-none">
+                              {po.supplierName}
+                            </h3>
+                            <p className="text-[10px] font-mono text-muted-foreground mt-1 uppercase tracking-widest font-bold">
+                              {po.poNumber}
+                            </p>
+                          </div>
                         </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border/60">
-                  {/* Items comparison */}
+                <tbody className="divide-y divide-border/40">
+                  {/* Category Header: Materials */}
+                  <tr className="bg-muted/30">
+                    <td className="p-3 px-6 border-r border-border/40 sticky left-0 z-10 bg-muted/30 backdrop-blur-md">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Package className="size-3.5" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Material Rates & Quantities
+                        </span>
+                      </div>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`cat-m-${po.id}`}
+                        className={cn(
+                          "p-3 border-r border-border/40",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      ></td>
+                    ))}
+                  </tr>
+
                   {uniqueItemCodes.map((code) => (
-                    <tr key={code} className="hover:bg-muted/5 transition-colors">
-                      <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">
-                        Rate & Qty<br />
-                        <span className="text-[9px] font-mono text-primary font-bold">{code}</span>
+                    <tr key={code} className="hover:bg-muted/5 transition-colors group">
+                      <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card group-hover:bg-muted/5 transition-colors">
+                        <div className="space-y-1">
+                          <p className="text-xs font-bold text-foreground">
+                            {approvals.flatMap(p => p.items).find(i => i.materialCode === code || i.item_code === code)?.materialName || "Unknown Material"}
+                          </p>
+                          <code className="text-[9px] text-primary font-black bg-primary-soft/30 px-1.5 py-0.5 rounded uppercase">
+                            {code}
+                          </code>
+                        </div>
                       </td>
                       {approvals.map((po) => {
-                        const item = po.items?.find((i: any) => i.materialCode === code || i.item_code === code);
+                        const item = po.items?.find(
+                          (i: any) => i.materialCode === code || i.item_code === code,
+                        );
                         return (
-                          <td key={`${po.id}-${code}`} className="p-4 border-r border-border/60 font-mono">
+                          <td
+                            key={`${po.id}-${code}`}
+                            className={cn(
+                              "p-4 border-r border-border/40",
+                              bestProposalId === po.id && "bg-primary/[0.02]",
+                            )}
+                          >
                             {item ? (
-                              <div className="space-y-1">
-                                <div><span className="text-muted-foreground text-[10px]">Price:</span> <strong>₹ {parseFloat(item.unitPrice).toLocaleString()}</strong></div>
-                                <div><span className="text-muted-foreground text-[10px]">Qty:</span> {Math.floor(item.quantity)} units</div>
+                              <div className="flex flex-col gap-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-muted-foreground font-black uppercase">Rate</span>
+                                  <span className="text-sm font-black text-foreground tabular-nums">
+                                    ₹{parseFloat(item.unitPrice).toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[10px] text-muted-foreground font-black uppercase">Qty</span>
+                                  <span className="text-xs font-bold text-muted-foreground">
+                                    {Math.floor(item.quantity)} Units
+                                  </span>
+                                </div>
                               </div>
-                            ) : "—"}
+                            ) : (
+                              <div className="h-full flex items-center justify-center text-muted-foreground text-[10px] italic">
+                                Not Quoted
+                              </div>
+                            )}
                           </td>
                         );
                       })}
                     </tr>
                   ))}
 
-                  {/* Financials */}
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Discount</td>
+                  {/* Category Header: Financials */}
+                  <tr className="bg-muted/30">
+                    <td className="p-3 px-6 border-r border-border/40 sticky left-0 z-10 bg-muted/30 backdrop-blur-md">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Wallet className="size-3.5" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Financial Adjustments
+                        </span>
+                      </div>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-discount`} className="p-4 border-r border-border/60 font-mono text-destructive">
-                        - ₹ {parseFloat(po.discountAmount || 0).toLocaleString()}
-                      </td>
+                      <td
+                        key={`cat-f-${po.id}`}
+                        className={cn(
+                          "p-3 border-r border-border/40",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      ></td>
                     ))}
                   </tr>
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Tax (GST)</td>
+
+                  <tr className="hover:bg-muted/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card hover:bg-muted/5">
+                      <div className="flex items-center gap-2">
+                        <TrendingDown className="size-3.5 text-success" />
+                        <span className="text-xs font-bold">Total Discount</span>
+                      </div>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-tax`} className="p-4 border-r border-border/60 font-mono">
-                        ₹ {parseFloat(po.taxAmount || 0).toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Freight</td>
-                    {approvals.map((po) => (
-                      <td key={`${po.id}-freight`} className="p-4 border-r border-border/60 font-mono">
-                        ₹ {parseFloat(po.freightCharges || 0).toLocaleString()}
+                      <td
+                        key={`${po.id}-discount`}
+                        className={cn(
+                          "p-4 border-r border-border/40 font-black text-sm text-success tabular-nums",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        - ₹{parseFloat(po.discountAmount || 0).toLocaleString()}
                       </td>
                     ))}
                   </tr>
 
-                  {/* Logistics */}
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Exp. Delivery</td>
+                  <tr className="hover:bg-muted/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card hover:bg-muted/5">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="size-3.5 text-muted-foreground" />
+                        <span className="text-xs font-bold">Tax & Charges (GST)</span>
+                      </div>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-del`} className="p-4 border-r border-border/60 font-medium">
-                        {po.expectedDeliveryDate || "—"}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Payment Terms</td>
-                    {approvals.map((po) => (
-                      <td key={`${po.id}-pay`} className="p-4 border-r border-border/60 text-[10px] font-medium leading-relaxed">
-                        {po.paymentTerms || "—"}
+                      <td
+                        key={`${po.id}-tax`}
+                        className={cn(
+                          "p-4 border-r border-border/40 font-bold text-sm tabular-nums",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        ₹{parseFloat(po.taxAmount || 0).toLocaleString()}
                       </td>
                     ))}
                   </tr>
 
-                  {/* Procurement Logic */}
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider bg-primary-soft/5">Selection Reason</td>
+                  <tr className="hover:bg-muted/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card hover:bg-muted/5">
+                      <div className="flex items-center gap-2">
+                        <Truck className="size-3.5 text-muted-foreground" />
+                        <span className="text-xs font-bold">Freight Charges</span>
+                      </div>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-reason`} className="p-4 border-r border-border/60 text-[11px] font-bold text-primary bg-primary-soft/5">
+                      <td
+                        key={`${po.id}-freight`}
+                        className={cn(
+                          "p-4 border-r border-border/40 font-bold text-sm tabular-nums",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        ₹{parseFloat(po.freightCharges || 0).toLocaleString()}
+                      </td>
+                    ))}
+                  </tr>
+
+                  {/* Category Header: Logistics */}
+                  <tr className="bg-muted/30">
+                    <td className="p-3 px-6 border-r border-border/40 sticky left-0 z-10 bg-muted/30 backdrop-blur-md">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Clock className="size-3.5" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Logistics & Timeline
+                        </span>
+                      </div>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`cat-l-${po.id}`}
+                        className={cn(
+                          "p-3 border-r border-border/40",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      ></td>
+                    ))}
+                  </tr>
+
+                  <tr className="hover:bg-muted/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card hover:bg-muted/5">
+                      <span className="text-xs font-bold">Expected Delivery</span>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`${po.id}-del`}
+                        className={cn(
+                          "p-4 border-r border-border/40 text-xs font-black text-foreground tabular-nums",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        {po.expectedDeliveryDate || "Not Specified"}
+                      </td>
+                    ))}
+                  </tr>
+
+                  <tr className="hover:bg-muted/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-card hover:bg-muted/5">
+                      <span className="text-xs font-bold">Payment Terms</span>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`${po.id}-pay`}
+                        className={cn(
+                          "p-4 border-r border-border/40 text-[11px] font-medium leading-relaxed italic text-muted-foreground",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
+                        {po.paymentTerms || "Standard Terms"}
+                      </td>
+                    ))}
+                  </tr>
+
+                  {/* Category Header: Selection */}
+                  <tr className="bg-primary-soft/10">
+                    <td className="p-3 px-6 border-r border-border/40 sticky left-0 z-10 bg-primary-soft/10 backdrop-blur-md">
+                      <div className="flex items-center gap-2 text-primary">
+                        <ShieldCheck className="size-3.5" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">
+                          Procurement Rationale
+                        </span>
+                      </div>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`cat-s-${po.id}`}
+                        className={cn(
+                          "p-3 border-r border-border/40",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      ></td>
+                    ))}
+                  </tr>
+
+                  <tr className="hover:bg-muted/5 bg-primary-soft/5">
+                    <td className="p-4 px-6 border-r border-border/40 sticky left-0 z-10 bg-primary-soft/5 hover:bg-muted/5">
+                      <span className="text-xs font-black uppercase tracking-wider text-primary">Selection Reason</span>
+                    </td>
+                    {approvals.map((po) => (
+                      <td
+                        key={`${po.id}-reason`}
+                        className={cn(
+                          "p-4 border-r border-border/40 text-xs font-black text-primary tracking-tight",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
                         {po.selectionReason || "—"}
                       </td>
                     ))}
                   </tr>
-                  <tr className="hover:bg-muted/5 transition-colors">
-                    <td className="p-4 font-semibold border-r border-border/60 text-muted-foreground uppercase text-[10px] tracking-wider">Procurement Comments</td>
+
+                  {/* Grand Total */}
+                  <tr className="bg-primary text-white border-t-2 border-primary">
+                    <td className="p-6 px-6 border-r border-white/20 sticky left-0 z-10 bg-primary shadow-2xl">
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="size-5" />
+                        <span className="text-sm font-black uppercase tracking-[0.2em]">Final Quote Total</span>
+                      </div>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-comments`} className="p-4 border-r border-border/60 text-[10px] text-muted-foreground leading-relaxed italic">
-                        {po.procurementComments || "No additional comments"}
+                      <td
+                        key={`${po.id}-total`}
+                        className={cn(
+                          "p-6 border-r border-white/20 font-black text-2xl tabular-nums tracking-tighter",
+                          bestProposalId === po.id && "bg-primary-hover",
+                        )}
+                      >
+                        ₹{parseFloat(po.totalAmount).toLocaleString()}
                       </td>
                     ))}
                   </tr>
 
-                  {/* Totals */}
-                  <tr className="bg-primary/5">
-                    <td className="p-4 font-extrabold border-r border-border/60 text-primary uppercase text-[10px] tracking-wider">Grand Total</td>
+                  {/* Actions */}
+                  <tr className="bg-card">
+                    <td className="p-6 px-6 border-r border-border/40 sticky left-0 z-10 bg-card">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Authorize Decision</span>
+                    </td>
                     {approvals.map((po) => (
-                      <td key={`${po.id}-total`} className="p-4 border-r border-border/60 font-mono text-base font-black text-primary">
-                        ₹ {parseFloat(po.totalAmount).toLocaleString()}
-                      </td>
-                    ))}
-                  </tr>
-
-                  {/* Action Row */}
-                  <tr className="bg-muted/10">
-                    <td className="p-4 border-r border-border/60"></td>
-                    {approvals.map((po) => (
-                      <td key={`${po.id}-actions`} className="p-4 border-r border-border/60">
+                      <td
+                        key={`${po.id}-actions`}
+                        className={cn(
+                          "p-6 border-r border-border/40",
+                          bestProposalId === po.id && "bg-primary/[0.02]",
+                        )}
+                      >
                         {po.status === "PENDING_FINANCE" ? (
-                          <div className="flex flex-col gap-2">
+                          <div className="space-y-3">
                             <Button
-                              size="sm"
-                              className="w-full rounded-xl bg-success hover:bg-success/90 font-bold text-xs h-9 shadow-glow"
+                              className="w-full h-12 rounded-2xl bg-success hover:bg-success/90 text-white font-black uppercase tracking-widest text-[10px] shadow-glow border-none"
                               onClick={() => handleApprove(po.id)}
                               disabled={submitting}
                             >
-                              <CheckCircle className="size-3.5 mr-1.5" /> Approve
+                              <CheckCircle className="size-4 mr-2" /> Approve Proposal
                             </Button>
                             <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-full rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10 font-bold text-xs h-9"
+                              variant="ghost"
+                              className="w-full h-10 rounded-2xl text-destructive hover:bg-destructive/10 font-black uppercase tracking-widest text-[10px]"
                               onClick={() => handleOpenRejectModal(po.id)}
                               disabled={submitting}
                             >
-                              <XCircle className="size-3.5 mr-1.5" /> Reject
+                              <XCircle className="size-4 mr-2" /> Reject Quote
                             </Button>
                           </div>
                         ) : (
-                          <div className="flex flex-col gap-2">
-                            <Button variant="outline" size="sm" className="w-full rounded-xl font-bold text-xs h-9 opacity-60" disabled>
-                              Action Completed
-                            </Button>
+                          <div className="bg-muted/20 border border-dashed border-border rounded-2xl p-4 text-center">
+                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">
+                              Authorized
+                            </span>
                           </div>
                         )}
                       </td>
@@ -284,8 +519,8 @@ function FinanceComparison() {
                   </tr>
                 </tbody>
               </table>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       )}
 
@@ -319,7 +554,11 @@ function FinanceComparison() {
                 />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <Button variant="outline" onClick={() => setIsRejectModalOpen(false)} className="rounded-xl">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsRejectModalOpen(false)}
+                  className="rounded-xl"
+                >
                   Cancel
                 </Button>
                 <Button

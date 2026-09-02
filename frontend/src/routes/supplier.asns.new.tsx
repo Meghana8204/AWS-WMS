@@ -14,7 +14,7 @@ import {
   Upload,
   X,
   Plus,
-  File as FileIcon
+  File as FileIcon,
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -70,7 +70,8 @@ function NewAsn() {
         try {
           const saved = localStorage.getItem(draftStorageKey);
           savedDraft = saved ? JSON.parse(saved) : null;
-          if (savedDraft?.formData) setFormData((current) => ({ ...current, ...savedDraft.formData }));
+          if (savedDraft?.formData)
+            setFormData((current) => ({ ...current, ...savedDraft.formData }));
           if (Array.isArray(savedDraft?.documents)) setDocuments(savedDraft.documents);
         } catch {
           localStorage.removeItem(draftStorageKey);
@@ -87,18 +88,20 @@ function NewAsn() {
 
           // Initialize lines from PO items
           const poItems = poData.items || poData.lines || [];
-          setLines(poItems.map((item: any) => {
-            const itemCode = item.itemCode || item.materialCode || item.material_code;
-            const savedLine = savedDraft?.lines?.find((line: any) => line.item_code === itemCode);
-            return {
-              item_code: itemCode,
-              material_name: item.materialName || item.material_name,
-              uom: item.uom || "PCS",
-              ordered_quantity: parseFloat(item.quantity) || 0,
-              already_shipped_quantity: 0, // In a real app, track cumulative shipments
-              shipped_quantity: savedLine?.shipped_quantity ?? (parseFloat(item.quantity) || 0),
-            };
-          }));
+          setLines(
+            poItems.map((item: any) => {
+              const itemCode = item.itemCode || item.materialCode || item.material_code;
+              const savedLine = savedDraft?.lines?.find((line: any) => line.item_code === itemCode);
+              return {
+                item_code: itemCode,
+                material_name: item.materialName || item.material_name,
+                uom: item.uom || "PCS",
+                ordered_quantity: parseFloat(item.quantity) || 0,
+                already_shipped_quantity: 0, // In a real app, track cumulative shipments
+                shipped_quantity: savedLine?.shipped_quantity ?? (parseFloat(item.quantity) || 0),
+              };
+            }),
+          );
         }
       } catch (err: any) {
         toast.error("Initialization failed", { description: err.message });
@@ -113,19 +116,21 @@ function NewAsn() {
   useEffect(() => {
     if (loading || !draftHydrated.current) return;
 
-    localStorage.setItem(draftStorageKey, JSON.stringify({
-      formData,
-      lines,
-      documents,
-      updatedAt: new Date().toISOString(),
-    }));
+    localStorage.setItem(
+      draftStorageKey,
+      JSON.stringify({
+        formData,
+        lines,
+        documents,
+        updatedAt: new Date().toISOString(),
+      }),
+    );
   }, [asnNumber, documents, draftStorageKey, formData, lines, loading]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: string) => {
     const file = e.target.files?.[0];
@@ -144,7 +149,7 @@ function NewAsn() {
         uploaded_at: new Date().toISOString(),
       };
 
-      setDocuments(prev => [...prev, newDoc]);
+      setDocuments((prev) => [...prev, newDoc]);
       toast.success(`${type} uploaded successfully`);
     } catch (error: any) {
       toast.error("Upload failed", { description: error.message });
@@ -154,23 +159,25 @@ function NewAsn() {
   };
 
   const removeDocument = (index: number) => {
-    setDocuments(prev => prev.filter((_, i) => i !== index));
+    setDocuments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!poId) {
-        toast.error("No Purchase Order referenced");
-        return;
+      toast.error("No Purchase Order referenced");
+      return;
     }
 
     setSubmitting(true);
     try {
       // Validate quantities before submission
-      const overShippedItems = lines.filter(l => (l.shipped_quantity + l.already_shipped_quantity) > l.ordered_quantity);
+      const overShippedItems = lines.filter(
+        (l) => l.shipped_quantity + l.already_shipped_quantity > l.ordered_quantity,
+      );
       if (overShippedItems.length > 0) {
         toast.error("Over-shipment detected", {
-          description: `Items ${overShippedItems.map(i => i.item_code).join(", ")} exceed ordered quantity.`
+          description: `Items ${overShippedItems.map((i) => i.item_code).join(", ")} exceed ordered quantity.`,
         });
         setSubmitting(false);
         return;
@@ -181,7 +188,9 @@ function NewAsn() {
         po_number: String(po?.poNumber || poNumberFromSearch || ""),
         asn_number: asnNumber,
         shipment_date: formData.shipment_date || null,
-        expected_arrival_at: formData.expected_arrival_date ? new Date(formData.expected_arrival_date).toISOString() : null,
+        expected_arrival_at: formData.expected_arrival_date
+          ? new Date(formData.expected_arrival_date).toISOString()
+          : null,
         vehicle_number: String(formData.vehicle_number || ""),
         driver_name: String(formData.driver_name || ""),
         driver_contact: String(formData.driver_contact || ""),
@@ -190,7 +199,7 @@ function NewAsn() {
         package_type: String(formData.package_type || ""),
         status: "SUBMITTED",
         documents: documents,
-        lines: lines.map(l => ({
+        lines: lines.map((l) => ({
           item_code: String(l.item_code),
           shipped_quantity: parseFloat(l.shipped_quantity as any) || 0,
           material_name: String(l.material_name || ""),
@@ -283,7 +292,11 @@ function NewAsn() {
               </div>
             </SectionCard>
 
-            <SectionCard title="Shipment Contents" description="Specify quantities for this dispatch" icon={Package}>
+            <SectionCard
+              title="Shipment Contents"
+              description="Specify quantities for this dispatch"
+              icon={Package}
+            >
               <div className="rounded-2xl border border-border/40 overflow-hidden bg-card">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/50 border-b border-border/40 text-[10px] uppercase font-bold text-muted-foreground">
@@ -308,9 +321,7 @@ function NewAsn() {
                         <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
                           {line.already_shipped_quantity.toLocaleString()}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          {line.uom}
-                        </td>
+                        <td className="px-4 py-3 text-right">{line.uom}</td>
                         <td className="px-4 py-3">
                           <div className="h-8 flex items-center justify-end px-3 rounded-lg text-xs font-mono text-right bg-muted/50 border border-border/40 font-bold text-primary">
                             {line.shipped_quantity.toLocaleString()}
@@ -319,25 +330,29 @@ function NewAsn() {
                       </tr>
                     ))}
                     {lines.length === 0 && (
-                        <tr>
-                            <td colSpan={3} className="px-4 py-12 text-center text-muted-foreground italic">
-                                <Info className="size-5 mx-auto mb-2 opacity-50" />
-                                No items found in the referenced Purchase Order.
-                            </td>
-                        </tr>
+                      <tr>
+                        <td
+                          colSpan={3}
+                          className="px-4 py-12 text-center text-muted-foreground italic"
+                        >
+                          <Info className="size-5 mx-auto mb-2 opacity-50" />
+                          No items found in the referenced Purchase Order.
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </SectionCard>
 
-            <SectionCard title="Attachments" description="Upload supporting shipping documents" icon={Upload}>
+            <SectionCard
+              title="Attachments"
+              description="Upload supporting shipping documents"
+              icon={Upload}
+            >
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  {[
-                    "Invoice",
-                    "Other"
-                  ].map((type) => (
+                  {["Invoice", "Other"].map((type) => (
                     <div key={type} className="relative">
                       <input
                         type="file"
@@ -371,14 +386,20 @@ function NewAsn() {
                     <Label className="text-xs text-muted-foreground">Uploaded Documents</Label>
                     <div className="grid gap-2">
                       {documents.map((doc, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50">
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-3 rounded-xl bg-muted/30 border border-border/50"
+                        >
                           <div className="flex items-center gap-3">
                             <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                               <FileIcon className="size-4" />
                             </div>
                             <div>
                               <div className="text-sm font-medium">{doc.file_name}</div>
-                              <div className="text-[10px] text-muted-foreground uppercase">{doc.document_type} · {new Date(doc.uploaded_at).toLocaleDateString()}</div>
+                              <div className="text-[10px] text-muted-foreground uppercase">
+                                {doc.document_type} ·{" "}
+                                {new Date(doc.uploaded_at).toLocaleDateString()}
+                              </div>
                             </div>
                           </div>
                           <Button
@@ -475,12 +496,15 @@ function NewAsn() {
                 </div>
 
                 <div className="pt-4 border-t border-border mt-4">
-                    <div className="rounded-xl bg-primary-soft/10 border border-primary/20 p-4">
-                        <div className="flex gap-3 text-xs text-primary leading-relaxed font-medium">
-                            <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
-                            <span>By submitting this ASN, you confirm that the goods listed above have been dispatched.</span>
-                        </div>
+                  <div className="rounded-xl bg-primary-soft/10 border border-primary/20 p-4">
+                    <div className="flex gap-3 text-xs text-primary leading-relaxed font-medium">
+                      <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
+                      <span>
+                        By submitting this ASN, you confirm that the goods listed above have been
+                        dispatched.
+                      </span>
                     </div>
+                  </div>
                 </div>
 
                 <div className="grid gap-3 mt-6">
@@ -489,7 +513,11 @@ function NewAsn() {
                     className="w-full h-12 rounded-xl shadow-glow"
                     disabled={submitting || lines.length === 0}
                   >
-                    {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <CheckCircle2 className="mr-2 size-4" />}
+                    {submitting ? (
+                      <Loader2 className="mr-2 size-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="mr-2 size-4" />
+                    )}
                     Submit ASN
                   </Button>
                 </div>

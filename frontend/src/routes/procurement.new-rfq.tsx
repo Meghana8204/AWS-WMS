@@ -14,7 +14,7 @@ import {
   Plus,
   Trash2,
   Package,
-  Sparkles
+  Sparkles,
 } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
@@ -38,6 +38,7 @@ function NewRfq() {
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+  const [materialCatalog, setMaterialCatalog] = useState<any[]>([]);
   const [filters, setFilters] = useState({
     search: "",
     category: "",
@@ -54,26 +55,28 @@ function NewRfq() {
     remarks: "",
   });
 
-  const generateRandomCode = () => `MAT-${Math.floor(100000 + Math.random() * 900000)}`;
-
   const [items, setItems] = useState<any[]>([
     {
-      material_code: generateRandomCode(),
+      material_code: "",
       material_name: "",
-      category: "Raw Materials",
+      category: "",
+      sub_category: "",
+      price_range: "",
       quantity: 1,
       uom: "PCS",
       special_requirements: "",
-    }
+    },
   ]);
 
   const addItem = () => {
     setItems((prev) => [
       ...prev,
       {
-        material_code: generateRandomCode(),
+        material_code: "",
         material_name: "",
-        category: "Raw Materials",
+        category: "",
+        sub_category: "",
+        price_range: "",
         quantity: 1,
         uom: "PCS",
         special_requirements: "",
@@ -90,10 +93,55 @@ function NewRfq() {
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
-    setItems((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  };
+
+  const applyMasterMaterial = (index: number, material: any) => {
+    const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
+    const priceRange =
+      material.minimumPrice != null || material.maximumPrice != null
+        ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
+        : "";
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              material_code: material.materialCode,
+              material_name: material.name,
+              category: material.category || "",
+              sub_category: material.subCategory || "",
+              price_range: priceRange,
+              uom: String(material.uom || "PCS").toUpperCase(),
+            }
+          : item,
+      ),
     );
   };
+
+  useEffect(() => {
+    if (!materialCatalog.length) return;
+    setItems((current) =>
+      current.map((item) => {
+        const material = materialCatalog.find(
+          (entry) => entry.materialCode === item.material_code,
+        );
+        if (!material) return item;
+        const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
+        return {
+          ...item,
+          material_name: material.name,
+          category: material.category || "",
+          sub_category: material.subCategory || "",
+          price_range:
+            material.minimumPrice != null || material.maximumPrice != null
+              ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
+              : "",
+          uom: String(material.uom || item.uom || "PCS").toUpperCase(),
+        };
+      }),
+    );
+  }, [materialCatalog]);
 
   useEffect(() => {
     async function fetchSuppliers() {
@@ -102,9 +150,14 @@ function NewRfq() {
         const data = await api.getSuppliers({ ...filters, status: "Active" });
         // Keep the RFQ invitation list safe even if an older backend ignores
         // the status query parameter.
-        setSuppliers(data.filter((supplier: any) =>
-          String(supplier.status ?? "").trim().toLowerCase() === "active"
-        ));
+        setSuppliers(
+          data.filter(
+            (supplier: any) =>
+              String(supplier.status ?? "")
+                .trim()
+                .toLowerCase() === "active",
+          ),
+        );
       } catch (err) {
         toast.error("Failed to load suppliers");
       } finally {
@@ -136,63 +189,115 @@ function NewRfq() {
     };
     fetchCategories();
 
-    // Get current user for procurement officer field
-    const userInfo = localStorage.getItem("user_info");
-    if (userInfo) {
-      const user = JSON.parse(userInfo);
-      setFormData(prev => ({ ...prev, procurement_officer: user.username || "" }));
-    }
+    const fetchMaterialMaster = async () => {
+      let catalogData: any[] = [];
+      try {
+        const [catalog, master] = await Promise.all([
+          api.getMaterialCatalog(),
+          api.getMaterials(),
+        ]);
+        const masterByCode = new Map(master.map((material: any) => [material.code, material]));
+        catalogData = catalog
+          .filter((material: any) => material.materialCode)
+          .map((material: any) => {
+            const details: any = masterByCode.get(material.materialCode) || {};
+            return {
+              ...details,
+              materialCode: material.materialCode,
+              name: material.name,
+              category: String(material.category || details.category || "").replaceAll("_", " "),
+              subCategory: material.subCategory || details.subCategory || "",
+              uom: material.uom || details.uom || "PCS",
+              minimumPrice: material.minimumPrice ?? details.minimumPrice,
+              maximumPrice: material.maximumPrice ?? details.maximumPrice,
+              currency: material.currency || details.currency || "INR",
+            };
+          });
+        setMaterialCatalog(catalogData);
+      } catch {
+        toast.error("Failed to load Material Master");
+      }
 
-    // Handle auto-fill from Material Request
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromRequestId = urlParams.get('fromRequestId');
+      // Handle auto-fill from Material Request after catalog is fetched
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromRequestId = urlParams.get("fromRequestId");
 
-    if (fromRequestId) {
-      const loadMR = async () => {
+      if (fromRequestId) {
         try {
           const allMRs = await api.getMaterialRequests();
-          const mr = allMRs.find(r => r.id === fromRequestId);
+          const mr = allMRs.find((r) => r.id === fromRequestId);
           if (mr) {
-            setFormData(prev => ({
+            setFormData((prev) => ({
               ...prev,
               material_request_number: mr.requestNumber,
               warehouse: mr.warehouseId,
               required_delivery_date: mr.requiredDate,
             }));
 
-            setItems(mr.items.map((it: any) => ({
-              material_code: it.materialCode,
-              material_name: it.materialName || it.materialCode,
-              category: "Raw Materials",
-              quantity: it.quantity,
-              uom: it.uom,
-              special_requirements: ""
-            })));
+            setItems(
+              mr.items.map((it: any) => {
+                const material = catalogData.find((m) => m.materialCode === it.materialCode);
+                if (material) {
+                  const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
+                  const priceRange =
+                    material.minimumPrice != null || material.maximumPrice != null
+                      ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
+                      : "";
+                  return {
+                    material_code: material.materialCode,
+                    material_name: material.name,
+                    category: material.category,
+                    sub_category: material.subCategory,
+                    price_range: priceRange,
+                    quantity: it.quantity,
+                    uom: String(material.uom || it.uom).toUpperCase(),
+                    special_requirements: "",
+                  };
+                }
+                return {
+                  material_code: it.materialCode,
+                  material_name: it.materialName || it.materialCode,
+                  category: it.category || "",
+                  sub_category: it.subCategory || it.sub_category || "",
+                  price_range: it.priceRange || it.price_range || "",
+                  quantity: it.quantity,
+                  uom: it.uom,
+                  special_requirements: "",
+                };
+              }),
+            );
           }
         } catch (e) {
           console.error("Failed to load MR details", e);
         }
-      };
-      loadMR();
-    } else {
-      void fetchNextMrNumber();
+      } else {
+        void fetchNextMrNumber();
+      }
+    };
+    void fetchMaterialMaster();
+
+    // Get current user for procurement officer field
+    const userInfo = localStorage.getItem("user_info");
+    if (userInfo) {
+      const user = JSON.parse(userInfo);
+      setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
     }
   }, []);
 
   const fetchNextMrNumber = async () => {
     try {
       const { requestNumber } = await api.getNextMaterialRequestNumber();
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
-        material_request_number: requestNumber
+        material_request_number: requestNumber,
       }));
     } catch (e) {
       console.error("Failed to fetch next MR number", e);
       // Fallback if API fails
-      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, '');
-      setFormData(prev => ({
+      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
+      setFormData((prev) => ({
         ...prev,
-        material_request_number: `MR-${yearMonth}-0001`
+        material_request_number: `MR-${yearMonth}-0001`,
       }));
     }
   };
@@ -203,8 +308,8 @@ function NewRfq() {
   };
 
   const toggleSupplier = (id: string) => {
-    setSelectedSuppliers(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+    setSelectedSuppliers((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   };
 
@@ -215,7 +320,7 @@ function NewRfq() {
       return;
     }
 
-    if (items.some(item => !item.material_code.trim() || !item.material_name.trim())) {
+    if (items.some((item) => !item.material_code.trim() || !item.material_name.trim())) {
       toast.error("Please fill in Material Code and Name for all items");
       return;
     }
@@ -225,9 +330,13 @@ function NewRfq() {
       const payload = {
         ...formData,
         supplier_ids: selectedSuppliers,
-        items: items.map(item => ({
-          ...item,
+        items: items.map((item) => ({
+          material_code: item.material_code,
+          material_name: item.material_name,
+          category: item.category,
           quantity: parseFloat(item.quantity) || 0,
+          uom: item.uom,
+          special_requirements: item.special_requirements,
         })),
         // Convert empty strings to null for optional date fields to prevent Pydantic errors
         required_delivery_date: formData.required_delivery_date || null,
@@ -248,13 +357,21 @@ function NewRfq() {
       title="Create New RFQ"
       subtitle="Request for Quotations — Auto-generate RFQ numbers and track bids"
       actions={
-        <Button variant="outline" className="rounded-xl" onClick={() => navigate({ to: "/procurement/rfqs" })}>
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={() => navigate({ to: "/procurement/rfqs" })}
+        >
           <ArrowLeft className="mr-2 size-4" /> Cancel
         </Button>
       }
     >
       <form onSubmit={handleSubmit} className="mx-auto max-w-4xl space-y-6">
-        <SectionCard title="RFQ Metadata" description="Core identification and scheduling for this request" icon={FileText}>
+        <SectionCard
+          title="RFQ Metadata"
+          description="Core identification and scheduling for this request"
+          icon={FileText}
+        >
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="rfq_date">RFQ Date</Label>
@@ -350,34 +467,53 @@ function NewRfq() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Material Requirements" description="List materials required in this RFQ" icon={Package}>
+        <SectionCard
+          title="Material Requirements"
+          description="List materials required in this RFQ"
+          icon={Package}
+        >
           <div className="space-y-6">
             {items.map((item, index) => (
-              <div key={index} className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30">
-                <div className="absolute right-4 top-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 rounded-xl text-destructive hover:bg-destructive-soft/10 hover:text-destructive"
-                    onClick={() => removeItem(index)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-
-                <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">Item #{index + 1}</p>
+              <div
+                key={index}
+                className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30"
+              >
+                <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">
+                  Item #{index + 1}
+                </p>
 
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Material Code</Label>
                     <Input
-                      placeholder="e.g. MAT-001"
-                      className="h-10 rounded-xl bg-muted/50"
+                      placeholder="Search MAT-001 or material name"
+                      className="h-10 rounded-xl font-mono"
                       value={item.material_code}
-                      readOnly
+                      list={`rfq-materials-${index}`}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        handleItemChange(index, "material_code", value);
+
+                        const normalizedInput = value.trim().toUpperCase();
+                        if (!normalizedInput) return;
+
+                        const match = materialCatalog.find(
+                          (m) =>
+                            m.materialCode.toUpperCase() === normalizedInput ||
+                            m.name.toUpperCase() === normalizedInput
+                        );
+
+                        if (match) applyMasterMaterial(index, match);
+                      }}
                       required
                     />
+                    <datalist id={`rfq-materials-${index}`}>
+                      {materialCatalog.map((material) => (
+                        <option key={material.materialCode} value={material.materialCode}>
+                          {material.name}
+                        </option>
+                      ))}
+                    </datalist>
                   </div>
 
                   <div className="space-y-1.5">
@@ -386,28 +522,32 @@ function NewRfq() {
                       placeholder="e.g. Steel Pipe 2\"
                       className="h-10 rounded-xl"
                       value={item.material_name}
-                      onChange={(e) => handleItemChange(index, "material_name", e.target.value)}
+                      readOnly
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Category Description</Label>
-                    <select
-                      className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
+                    <Label className="text-xs">Category</Label>
+                    <Input
+                      className="h-10 rounded-xl bg-muted/50"
                       value={item.category}
-                      onChange={(e) => handleItemChange(index, "category", e.target.value)}
-                    >
-                      <option value="Raw Materials">Raw Materials</option>
-                      <option value="Components">Components</option>
-                      <option value="Services">Services</option>
-                      <option value="Hardware">Hardware</option>
-                      <option value="General">General</option>
-                    </select>
+                      readOnly
+                    />
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Sub Category</Label>
+                    <Input className="h-10 rounded-xl bg-muted/50" value={item.sub_category} readOnly />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Price Range</Label>
+                    <Input className="h-10 rounded-xl bg-muted/50" value={item.price_range} readOnly />
+                  </div>
+
                   <div className="space-y-1.5">
                     <Label className="text-xs">Required Quantity</Label>
                     <Input
@@ -439,24 +579,21 @@ function NewRfq() {
                     placeholder="e.g. Needs specialized temperature control, surface treatment certificate..."
                     className="h-10 rounded-xl"
                     value={item.special_requirements}
-                    onChange={(e) => handleItemChange(index, "special_requirements", e.target.value)}
+                    onChange={(e) =>
+                      handleItemChange(index, "special_requirements", e.target.value)
+                    }
                   />
                 </div>
               </div>
             ))}
-
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-11 rounded-xl border-dashed border-primary/40 text-primary hover:bg-primary-soft/10 hover:border-primary"
-              onClick={addItem}
-            >
-              <Plus className="mr-2 size-4" /> Add Material Requirement
-            </Button>
           </div>
         </SectionCard>
 
-        <SectionCard title="Select Suppliers" description="Search and select active vendors from the master data" icon={Building2}>
+        <SectionCard
+          title="Select Suppliers"
+          description="Search and select active vendors from the master data"
+          icon={Building2}
+        >
           <div className="mb-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="relative">
@@ -465,29 +602,31 @@ function NewRfq() {
                   placeholder="Name or code..."
                   className="pl-10 rounded-xl"
                   value={filters.search}
-                  onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
+                  onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
                 />
               </div>
               <Input
                 placeholder="Material..."
                 className="rounded-xl"
                 value={filters.material}
-                onChange={(e) => setFilters(f => ({ ...f, material: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, material: e.target.value }))}
               />
               <Input
                 placeholder="City/Location..."
                 className="rounded-xl"
                 value={filters.city}
-                onChange={(e) => setFilters(f => ({ ...f, city: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, city: e.target.value }))}
               />
               <select
                 className="h-11 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                 value={filters.category}
-                onChange={(e) => setFilters(f => ({ ...f, category: e.target.value }))}
+                onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
               >
                 <option value="">All Categories</option>
-                {availableCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
+                {availableCategories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
                 ))}
               </select>
             </div>
@@ -512,15 +651,23 @@ function NewRfq() {
                     "relative cursor-pointer rounded-2xl border p-4 transition-all hover:bg-accent/30",
                     selectedSuppliers.includes(s.supplierId)
                       ? "border-primary bg-primary-soft/10 ring-1 ring-primary"
-                      : "border-border/60 bg-card"
+                      : "border-border/60 bg-card",
                   )}
                 >
                   <div className="flex items-start gap-4">
-                    <div className={cn(
-                      "grid size-12 shrink-0 place-items-center rounded-xl transition-colors",
-                      selectedSuppliers.includes(s.supplierId) ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                    )}>
-                      {selectedSuppliers.includes(s.supplierId) ? <CheckCircle2 className="size-6" /> : <Building2 className="size-6" />}
+                    <div
+                      className={cn(
+                        "grid size-12 shrink-0 place-items-center rounded-xl transition-colors",
+                        selectedSuppliers.includes(s.supplierId)
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {selectedSuppliers.includes(s.supplierId) ? (
+                        <CheckCircle2 className="size-6" />
+                      ) : (
+                        <Building2 className="size-6" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -544,7 +691,10 @@ function NewRfq() {
                 variant="ghost"
                 size="sm"
                 className="h-7 text-[10px] text-primary hover:bg-primary-soft/30"
-                onClick={(e) => { e.stopPropagation(); setSelectedSuppliers([]); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedSuppliers([]);
+                }}
               >
                 Clear all
               </Button>
@@ -557,7 +707,11 @@ function NewRfq() {
             Creating this RFQ will notify the selected suppliers via the portal.
           </p>
           <Button type="submit" size="lg" className="rounded-xl shadow-glow" disabled={submitting}>
-            {submitting ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+            {submitting ? (
+              <Loader2 className="mr-2 size-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 size-4" />
+            )}
             Create RFQ
           </Button>
         </div>

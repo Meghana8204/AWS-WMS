@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 
-# Add the current directory to sys.path so we can import app modules
+
 sys.path.append(os.getcwd())
 
 from sqlalchemy import text
@@ -24,7 +24,7 @@ async def cleanup_gate_data():
     async with session_scope() as session:
         for table in tables_to_clean:
             try:
-                # Check if table exists
+                
                 check_query = text(f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '{table}')")
                 result = await session.execute(check_query)
                 exists = result.scalar()
