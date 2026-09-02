@@ -137,7 +137,7 @@ def extract_variant_sequence(code: Optional[str]) -> Optional[int]:
     if not code or not isinstance(code, str):
         return None
     code_str = code.strip()
-    match = re.search(r"[-_]?[vV](?:ar)?[-_]?(\d+)$", code_str, re.IGNORECASE)
+    match = re.search(r"[-_]?[vVsS](?:ar|pec)?[-_]?(\d+)$", code_str, re.IGNORECASE)
     if match:
         try:
             return int(match.group(1))
