@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import List, Optional
 import uuid
 
-from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Table, Text
+from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Table, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID
@@ -20,7 +20,7 @@ rfq_supplier_link = Table(
     "rfq_supplier_link",
     Base.metadata,
     Column("rfq_id", GUID, ForeignKey("rfq.id"), primary_key=True),
-    Column("supplier_id", String(64), ForeignKey("supplier.id"), primary_key=True),
+    Column("supplier_id", GUID, ForeignKey("supplier.id"), primary_key=True),
 )
 
 
@@ -45,7 +45,7 @@ class RawMaterialMasterModel(Base):
 class SupplierModel(Base):
     __tablename__ = "supplier"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     supplier_name: Mapped[str] = mapped_column(String(128), nullable=False)
     registered_company_name: Mapped[str] = mapped_column(String(256), nullable=False, unique=True)
     vendor_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -85,8 +85,8 @@ class SupplierAddressModel(Base):
     __tablename__ = "supplier_address"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     registered_address: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -101,8 +101,8 @@ class SupplierContactModel(Base):
     __tablename__ = "supplier_contact"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     primary_contact_name: Mapped[str] = mapped_column(String(128), nullable=False)
     primary_email: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
@@ -118,8 +118,8 @@ class SupplierBankInfoModel(Base):
     __tablename__ = "supplier_bank_info"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     bank_name: Mapped[str] = mapped_column(String(128), nullable=False)
     account_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
@@ -136,8 +136,8 @@ class SupplierDocumentModel(Base):
     __tablename__ = "supplier_document"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False
     )
     document_type: Mapped[str] = mapped_column(String(64), nullable=False)
     file_name: Mapped[str] = mapped_column(String(256), nullable=False)
@@ -157,13 +157,55 @@ class MaterialModel(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sub_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    material_type: Mapped[str] = mapped_column(String(64), nullable=False, default="Raw Material")
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="Nos")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="Active")
+    minimum_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    standard_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    maximum_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    price_effective_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    price_effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    price_threshold_status: Mapped[str] = mapped_column(String(16), nullable=False, default="Active")
+    approval_required_above_threshold: Mapped[bool] = mapped_column(nullable=False, default=True)
+    last_purchase_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    gst_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    minimum_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    maximum_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    reorder_level: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    safety_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    batch_controlled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    serial_controlled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    hazardous: Mapped[bool] = mapped_column(nullable=False, default=False)
+    barcode: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+
+
+class MaterialSubCategoryModel(Base):
+    __tablename__ = "material_sub_category"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+
+
+class MaterialIdentityModel(Base):
+    """The application-wide, immutable identifier for a material name."""
+    __tablename__ = "material_identity"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    normalized_name: Mapped[str] = mapped_column(String(256), unique=True, index=True, nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
 
 # Association table for Supplier and Materials
 supplier_material_link = Table(
     "supplier_material_link",
     Base.metadata,
-    Column("supplier_id", String(64), ForeignKey("supplier.id", ondelete="CASCADE"), primary_key=True),
+    Column("supplier_id", GUID, ForeignKey("supplier.id", ondelete="CASCADE"), primary_key=True),
     Column("material_id", GUID, ForeignKey("material.id", ondelete="CASCADE"), primary_key=True),
 )
 
@@ -184,7 +226,7 @@ class RfqModel(Base):
     closing_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # Selection Fields
-    selected_supplier_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=True)
+    selected_supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
     selection_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     selected_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     selection_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -221,7 +263,7 @@ class QuotationModel(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     rfq_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=False)
-    supplier_id: Mapped[str] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=False)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     total_amount: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
@@ -271,7 +313,7 @@ class AsnModel(Base):
     __tablename__ = "asn"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=True)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
     asn_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     po_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -327,8 +369,8 @@ class PurchaseOrderModel(Base):
     po_date: Mapped[date] = mapped_column(Date, nullable=False, default=date.today)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED")
 
-    rfq_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=True)
-    supplier_id: Mapped[str] = mapped_column(String(64), ForeignKey("supplier.id"), nullable=False)
+    rfq_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=True)
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
 
     supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     warehouse_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
@@ -422,6 +464,8 @@ class MaterialRequestModel(Base):
     required_date: Mapped[date] = mapped_column(Date, nullable=False)
     remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    approved_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     items: Mapped[List["MaterialRequestItemModel"]] = relationship(
         "MaterialRequestItemModel", back_populates="request", cascade="all, delete-orphan"
@@ -439,6 +483,58 @@ class MaterialRequestItemModel(Base):
     uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
 
     request: Mapped[MaterialRequestModel] = relationship("MaterialRequestModel", back_populates="items")
+
+
+class StockReservationModel(Base):
+    __tablename__ = "stock_reservation"
+    __table_args__ = (UniqueConstraint("request_item_id", name="uq_stock_reservation_request_item"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False, index=True)
+    request_item_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request_item.id", ondelete="RESTRICT"), nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RESERVED")
+    allocations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    reserved_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    reserved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+
+class PickTaskModel(Base):
+    __tablename__ = "pick_task"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    task_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True)
+    request_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    department: Mapped[str] = mapped_column(String(64), nullable=False)
+    items: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN")
+    destination: Mapped[str] = mapped_column(String(128), nullable=False, default="Production Staging Area")
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+
+class MaterialIssueModel(Base):
+    __tablename__ = "material_issue"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    issue_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    pick_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("pick_task.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False)
+    department: Mapped[str] = mapped_column(String(64), nullable=False)
+    items: Mapped[list] = mapped_column(JSON, nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    received_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
 
 class MaterialStockModel(Base):
@@ -493,8 +589,8 @@ class SupplierUserModel(Base):
     __tablename__ = "supplier_user"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    supplier_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False, unique=True
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("supplier.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)

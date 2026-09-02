@@ -74,15 +74,17 @@ class AsnId:
 
 @dataclass(frozen=True)
 class SupplierId:
-    value: str
+    value: uuid.UUID
 
     @staticmethod
     def new_id(sequence: int) -> SupplierId:
-        return SupplierId(f"SUP-{sequence:05d}")
+        # The sequence belongs in Supplier.supplier_code; persistence uses a
+        # UUID primary key like the other procurement aggregates.
+        return SupplierId(uuid.uuid4())
 
     @staticmethod
-    def of(value: str) -> SupplierId:
-        return SupplierId(str(value))
+    def of(value: str | uuid.UUID) -> SupplierId:
+        return SupplierId(value if isinstance(value, uuid.UUID) else uuid.UUID(str(value)))
 
     def __str__(self) -> str:
-        return self.value
+        return str(self.value)

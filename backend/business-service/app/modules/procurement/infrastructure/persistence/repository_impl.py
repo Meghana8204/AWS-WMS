@@ -66,6 +66,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
         self._session = session
 
     async def find_by_id(self, supplier_id: SupplierId) -> Optional[Supplier]:
+        val = supplier_id.value if hasattr(supplier_id, "value") else supplier_id
+        try:
+            lookup_id = uuid.UUID(str(val))
+        except (ValueError, TypeError):
+            lookup_id = val
         result = await self._session.execute(
             select(SupplierModel)
             .options(
@@ -74,7 +79,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
                 selectinload(SupplierModel.bank_info),
                 selectinload(SupplierModel.documents),
             )
-            .where(SupplierModel.id == supplier_id.value)
+            .where(SupplierModel.id == lookup_id)
         )
         entity = result.scalar_one_or_none()
         if entity is None:
@@ -97,7 +102,11 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierModel.id)).where(func.upper(SupplierModel.gstin) == gstin.upper())
         if exclude_id:
-            stmt = stmt.where(SupplierModel.id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierModel.id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 
@@ -106,19 +115,33 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             return False
         stmt = select(func.count(SupplierModel.id)).where(func.upper(SupplierModel.registered_company_name) == name.upper())
         if exclude_id:
-            stmt = stmt.where(SupplierModel.id != exclude_id)
+            try:
+                ex_id = uuid.UUID(str(exclude_id))
+            except (ValueError, TypeError):
+                ex_id = exclude_id
+            stmt = stmt.where(SupplierModel.id != ex_id)
         res = await self._session.execute(stmt)
         return (res.scalar() or 0) > 0
 
     async def get_next_sequence(self) -> int:
-        stmt = select(func.count(SupplierModel.id))
-        result = await self._session.execute(stmt)
-        return (result.scalar() or 0) + 1
+        # Supplier rows can be deleted and legacy UUID-only rows may exist, so
+        # COUNT(*) is not a safe source for the next permanent supplier code.
+        result = await self._session.execute(select(SupplierModel.supplier_code))
+        used_sequences = []
+        for code in result.scalars():
+            if code and code.startswith("SUP-") and code[4:].isdigit():
+                used_sequences.append(int(code[4:]))
+        return max(used_sequences, default=0) + 1
 
     async def save(self, supplier: Supplier) -> None:
+        val = supplier.id.value if hasattr(supplier.id, "value") else supplier.id
+        try:
+            lookup_id = uuid.UUID(str(val))
+        except (ValueError, TypeError):
+            lookup_id = val
         model = await self._session.get(
             SupplierModel,
-            supplier.id.value,
+            lookup_id,
             options=[
                 selectinload(SupplierModel.address),
                 selectinload(SupplierModel.contact),
@@ -127,7 +150,7 @@ class SqlAlchemySupplierRepository(SupplierRepository):
             ]
         )
         if not model:
-            model = SupplierModel(id=supplier.id.value)
+            model = SupplierModel(id=lookup_id)
             self._session.add(model)
 
         model.supplier_name = supplier.supplier_name
@@ -365,11 +388,22 @@ class SqlAlchemyRfqRepository(RfqRepository):
 
         # Sync suppliers
         if rfq.supplier_ids:
-            supplier_uuids = [sid.value for sid in rfq.supplier_ids]
+            supplier_uuids = []
+            for sid in rfq.supplier_ids:
+                val = sid.value if hasattr(sid, "value") else sid
+                if isinstance(val, uuid.UUID):
+                    supplier_uuids.append(val)
+                else:
+                    try:
+                        supplier_uuids.append(uuid.UUID(str(val)))
+                    except (ValueError, TypeError):
+                        supplier_uuids.append(val)
             supplier_res = await self._session.execute(
                 select(SupplierModel).where(SupplierModel.id.in_(supplier_uuids))
             )
-            model.suppliers = supplier_res.scalars().all()
+            model.suppliers = list(supplier_res.scalars().all())
+        else:
+            model.suppliers = []
 
         # Write outbox domain events
         for event in rfq.domain_events:

@@ -123,6 +123,7 @@ class CreateSupplierUseCase:
             category=command.category,
             industry=command.industry,
             gstin=command.gstin,
+            supplier_code=f"SUP-{seq:05d}",
             main_materials=command.main_materials,
             address=address,
             contact=contact,

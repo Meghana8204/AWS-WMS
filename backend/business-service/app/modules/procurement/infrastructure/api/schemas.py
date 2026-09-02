@@ -11,6 +11,37 @@ class MasterDataCreate(ApiModel):
     name: str
 
 
+class MaterialMasterUpsert(ApiModel):
+    code: str
+    name: str
+    description: Optional[str] = None
+    category: str
+    sub_category: Optional[str] = None
+    material_type: str = "Raw Material"
+    uom: str = "Nos"
+    status: str = "Active"
+    minimum_price: Optional[Decimal] = None
+    standard_price: Optional[Decimal] = None
+    maximum_price: Optional[Decimal] = None
+    currency: str = "INR"
+    price_effective_from: Optional[date] = None
+    price_effective_to: Optional[date] = None
+    price_threshold_status: str = "Active"
+    approval_required_above_threshold: bool = True
+    last_purchase_price: Optional[Decimal] = None
+    hsn_code: Optional[str] = None
+    gst_rate: Optional[Decimal] = None
+    minimum_stock: Optional[Decimal] = None
+    maximum_stock: Optional[Decimal] = None
+    reorder_level: Optional[Decimal] = None
+    safety_stock: Optional[Decimal] = None
+    lead_time_days: Optional[int] = None
+    batch_controlled: bool = False
+    serial_controlled: bool = False
+    hazardous: bool = False
+    barcode: Optional[str] = None
+
+
 class SupplierAddressResponse(ApiModel):
     registered_address: Optional[str] = None
     city: Optional[str] = None
@@ -49,6 +80,7 @@ class SupplierDocumentResponse(ApiModel):
 
 class SupplierResponse(ApiModel):
     supplier_id: str
+    supplier_code: Optional[str] = None
     supplier_name: str
     registered_company_name: Optional[str] = None
     vendor_type: Optional[str] = None
@@ -388,6 +420,9 @@ class MaterialRequestResponse(ApiModel):
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = []
     created_at: datetime
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    pick_task: Optional[dict] = None
 
 
 class MaterialStockResponse(ApiModel):
@@ -429,6 +464,8 @@ class ProcurementTrendItem(ApiModel):
 
 class ProcurementStatsResponse(ApiModel):
     active_suppliers: int
+    active_suppliers_this_month: int
+    total_suppliers: int
     open_pos: int
     compliance_rate: float
     total_po_value: Decimal
