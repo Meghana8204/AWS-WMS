@@ -55,6 +55,10 @@ class GrnContextLine:
     material_name: str | None = None
     material_category: str | None = None
     uom: str | None = None
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
 
     # Quantity already physically received on the existing GRN.
     # Exact good/damaged/quality splits will come from richer line
@@ -326,6 +330,10 @@ class GetGrnContextUseCase:
                     material_name=line.material_name,
                     material_category=line.material_category,
                     uom=line.uom,
+                    variant_code=getattr(line, "variant_code", None),
+                    size=getattr(line, "size", None),
+                    color=getattr(line, "color", None),
+                    grade=getattr(line, "grade", None),
                     received_quantity=received,
                     balance_quantity=balance,
                 )

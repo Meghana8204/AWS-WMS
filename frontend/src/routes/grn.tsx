@@ -6,30 +6,38 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Award,
   BarChart3,
+  Box,
+  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardList,
   Clock,
+  Copy,
   DoorOpen,
   Download,
   Eye,
   FileCheck2,
   FileText,
   Image as ImageIcon,
+  Layers,
   LayoutDashboard,
   Loader2,
   Mail,
   PackageCheck,
+  Palette,
   Plus,
   Printer,
   QrCode,
   RefreshCw,
+  Ruler,
   ScanLine,
   Search,
   Send,
   ShieldCheck,
   Sparkles,
+  Tag,
   TrendingUp,
   Truck,
   Upload,
@@ -70,6 +78,10 @@ type GrnLineItem = {
   grn_line_id?: string;
   material_name: string;
   item_code: string;
+  variant_code?: string;
+  size?: string;
+  color?: string;
+  grade?: string;
   po_quantity: number;
   good_quantity: number;
   damaged_quantity: number;
@@ -85,6 +97,10 @@ type BatchEntry = {
   batch_id?: string;
   batch_number: string;
   batch_quantity: number;
+  variant_code?: string;
+  size?: string;
+  color?: string;
+  grade?: string;
   qr_id?: string;
   qr_data_url?: string;
 };
@@ -416,23 +432,50 @@ function GrnPageWorkflow() {
         setDockOptions(ctx.dock_options);
       }
 
+      let masterCatalog: any[] = [];
+      try {
+        const mats = await api.getMaterialsMasterList();
+        if (Array.isArray(mats)) masterCatalog = mats;
+      } catch (e) {
+        // ignore master catalog lookup error
+      }
+
       const mapped: GrnLineItem[] = (ctx.lines || []).map((l: any) => {
+        const code = l.item_code || l.itemCode;
+        const name = l.material_name || l.materialName || code;
         const poQty = Number(l.ordered_quantity ?? l.orderedQuantity ?? 100);
         const goodQty = Number(l.good_quantity ?? l.goodQuantity ?? poQty);
         const dmgQty = Number(l.damaged_quantity ?? l.damagedQuantity ?? 0);
         const totalRec = goodQty + dmgQty;
         const bal = Math.max(poQty - totalRec, 0);
 
+        const catalogMat = masterCatalog.find(
+          (cm: any) =>
+            (cm.material_code && cm.material_code.toLowerCase() === (code || "").toLowerCase()) ||
+            (cm.material_name && cm.material_name.toLowerCase() === (name || "").toLowerCase())
+        );
+        const firstVar = catalogMat?.variants?.[0];
+
+        const variantCode = l.variant_code || l.variantCode || firstVar?.variant_code || `${code}-V001`;
+        const sizeVal = l.size || firstVar?.size || "Standard";
+        const colorVal = l.color || firstVar?.color || "N/A";
+        const gradeVal = l.grade || firstVar?.grade || "Grade A";
+        const categoryVal = l.material_category || l.materialCategory || catalogMat?.category || "Raw Materials";
+
         return {
           grn_line_id: l.grn_line_id || l.grnLineId,
-          material_name: l.material_name || l.materialName || l.item_code,
-          item_code: l.item_code || l.itemCode,
+          material_name: name,
+          item_code: code,
+          variant_code: variantCode,
+          size: sizeVal,
+          color: colorVal,
+          grade: gradeVal,
           po_quantity: poQty,
           good_quantity: goodQty,
           damaged_quantity: dmgQty,
           balance_quantity: bal,
-          uom: l.uom || "PCS",
-          material_category: l.material_category || l.materialCategory || "Raw Materials",
+          uom: l.uom || catalogMat?.uom || "PCS",
+          material_category: categoryVal,
           quality_approved_quantity: goodQty,
           quality_result: "ACCEPTED",
         };
@@ -445,8 +488,22 @@ function GrnPageWorkflow() {
         mapped.forEach((m) => {
           qApp[m.item_code] = m.good_quantity;
           initBatches[m.item_code] = [
-            { batch_number: `BATCH-${m.item_code}-001`, batch_quantity: Math.floor(m.good_quantity / 2) || m.good_quantity },
-            { batch_number: `BATCH-${m.item_code}-002`, batch_quantity: m.good_quantity - (Math.floor(m.good_quantity / 2) || m.good_quantity) },
+            {
+              batch_number: `BATCH-${m.item_code}-001`,
+              batch_quantity: Math.floor(m.good_quantity / 2) || m.good_quantity,
+              variant_code: m.variant_code,
+              size: m.size,
+              color: m.color,
+              grade: m.grade,
+            },
+            {
+              batch_number: `BATCH-${m.item_code}-002`,
+              batch_quantity: m.good_quantity - (Math.floor(m.good_quantity / 2) || m.good_quantity),
+              variant_code: m.variant_code,
+              size: m.size,
+              color: m.color,
+              grade: m.grade,
+            },
           ].filter((b) => b.batch_quantity > 0);
         });
         setQualityApproved(qApp);
@@ -924,30 +981,39 @@ function GrnPageWorkflow() {
   function buildMaterialQrPayload(itemCode: string, batch?: BatchEntry) {
     const mat = materials.find((m) => m.item_code === itemCode);
     const bList = materialBatches[itemCode] || [];
-    const b = batch || bList[0] || { batch_number: `BATCH-${itemCode}-001`, batch_quantity: mat?.good_quantity || 0 };
-    const variantInfo = getMaterialVariantInfo(itemCode, mat?.variant_code);
-
-    const uom = mat?.uom || "BUNDLE";
-    const category = mat?.material_category || variantInfo.category || "Raw Materials";
-    const goodQty = mat?.good_quantity || b.batch_quantity || 0;
-    const dmgQty = mat?.damaged_quantity || 0;
-    const rejQty = mat?.rejected_quantity || 0;
-    const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : goodQty;
-    const inspectionStatus = (dmgQty > 0 || rejQty > 0) ? "PARTIAL" : "COMPLETED";
+    const b = batch || bList[0] || {
+      batch_number: `BATCH-${itemCode}-001`,
+      batch_quantity: mat?.good_quantity || 0,
+      variant_code: mat?.variant_code,
+      size: mat?.size,
+      color: mat?.color,
+      grade: mat?.grade,
+    };
+    const variantCode = b?.variant_code || mat?.variant_code || `${itemCode}-V001`;
+    const sizeVal = b?.size || mat?.size || "Standard";
+    const colorVal = b?.color || mat?.color || "N/A";
+    const gradeVal = b?.grade || mat?.grade || "Grade A";
+    const warehouseVal = header.warehouse_name || "Main Warehouse";
+    const inspectionStatus = mat?.quality_result === "REJECTED" ? "REJECTED / DAMAGED" : "QUALITY APPROVED";
+    const uomVal = mat?.uom || "PCS";
+    const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : (mat?.good_quantity ?? 0);
 
     return [
       `Material Code: ${itemCode}`,
       `Material Name: ${mat?.material_name || itemCode}`,
-      `Material Category: ${category}`,
-      `Material Variant Code: ${variantInfo.variant_code}`,
+      `Material Category: ${mat?.material_category || "Raw Materials"}`,
+      `Material Variant Code: ${variantCode}`,
       `Batch: ${b.batch_number}`,
-      `Size: ${variantInfo.size}`,
-      `Color: ${variantInfo.color}`,
-      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
-      `Grade: ${variantInfo.grade}`,
-      `UOM: ${uom}`,
+      `Size: ${sizeVal}`,
+      `Color: ${colorVal}`,
+      `Warehouse: ${warehouseVal}`,
+      `Grade: ${gradeVal}`,
+      `UOM: ${uomVal}`,
       `Inspection Status: ${inspectionStatus}`,
-      `Batch Quantity: ${batchQty} ${uom}`,
+      `Batch Quantity: ${batchQty} ${uomVal}`,
+      `GRN Number: ${header.grn_number || "N/A"}`,
+      `PO Reference: ${header.po_number || "N/A"}`,
+      `Supplier: ${header.supplier_name || "N/A"}`,
     ].join("\n");
   }
 
@@ -974,7 +1040,16 @@ function GrnPageWorkflow() {
   function printSingleQrLabel(batchNumber: string, itemCode: string, qrId: string, dataUrl: string) {
     const mat = materials.find((m) => m.item_code === itemCode);
     const b = (materialBatches[itemCode] || []).find((b) => b.batch_number === batchNumber);
-    const win = window.open("", "_blank", "width=650,height=750");
+    const variantCode = b?.variant_code || mat?.variant_code || `${itemCode}-V001`;
+    const sizeVal = b?.size || mat?.size || "Standard";
+    const colorVal = b?.color || mat?.color || "N/A";
+    const gradeVal = b?.grade || mat?.grade || "Grade A";
+    const warehouseVal = header.warehouse_name || "Main Warehouse";
+    const inspectionStatus = mat?.quality_result === "REJECTED" ? "REJECTED / DAMAGED" : "QUALITY APPROVED";
+    const uomVal = mat?.uom || "PCS";
+    const batchQty = b?.batch_quantity !== undefined ? b.batch_quantity : (mat?.good_quantity ?? 0);
+
+    const win = window.open("", "_blank", "width=650,height=800");
     if (!win) {
       toast.error("Please allow popups to print label");
       return;
@@ -988,10 +1063,10 @@ function GrnPageWorkflow() {
             body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #f8fafc; }
             .card { border: 2px solid #0f172a; border-radius: 16px; padding: 24px; max-width: 440px; margin: 0 auto; background: #ffffff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
             img { width: 220px; height: 220px; margin: 12px auto; display: block; }
-            h2 { margin: 6px 0; font-size: 22px; color: #0f172a; font-weight: 800; }
+            h2 { margin: 6px 0; font-size: 20px; color: #0f172a; font-weight: 800; }
             .header-tag { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-            .details { text-align: left; font-size: 12px; margin-top: 16px; border-top: 2px dashed #94a3b8; padding-top: 12px; line-height: 1.6; color: #1e293b; }
-            .details div { margin-bottom: 3px; }
+            .details { text-align: left; font-size: 11px; margin-top: 14px; border-top: 2px dashed #94a3b8; padding-top: 10px; line-height: 1.6; color: #1e293b; }
+            .details div { margin-bottom: 3px; display: flex; justify-content: space-between; }
             .badge { display: inline-block; background: #dcfce7; color: #166534; font-weight: bold; padding: 2px 8px; border-radius: 12px; font-size: 10px; border: 1px solid #86efac; }
           </style>
         </head>
@@ -1002,18 +1077,21 @@ function GrnPageWorkflow() {
             <p style="margin:2px 0 8px;font-size:12px;font-weight:bold;color:#2563eb;">QR ID: ${qrId}</p>
             ${dataUrl ? `<img src="${dataUrl}" alt="Material QR Code" />` : '<div style="height:220px;line-height:220px;font-weight:bold;">GENERATING QR...</div>'}
             <div class="details">
-              <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-              <div><strong>PO Reference:</strong> ${header.po_number}</div>
-              <div><strong>Supplier Name:</strong> ${header.supplier_name} (${header.supplier_company_name})</div>
-              <div><strong>Warehouse / Dock:</strong> ${header.warehouse_name} / ${header.receiving_dock}</div>
-              <div><strong>ASN / Gate Entry:</strong> ${header.asn_number} / ${header.gate_entry_number}</div>
-              <div><strong>Vehicle / Driver:</strong> ${header.vehicle_number} / ${header.driver_name}</div>
-              <div><strong>Material Code:</strong> ${itemCode}</div>
-              <div><strong>Material Name:</strong> ${mat?.material_name || itemCode}</div>
-              <div><strong>Category:</strong> ${mat?.material_category || "Raw Materials"}</div>
-              <div><strong>Batch Quantity:</strong> ${b?.batch_quantity || 0} ${mat?.uom || "PCS"}</div>
-              <div><strong>Received By:</strong> ${header.received_by || "System User"}</div>
-              <div style="margin-top:6px;"><span class="badge">QUALITY APPROVED & VERIFIED</span></div>
+              <div><span>Material Code:</span> <strong>${itemCode}</strong></div>
+              <div><span>Material Name:</span> <strong>${mat?.material_name || itemCode}</strong></div>
+              <div><span>Material Category:</span> <strong>${mat?.material_category || "Raw Materials"}</strong></div>
+              <div><span>Variant Code:</span> <strong>${variantCode}</strong></div>
+              <div><span>Batch Number:</span> <strong>${batchNumber}</strong></div>
+              <div><span>Size:</span> <strong>${sizeVal}</strong></div>
+              <div><span>Color:</span> <strong>${colorVal}</strong></div>
+              <div><span>Warehouse:</span> <strong>${warehouseVal}</strong></div>
+              <div><span>Grade:</span> <strong>${gradeVal}</strong></div>
+              <div><span>UOM:</span> <strong>${uomVal}</strong></div>
+              <div><span>Inspection Status:</span> <strong style="color:#166534">${inspectionStatus}</strong></div>
+              <div><span>Batch Quantity:</span> <strong style="color:#2563eb">${batchQty} ${uomVal}</strong></div>
+              <div style="border-top:1px dashed #cbd5e1;padding-top:4px;margin-top:4px;">
+                <span>GRN / PO Ref:</span> <strong>${header.grn_number} / ${header.po_number}</strong>
+              </div>
             </div>
           </div>
           <script>
@@ -1041,6 +1119,14 @@ function GrnPageWorkflow() {
       const bList = materialBatches[m.item_code] || [];
       const qrInfo = qrLabels[m.item_code] || { qr_id: `QR-MAT-${m.item_code}`, data_url: "" };
       for (const b of bList) {
+        const variantCode = b.variant_code || m.variant_code || `${m.item_code}-V001`;
+        const sizeVal = b.size || m.size || "Standard";
+        const colorVal = b.color || m.color || "N/A";
+        const gradeVal = b.grade || m.grade || "Grade A";
+        const warehouseVal = header.warehouse_name || "Main Warehouse";
+        const inspectionStatus = m.quality_result === "REJECTED" ? "REJECTED / DAMAGED" : "QUALITY APPROVED";
+        const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : (m.good_quantity || 0);
+
         labelsHtml += `
           <div class="card">
             <div class="header">WMS GOODS RECEIVING BATCH LABEL</div>
@@ -1048,14 +1134,12 @@ function GrnPageWorkflow() {
             <p style="margin:2px 0;font-size:11px;font-weight:bold;color:#2563eb;">QR ID: ${qrInfo.qr_id}</p>
             ${qrInfo.data_url ? `<img src="${qrInfo.data_url}" alt="Material QR Code" />` : `<div style="height:180px;line-height:180px;font-weight:bold;">QR CODE</div>`}
             <div class="details">
-              <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-              <div><strong>PO Reference:</strong> ${header.po_number}</div>
-              <div><strong>Supplier Name:</strong> ${header.supplier_name}</div>
-              <div><strong>Warehouse / Dock:</strong> ${header.warehouse_name} / ${header.receiving_dock}</div>
-              <div><strong>Material Code:</strong> ${m.item_code} (${m.material_name})</div>
-              <div><strong>Category:</strong> ${m.material_category || "Raw Materials"}</div>
-              <div><strong>Batch Quantity:</strong> ${b.batch_quantity} ${m.uom || "PCS"}</div>
-              <div><strong>Status:</strong> APPROVED & VERIFIED</div>
+              <div><strong>Code:</strong> ${m.item_code} | <strong>Name:</strong> ${m.material_name}</div>
+              <div><strong>Category:</strong> ${m.material_category || "Raw Materials"} | <strong>Variant:</strong> ${variantCode}</div>
+              <div><strong>Batch:</strong> ${b.batch_number} | <strong>Qty:</strong> ${batchQty} ${m.uom || "PCS"}</div>
+              <div><strong>Size:</strong> ${sizeVal} | <strong>Color:</strong> ${colorVal} | <strong>Grade:</strong> ${gradeVal}</div>
+              <div><strong>Warehouse:</strong> ${warehouseVal}</div>
+              <div><strong>Status:</strong> <span style="color:#166534;font-weight:bold;">${inspectionStatus}</span></div>
             </div>
           </div>
         `;
@@ -2882,8 +2966,16 @@ function GrnPageWorkflow() {
                             const qrInfo = qrLabels[mat.item_code] || {
                               qr_id: `QR-MAT-${mat.item_code}`,
                               data_url: "",
-                              payload: buildMaterialQrPayload(mat.item_code),
+                              payload: buildMaterialQrPayload(mat.item_code, b),
                             };
+                            const variantCode = b.variant_code || mat.variant_code || `${mat.item_code}-V001`;
+                            const sizeVal = b.size || mat.size || "Standard";
+                            const colorVal = b.color || mat.color || "N/A";
+                            const gradeVal = b.grade || mat.grade || "Grade A";
+                            const warehouseVal = header.warehouse_name || "Main Warehouse";
+                            const inspectionStatus = mat.quality_result === "REJECTED" ? "REJECTED" : "QUALITY APPROVED";
+                            const uomVal = mat.uom || "PCS";
+                            const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : (mat.good_quantity ?? 0);
 
                             return (
                               <Card key={b.batch_number} className="rounded-2xl p-5 border text-center space-y-3 bg-white text-black shadow-md relative overflow-hidden group">
@@ -2915,7 +3007,7 @@ function GrnPageWorkflow() {
                                       <img src={qrInfo.data_url} alt="Material QR Code" className="size-48 mx-auto" />
                                       <div className="absolute inset-0 bg-black/70 opacity-0 group-hover/qr:opacity-100 transition-opacity rounded-2xl flex flex-col items-center justify-center text-white text-xs font-bold gap-1 p-2">
                                         <Eye className="size-7 text-emerald-400" />
-                                        <span>Click to Enlarge / Scan</span>
+                                        <span>Click to Scan / Inspect</span>
                                       </div>
                                     </div>
                                   ) : (
@@ -2926,12 +3018,18 @@ function GrnPageWorkflow() {
                                   )}
                                 </div>
 
-                                <div className="text-xs text-left space-y-1 font-mono text-gray-800 border-t pt-2">
-                                  <p><b>PO Number:</b> {header.po_number}</p>
-                                  <p><b>GRN Number:</b> {header.grn_number}</p>
-                                  <p><b>Material:</b> {mat.item_code} ({mat.material_name})</p>
-                                  <p><b>Category:</b> {mat.material_category || "General"}</p>
-                                  <p><b>Batch Qty:</b> {b.batch_quantity} {mat.uom}</p>
+                                <div className="text-xs text-left space-y-1 font-mono text-gray-800 border-t pt-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                                  <div className="flex justify-between"><span>Material Code:</span> <b className="text-primary">{mat.item_code}</b></div>
+                                  <div className="flex justify-between"><span>Material Name:</span> <b>{mat.material_name}</b></div>
+                                  <div className="flex justify-between"><span>Category:</span> <b>{mat.material_category || "Raw Materials"}</b></div>
+                                  <div className="flex justify-between"><span>Variant Code:</span> <b>{variantCode}</b></div>
+                                  <div className="flex justify-between"><span>Batch:</span> <b>{b.batch_number}</b></div>
+                                  <div className="flex justify-between"><span>Size / Color:</span> <b>{sizeVal} / {colorVal}</b></div>
+                                  <div className="flex justify-between"><span>Warehouse:</span> <b>{warehouseVal}</b></div>
+                                  <div className="flex justify-between"><span>Grade:</span> <b>{gradeVal}</b></div>
+                                  <div className="flex justify-between"><span>UOM:</span> <b>{uomVal}</b></div>
+                                  <div className="flex justify-between"><span>Status:</span> <b className="text-emerald-700">{inspectionStatus}</b></div>
+                                  <div className="flex justify-between border-t border-slate-300 pt-1 font-sans"><span>Batch Quantity:</span> <b className="text-primary font-mono text-sm">{batchQty} {uomVal}</b></div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-2 pt-1">
@@ -3857,7 +3955,6 @@ function GrnPageWorkflow() {
                     alt={viewingDocumentModal.file_name}
                     className="max-h-[380px] w-auto mx-auto rounded-lg object-contain border border-slate-800 shadow-2xl"
                     onError={(e) => {
-                      // Fallback preview card if blob url is un-rendered preview
                       (e.target as HTMLElement).style.display = "none";
                     }}
                   />
@@ -3916,6 +4013,229 @@ function GrnPageWorkflow() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* 📦 ENLARGED QR SCAN & 12-FIELD INSPECTION DETAILS MODAL */}
+      {enlargedQr && (() => {
+        const mat = materials.find((m) => m.item_code === enlargedQr.itemCode);
+        const b = enlargedQr.batch;
+        const variantCode = b?.variant_code || mat?.variant_code || `${enlargedQr.itemCode}-V001`;
+        const sizeVal = b?.size || mat?.size || "Standard";
+        const colorVal = b?.color || mat?.color || "N/A";
+        const gradeVal = b?.grade || mat?.grade || "Grade A";
+        const warehouseVal = header.warehouse_name || "Main Warehouse";
+        const inspectionStatus = mat?.quality_result === "REJECTED" ? "REJECTED / DAMAGED" : "QUALITY APPROVED";
+        const uomVal = mat?.uom || "PCS";
+        const batchQty = b?.batch_quantity !== undefined ? b.batch_quantity : (mat?.good_quantity ?? 0);
+
+        return (
+          <Dialog open={!!enlargedQr} onOpenChange={() => setEnlargedQr(null)}>
+            <DialogContent className="max-w-3xl rounded-3xl p-6 space-y-5 max-h-[90vh] overflow-y-auto border shadow-2xl">
+              <DialogHeader className="border-b pb-3 flex flex-row items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-black bg-primary/10 text-primary border border-primary/20 flex items-center gap-1.5 uppercase tracking-wider">
+                      <QrCode className="size-3.5" /> WMS Material Batch QR
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-muted text-foreground">
+                      {enlargedQr.title}
+                    </span>
+                  </div>
+                  <DialogTitle className="text-xl font-black text-foreground mt-2">
+                    {mat?.material_name || enlargedQr.itemCode}
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground mt-0.5">
+                    GRN: <b>{header.grn_number}</b> • PO: <b>{header.po_number}</b> • Supplier: <b>{header.supplier_name}</b>
+                  </DialogDescription>
+                </div>
+              </DialogHeader>
+
+              {/* SCAN & DETAILS GRID */}
+              <div className="grid gap-6 md:grid-cols-5 items-start">
+                {/* QR CODE PREVIEW CARD */}
+                <div className="md:col-span-2 space-y-3 bg-muted/20 p-4 rounded-2xl border text-center flex flex-col items-center justify-center">
+                  <div className="relative p-3 bg-white rounded-2xl border shadow-md inline-block">
+                    {enlargedQr.data_url ? (
+                      <img src={enlargedQr.data_url} alt="Material QR Code" className="size-52 mx-auto object-contain" />
+                    ) : (
+                      <div className="size-52 flex items-center justify-center">
+                        <Loader2 className="size-8 animate-spin text-primary" />
+                      </div>
+                    )}
+                    <div className="mt-2 text-[11px] font-mono font-bold text-slate-700 bg-slate-100 py-1 px-2 rounded-lg border">
+                      {enlargedQr.qr_id}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                    <CheckCircle2 className="size-4" /> Scan Ready & Verified
+                  </div>
+                </div>
+
+                {/* 12-ATTRIBUTE FETCHED DETAILS */}
+                <div className="md:col-span-3 space-y-3">
+                  <h4 className="text-xs font-black uppercase text-foreground tracking-wider flex items-center justify-between border-b pb-1.5">
+                    <span>Scanned Material Details (12 Parameters)</span>
+                    <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+                      GRN Batch Stock
+                    </span>
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs font-sans">
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        1. Material Code
+                      </span>
+                      <span className="font-mono font-black text-primary text-sm block">
+                        {enlargedQr.itemCode}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        2. Material Name
+                      </span>
+                      <span className="font-bold text-foreground block truncate">
+                        {mat?.material_name || enlargedQr.itemCode}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        3. Material Category
+                      </span>
+                      <span className="font-bold text-foreground block">
+                        {mat?.material_category || "Raw Materials"}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        4. Material Variant Code
+                      </span>
+                      <span className="font-mono font-bold text-foreground block">
+                        {variantCode}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        5. Batch Number
+                      </span>
+                      <span className="font-mono font-black text-foreground block">
+                        {enlargedQr.title}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        6. Size
+                      </span>
+                      <span className="font-bold text-foreground block">
+                        {sizeVal}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        7. Color
+                      </span>
+                      <span className="font-bold text-foreground block">
+                        {colorVal}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        8. Warehouse
+                      </span>
+                      <span className="font-bold text-foreground block">
+                        {warehouseVal}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        9. Grade
+                      </span>
+                      <span className="font-bold text-foreground block">
+                        {gradeVal}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        10. UOM
+                      </span>
+                      <span className="font-mono font-bold text-foreground block">
+                        {uomVal}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-card/60 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground block">
+                        11. Inspection Status
+                      </span>
+                      <span className="font-bold text-emerald-600 block">
+                        ✓ {inspectionStatus}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl border bg-primary/5 border-primary/20 space-y-0.5">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-primary block">
+                        12. Batch Quantity
+                      </span>
+                      <span className="font-mono font-black text-primary text-sm block">
+                        {batchQty} {uomVal}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* RAW SCANNED STRING ACCORDION */}
+              <div className="space-y-1.5 pt-2 border-t">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                    Raw Decoded QR Scan Payload
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs font-bold gap-1 text-primary hover:bg-primary/10"
+                    onClick={() => {
+                      navigator.clipboard.writeText(enlargedQr.payload);
+                      toast.success("Copied Scanned QR Payload to clipboard!");
+                    }}
+                  >
+                    <Copy className="size-3" /> Copy QR Content
+                  </Button>
+                </div>
+                <pre className="p-3 rounded-xl bg-slate-950 text-slate-200 text-xs font-mono whitespace-pre-wrap leading-relaxed max-h-36 overflow-y-auto border border-slate-800">
+                  {enlargedQr.payload}
+                </pre>
+              </div>
+
+              {/* FOOTER */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
+                <Button
+                  variant="outline"
+                  className="rounded-xl font-bold text-xs"
+                  onClick={() => setEnlargedQr(null)}
+                >
+                  Close
+                </Button>
+
+                <Button
+                  className="rounded-xl font-bold text-xs bg-primary text-white shadow-sm"
+                  onClick={() => printSingleQrLabel(enlargedQr.title, enlargedQr.itemCode, enlargedQr.qr_id, enlargedQr.data_url)}
+                >
+                  <Printer className="mr-1.5 size-3.5" /> Print Batch Label
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
     </AppShell>
   );
 }

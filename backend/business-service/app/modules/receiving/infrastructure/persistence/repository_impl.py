@@ -32,6 +32,7 @@ from app.events.outbox_repository import to_outbox_row
 from app.modules.procurement.infrastructure.persistence.models import (
     AsnModel,
     MaterialModel,
+    MaterialVariantModel,
     PurchaseOrderModel,
     SupplierModel,
 )
@@ -182,6 +183,50 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 )
                 material_category = mat_res.scalar_one_or_none()
 
+            variant_code = getattr(item, 'variant_code', None)
+            size = None
+            color = None
+            grade = None
+
+            if getattr(item, 'material_variant_id', None):
+                var_res = await self._session.execute(
+                    select(MaterialVariantModel).where(MaterialVariantModel.id == item.material_variant_id)
+                )
+                variant_obj = var_res.scalar_one_or_none()
+                if variant_obj:
+                    variant_code = variant_code or variant_obj.variant_code
+                    size = variant_obj.size
+                    color = variant_obj.color
+                    grade = variant_obj.grade
+            elif variant_code:
+                var_res = await self._session.execute(
+                    select(MaterialVariantModel).where(MaterialVariantModel.variant_code == variant_code)
+                )
+                variant_obj = var_res.scalar_one_or_none()
+                if variant_obj:
+                    size = variant_obj.size
+                    color = variant_obj.color
+                    grade = variant_obj.grade
+
+            if not variant_code or not size or not color or not grade:
+                mat_res = await self._session.execute(
+                    select(MaterialModel).options(selectinload(MaterialModel.variants)).where(
+                        (MaterialModel.material_code == item.material_code) | (MaterialModel.material_name == item.material_name)
+                    )
+                )
+                mat_obj = mat_res.scalar_one_or_none()
+                if mat_obj and mat_obj.variants:
+                    first_var = mat_obj.variants[0]
+                    variant_code = variant_code or first_var.variant_code or f"{item.material_code}-V001"
+                    size = size or first_var.size or "Standard"
+                    color = color or first_var.color or "N/A"
+                    grade = grade or first_var.grade or "Grade A"
+                else:
+                    variant_code = variant_code or f"{item.material_code}-V001"
+                    size = size or "Standard"
+                    color = color or "N/A"
+                    grade = grade or "Grade A"
+
             line_snapshots.append(
                 PurchaseOrderLineSnapshot(
                     item_code=item.material_code,
@@ -189,6 +234,10 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     material_name=item.material_name,
                     material_category=material_category or "General",
                     uom=item.uom,
+                    variant_code=variant_code,
+                    size=size,
+                    color=color,
+                    grade=grade,
                 )
             )
 

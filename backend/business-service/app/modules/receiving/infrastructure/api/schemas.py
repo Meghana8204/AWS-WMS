@@ -106,6 +106,10 @@ class GrnContextLineResponse(ApiModel):
     material_name: str | None = None
     material_category: str | None = None
     uom: str | None = None
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
 
     ordered_quantity: Decimal | None = None
     received_quantity: Decimal = Decimal("0")
@@ -314,6 +318,10 @@ class GrnLineResponse(ApiModel):
     material_name: str | None = None
     material_category: str | None = None
     uom: str | None = None
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
 
     ordered_quantity: Decimal | None = None
     received_quantity: Decimal = Decimal("0")
