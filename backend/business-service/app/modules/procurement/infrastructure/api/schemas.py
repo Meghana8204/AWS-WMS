@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Union
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.common.api_model import ApiModel
 
@@ -399,18 +399,48 @@ class MaterialRequestItemSchema(ApiModel):
     material_code: Optional[str] = None
     variant_code: Optional[str] = None
     material_name: Optional[str] = None
-    quantity: Decimal
-    uom: str
+    quantity: Decimal = Field(..., gt=0, description="Quantity must be strictly greater than zero")
+    uom: str = Field("PCS", min_length=1, description="Unit of measurement")
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, v: Decimal) -> Decimal:
+        if v <= Decimal("0"):
+            raise ValueError("Quantity must be strictly greater than zero")
+        return v
+
+    @field_validator("uom")
+    @classmethod
+    def validate_uom(cls, v: str) -> str:
+        clean = v.strip().upper()
+        if not clean:
+            raise ValueError("UOM cannot be empty")
+        return clean
 
 
 class CreateMaterialRequest(ApiModel):
     request_number: Optional[str] = None
-    warehouse_id: str
-    department: str
-    requested_by: str
+    warehouse_id: str = Field(..., min_length=1, description="Warehouse identifier")
+    department: str = Field(..., min_length=1, description="Department name")
+    requested_by: str = Field(..., min_length=1, description="Requester user name")
     required_date: date
     remarks: Optional[str] = None
-    items: List[MaterialRequestItemSchema]
+    items: List[MaterialRequestItemSchema] = Field(..., min_length=1, description="Requested materials list")
+
+    @field_validator("items")
+    @classmethod
+    def validate_items(cls, v: List[MaterialRequestItemSchema]) -> List[MaterialRequestItemSchema]:
+        if not v or len(v) == 0:
+            raise ValueError("Material Request must contain at least one item")
+        return v
+
+    @field_validator("warehouse_id", "department", "requested_by")
+    @classmethod
+    def validate_non_empty_strings(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("Field cannot be empty")
+        return clean
 
 
 class SupplierSelectionRequest(ApiModel):

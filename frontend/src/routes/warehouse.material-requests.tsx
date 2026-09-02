@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   ClipboardList,
   Plus,
@@ -13,6 +13,7 @@ import {
   Trash2,
   Save,
   X,
+  Check,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
@@ -54,6 +56,181 @@ const UOM_OPTIONS = [
   "TON",
   "BUNDLE",
 ];
+
+function MaterialMasterSearchCombobox({
+  value,
+  onSelect,
+  masterMaterials,
+  placeholder = "Pick Material Master",
+  className,
+  size = "md",
+}: {
+  value: string;
+  onSelect: (val: string) => void;
+  masterMaterials: any[];
+  placeholder?: string;
+  className?: string;
+  size?: "sm" | "md";
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const selectedMaterial = masterMaterials.find(
+    (m) => m.id === value || m.material_code === value,
+  );
+
+  const filteredMaterials = useMemo(() => {
+    if (!search.trim()) return masterMaterials;
+    const q = search.toLowerCase();
+    return masterMaterials.filter(
+      (m) =>
+        m.material_code?.toLowerCase().includes(q) ||
+        m.material_name?.toLowerCase().includes(q) ||
+        m.category?.toLowerCase().includes(q) ||
+        m.variants?.some(
+          (v: any) =>
+            v.variant_code?.toLowerCase().includes(q) ||
+            v.size?.toLowerCase().includes(q) ||
+            v.color?.toLowerCase().includes(q) ||
+            v.grade?.toLowerCase().includes(q),
+        ),
+    );
+  }, [masterMaterials, search]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className={cn(
+            "w-full justify-between rounded-xl font-normal text-xs bg-background hover:bg-accent/40 border-input",
+            size === "sm" ? "h-9 px-2.5" : "h-9 px-3",
+            className,
+          )}
+        >
+          <div className="flex items-center gap-1.5 truncate text-left mr-1 min-w-0">
+            {selectedMaterial ? (
+              <>
+                <span className="font-mono font-bold text-primary shrink-0">
+                  {selectedMaterial.material_code}
+                </span>
+                <span className="text-muted-foreground shrink-0">—</span>
+                <span className="truncate">{selectedMaterial.material_name}</span>
+              </>
+            ) : value === "CUSTOM" ? (
+              <span className="text-muted-foreground italic truncate">Manual / Custom Item</span>
+            ) : (
+              <span className="text-muted-foreground truncate">{placeholder}</span>
+            )}
+          </div>
+          <Search className="size-3.5 shrink-0 opacity-50 ml-1" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[320px] sm:w-[350px] p-0 rounded-2xl shadow-xl border border-border/80 bg-popover overflow-hidden z-[100]"
+        align="start"
+      >
+        <div className="flex items-center border-b border-border/60 px-3 py-2.5 bg-muted/20">
+          <Search className="size-4 shrink-0 text-muted-foreground mr-2" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search code, name, specs..."
+            className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/70"
+            autoFocus
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              className="text-muted-foreground hover:text-foreground text-xs px-1"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <div className="max-h-[250px] overflow-y-auto p-1.5 divide-y divide-border/20">
+          <div className="pb-1">
+            <button
+              type="button"
+              className={cn(
+                "w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl text-left transition-colors",
+                value === "CUSTOM" || !value
+                  ? "bg-primary/10 text-primary font-bold"
+                  : "hover:bg-muted text-muted-foreground italic",
+              )}
+              onClick={() => {
+                onSelect("CUSTOM");
+                setOpen(false);
+                setSearch("");
+              }}
+            >
+              <span>Manual / Custom Item</span>
+              {(value === "CUSTOM" || !value) && <Check className="size-3.5 text-primary" />}
+            </button>
+          </div>
+
+          <div className="pt-1 space-y-0.5">
+            {filteredMaterials.length === 0 ? (
+              <div className="p-4 text-center text-xs text-muted-foreground">
+                No materials matching "{search}"
+              </div>
+            ) : (
+              filteredMaterials.map((m) => {
+                const isSelected = selectedMaterial?.id === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={cn(
+                      "w-full flex items-center justify-between px-3 py-2 text-xs rounded-xl text-left transition-colors",
+                      isSelected
+                        ? "bg-primary/10 text-primary font-bold"
+                        : "hover:bg-muted text-foreground",
+                    )}
+                    onClick={() => {
+                      onSelect(m.id);
+                      setOpen(false);
+                      setSearch("");
+                    }}
+                  >
+                    <div className="flex flex-col gap-0.5 min-w-0 pr-2">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-primary">
+                          {m.material_code}
+                        </span>
+                        <span className="font-medium text-foreground truncate">
+                          {m.material_name}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                        {m.category && (
+                          <span className="bg-muted px-1.5 py-0.5 rounded border border-border/50">
+                            {m.category}
+                          </span>
+                        )}
+                        {m.variants && m.variants.length > 0 && (
+                          <span>
+                            {m.variants.length} variant{m.variants.length > 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {m.base_uom && <span>• {m.base_uom}</span>}
+                      </div>
+                    </div>
+                    {isSelected && <Check className="size-4 text-primary shrink-0" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
@@ -109,7 +286,7 @@ function WarehouseMaterialRequests() {
   }, []);
   const addItem = () => {
     const nextSeq = baseMaterialSequence + items.length;
-    const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
+    const code = `MAT-${String(nextSeq).padStart(3, "0")}`;
     setItems([
       ...items,
       {
@@ -189,11 +366,78 @@ function WarehouseMaterialRequests() {
     newItems[idx] = { ...newItems[idx], [field]: value };
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
+  const handleEditSelectMasterMaterial = (idx: number, matId: string) => {
+    if (!selectedRequest) return;
+    const newItems = [...selectedRequest.items];
+    if (matId === "CUSTOM") {
+      newItems[idx] = {
+        ...newItems[idx],
+        materialId: "",
+        materialVariantId: "",
+        variantCode: "",
+      };
+      setSelectedRequest({ ...selectedRequest, items: newItems });
+      return;
+    }
+    const foundMat = masterMaterials.find((m) => m.id === matId);
+    if (!foundMat) return;
+    const defaultVariant =
+      foundMat.variants && foundMat.variants.length > 0 ? foundMat.variants[0] : null;
+    const specDetails = defaultVariant
+      ? [defaultVariant.size, defaultVariant.color, defaultVariant.grade].filter(Boolean).join(", ")
+      : "";
+    const nameWithSpec = specDetails
+      ? `${foundMat.material_name} (${specDetails})`
+      : foundMat.material_name;
+
+    newItems[idx] = {
+      ...newItems[idx],
+      materialId: foundMat.id,
+      materialVariantId: defaultVariant?.id || "",
+      materialCode: foundMat.material_code,
+      variantCode: defaultVariant?.variant_code || "",
+      materialName: nameWithSpec,
+      uom: defaultVariant?.uom || foundMat.base_uom || "PCS",
+    };
+    setSelectedRequest({ ...selectedRequest, items: newItems });
+  };
+  const handleEditSelectVariant = (idx: number, variantId: string) => {
+    if (!selectedRequest) return;
+    const newItems = [...selectedRequest.items];
+    const currentItem = newItems[idx];
+    const foundMat = masterMaterials.find(
+      (m) => m.id === currentItem.materialId || m.material_code === currentItem.materialCode,
+    );
+    if (!foundMat) return;
+    const foundVar = foundMat.variants?.find((v: any) => v.id === variantId);
+    if (!foundVar) return;
+    const specDetails = [foundVar.size, foundVar.color, foundVar.grade].filter(Boolean).join(", ");
+    const nameWithSpec = specDetails
+      ? `${foundMat.material_name} (${specDetails})`
+      : foundMat.material_name;
+
+    newItems[idx] = {
+      ...newItems[idx],
+      materialVariantId: foundVar.id,
+      variantCode: foundVar.variant_code,
+      materialName: nameWithSpec,
+      uom: foundVar.uom || foundMat.base_uom || "PCS",
+    };
+    setSelectedRequest({ ...selectedRequest, items: newItems });
+  };
   const addEditItem = () => {
     if (!selectedRequest) return;
     const nextSeq = baseMaterialSequence + selectedRequest.items.length;
-    const code = `MAT-${String(nextSeq).padStart(4, "0")}`;
-    const newItem = { materialCode: code, materialName: "", quantity: 1, uom: "PCS" };
+    const code = `MAT-${String(nextSeq).padStart(3, "0")}`;
+    const newItem = {
+      materialId: "",
+      materialVariantId: "",
+      materialCode: code,
+      variantCode: "",
+      materialName: "",
+      quantity: 1,
+      uom: "PCS",
+    };
     setSelectedRequest({ ...selectedRequest, items: [...selectedRequest.items, newItem] });
   };
   const removeEditItem = (idx: number) => {
@@ -203,8 +447,16 @@ function WarehouseMaterialRequests() {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (items.some((it) => !it.material_name?.trim() || !it.quantity)) {
-      toast.error("Please fill in material description and quantity for all items");
+    if (!items || items.length === 0) {
+      toast.error("Please add at least one material item");
+      return;
+    }
+    if (items.some((it) => !it.material_name?.trim())) {
+      toast.error("Please fill in material description for all items");
+      return;
+    }
+    if (items.some((it) => !it.quantity || parseFloat(it.quantity) <= 0 || isNaN(parseFloat(it.quantity)))) {
+      toast.error("Quantity must be strictly greater than 0 for all items");
       return;
     }
     setSubmitting(true);
@@ -226,7 +478,7 @@ function WarehouseMaterialRequests() {
       setFormData((prev) => ({ ...prev, request_number: "" }));
       fetchData();
     } catch (error: any) {
-      toast.error("Failed to submit request: " + error.message);
+      toast.error("Failed to submit request: " + (error.message || "Unknown error"));
     } finally {
       setSubmitting(false);
     }
@@ -237,7 +489,7 @@ function WarehouseMaterialRequests() {
         (await api.getNextMaterialRequestNumber()) as any;
       setNextRequestNumber(requestNumber);
       setBaseMaterialSequence(nextMaterialSequence || 1);
-      const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(4, "0")}`;
+      const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(3, "0")}`;
       setFormData((prev) => ({ ...prev, request_number: requestNumber }));
       setItems([
         {
@@ -256,25 +508,80 @@ function WarehouseMaterialRequests() {
     }
   };
   const handleRequestClick = (req: any) => {
-    setSelectedRequest(JSON.parse(JSON.stringify(req)));
+    const rawReq = JSON.parse(JSON.stringify(req));
+    const normalizedItems = (rawReq.items || []).map((it: any) => {
+      const matId =
+        it.materialId ||
+        it.material_id ||
+        masterMaterials.find((m) => m.material_code === (it.materialCode || it.material_code))?.id ||
+        "";
+      const foundMat = masterMaterials.find(
+        (m) => m.id === matId || m.material_code === (it.materialCode || it.material_code),
+      );
+      const varId =
+        it.materialVariantId ||
+        it.material_variant_id ||
+        foundMat?.variants?.find(
+          (v: any) => v.variant_code === (it.variantCode || it.variant_code),
+        )?.id ||
+        "";
+      return {
+        materialId: matId,
+        materialVariantId: varId,
+        materialCode: it.materialCode || it.material_code || "",
+        variantCode: it.variantCode || it.variant_code || "",
+        materialName: it.materialName || it.material_name || "",
+        quantity: it.quantity,
+        uom: it.uom || "PCS",
+      };
+    });
+    setSelectedRequest({
+      ...rawReq,
+      items: normalizedItems,
+    });
     setIsRequestModalOpen(true);
     setIsEditing(false);
   };
   const handleUpdate = async () => {
     if (!selectedRequest) return;
+    if (!selectedRequest.items || selectedRequest.items.length === 0) {
+      toast.error("Please add at least one material item");
+      return;
+    }
+    if (
+      selectedRequest.items.some(
+        (it: any) => !(it.materialName || it.material_name)?.trim(),
+      )
+    ) {
+      toast.error("Please fill in material description for all items");
+      return;
+    }
+    if (
+      selectedRequest.items.some(
+        (it: any) => !it.quantity || parseFloat(it.quantity) <= 0 || isNaN(parseFloat(it.quantity)),
+      )
+    ) {
+      toast.error("Quantity must be strictly greater than 0 for all items");
+      return;
+    }
     setSubmitting(true);
     try {
       const payload = {
-        request_number: selectedRequest.requestNumber,
-        warehouse_id: selectedRequest.warehouseId,
+        request_number: selectedRequest.requestNumber || selectedRequest.request_number,
+        warehouse_id: selectedRequest.warehouseId || selectedRequest.warehouse_id,
         department: selectedRequest.department,
-        requested_by: selectedRequest.requestedBy,
-        required_date: new Date(selectedRequest.requiredDate).toISOString().split("T")[0],
+        requested_by: selectedRequest.requestedBy || selectedRequest.requested_by,
+        required_date: new Date(selectedRequest.requiredDate || selectedRequest.required_date)
+          .toISOString()
+          .split("T")[0],
         remarks: selectedRequest.remarks,
         items: selectedRequest.items.map((it: any) => ({
-          material_code: it.materialCode,
-          material_name: it.materialName,
-          quantity: it.quantity,
+          material_id: it.materialId || it.material_id || null,
+          material_variant_id: it.materialVariantId || it.material_variant_id || null,
+          material_code: it.materialCode || it.material_code,
+          variant_code: it.variantCode || it.variant_code,
+          material_name: it.materialName || it.material_name,
+          quantity: parseFloat(it.quantity) || 1,
           uom: it.uom,
         })),
       };
@@ -284,7 +591,7 @@ function WarehouseMaterialRequests() {
       setIsRequestModalOpen(false);
       fetchData();
     } catch (error: any) {
-      toast.error("Update failed: " + error.message);
+      toast.error("Update failed: " + (error.message || "Unknown error"));
     } finally {
       setSubmitting(false);
     }
@@ -377,11 +684,11 @@ function WarehouseMaterialRequests() {
                         className="flex flex-col sm:flex-row gap-3 items-end p-3 rounded-xl border border-border/60 bg-muted/10"
                       >
                         {masterMaterials.length > 0 && (
-                          <div className="w-full sm:w-48 space-y-1">
+                          <div className="w-full sm:w-60 space-y-1">
                             <Label className="text-[10px] font-bold">Select Material Master</Label>
-                            <Select
+                            <MaterialMasterSearchCombobox
                               value={item.material_id || "CUSTOM"}
-                              onValueChange={(val) => {
+                              onSelect={(val) => {
                                 if (val === "CUSTOM") {
                                   setItems(
                                     items.map((it, i) =>
@@ -399,27 +706,8 @@ function WarehouseMaterialRequests() {
                                   handleSelectMasterMaterial(idx, val);
                                 }
                               }}
-                            >
-                              <SelectTrigger className="h-9 rounded-lg text-xs bg-background">
-                                <SelectValue placeholder="Pick Master Material" />
-                              </SelectTrigger>
-                              <SelectContent className="rounded-xl">
-                                <SelectItem
-                                  value="CUSTOM"
-                                  className="text-xs text-muted-foreground italic"
-                                >
-                                  Manual / Custom Item
-                                </SelectItem>
-                                {masterMaterials.map((m) => (
-                                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                                    <span className="font-mono font-bold text-primary mr-1">
-                                      {m.material_code}
-                                    </span>{" "}
-                                    — {m.material_name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              masterMaterials={masterMaterials}
+                            />
                           </div>
                         )}
 
@@ -619,9 +907,9 @@ function WarehouseMaterialRequests() {
       )}
 
       <Dialog open={isViewing} onOpenChange={setIsRequestModalOpen}>
-        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
+        <DialogContent className="max-w-4xl w-full rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
-            <div className="flex flex-col h-full max-h-[90vh]">
+            <div className="flex flex-col h-full max-h-[90vh] w-full min-w-0 overflow-hidden">
               <div className={cn("p-6 text-white flex justify-between items-start", "bg-blue-600")}>
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -636,9 +924,9 @@ function WarehouseMaterialRequests() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-                  <div className="space-y-1">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 w-full min-w-0">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40">
+                  <div className="space-y-1 min-w-0">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Department
                     </Label>
@@ -648,13 +936,13 @@ function WarehouseMaterialRequests() {
                         onChange={(e) =>
                           setSelectedRequest({ ...selectedRequest, department: e.target.value })
                         }
-                        className="h-9 rounded-xl text-sm"
+                        className="h-9 rounded-xl text-sm bg-background w-full min-w-0"
                       />
                     ) : (
-                      <p className="font-bold text-sm">{selectedRequest.department}</p>
+                      <p className="font-bold text-sm truncate">{selectedRequest.department}</p>
                     )}
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Required Date
                     </Label>
@@ -666,7 +954,7 @@ function WarehouseMaterialRequests() {
                         onChange={(e) =>
                           setSelectedRequest({ ...selectedRequest, requiredDate: e.target.value })
                         }
-                        className="h-9 rounded-xl text-sm font-mono"
+                        className="h-9 rounded-xl text-sm font-mono bg-background w-full min-w-0"
                       />
                     ) : (
                       <p className="font-bold text-sm tabular-nums">
@@ -674,21 +962,21 @@ function WarehouseMaterialRequests() {
                       </p>
                     )}
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 min-w-0">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Requested By
                     </Label>
-                    <p className="font-bold text-sm">{selectedRequest.requestedBy}</p>
+                    <p className="font-bold text-sm truncate">{selectedRequest.requestedBy}</p>
                   </div>
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 min-w-0 sm:text-right">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Warehouse
                     </Label>
-                    <p className="font-bold text-sm">{selectedRequest.warehouseId}</p>
+                    <p className="font-bold text-sm truncate">{selectedRequest.warehouseId}</p>
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Requested Materials
@@ -706,101 +994,213 @@ function WarehouseMaterialRequests() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-border/60 overflow-hidden bg-muted/5">
-                    <table className="w-full text-left text-sm border-collapse">
+                  <div className="rounded-2xl border border-border/60 overflow-hidden bg-muted/5 shadow-inner">
+                    <table className="w-full table-fixed text-left text-sm border-collapse">
+                      <colgroup>
+                        <col className="w-[23%]" />
+                        <col className="w-[27%]" />
+                        <col className="w-[28%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[12%]" />
+                        {isEditing && <col className="w-10" />}
+                      </colgroup>
                       <thead>
                         <tr className="bg-muted/50 border-b border-border/60">
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
                             Material Code
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
                             Variant Code
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
                             Material Name & Specs
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground text-center truncate">
                             Qty
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-24">
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
                             UOM
                           </th>
-                          {isEditing && <th className="p-3 w-10"></th>}
+                          {isEditing && <th className="p-3 text-right"></th>}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/60">
-                        {selectedRequest.items?.map((item: any, idx: number) => (
-                          <tr key={idx}>
-                            <td className="p-3 font-mono font-bold text-xs text-primary">
-                              {item.materialCode || item.material_code}
-                            </td>
-                            <td className="p-3 font-mono text-xs text-teal-600 font-semibold">
-                              {item.variantCode || item.variant_code || "—"}
-                            </td>
-                            <td className="p-3 font-medium text-xs">
-                              {isEditing ? (
-                                <Input
-                                  value={item.materialName || item.material_name}
-                                  onChange={(e) =>
-                                    handleEditItemChange(idx, "materialName", e.target.value)
-                                  }
-                                  className="h-8 text-xs"
-                                />
-                              ) : (
-                                item.materialName || item.material_name
-                              )}
-                            </td>
-                            <td className="p-3 text-center font-bold text-xs">
-                              {isEditing ? (
-                                <Input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) =>
-                                    handleEditItemChange(idx, "quantity", e.target.value)
-                                  }
-                                  className="h-8 text-xs text-center"
-                                />
-                              ) : (
-                                item.quantity
-                              )}
-                            </td>
-                            <td className="p-3 text-muted-foreground font-mono text-xs">
-                              {isEditing ? (
-                                <Select
-                                  value={item.uom}
-                                  onValueChange={(val) => handleEditItemChange(idx, "uom", val)}
-                                >
-                                  <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {UOM_OPTIONS.map((uom) => (
-                                      <SelectItem key={uom} value={uom} className="text-xs">
-                                        {uom}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                item.uom
-                              )}
-                            </td>
-                            {isEditing && (
-                              <td className="p-3 text-right">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="icon"
-                                  className="size-7 text-destructive"
-                                  onClick={() => removeEditItem(idx)}
-                                  disabled={selectedRequest.items.length <= 1}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </Button>
+                        {selectedRequest.items?.map((item: any, idx: number) => {
+                          const selectedMat = masterMaterials.find(
+                            (m) =>
+                              m.id === item.materialId ||
+                              m.material_code === (item.materialCode || item.material_code),
+                          );
+                          const currentMaterialId =
+                            item.materialId || selectedMat?.id || "CUSTOM";
+                          const hasVariants =
+                            selectedMat &&
+                            selectedMat.variants &&
+                            selectedMat.variants.length > 0;
+                          const currentVariantId =
+                            item.materialVariantId ||
+                            selectedMat?.variants?.find(
+                              (v: any) =>
+                                v.variant_code ===
+                                (item.variantCode || item.variant_code),
+                            )?.id ||
+                            selectedMat?.variants?.[0]?.id ||
+                            "";
+
+                          return (
+                            <tr key={idx} className="hover:bg-muted/20 transition-colors">
+                              <td className="p-2.5 min-w-0 overflow-hidden">
+                                {isEditing ? (
+                                  <MaterialMasterSearchCombobox
+                                    value={currentMaterialId}
+                                    onSelect={(val) =>
+                                      handleEditSelectMasterMaterial(idx, val)
+                                    }
+                                    masterMaterials={masterMaterials}
+                                    size="sm"
+                                  />
+                                ) : (
+                                  <span className="font-mono font-bold text-xs text-primary truncate block">
+                                    {item.materialCode || item.material_code}
+                                  </span>
+                                )}
                               </td>
-                            )}
-                          </tr>
-                        ))}
+                              <td className="p-2.5 min-w-0 overflow-hidden">
+                                {isEditing ? (
+                                  hasVariants ? (
+                                    <Select
+                                      value={currentVariantId}
+                                      onValueChange={(val) =>
+                                        handleEditSelectVariant(idx, val)
+                                      }
+                                    >
+                                      <SelectTrigger className="h-9 rounded-xl text-xs bg-background border-teal-500/30 text-teal-700 font-semibold font-mono w-full min-w-0 truncate [&>span]:truncate [&>span]:block">
+                                        <SelectValue placeholder="Select Variant" />
+                                      </SelectTrigger>
+                                      <SelectContent className="rounded-xl max-h-60">
+                                        {selectedMat.variants.map((v: any) => {
+                                          const spec = [v.size, v.color, v.grade]
+                                            .filter(Boolean)
+                                            .join(" · ");
+                                          return (
+                                            <SelectItem
+                                              key={v.id}
+                                              value={v.id}
+                                              className="text-xs"
+                                            >
+                                              <span className="font-mono font-bold text-teal-700">
+                                                {v.variant_code}
+                                              </span>{" "}
+                                              {spec && `(${spec})`}
+                                            </SelectItem>
+                                          );
+                                        })}
+                                      </SelectContent>
+                                    </Select>
+                                  ) : (
+                                    <Input
+                                      value={item.variantCode || item.variant_code || ""}
+                                      placeholder="Variant Code"
+                                      onChange={(e) =>
+                                        handleEditItemChange(idx, "variantCode", e.target.value)
+                                      }
+                                      className="h-9 text-xs font-mono w-full min-w-0 bg-background rounded-xl"
+                                    />
+                                  )
+                                ) : (
+                                  <span className="font-mono text-xs text-teal-600 font-semibold truncate block">
+                                    {item.variantCode || item.variant_code || "—"}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 min-w-0 overflow-hidden">
+                                {isEditing ? (
+                                  <Input
+                                    value={item.materialName || item.material_name || ""}
+                                    placeholder="Material Name / Specification"
+                                    onChange={(e) =>
+                                      handleEditItemChange(
+                                        idx,
+                                        "materialName",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="h-9 text-xs bg-background rounded-xl w-full min-w-0"
+                                  />
+                                ) : (
+                                  <span className="text-xs font-medium truncate block">
+                                    {item.materialName || item.material_name}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 min-w-0 overflow-hidden text-center">
+                                {isEditing ? (
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    step="any"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      handleEditItemChange(
+                                        idx,
+                                        "quantity",
+                                        e.target.value,
+                                      )
+                                    }
+                                    className="h-9 text-xs text-center bg-background rounded-xl w-full min-w-0"
+                                  />
+                                ) : (
+                                  <span className="font-bold text-xs text-center block">
+                                    {item.quantity}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 min-w-0 overflow-hidden">
+                                {isEditing ? (
+                                  <Select
+                                    value={item.uom}
+                                    onValueChange={(val) =>
+                                      handleEditItemChange(idx, "uom", val)
+                                    }
+                                  >
+                                    <SelectTrigger className="h-9 text-xs bg-background rounded-xl w-full min-w-0">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent className="rounded-xl">
+                                      {UOM_OPTIONS.map((uom) => (
+                                        <SelectItem
+                                          key={uom}
+                                          value={uom}
+                                          className="text-xs rounded-lg"
+                                        >
+                                          {uom}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                ) : (
+                                  <span className="text-muted-foreground font-mono text-xs block">
+                                    {item.uom}
+                                  </span>
+                                )}
+                              </td>
+                              {isEditing && (
+                                <td className="p-2.5 text-center min-w-0">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-8 rounded-lg text-destructive hover:bg-destructive/10"
+                                    onClick={() => removeEditItem(idx)}
+                                    disabled={selectedRequest.items.length <= 1}
+                                  >
+                                    <Trash2 className="size-4" />
+                                  </Button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -859,12 +1259,22 @@ function WarehouseMaterialRequests() {
                       >
                         Close
                       </Button>
-                      <Button
-                        className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase"
-                        onClick={() => setIsEditing(true)}
-                      >
-                        Edit Request
-                      </Button>
+                      {selectedRequest.status?.toUpperCase() === "PENDING" ? (
+                        <Button
+                          className="rounded-full h-11 px-8 bg-blue-600 hover:bg-blue-700 shadow-glow font-bold text-xs uppercase"
+                          onClick={() => setIsEditing(true)}
+                        >
+                          Edit Request
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          disabled
+                          className="rounded-full h-11 px-6 font-bold text-xs uppercase opacity-60 cursor-not-allowed"
+                        >
+                          {selectedRequest.status} (Locked)
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>

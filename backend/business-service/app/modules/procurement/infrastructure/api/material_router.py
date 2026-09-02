@@ -168,18 +168,23 @@ async def get_next_material_code(
     uow: UnitOfWork = Depends(get_uow),
 ) -> dict:
     """Suggest the next sequential material code (e.g. MAT-001) and variant code (e.g. MAT-001-V001)."""
-    stmt = select(MaterialModel.material_code).where(MaterialModel.material_code.like("MAT-%"))
+    stmt = select(MaterialModel.material_code)
     result = await uow.session.execute(stmt)
     codes = result.scalars().all()
 
     max_seq = 0
     for code in codes:
-        try:
-            parts = code.split("-")
-            if len(parts) >= 2 and parts[-1].isdigit():
-                max_seq = max(max_seq, int(parts[-1]))
-        except Exception:
-            pass
+        if not code:
+            continue
+        # Strictly match standard MAT-XXX format (e.g. MAT-001, MAT-002, etc.)
+        match = re.match(r"^MAT-(\d+)$", code.strip(), re.IGNORECASE)
+        if match:
+            try:
+                seq = int(match.group(1))
+                if seq > max_seq:
+                    max_seq = seq
+            except (ValueError, TypeError):
+                pass
 
     next_code = f"MAT-{(max_seq + 1):03d}"
     return {
@@ -306,11 +311,12 @@ async def create_material(
     user: CurrentUser = Depends(get_current_user),
 ) -> MaterialMasterResponse:
     """
-    Create a new parent Material Master with one or multiple Variants.
+    Create a new Base Material Master with one or multiple Variants.
     Enforces uniqueness of material_code and variant_code.
     Rejects duplicate variants with identical size/color/grade specifications.
     """
     clean_code = request.material_code.strip().upper()
+    clean_name = request.material_name.strip()
 
     # 1. Check duplicate material_code
     existing_stmt = select(MaterialModel).where(func.upper(MaterialModel.material_code) == clean_code)
@@ -319,6 +325,16 @@ async def create_material(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Material with code '{clean_code}' already exists. Please use a unique Material Code."
+        )
+
+    # 1b. Check duplicate material_name (case-insensitive)
+    existing_name_stmt = select(MaterialModel).where(func.lower(MaterialModel.material_name) == clean_name.lower())
+    existing_name_res = await uow.session.execute(existing_name_stmt)
+    existing_by_name = existing_name_res.scalar_one_or_none()
+    if existing_by_name is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Material '{existing_by_name.material_name}' already exists (Code: {existing_by_name.material_code}). Please choose a unique Material Name."
         )
 
     # 2. Build variants list
@@ -373,7 +389,7 @@ async def create_material(
 
         prepared_variants.append((v_code, v))
 
-    # 3. Create parent MaterialModel
+    # 3. Create Base MaterialModel
     new_material = MaterialModel(
         id=uuid.uuid4(),
         material_code=clean_code,
@@ -440,7 +456,7 @@ async def update_material(
     uow: UnitOfWork = Depends(get_uow),
     user: CurrentUser = Depends(get_current_user),
 ) -> MaterialMasterResponse:
-    """Update parent material attributes (name, category, description, base UOM, status)."""
+    """Update base material attributes (name, category, description, base UOM, status)."""
     try:
         mat_uuid = uuid.UUID(id)
     except ValueError:
@@ -453,7 +469,20 @@ async def update_material(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
 
     if request.material_name is not None:
-        material.material_name = request.material_name.strip()
+        clean_name = request.material_name.strip()
+        if clean_name:
+            name_check_stmt = select(MaterialModel).where(
+                func.lower(MaterialModel.material_name) == clean_name.lower(),
+                MaterialModel.id != mat_uuid,
+            )
+            name_check_res = await uow.session.execute(name_check_stmt)
+            existing_by_name = name_check_res.scalar_one_or_none()
+            if existing_by_name is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Material '{existing_by_name.material_name}' already exists (Code: {existing_by_name.material_code}). Please choose a unique Material Name.",
+                )
+            material.material_name = clean_name
     if request.category is not None:
         material.category = request.category.strip()
     if request.description is not None:

@@ -272,6 +272,18 @@ function WarehouseMaterials() {
       toast.error("Material Name is required");
       return;
     }
+
+    const trimmedName = materialName.trim().toLowerCase();
+    const existingMat = materials.find(
+      (m) => m.material_name?.trim().toLowerCase() === trimmedName,
+    );
+    if (existingMat) {
+      toast.error(
+        `Material "${existingMat.material_name}" already exists (${existingMat.material_code}). Please use a unique Material Name.`,
+      );
+      return;
+    }
+
     const finalCategory = category === "OTHER" ? customCategory.trim() : category;
     if (!finalCategory) {
       toast.error("Please specify a category");
@@ -480,7 +492,7 @@ function WarehouseMaterials() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Parent Materials
+                Base Materials
               </p>
               <h3 className="mt-1 text-2xl font-black tabular-nums">
                 {loading ? "..." : totalMaterials}
@@ -738,14 +750,14 @@ function WarehouseMaterials() {
           </DialogHeader>
 
           <form onSubmit={handleCreateSubmit} className="space-y-6 pt-3">
-            {/* Step 1: Parent Material Master Fields */}
+            {/* Step 1: Base Material Master Fields */}
             <div className="rounded-2xl bg-muted/20 border border-border/60 p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Badge className="bg-primary text-primary-foreground font-mono text-[10px]">
                   STEP 1
                 </Badge>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Parent Material Details
+                  Base Material Details
                 </h4>
               </div>
 

@@ -20,6 +20,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import or_, select, cast, String, update, func, Date
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, selectinload, joinedload
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
 
@@ -380,7 +381,14 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
 @router.post("/material-requests", status_code=status.HTTP_201_CREATED)
 async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWork = Depends(get_uow)):
     if request.request_number:
-        req_no = request.request_number
+        req_no = request.request_number.strip()
+        existing_mr_stmt = select(MaterialRequestModel).where(MaterialRequestModel.request_number == req_no)
+        existing_mr_res = await uow.session.execute(existing_mr_stmt)
+        if existing_mr_res.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Material request with number '{req_no}' already exists."
+            )
     else:
         from app.modules.procurement.infrastructure.persistence.repository_impl import SqlAlchemyMaterialRequestRepository
         repo = SqlAlchemyMaterialRequestRepository(uow.session)
@@ -410,51 +418,84 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
     new_mr = MaterialRequestModel(
         id=uuid.uuid4(),
         request_number=req_no,
-        warehouse_id=request.warehouse_id,
-        department=request.department,
-        requested_by=request.requested_by,
+        warehouse_id=request.warehouse_id.strip(),
+        department=request.department.strip(),
+        requested_by=request.requested_by.strip(),
         status="PENDING",
         required_date=request.required_date,
-        remarks=request.remarks
+        remarks=request.remarks.strip() if request.remarks else None,
     )
 
     for it in request.items:
-        mat_uuid = uuid.UUID(it.material_id) if it.material_id else None
+        mat_uuid = uuid.UUID(it.material_id) if it.material_id and it.material_id != "CUSTOM" else None
         var_uuid = uuid.UUID(it.material_variant_id) if it.material_variant_id else None
 
         material_obj = None
         variant_obj = None
 
+        # 1. Resolve material if mat_uuid provided
+        if mat_uuid:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if not material_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Material with ID '{mat_uuid}' not found."
+                )
+            if material_obj.status and material_obj.status.lower() != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Material '{material_obj.material_code}' ({material_obj.material_name}) is Inactive and cannot be requested."
+                )
+
+        # 2. Resolve variant if var_uuid provided
         if var_uuid:
             var_stmt = select(MaterialVariantModel).options(selectinload(MaterialVariantModel.material)).where(MaterialVariantModel.id == var_uuid)
             var_res = await uow.session.execute(var_stmt)
             variant_obj = var_res.scalar_one_or_none()
-            if variant_obj:
+            if not variant_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Material variant with ID '{var_uuid}' not found."
+                )
+            if variant_obj.status and variant_obj.status.lower() != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Variant '{variant_obj.variant_code}' is Inactive and cannot be requested."
+                )
+
+            if material_obj:
+                # Cross-check that variant belongs to this material
+                if variant_obj.material_id != material_obj.id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Variant '{variant_obj.variant_code}' does not belong to Material '{material_obj.material_code}'."
+                    )
+            else:
                 material_obj = variant_obj.material
                 mat_uuid = material_obj.id if material_obj else None
+                if material_obj and material_obj.status and material_obj.status.lower() != "active":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Material '{material_obj.material_code}' is Inactive and cannot be requested."
+                    )
 
-        if not material_obj and mat_uuid:
-            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
-            mat_res = await uow.session.execute(mat_stmt)
-            material_obj = mat_res.scalar_one_or_none()
-            if material_obj and material_obj.variants and not variant_obj:
-                variant_obj = material_obj.variants[0]
-                var_uuid = variant_obj.id
-
-        if not material_obj and it.material_code:
-            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.material_code == it.material_code)
-            mat_res = await uow.session.execute(mat_stmt)
-            material_obj = mat_res.scalar_one_or_none()
-            if material_obj:
-                mat_uuid = material_obj.id
-                if material_obj.variants and not variant_obj:
-                    variant_obj = material_obj.variants[0]
-                    var_uuid = variant_obj.id
+        # 3. If material is specified but no variant, pick the first active variant
+        if material_obj and not variant_obj:
+            active_vars = [v for v in (material_obj.variants or []) if v.status and v.status.lower() == "active"]
+            if not active_vars:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Material '{material_obj.material_code}' has no Active variants available."
+                )
+            variant_obj = active_vars[0]
+            var_uuid = variant_obj.id
 
         material_code = material_obj.material_code if material_obj else (it.material_code or f"MAT-{next_material_sequence:04d}")
-        material_name = material_obj.material_name if material_obj else (it.material_name or material_code)
+        material_name = it.material_name or (material_obj.material_name if material_obj else material_code)
         variant_code = variant_obj.variant_code if variant_obj else (it.variant_code or f"{material_code}-V001")
-        uom = variant_obj.uom if variant_obj else (material_obj.base_uom if material_obj else (it.uom or "PCS"))
+        uom = it.uom or (variant_obj.uom if variant_obj else (material_obj.base_uom if material_obj else "PCS"))
 
         new_mr.items.append(MaterialRequestItemModel(
             id=uuid.uuid4(),
@@ -468,7 +509,15 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
         ))
 
     uow.session.add(new_mr)
-    await uow.commit()
+    try:
+        await uow.commit()
+    except IntegrityError as ie:
+        await uow.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Material request with number '{req_no}' already exists or a database conflict occurred."
+        )
+
     return {
         "status": "success",
         "request_number": req_no,
@@ -487,11 +536,23 @@ async def create_material_request(request: CreateMaterialRequest, uow: UnitOfWor
 
 @router.post("/material-requests/{id}/process")
 async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
-    stmt = select(MaterialRequestModel).where(MaterialRequestModel.id == uuid.UUID(id))
+    try:
+        req_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Material Request UUID")
+
+    stmt = select(MaterialRequestModel).where(MaterialRequestModel.id == req_uuid)
     res = await uow.session.execute(stmt)
     req = res.scalar_one_or_none()
     if not req:
-        raise HTTPException(status_code=404, detail="Material request not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material request not found")
+
+    if req.status and req.status.upper() != "PENDING":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot process Material Request '{req.request_number}' in '{req.status}' status. Only PENDING requests can be processed."
+        )
+
     req.status = "PROCESSED"
     await uow.commit()
     return {"status": "success"}
@@ -499,29 +560,114 @@ async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
 
 @router.put("/material-requests/{id}")
 async def update_material_request(id: str, request: CreateMaterialRequest, uow: UnitOfWork = Depends(get_uow)):
-    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).where(MaterialRequestModel.id == uuid.UUID(id))
+    try:
+        req_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Material Request UUID")
+
+    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).where(MaterialRequestModel.id == req_uuid)
     res = await uow.session.execute(stmt)
     mr = res.scalar_one_or_none()
     if not mr:
-        raise HTTPException(status_code=404, detail="Material request not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material request not found")
 
-    mr.department = request.department
+    if mr.status and mr.status.upper() in ["PROCESSED", "COMPLETED", "CANCELLED", "REJECTED"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot edit Material Request '{mr.request_number}' because it is in '{mr.status}' status."
+        )
+
+    mr.department = request.department.strip()
     mr.required_date = request.required_date
-    mr.remarks = request.remarks
+    mr.remarks = request.remarks.strip() if request.remarks else None
 
-
-    from app.modules.procurement.infrastructure.persistence.models import MaterialRequestItemModel
     mr.items = []
     for it in request.items:
+        mat_uuid = uuid.UUID(it.material_id) if it.material_id and it.material_id != "CUSTOM" else None
+        var_uuid = uuid.UUID(it.material_variant_id) if it.material_variant_id else None
+
+        material_obj = None
+        variant_obj = None
+
+        if mat_uuid:
+            mat_stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
+            mat_res = await uow.session.execute(mat_stmt)
+            material_obj = mat_res.scalar_one_or_none()
+            if not material_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Material with ID '{mat_uuid}' not found."
+                )
+            if material_obj.status and material_obj.status.lower() != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Material '{material_obj.material_code}' ({material_obj.material_name}) is Inactive and cannot be requested."
+                )
+
+        if var_uuid:
+            var_stmt = select(MaterialVariantModel).options(selectinload(MaterialVariantModel.material)).where(MaterialVariantModel.id == var_uuid)
+            var_res = await uow.session.execute(var_stmt)
+            variant_obj = var_res.scalar_one_or_none()
+            if not variant_obj:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Material variant with ID '{var_uuid}' not found."
+                )
+            if variant_obj.status and variant_obj.status.lower() != "active":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Variant '{variant_obj.variant_code}' is Inactive and cannot be requested."
+                )
+
+            if material_obj:
+                if variant_obj.material_id != material_obj.id:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Variant '{variant_obj.variant_code}' does not belong to Material '{material_obj.material_code}'."
+                    )
+            else:
+                material_obj = variant_obj.material
+                mat_uuid = material_obj.id if material_obj else None
+                if material_obj and material_obj.status and material_obj.status.lower() != "active":
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Material '{material_obj.material_code}' is Inactive and cannot be requested."
+                    )
+
+        if material_obj and not variant_obj:
+            active_vars = [v for v in (material_obj.variants or []) if v.status and v.status.lower() == "active"]
+            if not active_vars:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Material '{material_obj.material_code}' has no Active variants available."
+                )
+            variant_obj = active_vars[0]
+            var_uuid = variant_obj.id
+
+        material_code = material_obj.material_code if material_obj else (it.material_code or "MAT-0001")
+        material_name = it.material_name or (material_obj.material_name if material_obj else material_code)
+        variant_code = variant_obj.variant_code if variant_obj else (it.variant_code or f"{material_code}-V001")
+        uom = it.uom or (variant_obj.uom if variant_obj else (material_obj.base_uom if material_obj else "PCS"))
+
         mr.items.append(MaterialRequestItemModel(
             id=uuid.uuid4(),
-            material_code=it.material_code,
-            material_name=it.material_name,
+            material_id=mat_uuid,
+            material_variant_id=var_uuid,
+            material_code=material_code,
+            variant_code=variant_code,
+            material_name=material_name,
             quantity=it.quantity,
-            uom=it.uom
+            uom=uom
         ))
 
-    await uow.commit()
+    try:
+        await uow.commit()
+    except IntegrityError as ie:
+        await uow.session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Database integrity conflict occurred while updating Material Request."
+        )
     return {"status": "success"}
 
 
