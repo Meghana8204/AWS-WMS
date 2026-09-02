@@ -128,28 +128,105 @@ async def list_material_categories(uow: UnitOfWork = Depends(get_uow)) -> List[s
     return combined
 
 
+def extract_variant_sequence(code: Optional[str]) -> Optional[int]:
+    """
+    Extract the numeric sequence from a variant code safely.
+    Matches formats like 'MAT-005-V001', 'MAT-005-V1', 'MAT-005-v002', 'MAT-005-VAR-001', etc.
+    Returns the integer sequence or None if unparseable or if it's not a variant code.
+    """
+    if not code or not isinstance(code, str):
+        return None
+    code_str = code.strip()
+    match = re.search(r"[-_]?[vV](?:ar)?[-_]?(\d+)$", code_str, re.IGNORECASE)
+    if match:
+        try:
+            return int(match.group(1))
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def generate_next_variant_code(material_code: str, existing_variant_codes: Any) -> str:
+    """
+    Inspects all existing variant codes for the material (Active, Inactive, etc.),
+    finds the highest sequence number, and generates the next code as highest_sequence + 1.
+    Never reuses an existing variant code.
+    """
+    clean_mat_code = material_code.strip().upper() if material_code else "MAT"
+    max_seq = 0
+    if existing_variant_codes:
+        for code in existing_variant_codes:
+            seq = extract_variant_sequence(code)
+            if seq is not None and seq > max_seq:
+                max_seq = seq
+    next_seq = max_seq + 1
+    return f"{clean_mat_code}-V{next_seq:03d}"
+
+
 @router.get("/next-code")
 async def get_next_material_code(
     uow: UnitOfWork = Depends(get_uow),
 ) -> dict:
     """Suggest the next sequential material code (e.g. MAT-001) and variant code (e.g. MAT-001-V001)."""
-    stmt = select(MaterialModel.material_code).where(MaterialModel.material_code.like("MAT-%"))
+    stmt = select(MaterialModel.material_code)
     result = await uow.session.execute(stmt)
     codes = result.scalars().all()
 
     max_seq = 0
     for code in codes:
-        try:
-            parts = code.split("-")
-            if len(parts) >= 2 and parts[-1].isdigit():
-                max_seq = max(max_seq, int(parts[-1]))
-        except Exception:
-            pass
+        if not code:
+            continue
+        # Strictly match standard MAT-XXX format (e.g. MAT-001, MAT-002, etc.)
+        match = re.match(r"^MAT-(\d+)$", code.strip(), re.IGNORECASE)
+        if match:
+            try:
+                seq = int(match.group(1))
+                if seq > max_seq:
+                    max_seq = seq
+            except (ValueError, TypeError):
+                pass
 
     next_code = f"MAT-{(max_seq + 1):03d}"
     return {
         "suggested_material_code": next_code,
         "suggested_variant_code": f"{next_code}-V001",
+    }
+
+
+@router.get("/{id}/next-variant-code")
+async def get_next_variant_code(
+    id: str,
+    uow: UnitOfWork = Depends(get_uow),
+) -> dict:
+    """Suggest the next sequential variant code for a specific material based on highest existing sequence."""
+    try:
+        mat_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid material UUID")
+
+    stmt = select(MaterialModel).options(selectinload(MaterialModel.variants)).where(MaterialModel.id == mat_uuid)
+    result = await uow.session.execute(stmt)
+    material = result.scalar_one_or_none()
+    if not material:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
+
+    # Inspect all variant codes from database (Active, Inactive, etc.)
+    all_var_stmt = select(MaterialVariantModel.variant_code).where(
+        or_(
+            MaterialVariantModel.material_id == mat_uuid,
+            MaterialVariantModel.variant_code.ilike(f"{material.material_code}-%"),
+        )
+    )
+    all_var_res = await uow.session.execute(all_var_stmt)
+    existing_codes = set(all_var_res.scalars().all())
+    for v in (material.variants or []):
+        if v.variant_code:
+            existing_codes.add(v.variant_code)
+
+    suggested_code = generate_next_variant_code(material.material_code, existing_codes)
+    return {
+        "material_code": material.material_code,
+        "suggested_variant_code": suggested_code,
     }
 
 
@@ -234,11 +311,12 @@ async def create_material(
     user: CurrentUser = Depends(get_current_user),
 ) -> MaterialMasterResponse:
     """
-    Create a new parent Material Master with one or multiple Variants.
+    Create a new Base Material Master with one or multiple Variants.
     Enforces uniqueness of material_code and variant_code.
     Rejects duplicate variants with identical size/color/grade specifications.
     """
     clean_code = request.material_code.strip().upper()
+    clean_name = request.material_name.strip()
 
     # 1. Check duplicate material_code
     existing_stmt = select(MaterialModel).where(func.upper(MaterialModel.material_code) == clean_code)
@@ -247,6 +325,16 @@ async def create_material(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Material with code '{clean_code}' already exists. Please use a unique Material Code."
+        )
+
+    # 1b. Check duplicate material_name (case-insensitive)
+    existing_name_stmt = select(MaterialModel).where(func.lower(MaterialModel.material_name) == clean_name.lower())
+    existing_name_res = await uow.session.execute(existing_name_stmt)
+    existing_by_name = existing_name_res.scalar_one_or_none()
+    if existing_by_name is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Material '{existing_by_name.material_name}' already exists (Code: {existing_by_name.material_code}). Please choose a unique Material Name."
         )
 
     # 2. Build variants list
@@ -301,7 +389,7 @@ async def create_material(
 
         prepared_variants.append((v_code, v))
 
-    # 3. Create parent MaterialModel
+    # 3. Create Base MaterialModel
     new_material = MaterialModel(
         id=uuid.uuid4(),
         material_code=clean_code,
@@ -368,7 +456,7 @@ async def update_material(
     uow: UnitOfWork = Depends(get_uow),
     user: CurrentUser = Depends(get_current_user),
 ) -> MaterialMasterResponse:
-    """Update parent material attributes (name, category, description, base UOM, status)."""
+    """Update base material attributes (name, category, description, base UOM, status)."""
     try:
         mat_uuid = uuid.UUID(id)
     except ValueError:
@@ -381,7 +469,20 @@ async def update_material(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
 
     if request.material_name is not None:
-        material.material_name = request.material_name.strip()
+        clean_name = request.material_name.strip()
+        if clean_name:
+            name_check_stmt = select(MaterialModel).where(
+                func.lower(MaterialModel.material_name) == clean_name.lower(),
+                MaterialModel.id != mat_uuid,
+            )
+            name_check_res = await uow.session.execute(name_check_stmt)
+            existing_by_name = name_check_res.scalar_one_or_none()
+            if existing_by_name is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Material '{existing_by_name.material_name}' already exists (Code: {existing_by_name.material_code}). Please choose a unique Material Name.",
+                )
+            material.material_name = clean_name
     if request.category is not None:
         material.category = request.category.strip()
     if request.description is not None:
@@ -446,20 +547,24 @@ async def add_variant_to_material(
     if not material:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material not found")
 
+    # Inspect all existing variant codes for this material (Active, Inactive, etc.)
+    all_var_stmt = select(MaterialVariantModel.variant_code).where(
+        or_(
+            MaterialVariantModel.material_id == mat_uuid,
+            MaterialVariantModel.variant_code.ilike(f"{material.material_code}-%"),
+        )
+    )
+    all_var_res = await uow.session.execute(all_var_stmt)
+    existing_codes = set(all_var_res.scalars().all())
+    for v in (material.variants or []):
+        if v.variant_code:
+            existing_codes.add(v.variant_code)
+
     # Generate variant code if not provided
     if request.variant_code and request.variant_code.strip():
         v_code = request.variant_code.strip().upper()
     else:
-        existing_seqs = []
-        for v in material.variants:
-            try:
-                part = v.variant_code.rsplit("-V", 1)[-1]
-                if part.isdigit():
-                    existing_seqs.append(int(part))
-            except Exception:
-                pass
-        next_seq = (max(existing_seqs, default=0)) + 1
-        v_code = f"{material.material_code}-V{next_seq:03d}"
+        v_code = generate_next_variant_code(material.material_code, existing_codes)
 
     # Check unique variant_code globally
     db_check = await uow.session.execute(
@@ -515,7 +620,7 @@ async def add_variant_to_material(
         await uow.session.rollback()
         err_msg = str(ie.orig) if hasattr(ie, "orig") else str(ie)
         if "variant_code" in err_msg.lower():
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant code '{final_variant_code}' is already in use.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Variant code '{v_code}' is already in use.")
         if "defining_specs" in err_msg.lower() or "uq_material_variant" in err_msg.lower():
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="A variant with identical defining specifications already exists under this material.")
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Database integrity conflict while adding variant.")
