@@ -7,9 +7,38 @@ export interface UserInfo {
   supplierId?: string;
 }
 
-export function getUserInfo(): UserInfo | null {
+const AUTH_TOKEN_KEY = "auth_token";
+const USER_INFO_KEY = "user_info";
+
+function getActiveStorage(): Storage | null {
   if (typeof window === "undefined") return null;
-  const info = localStorage.getItem("user_info");
+  if (localStorage.getItem(AUTH_TOKEN_KEY)) return localStorage;
+  if (sessionStorage.getItem(AUTH_TOKEN_KEY)) return sessionStorage;
+  return null;
+}
+
+export function getAuthToken(): string | null {
+  return getActiveStorage()?.getItem(AUTH_TOKEN_KEY) ?? null;
+}
+
+export function storeAuthSession(user: UserInfo, rememberMe: boolean): void {
+  if (typeof window === "undefined") return;
+  clearAuthSession();
+  const storage = rememberMe ? localStorage : sessionStorage;
+  storage.setItem(AUTH_TOKEN_KEY, user.token);
+  storage.setItem(USER_INFO_KEY, JSON.stringify(user));
+}
+
+export function clearAuthSession(): void {
+  if (typeof window === "undefined") return;
+  for (const storage of [localStorage, sessionStorage]) {
+    storage.removeItem(AUTH_TOKEN_KEY);
+    storage.removeItem(USER_INFO_KEY);
+  }
+}
+
+export function getUserInfo(): UserInfo | null {
+  const info = getActiveStorage()?.getItem(USER_INFO_KEY);
   if (!info) return null;
   try {
     const user = JSON.parse(info) as Partial<UserInfo>;
@@ -36,8 +65,7 @@ export function hasRole(roles: string[] | string): boolean {
 }
 
 export function isAuthenticated(): boolean {
-  if (typeof window === "undefined") return false;
-  const token = localStorage.getItem("auth_token");
+  const token = getAuthToken();
   const user = getUserInfo();
   return Boolean(token?.trim() && user && user.token === token);
 }
@@ -68,7 +96,7 @@ export function getDefaultRouteForUser(user = getUserInfo()): string {
 }
 
 export function requireAuth() {
-  if (typeof window === "undefined") return; // Skip server-side redirect for localStorage auth
+  if (typeof window === "undefined") return;
   if (!isAuthenticated()) {
     throw redirect({
       to: "/login",
@@ -80,7 +108,7 @@ export function requireAuth() {
 }
 
 export function requireRole(roles: string[] | string) {
-  if (typeof window === "undefined") return; // Skip server-side redirect for localStorage auth
+  if (typeof window === "undefined") return;
   requireAuth();
   if (!hasRole(roles)) {
     // If they are authenticated but don't have the role, send them to their primary dashboard

@@ -72,7 +72,7 @@ function LoginPage() {
 
     setIsLoading(true);
     try {
-      const data = await api.login(employeeId, password);
+      const data = await api.login(employeeId, password, rememberMe);
       completeAuthentication(data);
     } catch (error: any) {
       toast.error(error.message || "Login failed. Please check your credentials.");

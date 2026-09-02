@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { getUserInfo } from "@/lib/auth-utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -151,9 +152,8 @@ export function MaterialRequestsPage({ mode = "warehouse" }: MaterialRequestsPag
 
   useEffect(() => {
     fetchData();
-    const info = localStorage.getItem("user_info");
-    if (info) {
-      const user = JSON.parse(info);
+    const user = getUserInfo();
+    if (user) {
       setFormData((prev) => ({
         ...prev,
         requested_by: user.username || (isAssembly ? "Assembly Manager" : "Warehouse Manager"),

@@ -10,6 +10,7 @@ const BUSINESS_API_URL =
   (typeof window === "undefined"
     ? "http://localhost:8000"
     : `${window.location.protocol}//${window.location.hostname}:8000`);
+import { clearAuthSession, getAuthToken, storeAuthSession } from "./auth-utils";
 
 function getApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;
@@ -33,14 +34,6 @@ function getApiErrorMessage(payload: unknown, fallback: string): string {
   }
 
   return fallback;
-}
-
-// Helper to retrieve auth token
-function getAuthToken(): string | null {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("auth_token");
-  }
-  return null;
 }
 
 // Request helper with automatic header injection
@@ -98,6 +91,7 @@ export const api = {
   async login(
     username: string,
     password: string,
+    rememberMe = false,
   ): Promise<{
     token: string;
     username: string;
@@ -121,8 +115,7 @@ export const api = {
         supplierId: response.supplierId,
         mustChangePassword: response.mustChangePassword,
       };
-      localStorage.setItem("auth_token", supplierUser.token);
-      localStorage.setItem("user_info", JSON.stringify(supplierUser));
+      storeAuthSession(supplierUser, rememberMe);
       return supplierUser;
     }
 
@@ -138,8 +131,7 @@ export const api = {
         username: response.username,
         roles: response.roles,
       };
-      localStorage.setItem("auth_token", devUser.token);
-      localStorage.setItem("user_info", JSON.stringify(devUser));
+      storeAuthSession(devUser, rememberMe);
       return devUser;
     } catch (e: any) {
       console.warn("Dev server login failed, falling back to client-side mock:", e.message);
@@ -173,8 +165,7 @@ export const api = {
                   ? ["ASSEMBLY_MANAGER"]
                   : ["ADMIN"],
       };
-      localStorage.setItem("auth_token", mockUser.token);
-      localStorage.setItem("user_info", JSON.stringify(mockUser));
+      storeAuthSession(mockUser, rememberMe);
       return mockUser;
     }
   },
@@ -192,8 +183,7 @@ export const api = {
   },
 
   logout() {
-    localStorage.removeItem("auth_token");
-    localStorage.removeItem("user_info");
+    clearAuthSession();
   },
 
   // Gate Entry Use Cases

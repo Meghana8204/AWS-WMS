@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { requireRole } from "@/lib/auth-utils";
+import { getUserInfo, requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/submit-quotation")({
   beforeLoad: () => requireRole("SUPPLIER"),
@@ -78,15 +78,14 @@ function SubmitQuotation() {
 
   useEffect(() => {
     // Check if supplier is logged in
-    const userInfoStr = localStorage.getItem("user_info");
-    if (!userInfoStr) {
+    const userInfo = getUserInfo();
+    if (!userInfo) {
       toast.error("Please login first to submit a quotation");
       const redirect = encodeURIComponent(window.location.pathname + window.location.search);
       navigate({ to: `/login?redirect=${redirect}` });
       return;
     }
 
-    const userInfo = JSON.parse(userInfoStr);
     if (!userInfo.roles?.includes("SUPPLIER")) {
       toast.error("Unauthorized. Only suppliers can submit quotations.");
       navigate({ to: "/login" });
@@ -781,7 +780,15 @@ function SubmitQuotation() {
                 disabled={submitting}
                 onClick={() => setShowSummaryModal(true)}
               >
-                <FileCheck className="mr-2 size-4" /> Submit Quotation
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
+                  </>
+                ) : (
+                  <>
+                    <FileCheck className="mr-2 size-4" /> Submit Quotation
+                  </>
+                )}
               </Button>
             </div>
           </div>

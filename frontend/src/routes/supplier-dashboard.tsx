@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { requireRole } from "@/lib/auth-utils";
+import { getUserInfo, requireRole } from "@/lib/auth-utils";
 import { AppShell } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,14 +43,13 @@ function SupplierDashboard() {
   const [qualityIssues, setQualityIssues] = useState<any[]>([]);
 
   useEffect(() => {
-    const userInfoStr = localStorage.getItem("user_info");
-    if (!userInfoStr) {
+    const userInfo = getUserInfo();
+    if (!userInfo) {
       toast.error("Please login first");
       navigate({ to: "/login" });
       return;
     }
 
-    const userInfo = JSON.parse(userInfoStr);
     if (!userInfo.roles?.includes("SUPPLIER")) {
       toast.error("Unauthorized. Access restricted to supplier accounts.");
       navigate({ to: "/login" });

@@ -33,6 +33,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
+import { getUserInfo } from "@/lib/auth-utils";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
@@ -78,7 +79,7 @@ const financeNav = [
 ];
 
 const gateSecurityNav = [
-  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
@@ -188,9 +189,9 @@ export function AppShell({
 
     // Load user only on client side to prevent hydration mismatch
     try {
-      const savedUser = localStorage.getItem("user_info");
+      const savedUser = getUserInfo();
       if (savedUser) {
-        const u = JSON.parse(savedUser);
+        const u = savedUser;
         setUser(u);
 
         // Fetch notifications for the user's role
@@ -240,7 +241,11 @@ export function AppShell({
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
   const isGateSecurityRoute =
-    path === "/gate-entry" || path === "/vehicle-exit" || path === "/unscheduled-arrivals";
+    path === "/gate-dashboard" ||
+    path === "/gate-entry" ||
+    path === "/vehicle-exit" ||
+    path === "/vehicle-queue" ||
+    path === "/unscheduled-arrivals";
   const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
   const isWarehouseRoute =
     path === "/warehouse-dashboard" ||
@@ -290,7 +295,13 @@ export function AppShell({
     ? "Supplier Portal"
     : isProcurementRoute
       ? "Procurement Portal"
-      : "Warehouse navigation";
+      : isFinanceRoute
+        ? "Finance Portal"
+        : isGateSecurityRoute
+          ? "Gate Security Portal"
+          : isAssemblyRoute
+            ? "Assembly Portal"
+            : "Warehouse navigation";
 
   const handleLogout = () => {
     api.logout();

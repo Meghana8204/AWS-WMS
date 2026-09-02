@@ -21,7 +21,7 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { requireAuth } from "@/lib/auth-utils";
+import { getUserInfo, requireAuth } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
@@ -35,8 +35,7 @@ function Notifications() {
   const [userRole, setUserRole] = useState("WAREHOUSE");
 
   useEffect(() => {
-    const info = localStorage.getItem("user_info");
-    const roles = info ? JSON.parse(info).roles || [] : [];
+    const roles = getUserInfo()?.roles || [];
     const role = roles.includes("SUPPLIER")
       ? "SUPPLIER"
       : roles.includes("FINANCE")
