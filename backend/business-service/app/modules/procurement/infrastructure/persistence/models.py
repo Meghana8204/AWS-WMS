@@ -157,6 +157,48 @@ class MaterialModel(Base):
     name: Mapped[str] = mapped_column(String(256), nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sub_category: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    material_type: Mapped[str] = mapped_column(String(64), nullable=False, default="Raw Material")
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="Nos")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="Active")
+    minimum_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    standard_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    maximum_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    price_effective_from: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    price_effective_to: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    price_threshold_status: Mapped[str] = mapped_column(String(16), nullable=False, default="Active")
+    approval_required_above_threshold: Mapped[bool] = mapped_column(nullable=False, default=True)
+    last_purchase_price: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    hsn_code: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    gst_rate: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
+    minimum_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    maximum_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    reorder_level: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    safety_stock: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 4), nullable=True)
+    lead_time_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    batch_controlled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    serial_controlled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    hazardous: Mapped[bool] = mapped_column(nullable=False, default=False)
+    barcode: Mapped[Optional[str]] = mapped_column(String(64), unique=True, nullable=True)
+
+
+class MaterialSubCategoryModel(Base):
+    __tablename__ = "material_sub_category"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+
+
+class MaterialIdentityModel(Base):
+    """The application-wide, immutable identifier for a material name."""
+    __tablename__ = "material_identity"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    normalized_name: Mapped[str] = mapped_column(String(256), unique=True, index=True, nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
 
 # Association table for Supplier and Materials

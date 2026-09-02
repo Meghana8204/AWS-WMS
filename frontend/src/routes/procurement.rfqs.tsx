@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Plus,
   Search,
   Filter,
   Mail,
@@ -73,13 +72,6 @@ function Rfqs() {
     <AppShell
       title="Request for Quotations"
       subtitle="Manage and track RFQs sent to various suppliers"
-      actions={
-        <Link to="/procurement/new-rfq">
-          <Button className="rounded-xl shadow-glow">
-            <Plus className="mr-2 size-4" /> New RFQ
-          </Button>
-        </Link>
-      }
     >
       <div className="mb-6 flex flex-wrap items-center gap-4">
         <div className="relative max-w-sm flex-1">

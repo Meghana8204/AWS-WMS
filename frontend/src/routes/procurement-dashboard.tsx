@@ -49,6 +49,8 @@ function ProcurementDashboard() {
   const [pos, setPos] = useState<any[]>([]);
   const [stats, setStats] = useState<any>({
     activeSuppliers: 0,
+    activeSuppliersThisMonth: 0,
+    totalSuppliers: 0,
     openPos: 0,
     complianceRate: 100,
     totalPoValue: 0,
@@ -171,16 +173,16 @@ function ProcurementDashboard() {
         <StatCard
           label="Active suppliers"
           value={loading ? "..." : String(stats.activeSuppliers)}
-          delta="+3 this month"
+          delta={`${stats.activeSuppliersThisMonth >= 0 ? "+" : ""}${stats.activeSuppliersThisMonth} this month`}
           icon={Building2}
           tone="primary"
           to="/master-data"
         />
         <StatCard
-          label="Supplier master"
-          value={loading ? "..." : String(stats.activeSuppliers)}
+          label="Total suppliers"
+          value={loading ? "..." : String(stats.totalSuppliers)}
           delta="Available for procurement"
-          icon={Building2}
+          icon={Users}
           tone="success"
           to="/master-data"
         />

@@ -26,9 +26,5 @@ def upgrade() -> None:
         sa.UniqueConstraint("name")
     )
 
-    # Seed default values
-    op.execute("INSERT INTO raw_material_master (name) VALUES ('Steel'), ('Aluminum'), ('Plastic'), ('Copper'), ('Rubber'), ('Chemicals')")
-
-
 def downgrade() -> None:
     op.drop_table("raw_material_master")

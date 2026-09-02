@@ -179,13 +179,17 @@ function AsnTracking() {
     eta && eta.getTime() - Date.now() < 12 * 60 * 60 * 1000 && eta.getTime() - Date.now() > 0;
 
   const steps = [
-    { label: "Shipment Dispatched", status: "Completed", date: asn.shipmentDate },
+    {
+      label: "Shipment Dispatched",
+      status: "Completed",
+      date: asn.shipmentDate || asn.createdAt,
+    },
     {
       label: "Real-time Tracking",
       status:
-        asn.status === "SUBMITTED" || asn.status === "DISPATCHED"
+        ["DISPATCHED", "SUBMITTED"].includes(asn.status)
           ? "Active"
-          : ["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status)
+          : ["GATE_ENTRY_APPROVED", "AWAITING_DOCK", "DOCK_ASSIGNED", "MOVING_TO_DOCK", "AT_DOCK", "UNLOADING_IN_PROGRESS", "QUALITY_INSPECTION_REQUIRED", "QUALITY_PASSED", "QUALITY_FAILED", "RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED", "RECEIVED", "GRN_DRAFT", "GRN_POSTED"].includes(asn.status)
             ? "Completed"
             : "Pending",
       date: isNear ? "Nearing Warehouse" : "GPS Signal Online",
@@ -193,24 +197,43 @@ function AsnTracking() {
     },
     {
       label: "In Transit",
-      status: asn.status === "SUBMITTED" || asn.status === "DISPATCHED" ? "Active" : "Completed",
+      status:
+        ["DISPATCHED", "SUBMITTED"].includes(asn.status)
+          ? "Active"
+          : ["GATE_ENTRY_APPROVED", "AWAITING_DOCK", "DOCK_ASSIGNED", "MOVING_TO_DOCK", "AT_DOCK", "UNLOADING_IN_PROGRESS", "QUALITY_INSPECTION_REQUIRED", "QUALITY_PASSED", "QUALITY_FAILED", "RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED", "RECEIVED", "GRN_DRAFT", "GRN_POSTED"].includes(asn.status)
+            ? "Completed"
+            : "Pending",
       date: "Ongoing",
     },
     {
       label: "At Warehouse Gate",
       status:
-        asn.status === "GATE_CHECKED_IN"
+        ["GATE_ENTRY_APPROVED", "AWAITING_DOCK"].includes(asn.status)
           ? "Active"
-          : ["GATE_CHECKED_IN", "RECEIVED"].includes(asn.status)
+          : ["DOCK_ASSIGNED", "MOVING_TO_DOCK", "AT_DOCK", "UNLOADING_IN_PROGRESS", "QUALITY_INSPECTION_REQUIRED", "QUALITY_PASSED", "QUALITY_FAILED", "RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED", "RECEIVED", "GRN_DRAFT", "GRN_POSTED"].includes(asn.status)
             ? "Completed"
             : "Pending",
-      date: asn.expectedArrivalAt,
+      date: asn.gateArrivalAt || "-",
     },
-    { label: "Unloading", status: asn.status === "RECEIVED" ? "Active" : "Pending", date: "-" },
+    {
+      label: "Unloading",
+      status:
+        ["DOCK_ASSIGNED", "MOVING_TO_DOCK", "AT_DOCK", "UNLOADING_IN_PROGRESS", "QUALITY_INSPECTION_REQUIRED"].includes(asn.status)
+          ? "Active"
+          : ["QUALITY_PASSED", "QUALITY_FAILED", "RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED", "RECEIVED", "GRN_DRAFT", "GRN_POSTED"].includes(asn.status)
+            ? "Completed"
+            : "Pending",
+      date: asn.unloadingStartedAt || "-",
+    },
     {
       label: "Goods Received",
-      status: asn.status === "RECEIVED" ? "Completed" : "Pending",
-      date: "-",
+      status:
+        ["RECEIVING_COMPLETED", "GRN_DRAFT"].includes(asn.status)
+          ? "Active"
+          : ["EXIT_APPROVED", "GATE_EXIT_COMPLETED", "RECEIVED", "GRN_POSTED"].includes(asn.status)
+            ? "Completed"
+            : "Pending",
+      date: asn.receivedAt || "-",
     },
   ];
 
