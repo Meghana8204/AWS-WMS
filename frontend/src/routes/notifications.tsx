@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X } from "lucide-react";
+import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X, Eye, ExternalLink } from "lucide-react";
 import { AppShell, DockAllocationNotificationCard } from "@/components/wms/app-shell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { api } from "@/lib/api-client";
+import { api, BUSINESS_API_URL } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-utils";
 
@@ -37,18 +37,18 @@ function parseDamageNotificationMessage(msg?: string) {
       const parts = cleanLine.split("|").map((p) => p.trim());
       const mat = parts[0] || "Material Item";
       const qty = parts.find((p) => p.toLowerCase().startsWith("qty:"))?.replace(/^qty:\s*/i, "") || "Recorded Qty";
-      const rsn = parts.find((p) => p.toLowerCase().startsWith("reason:"))?.replace(/^reason:\s*/i, "") || (remarksMatch ? remarksMatch[1] : "Damaged / Rejected");
+      const rsn = parts.find((p) => p.toLowerCase().startsWith("reason:"))?.replace(/^reason:\s*/i, "") || (remarksMatch && remarksMatch[1] ? remarksMatch[1] : "Damaged / Rejected");
       items.push({ material: mat, quantity: qty, reason: rsn });
     }
   }
 
   return {
-    grnNumber: grnMatch ? grnMatch[1] : "GRN-2026-0001",
-    poNumber: poMatch ? poMatch[1] : "PO-1001",
-    supplierName: supplierMatch ? supplierMatch[1].trim() : "Supplier",
-    warehouseName: warehouseMatch ? warehouseMatch[1].trim() : "Main Warehouse",
+    grnNumber: grnMatch && grnMatch[1] ? grnMatch[1] : "GRN-2026-0001",
+    poNumber: poMatch && poMatch[1] ? poMatch[1] : "PO-1001",
+    supplierName: supplierMatch && supplierMatch[1] ? supplierMatch[1].trim() : "Supplier",
+    warehouseName: warehouseMatch && warehouseMatch[1] ? warehouseMatch[1].trim() : "Main Warehouse",
     reportedBy: "GRN Quality Inspector",
-    customRemarks: remarksMatch ? remarksMatch[1].trim() : "",
+    customRemarks: remarksMatch && remarksMatch[1] ? remarksMatch[1].trim() : "",
     items: items.length > 0 ? items : [{ material: "Damaged Material Item", quantity: "Recorded Qty", reason: "Damaged during receiving inspection" }],
   };
 }
@@ -101,6 +101,8 @@ function Notifications() {
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
+  const [damageGrnData, setDamageGrnData] = useState<any | null>(null);
+  const [damageLoading, setDamageLoading] = useState(false);
 
   // Modal State for GRN & Quality Notification Details
   const [showGrnModal, setShowGrnModal] = useState(false);
@@ -128,6 +130,38 @@ function Notifications() {
       window.removeEventListener("notifications:refresh", refresh);
     };
   }, []);
+
+  // Fetch full GRN damage data when damage notification is selected
+  useEffect(() => {
+    if (!selectedDamageNotif) {
+      setDamageGrnData(null);
+      return;
+    }
+    let isMounted = true;
+    const loadDamageData = async () => {
+      try {
+        setDamageLoading(true);
+        const parsed = parseDamageNotificationMessage(selectedDamageNotif.message);
+        let targetId = parsed.grnNumber;
+        if (selectedDamageNotif.link) {
+          const match = selectedDamageNotif.link.match(/grn_id=([^&]+)/);
+          if (match && match[1]) targetId = match[1];
+        }
+        if (targetId) {
+          const data = await api.getGrn(targetId);
+          if (isMounted) setDamageGrnData(data);
+        }
+      } catch (err) {
+        console.warn("Could not fetch full GRN details for damage photos", err);
+      } finally {
+        if (isMounted) setDamageLoading(false);
+      }
+    };
+    void loadDamageData();
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDamageNotif]);
 
   const fetchData = async (role: string, quiet = false) => {
     try {
@@ -209,6 +243,17 @@ function Notifications() {
   const grnDetails = selectedGrnNotif
     ? parseGrnNotificationDetails(selectedGrnNotif)
     : null;
+
+  const getPhotosForMaterial = (matString: string) => {
+    if (!damageGrnData?.lines) return [];
+    const cleanMat = matString.toLowerCase();
+    const matchedLine = damageGrnData.lines.find((l: any) => {
+      const code = (l.item_code || "").toLowerCase();
+      const name = (l.material_name || "").toLowerCase();
+      return (code && cleanMat.includes(code)) || (name && cleanMat.includes(name));
+    });
+    return matchedLine?.damage_evidence || [];
+  };
 
   return (
     <AppShell
@@ -350,7 +395,7 @@ function Notifications() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-500/10 text-rose-700 border border-rose-500/20 flex items-center gap-1.5 uppercase tracking-wider">
-                  <AlertTriangle className="size-3.5" /> Damaged Goods Notification
+                  <AlertTriangle className="size-3.5" /> Damaged Goods Evidence Report
                 </span>
                 <span className="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-muted text-foreground">
                   Ref: {damageDetails?.grnNumber}
@@ -439,38 +484,121 @@ function Notifications() {
             </div>
           )}
 
-          {/* DAMAGED MATERIAL DETAILS TABLE */}
-          <div className="space-y-2">
+          {/* DAMAGED MATERIAL DETAILS & PHOTO EVIDENCE */}
+          <div className="space-y-3">
             <h4 className="text-xs font-black uppercase text-foreground tracking-wider flex items-center justify-between">
-              <span>Damaged Material Details</span>
-              <span className="text-[10px] font-bold text-rose-600 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+              <span>Damaged Materials & Photo Evidence</span>
+              <span className="text-[10px] font-bold text-rose-600 bg-rose-500/10 px-2.5 py-0.5 rounded-full border border-rose-500/20">
                 {damageDetails?.items.length || 0} Line Item(s) Flagged
               </span>
             </h4>
-            <div className="rounded-2xl border overflow-hidden shadow-sm">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-muted/70 font-bold uppercase text-[10px] text-muted-foreground tracking-wider border-b">
-                  <tr>
-                    <th className="px-4 py-3">Material Code & Name</th>
-                    <th className="px-4 py-3">Damaged Quantity</th>
-                    <th className="px-4 py-3">Damage Reason</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y font-medium">
-                  {damageDetails?.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-muted/20 transition-colors">
-                      <td className="px-4 py-3 font-bold text-foreground">{item.material}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-rose-600">{item.quantity}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{item.reason}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+            <div className="space-y-4">
+              {damageDetails?.items.map((item, idx) => {
+                const linePhotos = getPhotosForMaterial(item.material);
+
+                return (
+                  <div
+                    key={idx}
+                    className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-3 shadow-xs"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                      <div>
+                        <span className="font-bold text-foreground text-sm block">
+                          {item.material}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          Reason: <b className="text-rose-700 dark:text-rose-400 font-semibold">{item.reason}</b>
+                        </span>
+                      </div>
+                      <span className="font-mono text-xs font-black text-rose-600 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+                        Damaged: {item.quantity}
+                      </span>
+                    </div>
+
+                    {/* PHOTO EVIDENCE (PICS) GALLERY */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                          <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
+                        </span>
+                        {linePhotos.length > 0 && (
+                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                            ✓ {linePhotos.length} Photo(s) Attached
+                          </span>
+                        )}
+                      </div>
+
+                      {damageLoading ? (
+                        <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
+                          <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
+                          <span className="text-xs text-muted-foreground font-medium">
+                            Loading damage photos...
+                          </span>
+                        </div>
+                      ) : linePhotos.length > 0 ? (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                          {linePhotos.map((photo: any, pIdx: number) => {
+                            const fullUrl = photo.file_path.startsWith("http")
+                              ? photo.file_path
+                              : `${BUSINESS_API_URL}${photo.file_path.startsWith("/") ? "" : "/"}${photo.file_path}`;
+
+                            return (
+                              <div
+                                key={photo.evidence_id || pIdx}
+                                className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
+                                onClick={() => setEnlargedPhoto(fullUrl)}
+                              >
+                                <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
+                                  <img
+                                    src={fullUrl}
+                                    alt={photo.file_name || "Damage photo evidence"}
+                                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    onError={(e) => {
+                                      // Fallback on missing or invalid image path
+                                      const target = e.target as HTMLImageElement;
+                                      target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                                    }}
+                                  />
+                                </div>
+                                <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
+                                  <Eye className="size-5 text-rose-200" />
+                                  <span className="text-[10px] font-bold">View Full Picture</span>
+                                </div>
+                                <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
+                                  {photo.file_name || `damage_photo_${pIdx + 1}.jpg`}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-xl border border-dashed text-xs text-muted-foreground">
+                          <Camera className="size-4 text-muted-foreground/50 shrink-0" />
+                          <span>No photo evidence uploaded for this material during receiving inspection.</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* FOOTER - ONLY CLOSE BUTTON */}
-          <DialogFooter className="pt-4 border-t flex justify-end">
+          {/* FOOTER */}
+          <DialogFooter className="pt-4 border-t flex flex-wrap items-center justify-between gap-3">
+            <Button
+              variant="default"
+              className="rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
+              onClick={() => {
+                setShowDamageModal(false);
+                const targetId = damageGrnData?.grn_id || damageDetails?.grnNumber;
+                window.location.href = targetId ? `/grn?grn_id=${targetId}` : "/grn";
+              }}
+            >
+              <FileText className="mr-1.5 size-4" /> Open Full GRN Details (/grn)
+            </Button>
+
             <Button
               variant="outline"
               className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted"

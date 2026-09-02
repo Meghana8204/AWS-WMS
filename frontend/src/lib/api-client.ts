@@ -4,7 +4,7 @@
  * and Java auth-service (port 8080).
  */
 
-const BUSINESS_API_URL =
+export const BUSINESS_API_URL =
   typeof window !== "undefined"
     ? window.location.hostname.includes("loca.lt")
       ? "https://wms-mobile-backend-8000.loca.lt"

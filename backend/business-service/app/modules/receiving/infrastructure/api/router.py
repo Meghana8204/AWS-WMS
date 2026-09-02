@@ -972,7 +972,18 @@ async def get_grn_detail(
     _user=Depends(require_permission("receiving:read")),
 ) -> GrnDetailResponse:
     repo = SqlAlchemyGrnRepository(uow.session)
-    grn = await repo.get_grn_detail_by_id(uuid.UUID(grn_id))
+    try:
+        grn_uuid = uuid.UUID(grn_id)
+    except ValueError:
+        from app.modules.receiving.infrastructure.persistence.models import GrnModel
+        from sqlalchemy import select
+        res = await uow.session.execute(
+            select(GrnModel.id).where(GrnModel.grn_number == grn_id)
+        )
+        grn_uuid = res.scalar_one_or_none()
+        if not grn_uuid:
+            raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
+    grn = await repo.get_grn_detail_by_id(grn_uuid)
 
     if not grn:
         raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
@@ -1045,6 +1056,20 @@ async def get_grn_detail(
                         ) if dl.qr_code else None,
                     )
                     for dl in getattr(line, "damage_lots", [])
+                ],
+                damage_evidence=[
+                    DamageEvidenceResponse(
+                        evidence_id=str(ev.id),
+                        grn_line_id=str(ev.grn_line_id),
+                        damaged_quantity=ev.damaged_quantity,
+                        reason=ev.reason,
+                        remarks=ev.remarks,
+                        file_name=ev.file_name,
+                        file_path=ev.file_path,
+                        uploaded_by=ev.uploaded_by,
+                        uploaded_at=ev.uploaded_at,
+                    )
+                    for ev in getattr(line, "damage_evidence", [])
                 ],
             )
             for line in grn.lines

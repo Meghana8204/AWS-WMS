@@ -292,6 +292,21 @@ class UpdateGrnLinesRequest(ApiModel):
     lines: list[GrnLineReceivingRequest] = Field(min_length=1)
 
 
+class DamageEvidenceResponse(ApiModel):
+    evidence_id: str
+    grn_line_id: str
+
+    damaged_quantity: Decimal
+    reason: str | None = None
+    remarks: str | None = None
+
+    file_name: str
+    file_path: str
+
+    uploaded_by: str
+    uploaded_at: datetime
+
+
 class GrnLineResponse(ApiModel):
     grn_line_id: str | None = None
     item_code: str
@@ -313,6 +328,7 @@ class GrnLineResponse(ApiModel):
     balance_quantity: Decimal = Decimal("0")
     quality_result: str | None = None
     damage_lots: list[GrnDamageLotResponse] = Field(default_factory=list)
+    damage_evidence: list[DamageEvidenceResponse] = Field(default_factory=list)
 
 
 class UpdateGrnLinesResponse(ApiModel):
@@ -343,21 +359,6 @@ class DamageEvidenceMetadataRequest(ApiModel):
     @classmethod
     def clean_optional_fields(cls, value: str | None) -> str | None:
         return _clean_optional_text(value)
-
-
-class DamageEvidenceResponse(ApiModel):
-    evidence_id: str
-    grn_line_id: str
-
-    damaged_quantity: Decimal
-    reason: str | None = None
-    remarks: str | None = None
-
-    file_name: str
-    file_path: str
-
-    uploaded_by: str
-    uploaded_at: datetime
 
 
 # ============================================================================
