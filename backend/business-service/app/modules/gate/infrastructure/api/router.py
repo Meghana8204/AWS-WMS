@@ -361,11 +361,16 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
         for item in (model.mismatched_fields or [])
         if isinstance(item, dict)
     ]
+    try:
+        st_enum = GateEntryStatus(model.status)
+    except ValueError:
+        st_enum = getattr(GateEntryStatus, model.status, GateEntryStatus.APPROVED)
+
     return GateEntry.rehydrate(
         id=str(model.id),
         gate_entry_number=model.gate_entry_number,
         vehicle_plate=model.vehicle_number,
-        status=GateEntryStatus(model.status),
+        status=st_enum,
         created_by=model.security_officer_id,
         driver_name=model.driver_name,
         po_id=str(model.po_id) if model.po_id else None,

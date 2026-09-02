@@ -29,7 +29,7 @@ class DockAllocationService:
 
     @staticmethod
     async def seed_default_docks_if_empty(session: AsyncSession) -> None:
-        """Seed initial 9 docks across 5 categories if no master data exists."""
+        """Seed initial 9 docks across 5 categories if no master data exists, or migrate legacy default docks."""
         result = await session.execute(select(func.count(DockMasterModel.id)))
         if result.scalar() == 0:
             initial_docks = [
@@ -46,44 +46,44 @@ class DockAllocationService:
                     "type": DockType.RAW_MATERIAL.value,
                     "location": "East Warehouse",
                 },
-                # Chemical Docks (2)
+                # Chemical/Hazardous Docks (2)
                 {
                     "code": "CH-01",
-                    "name": "Chemical Dock 01",
-                    "type": DockType.CHEMICAL.value,
+                    "name": "Chemical/Hazardous Dock 01",
+                    "type": DockType.CHEMICAL_HAZARDOUS.value,
                     "location": "South Warehouse",
                 },
                 {
                     "code": "CH-02",
-                    "name": "Chemical Dock 02",
-                    "type": DockType.CHEMICAL.value,
+                    "name": "Chemical/Hazardous Dock 02",
+                    "type": DockType.CHEMICAL_HAZARDOUS.value,
                     "location": "South Warehouse",
                 },
-                # Hazardous Items Docks (2)
-                {
-                    "code": "HZ-01",
-                    "name": "Hazardous Items Dock 01",
-                    "type": DockType.HAZARDOUS_ITEMS.value,
-                    "location": "South Warehouse",
-                },
-                {
-                    "code": "HZ-02",
-                    "name": "Hazardous Items Dock 02",
-                    "type": DockType.HAZARDOUS_ITEMS.value,
-                    "location": "South Warehouse",
-                },
-                # Electronics Docks (2)
+                # Electrical Docks (2)
                 {
                     "code": "EL-01",
-                    "name": "Electronics Dock 01",
-                    "type": DockType.ELECTRONICS.value,
+                    "name": "Electrical Dock 01",
+                    "type": DockType.ELECTRICAL.value,
                     "location": "North Warehouse",
                 },
                 {
                     "code": "EL-02",
+                    "name": "Electrical Dock 02",
+                    "type": DockType.ELECTRICAL.value,
+                    "location": "North Warehouse",
+                },
+                # Electronics Docks (2)
+                {
+                    "code": "EC-01",
+                    "name": "Electronics Dock 01",
+                    "type": DockType.ELECTRONICS.value,
+                    "location": "West Warehouse",
+                },
+                {
+                    "code": "EC-02",
                     "name": "Electronics Dock 02",
                     "type": DockType.ELECTRONICS.value,
-                    "location": "North Warehouse",
+                    "location": "West Warehouse",
                 },
                 # Main Receiving Dock (1)
                 {
@@ -104,6 +104,62 @@ class DockAllocationService:
                 )
                 session.add(dock)
             await session.commit()
+        else:
+            # Auto-migrate legacy seeded docks if present
+            docks_res = await session.execute(select(DockMasterModel))
+            existing_docks = docks_res.scalars().all()
+            existing_codes = {d.dock_code for d in existing_docks if d.is_active}
+            updated = False
+            for d in existing_docks:
+                if d.dock_code == "CH-01" and (d.dock_type in ("CHEMICAL", "CHEMICAL_HAZARDOUS") or d.dock_name == "Chemical Dock 01"):
+                    d.dock_name = "Chemical/Hazardous Dock 01"
+                    d.dock_type = DockType.CHEMICAL_HAZARDOUS.value
+                    updated = True
+                elif d.dock_code == "CH-02" and (d.dock_type in ("CHEMICAL", "CHEMICAL_HAZARDOUS") or d.dock_name == "Chemical Dock 02"):
+                    d.dock_name = "Chemical/Hazardous Dock 02"
+                    d.dock_type = DockType.CHEMICAL_HAZARDOUS.value
+                    updated = True
+                elif d.dock_code == "EL-01" and d.dock_name in ("Electronics Dock 01", "Electrical Dock 01"):
+                    d.dock_name = "Electrical Dock 01"
+                    d.dock_type = DockType.ELECTRICAL.value
+                    updated = True
+                elif d.dock_code == "EL-02" and d.dock_name in ("Electronics Dock 02", "Electrical Dock 02"):
+                    d.dock_name = "Electrical Dock 02"
+                    d.dock_type = DockType.ELECTRICAL.value
+                    updated = True
+                elif d.dock_code in ("HZ-01", "HZ-02") and d.dock_type == "HAZARDOUS_ITEMS":
+                    # Deactivate legacy redundant HZ docks if chemical and hazardous are unified
+                    d.is_active = False
+                    updated = True
+
+            # Ensure EC-01 and EC-02 exist for Electronics
+            if "EC-01" not in existing_codes:
+                session.add(
+                    DockMasterModel(
+                        dock_code="EC-01",
+                        dock_name="Electronics Dock 01",
+                        dock_type=DockType.ELECTRONICS.value,
+                        location="West Warehouse",
+                        status=DockStatus.AVAILABLE.value,
+                        is_active=True,
+                    )
+                )
+                updated = True
+            if "EC-02" not in existing_codes:
+                session.add(
+                    DockMasterModel(
+                        dock_code="EC-02",
+                        dock_name="Electronics Dock 02",
+                        dock_type=DockType.ELECTRONICS.value,
+                        location="West Warehouse",
+                        status=DockStatus.AVAILABLE.value,
+                        is_active=True,
+                    )
+                )
+                updated = True
+
+            if updated:
+                await session.commit()
 
     @staticmethod
     async def sync_pending_gate_entries(session: AsyncSession) -> None:
@@ -119,7 +175,10 @@ class DockAllocationService:
             entries = gate_entries_res.scalars().all()
             for ge in entries:
                 ge_num = ge.gate_entry_number or str(ge.id)
-                veh_plate = ge.vehicle_plate or "Vehicle"
+                veh_plate = getattr(ge, "vehicle_number", None) or getattr(ge, "vehicle_plate", None) or "Vehicle"
+                supplier = ge.ocr_supplier_name or getattr(ge, "supplier_name", None) or "Approved Vendor"
+                mat_name = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else "Raw Material / Goods")
+                qty = Decimal(str(ge.ocr_quantity)) if ge.ocr_quantity is not None else (Decimal(str(ge.total_quantity)) if getattr(ge, "total_quantity", None) else Decimal("100.0"))
                 
                 check_stmt = select(DockAllocationRequestModel).where(
                     (DockAllocationRequestModel.existing_gate_pass_id == ge_num) |
@@ -130,10 +189,10 @@ class DockAllocationService:
                     req_model = DockAllocationRequestModel(
                         existing_gate_pass_id=ge_num,
                         vehicle_number=veh_plate,
-                        vendor_reference=ge.supplier_name or "Approved Vendor",
-                        material_reference=ge.po_number or "Material",
-                        material_description=ge.material_description or "Inbound Material Shipment",
-                        quantity=Decimal(str(ge.total_quantity)) if ge.total_quantity else Decimal("100.0"),
+                        vendor_reference=supplier,
+                        material_reference=mat_name,
+                        material_description=mat_name,
+                        quantity=qty,
                         security_approved_at=ge.created_at or datetime.now(timezone.utc),
                         priority="NORMAL",
                         status="AWAITING_DOCK",
