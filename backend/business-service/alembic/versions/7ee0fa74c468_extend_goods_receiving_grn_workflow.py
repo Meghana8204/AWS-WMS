@@ -176,23 +176,27 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # 7. GRN line workflow fields
-    # ------------------------------------------------------------------
+# ------------------------------------------------------------------
     grn_line_cols = {c["name"] for c in inspector.get_columns("grn_line")}
+
     if "material_category" not in grn_line_cols:
         bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS material_category VARCHAR(128)"))
+
     if "good_quantity" not in grn_line_cols:
         bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS good_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
+
     if "quality_approved_quantity" not in grn_line_cols:
         bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS quality_approved_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
+
     if "balance_quantity" not in grn_line_cols:
         bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS balance_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
 
+    if "damaged_quantity" not in grn_line_cols:
+        bind.execute(sa.text("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS damaged_quantity NUMERIC(18, 4) DEFAULT 0 NOT NULL"))
+
     bind.execute(sa.text("UPDATE grn_line SET damaged_quantity = 0 WHERE damaged_quantity IS NULL"))
-    bind.execute(sa.text("UPDATE grn_line SET rejected_quantity = 0 WHERE rejected_quantity IS NULL"))
 
     bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_line_grn_id ON grn_line (grn_id)"))
     bind.execute(sa.text("CREATE INDEX IF NOT EXISTS ix_grn_line_item_code ON grn_line (item_code)"))
-
-
 def downgrade() -> None:
     pass
