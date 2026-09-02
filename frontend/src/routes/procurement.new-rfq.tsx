@@ -24,13 +24,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/procurement/new-rfq")({
   component: NewRfq,
 });
-
 const inputClass = "mt-1.5 h-11 rounded-xl border-border/80 bg-background";
-
 function NewRfq() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
@@ -38,14 +35,12 @@ function NewRfq() {
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
-  const [materialCatalog, setMaterialCatalog] = useState<any[]>([]);
   const [filters, setFilters] = useState({
     search: "",
     category: "",
     material: "",
     city: "",
   });
-
   const [formData, setFormData] = useState({
     rfq_date: new Date().toISOString().split("T")[0],
     material_request_number: "",
@@ -54,36 +49,30 @@ function NewRfq() {
     procurement_officer: "",
     remarks: "",
   });
-
+  const generateRandomCode = () => `MAT-${Math.floor(100000 + Math.random() * 900000)}`;
   const [items, setItems] = useState<any[]>([
     {
-      material_code: "",
+      material_code: generateRandomCode(),
       material_name: "",
-      category: "",
-      sub_category: "",
-      price_range: "",
+      category: "Raw Materials",
       quantity: 1,
       uom: "PCS",
       special_requirements: "",
     },
   ]);
-
   const addItem = () => {
     setItems((prev) => [
       ...prev,
       {
-        material_code: "",
+        material_code: generateRandomCode(),
         material_name: "",
-        category: "",
-        sub_category: "",
-        price_range: "",
+        category: "Raw Materials",
         quantity: 1,
         uom: "PCS",
         special_requirements: "",
       },
     ]);
   };
-
   const removeItem = (index: number) => {
     if (items.length === 1) {
       toast.error("At least one material requirement is required");
@@ -91,65 +80,14 @@ function NewRfq() {
     }
     setItems((prev) => prev.filter((_, i) => i !== index));
   };
-
   const handleItemChange = (index: number, field: string, value: any) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
   };
-
-  const applyMasterMaterial = (index: number, material: any) => {
-    const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
-    const priceRange =
-      material.minimumPrice != null || material.maximumPrice != null
-        ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
-        : "";
-    setItems((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              material_code: material.materialCode,
-              material_name: material.name,
-              category: material.category || "",
-              sub_category: material.subCategory || "",
-              price_range: priceRange,
-              uom: String(material.uom || "PCS").toUpperCase(),
-            }
-          : item,
-      ),
-    );
-  };
-
-  useEffect(() => {
-    if (!materialCatalog.length) return;
-    setItems((current) =>
-      current.map((item) => {
-        const material = materialCatalog.find(
-          (entry) => entry.materialCode === item.material_code,
-        );
-        if (!material) return item;
-        const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
-        return {
-          ...item,
-          material_name: material.name,
-          category: material.category || "",
-          sub_category: material.subCategory || "",
-          price_range:
-            material.minimumPrice != null || material.maximumPrice != null
-              ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
-              : "",
-          uom: String(material.uom || item.uom || "PCS").toUpperCase(),
-        };
-      }),
-    );
-  }, [materialCatalog]);
-
   useEffect(() => {
     async function fetchSuppliers() {
       try {
         setLoadingSuppliers(true);
         const data = await api.getSuppliers({ ...filters, status: "Active" });
-        // Keep the RFQ invitation list safe even if an older backend ignores
-        // the status query parameter.
         setSuppliers(
           data.filter(
             (supplier: any) =>
@@ -167,19 +105,15 @@ function NewRfq() {
     const debounceTimer = setTimeout(() => {
       fetchSuppliers();
     }, 300);
-
     return () => clearTimeout(debounceTimer);
   }, [filters]);
-
   useEffect(() => {
-    // Fetch available supplier categories for the filter
     const fetchCategories = async () => {
       try {
         const cats = await api.getSupplierCategories();
         if (cats.length > 0) {
           setAvailableCategories(cats.map((c: any) => c.name));
         } else {
-          // Fallback if no categories in DB yet
           setAvailableCategories(["Raw Materials", "Components", "Services", "Hardware"]);
         }
       } catch (e) {
@@ -188,41 +122,15 @@ function NewRfq() {
       }
     };
     fetchCategories();
-
-    const fetchMaterialMaster = async () => {
-      let catalogData: any[] = [];
-      try {
-        const [catalog, master] = await Promise.all([
-          api.getMaterialCatalog(),
-          api.getMaterials(),
-        ]);
-        const masterByCode = new Map(master.map((material: any) => [material.code, material]));
-        catalogData = catalog
-          .filter((material: any) => material.materialCode)
-          .map((material: any) => {
-            const details: any = masterByCode.get(material.materialCode) || {};
-            return {
-              ...details,
-              materialCode: material.materialCode,
-              name: material.name,
-              category: String(material.category || details.category || "").replaceAll("_", " "),
-              subCategory: material.subCategory || details.subCategory || "",
-              uom: material.uom || details.uom || "PCS",
-              minimumPrice: material.minimumPrice ?? details.minimumPrice,
-              maximumPrice: material.maximumPrice ?? details.maximumPrice,
-              currency: material.currency || details.currency || "INR",
-            };
-          });
-        setMaterialCatalog(catalogData);
-      } catch {
-        toast.error("Failed to load Material Master");
-      }
-
-      // Handle auto-fill from Material Request after catalog is fetched
-      const urlParams = new URLSearchParams(window.location.search);
-      const fromRequestId = urlParams.get("fromRequestId");
-
-      if (fromRequestId) {
+    const userInfo = localStorage.getItem("user_info");
+    if (userInfo) {
+      const user = JSON.parse(userInfo);
+      setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
+    }
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromRequestId = urlParams.get("fromRequestId");
+    if (fromRequestId) {
+      const loadMR = async () => {
         try {
           const allMRs = await api.getMaterialRequests();
           const mr = allMRs.find((r) => r.id === fromRequestId);
@@ -233,57 +141,29 @@ function NewRfq() {
               warehouse: mr.warehouseId,
               required_delivery_date: mr.requiredDate,
             }));
-
             setItems(
-              mr.items.map((it: any) => {
-                const material = catalogData.find((m) => m.materialCode === it.materialCode);
-                if (material) {
-                  const currency = material.currency === "INR" ? "₹" : material.currency || "INR";
-                  const priceRange =
-                    material.minimumPrice != null || material.maximumPrice != null
-                      ? `${currency}${Number(material.minimumPrice || 0).toLocaleString()} – ${currency}${Number(material.maximumPrice || 0).toLocaleString()}`
-                      : "";
-                  return {
-                    material_code: material.materialCode,
-                    material_name: material.name,
-                    category: material.category,
-                    sub_category: material.subCategory,
-                    price_range: priceRange,
-                    quantity: it.quantity,
-                    uom: String(material.uom || it.uom).toUpperCase(),
-                    special_requirements: "",
-                  };
-                }
-                return {
-                  material_code: it.materialCode,
-                  material_name: it.materialName || it.materialCode,
-                  category: it.category || "",
-                  sub_category: it.subCategory || it.sub_category || "",
-                  price_range: it.priceRange || it.price_range || "",
-                  quantity: it.quantity,
-                  uom: it.uom,
-                  special_requirements: "",
-                };
-              }),
+              mr.items.map((it: any) => ({
+                material_id: it.materialId || it.material_id || null,
+                material_variant_id: it.materialVariantId || it.material_variant_id || null,
+                material_code: it.materialCode || it.material_code,
+                variant_code: it.variantCode || it.variant_code || null,
+                material_name: it.materialName || it.material_name || it.materialCode,
+                category: "Raw Materials",
+                quantity: it.quantity,
+                uom: it.uom,
+                special_requirements: "",
+              })),
             );
           }
         } catch (e) {
           console.error("Failed to load MR details", e);
         }
-      } else {
-        void fetchNextMrNumber();
-      }
-    };
-    void fetchMaterialMaster();
-
-    // Get current user for procurement officer field
-    const userInfo = localStorage.getItem("user_info");
-    if (userInfo) {
-      const user = JSON.parse(userInfo);
-      setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
+      };
+      loadMR();
+    } else {
+      void fetchNextMrNumber();
     }
   }, []);
-
   const fetchNextMrNumber = async () => {
     try {
       const { requestNumber } = await api.getNextMaterialRequestNumber();
@@ -293,7 +173,6 @@ function NewRfq() {
       }));
     } catch (e) {
       console.error("Failed to fetch next MR number", e);
-      // Fallback if API fails
       const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
       setFormData((prev) => ({
         ...prev,
@@ -301,47 +180,36 @@ function NewRfq() {
       }));
     }
   };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
-
   const toggleSupplier = (id: string) => {
     setSelectedSuppliers((prev) =>
       prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
     );
   };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedSuppliers.length === 0) {
       toast.error("Please select at least one supplier");
       return;
     }
-
     if (items.some((item) => !item.material_code.trim() || !item.material_name.trim())) {
       toast.error("Please fill in Material Code and Name for all items");
       return;
     }
-
     setSubmitting(true);
     try {
       const payload = {
         ...formData,
         supplier_ids: selectedSuppliers,
         items: items.map((item) => ({
-          material_code: item.material_code,
-          material_name: item.material_name,
-          category: item.category,
+          ...item,
           quantity: parseFloat(item.quantity) || 0,
-          uom: item.uom,
-          special_requirements: item.special_requirements,
         })),
-        // Convert empty strings to null for optional date fields to prevent Pydantic errors
         required_delivery_date: formData.required_delivery_date || null,
       };
-
       await api.createRfq(payload);
       toast.success("RFQ Draft created successfully");
       navigate({ to: "/procurement/rfqs" });
@@ -351,7 +219,6 @@ function NewRfq() {
       setSubmitting(false);
     }
   };
-
   return (
     <AppShell
       title="Create New RFQ"
@@ -478,6 +345,18 @@ function NewRfq() {
                 key={index}
                 className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30"
               >
+                <div className="absolute right-4 top-4">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 rounded-xl text-destructive hover:bg-destructive-soft/10 hover:text-destructive"
+                    onClick={() => removeItem(index)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+
                 <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">
                   Item #{index + 1}
                 </p>
@@ -486,34 +365,12 @@ function NewRfq() {
                   <div className="space-y-1.5">
                     <Label className="text-xs">Material Code</Label>
                     <Input
-                      placeholder="Search MAT-001 or material name"
-                      className="h-10 rounded-xl font-mono"
+                      placeholder="e.g. MAT-001"
+                      className="h-10 rounded-xl bg-muted/50"
                       value={item.material_code}
-                      list={`rfq-materials-${index}`}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        handleItemChange(index, "material_code", value);
-
-                        const normalizedInput = value.trim().toUpperCase();
-                        if (!normalizedInput) return;
-
-                        const match = materialCatalog.find(
-                          (m) =>
-                            m.materialCode.toUpperCase() === normalizedInput ||
-                            m.name.toUpperCase() === normalizedInput
-                        );
-
-                        if (match) applyMasterMaterial(index, match);
-                      }}
+                      readOnly
                       required
                     />
-                    <datalist id={`rfq-materials-${index}`}>
-                      {materialCatalog.map((material) => (
-                        <option key={material.materialCode} value={material.materialCode}>
-                          {material.name}
-                        </option>
-                      ))}
-                    </datalist>
                   </div>
 
                   <div className="space-y-1.5">
@@ -522,32 +379,28 @@ function NewRfq() {
                       placeholder="e.g. Steel Pipe 2\"
                       className="h-10 rounded-xl"
                       value={item.material_name}
-                      readOnly
+                      onChange={(e) => handleItemChange(index, "material_name", e.target.value)}
                       required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Category</Label>
-                    <Input
-                      className="h-10 rounded-xl bg-muted/50"
+                    <Label className="text-xs">Category Description</Label>
+                    <select
+                      className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
                       value={item.category}
-                      readOnly
-                    />
+                      onChange={(e) => handleItemChange(index, "category", e.target.value)}
+                    >
+                      <option value="Raw Materials">Raw Materials</option>
+                      <option value="Components">Components</option>
+                      <option value="Services">Services</option>
+                      <option value="Hardware">Hardware</option>
+                      <option value="General">General</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Sub Category</Label>
-                    <Input className="h-10 rounded-xl bg-muted/50" value={item.sub_category} readOnly />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Price Range</Label>
-                    <Input className="h-10 rounded-xl bg-muted/50" value={item.price_range} readOnly />
-                  </div>
-
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Required Quantity</Label>
                     <Input
@@ -586,6 +439,15 @@ function NewRfq() {
                 </div>
               </div>
             ))}
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full h-11 rounded-xl border-dashed border-primary/40 text-primary hover:bg-primary-soft/10 hover:border-primary"
+              onClick={addItem}
+            >
+              <Plus className="mr-2 size-4" /> Add Material Requirement
+            </Button>
           </div>
         </SectionCard>
 

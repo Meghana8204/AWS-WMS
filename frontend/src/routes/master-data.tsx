@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-
 export const Route = createFileRoute("/master-data")({
   head: () => ({
     meta: [
@@ -23,14 +22,12 @@ export const Route = createFileRoute("/master-data")({
   }),
   component: MasterData,
 });
-
 function MasterData() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "blocked">("all");
-
   const loadSuppliers = async () => {
     setLoading(true);
     setError(null);
@@ -42,11 +39,9 @@ function MasterData() {
       setLoading(false);
     }
   };
-
   useEffect(() => {
     loadSuppliers();
   }, []);
-
   const filteredSuppliers = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return suppliers.filter((supplier) => {
@@ -60,7 +55,6 @@ function MasterData() {
       return matchesStatus && matchesQuery;
     });
   }, [query, statusFilter, suppliers]);
-
   return (
     <AppShell
       title="Master data"
@@ -238,9 +232,7 @@ function MasterData() {
                           {supplier.supplierName}
                         </Link>
                         <p className="text-[11px] text-muted-foreground">
-                          {supplier.registeredCompanyName ||
-                            supplier.supplierCode ||
-                            supplier.supplierId}
+                          {supplier.registeredCompanyName || supplier.supplierCode || supplier.supplierId}
                         </p>
                       </td>
                       <td className="py-3 text-muted-foreground">{supplier.category || "—"}</td>

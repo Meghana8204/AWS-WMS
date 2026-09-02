@@ -36,6 +36,7 @@ def main():
         print(f"  -> Server: http://{display_host}:{port}")
         print(f"  -> Docs:   http://{display_host}:{port}/docs")
         sys.path.insert(0, business_service_dir)
+        os.chdir(business_service_dir)
         import uvicorn
 
         uvicorn.run("app.main:app", host=host, port=port, reload=True, app_dir=business_service_dir)

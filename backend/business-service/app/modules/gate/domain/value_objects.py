@@ -4,7 +4,7 @@ Refactored for PO Document OCR Scanning & Manual Vehicle Plate Entry.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
@@ -21,11 +21,15 @@ class GateEntryStatus(str, Enum):
     DOCK_ASSIGNED = "DOCK_ASSIGNED"
     MOVING_TO_DOCK = "MOVING_TO_DOCK"
     AT_DOCK = "AT_DOCK"
+    OCCUPIED = "OCCUPIED"
     UNLOADING_IN_PROGRESS = "UNLOADING_IN_PROGRESS"
     QUALITY_INSPECTION_REQUIRED = "QUALITY_INSPECTION_REQUIRED"
     QUALITY_PASSED = "QUALITY_PASSED"
     QUALITY_FAILED = "QUALITY_FAILED"
     RECEIVING_COMPLETED = "RECEIVING_COMPLETED"
+    COMPLETED = "COMPLETED"
+    RELEASED = "RELEASED"
+    DOCK_RELEASED = "RELEASED"
     EXIT_APPROVED = "EXIT_APPROVED"
     GATE_EXIT_COMPLETED = "GATE_EXIT_COMPLETED"
     REJECTED = "REJECTED"
@@ -47,7 +51,10 @@ class OcrResult:
 class AnprResult:
     detected_vehicle_number: str
     confidence: float
-    raw_metadata: dict[str, Any]
+    raw_metadata: dict[str, Any] = field(default_factory=dict)
+
+    def is_high_confidence(self, threshold: float = 0.85) -> bool:
+        return self.confidence >= threshold
 
 
 @dataclass(frozen=True)

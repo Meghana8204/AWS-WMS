@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
-
 export const Route = createFileRoute("/grn")({ component: Grn });
 type Item = {
   item_code: string;
@@ -37,7 +36,6 @@ type Draft = {
   official_record?: boolean;
   inventory_updated?: boolean;
 };
-
 function Grn() {
   const [drafts, setDrafts] = useState<Draft[]>([]),
     [loading, setLoading] = useState(true);

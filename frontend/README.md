@@ -1,5 +1,8 @@
 # ArrivalFlow Pro
 
+Complete frontend architecture, route, integration, role, development, and
+production guidance: [`TECHNICAL_DOCUMENTATION.md`](TECHNICAL_DOCUMENTATION.md).
+
 Act as a Senior Product Designer, Senior UX Designer, Warehouse Domain Expert, and Enterprise Software Architect.
 
 Design a COMPLETE HIGH-FIDELITY CLICKABLE PROTOTYPE for an enterprise Warehouse Management System (WMS) + Asset Management System (AMS).

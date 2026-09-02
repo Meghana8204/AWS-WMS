@@ -15,8 +15,6 @@ import {
   Bell,
   Moon,
   Sun,
-  PanelLeftClose,
-  PanelLeft,
   LogOut,
   Building2,
   FileText,
@@ -28,6 +26,10 @@ import {
   Users,
   Menu,
   AlertTriangle,
+  ShieldCheck,
+  Sliders,
+  PanelLeft,
+  PanelLeftClose,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -40,6 +42,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Material Data", to: "/material-data", icon: Database },
+  { label: "Material Master", to: "/warehouse/materials", icon: Database },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
@@ -184,6 +187,7 @@ export function AppShell({
   }, [searchTerm]);
 
   useEffect(() => {
+    let cleanup: (() => void) | undefined;
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
 
@@ -223,7 +227,7 @@ export function AppShell({
         const interval = window.setInterval(fetchNotifications, 2000);
         window.addEventListener("notifications:refresh", fetchNotifications);
         window.addEventListener("focus", fetchNotifications);
-        return () => {
+        cleanup = () => {
           window.clearInterval(interval);
           window.removeEventListener("notifications:refresh", fetchNotifications);
           window.removeEventListener("focus", fetchNotifications);
@@ -232,6 +236,9 @@ export function AppShell({
     } catch (e) {
       console.error("Failed to parse user info", e);
     }
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, [dark]);
 
   // The current route is available during server rendering, so each module
@@ -317,14 +324,27 @@ export function AppShell({
           collapsed ? "w-[76px]" : "w-[264px]",
         )}
       >
-        <div className="flex h-16 items-center gap-3 px-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
-            <Warehouse className="size-5" />
-          </div>
-          {!collapsed && (
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
-              <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+        <div
+          className={cn(
+            "flex h-16 items-center border-b border-sidebar-border/40 transition-all",
+            collapsed ? "justify-center px-2" : "justify-between gap-2 px-4",
+          )}
+        >
+          {!collapsed ? (
+            <>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+                  <Warehouse className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
+                  <p className="truncate text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+              <Warehouse className="size-5" />
             </div>
           )}
         </div>
@@ -361,13 +381,15 @@ export function AppShell({
           <button
             type="button"
             suppressHydrationWarning
-            onClick={() => setCollapsed((c) => !c)}
+            onClick={() => setCollapsed((value) => !value)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-sidebar-accent"
           >
             {collapsed ? (
-              <PanelLeft className="size-[18px]" />
+              <PanelLeft className="size-[18px] shrink-0" />
             ) : (
-              <PanelLeftClose className="size-[18px]" />
+              <PanelLeftClose className="size-[18px] shrink-0" />
             )}
             {!collapsed && <span>Collapse</span>}
           </button>
@@ -612,8 +634,11 @@ export function StatusBadge({ status }: { status: string }) {
     Occupied: "bg-danger-soft text-destructive border-destructive/25",
     AVAILABLE: "bg-success-soft text-success border-success/30",
     OCCUPIED: "bg-danger-soft text-destructive border-destructive/25",
-    MAINTENANCE: "bg-muted text-muted-foreground border-border",
+    RESERVED: "bg-warning-soft text-warning-foreground border-warning/30",
     Reserved: "bg-warning-soft text-warning-foreground border-warning/30",
+    MAINTENANCE: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
+    "Under Maintenance": "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
+    UNDER_MAINTENANCE: "bg-slate-500/10 text-slate-600 border-slate-500/30 dark:text-slate-400",
     Cleaning: "bg-muted text-muted-foreground border-border",
     SUBMITTED: "bg-primary-soft text-primary border-primary/25",
     DRAFT: "bg-muted text-muted-foreground border-border",
@@ -627,13 +652,17 @@ export function StatusBadge({ status }: { status: string }) {
   };
 
   const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
+  let displayLabel = status.replace(/_/g, " ");
+  if (displayLabel.toUpperCase() === "OCCUPIED") {
+    displayLabel = "AT DOCK";
+  }
 
   return (
     <Badge
       variant="outline"
       className={cn(
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-        map[status] ?? map["Hold"],
+        map[status] ?? map[displayLabel] ?? map["Hold"],
         isLive && "pl-5",
       )}
     >
@@ -643,7 +672,7 @@ export function StatusBadge({ status }: { status: string }) {
           <span className="relative inline-flex size-1.5 rounded-full bg-current"></span>
         </span>
       )}
-      {status.replace(/_/g, " ")}
+      {displayLabel}
     </Badge>
   );
 }

@@ -1,24 +1,15 @@
-import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Boxes, Eye, History, Loader2, RefreshCw, Truck, FileQuestion } from "lucide-react";
+import { ArrowRight, Boxes, Eye, Loader2, RefreshCw, Truck, Warehouse } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
-import { requireRole } from "@/lib/auth-utils";
-
 export const Route = createFileRoute("/vehicle-queue")({
-  beforeLoad: () => requireRole("GATE_SECURITY"),
   head: () => ({ meta: [{ title: "Inbound Arrivals · NexusWMS" }] }),
-  validateSearch: (search: Record<string, unknown>) => {
-    return {
-      status: (search.status as string) || undefined,
-    };
-  },
   component: InboundArrivals,
 });
-
 type Arrival = {
   id: string;
   gate_entry_number: string;
@@ -31,7 +22,7 @@ type Arrival = {
   driver_contact?: string | null;
   arrival_time: string;
   expected_arrival_at?: string | null;
-  status: string;
+  status: "AWAITING_DOCK" | "DOCK_ASSIGNED" | "MOVING_TO_DOCK" | "AT_DOCK";
   assigned_dock_id?: string | null;
   po_id?: string | null;
   assigned_by?: string | null;
@@ -40,8 +31,6 @@ type Arrival = {
   movement_started_at?: string | null;
   dock_checked_in_by?: string | null;
   dock_arrival_at?: string | null;
-  receiving_completed_at?: string | null;
-  dock_released_at?: string | null;
   shipment: {
     transporter?: string;
     number_of_packages?: number;
@@ -62,30 +51,13 @@ type Dock = {
   status: "AVAILABLE" | "OCCUPIED";
   vehicle_number?: string;
 };
-
 function InboundArrivals() {
-  const { status: filterStatus } = useSearch({ from: "/vehicle-queue" });
-  return <ArrivalsPage filterStatus={filterStatus} />;
-}
-
-export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [moving, setMoving] = useState<string | null>(null);
-  const [view, setView] = useState<"active" | "history">("active");
-
-  const historyStatuses = new Set(["RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED"]);
-
-  const filteredArrivals = filterStatus
-    ? arrivals.filter(a => a.status === filterStatus)
-    : arrivals;
-
-  const activeArrivals = filteredArrivals.filter((arrival) => !historyStatuses.has(arrival.status));
-  const historyArrivals = filteredArrivals.filter((arrival) => historyStatuses.has(arrival.status));
-  const visibleArrivals = view === "active" ? activeArrivals : historyArrivals;
-
+  const [selectedDock, setSelectedDock] = useState<Record<string, string>>({});
+  const [assigning, setAssigning] = useState<string | null>(null);
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -101,35 +73,69 @@ export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
       if (!quiet) setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(true), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
-
+  async function assignDock(arrival: Arrival) {
+    const dockId = selectedDock[arrival.id];
+    if (!dockId) {
+      toast.error("Select an available dock");
+      return;
+    }
+    setAssigning(arrival.id);
+    try {
+      await api.assignDock(arrival.id, dockId);
+      toast.success(`${dockId} assigned`, {
+        description: `${arrival.vehicle_number} can proceed to the dock.`,
+      });
+      await load(true);
+    } catch (error) {
+      toast.error("Dock assignment failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+      await load(true);
+    } finally {
+      setAssigning(null);
+    }
+  }
   async function startMovement(arrival: Arrival) {
-    setMoving(arrival.id);
+    setAssigning(arrival.id);
     try {
       await api.startDockMovement(arrival.id);
-      toast.success(`${arrival.vehicle_number} instructed to move to ${arrival.assigned_dock_id}`);
+      toast.success("Vehicle instructed to move", {
+        description: `${arrival.vehicle_number} is moving to ${arrival.assigned_dock_id}.`,
+      });
       await load(true);
     } catch (error) {
       toast.error("Unable to start dock movement", {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
-      setMoving(null);
+      setAssigning(null);
     }
   }
-
+  async function confirmDockArrival(arrival: Arrival) {
+    setAssigning(arrival.id);
+    try {
+      await api.confirmDockCheckIn(arrival.id);
+      toast.success("Vehicle arrived", {
+        description: `${arrival.vehicle_number} checked in at ${arrival.assigned_dock_id}.`,
+      });
+      await load(true);
+    } catch (error) {
+      toast.error("Dock check-in failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setAssigning(null);
+    }
+  }
   return (
     <AppShell
-      title={filterStatus === "UNSCHEDULED_ARRIVAL" ? "Unscheduled Arrivals" : "Inbound arrivals"}
-      subtitle={filterStatus === "UNSCHEDULED_ARRIVAL"
-        ? "Monitoring unexpected vehicle arrivals at the warehouse gate"
-        : "Active inbound vehicles and completed arrival history"
-      }
+      title="Inbound arrivals"
+      subtitle="Approved gate entries awaiting warehouse dock assignment"
       actions={
         <Button variant="outline" className="rounded-xl" onClick={() => void load()}>
           <RefreshCw className="size-4" /> Refresh
@@ -139,47 +145,27 @@ export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <Summary
           label="Awaiting dock"
-          value={activeArrivals.filter((a) => a.status === "AWAITING_DOCK").length}
+          value={arrivals.filter((a) => a.status === "AWAITING_DOCK").length}
         />
         <Summary
           label="Dock assigned / moving"
-          value={activeArrivals.filter((a) => a.status !== "AWAITING_DOCK").length}
+          value={arrivals.filter((a) => a.status !== "AWAITING_DOCK").length}
         />
         <Summary
           label="Available docks"
           value={docks.filter((d) => d.status === "AVAILABLE").length}
         />
       </div>
-      <div className="mb-3 flex gap-2">
-        <Button
-          type="button"
-          variant={view === "active" ? "default" : "outline"}
-          className="rounded-xl"
-          onClick={() => setView("active")}
-        >
-          <Truck className="size-4" /> Active ({activeArrivals.length})
-        </Button>
-        <Button
-          type="button"
-          variant={view === "history" ? "default" : "outline"}
-          className="rounded-xl"
-          onClick={() => setView("history")}
-        >
-          <History className="size-4" /> History ({historyArrivals.length})
-        </Button>
-      </div>
       <Card className="overflow-hidden rounded-2xl border-border/70 p-0">
         {loading ? (
           <div className="flex h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-5 animate-spin" /> Loading arrivals…
           </div>
-        ) : visibleArrivals.length === 0 ? (
+        ) : arrivals.length === 0 ? (
           <div className="grid h-64 place-items-center text-center text-sm text-muted-foreground">
             <div>
               <Truck className="mx-auto mb-3 size-8" />
-              {view === "active"
-                ? "No approved vehicles are awaiting warehouse processing."
-                : "No completed arrival history yet."}
+              No approved vehicles are awaiting a dock.
             </div>
           </div>
         ) : (
@@ -203,14 +189,19 @@ export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60">
-                {visibleArrivals.map((arrival) => (
+                {arrivals.map((arrival) => (
                   <ArrivalRows
                     key={arrival.id}
                     arrival={arrival}
                     expanded={expanded === arrival.id}
                     onToggle={() => setExpanded(expanded === arrival.id ? null : arrival.id)}
+                    docks={docks}
+                    selected={selectedDock[arrival.id] || ""}
+                    onSelect={(dockId) => setSelectedDock((v) => ({ ...v, [arrival.id]: dockId }))}
+                    onAssign={() => void assignDock(arrival)}
                     onMove={() => void startMovement(arrival)}
-                    moving={moving === arrival.id}
+                    onCheckIn={() => void confirmDockArrival(arrival)}
+                    busy={assigning === arrival.id}
                   />
                 ))}
               </tbody>
@@ -221,19 +212,28 @@ export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
     </AppShell>
   );
 }
-
 function ArrivalRows({
   arrival,
   expanded,
   onToggle,
+  docks,
+  selected,
+  onSelect,
+  onAssign,
   onMove,
-  moving,
+  onCheckIn,
+  busy,
 }: {
   arrival: Arrival;
   expanded: boolean;
   onToggle: () => void;
+  docks: Dock[];
+  selected: string;
+  onSelect: (id: string) => void;
+  onAssign: () => void;
   onMove: () => void;
-  moving: boolean;
+  onCheckIn: () => void;
+  busy: boolean;
 }) {
   return (
     <>
@@ -253,12 +253,7 @@ function ArrivalRows({
           </button>
         </td>
         <td className="px-4 py-4">
-          <Link
-            to="/procurement/purchase-orders"
-            className="font-mono text-primary hover:underline"
-          >
-            {arrival.po_number}
-          </Link>
+          <span className="font-mono">{arrival.po_number}</span>
         </td>
         <td className="px-4 py-4 font-medium">{arrival.supplier_name || "—"}</td>
         <td className="px-4 py-4">
@@ -278,30 +273,30 @@ function ArrivalRows({
           )}
         </td>
         <td className="px-4 py-4">
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="rounded-lg" onClick={onToggle}>
-              <Eye className="size-3.5" /> Details
-            </Button>
-            {arrival.status === "DOCK_ASSIGNED" && (
-              <Button size="sm" className="rounded-lg" disabled={moving} onClick={onMove}>
-                {moving ? <Loader2 className="size-3.5 animate-spin" /> : <Truck className="size-3.5" />}
-                Move to dock
-              </Button>
-            )}
-          </div>
+          <Button size="sm" variant="outline" className="rounded-lg" onClick={onToggle}>
+            <Eye className="size-3.5" /> Details
+          </Button>
         </td>
       </tr>
       {expanded && (
         <tr>
           <td colSpan={7} className="bg-muted/20 px-4 py-5">
-            <ArrivalDetails arrival={arrival} />
+            <ArrivalDetails
+              arrival={arrival}
+              docks={docks}
+              selected={selected}
+              onSelect={onSelect}
+              onAssign={onAssign}
+              onMove={onMove}
+              onCheckIn={onCheckIn}
+              busy={busy}
+            />
           </td>
         </tr>
       )}
     </>
   );
 }
-
 function Summary({ label, value }: { label: string; value: number }) {
   return (
     <Card className="rounded-2xl p-4">
@@ -310,11 +305,24 @@ function Summary({ label, value }: { label: string; value: number }) {
     </Card>
   );
 }
-
 function ArrivalDetails({
   arrival,
+  docks,
+  selected,
+  onSelect,
+  onAssign,
+  onMove,
+  onCheckIn,
+  busy,
 }: {
   arrival: Arrival;
+  docks: Dock[];
+  selected: string;
+  onSelect: (id: string) => void;
+  onAssign: () => void;
+  onMove: () => void;
+  onCheckIn: () => void;
+  busy: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -339,7 +347,7 @@ function ArrivalDetails({
           <Detail label="Arrival time" value={new Date(arrival.arrival_time).toLocaleString()} />
         </dl>
       </div>
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-3">
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Boxes className="size-4 text-primary" /> Gate entry information
@@ -355,6 +363,8 @@ function ArrivalDetails({
             <dd>
               {arrival.shipment.number_of_packages ?? "—"} {arrival.shipment.package_type || ""}
             </dd>
+            <dt className="text-muted-foreground">Method</dt>
+            <dd>{arrival.shipment.shipping_method || "—"}</dd>
             <dt className="text-muted-foreground">Expected arrival</dt>
             <dd>
               {arrival.expected_arrival_at
@@ -383,29 +393,11 @@ function ArrivalDetails({
             ))}
           </div>
         </div>
-        {/* Dock movement controls intentionally removed from Inbound Arrivals.
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Warehouse className="size-4 text-primary" /> Dock movement
           </h3>
-          {["RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED"].includes(
-            arrival.status,
-          ) ? (
-            <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-              <p className="font-semibold">Arrival workflow completed</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Receiving completed: {arrival.receiving_completed_at
-                  ? new Date(arrival.receiving_completed_at).toLocaleString()
-                  : "—"}
-                <br />
-                Dock released: {arrival.dock_released_at
-                  ? new Date(arrival.dock_released_at).toLocaleString()
-                  : "—"}
-                <br />
-                Final status: {arrival.status.replaceAll("_", " ")}
-              </p>
-            </div>
-          ) : arrival.status === "AT_DOCK" ? (
+          {arrival.status === "AT_DOCK" ? (
             <div className="rounded-xl border border-success/30 bg-success-soft p-4">
               <p className="font-semibold">Vehicle arrived at {arrival.assigned_dock_id}</p>
               <p className="mt-2 text-xs text-muted-foreground">
@@ -484,12 +476,10 @@ function ArrivalDetails({
             </>
           )}
         </div>
-        */}
       </div>
     </div>
   );
 }
-
 function Detail({
   label,
   value,

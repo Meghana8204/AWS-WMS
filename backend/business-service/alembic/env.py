@@ -23,6 +23,7 @@ from app.modules.returns.infrastructure.persistence import models as returns_mod
 from app.modules.notification.infrastructure.persistence import models as notification_models  # noqa: F401
 from app.modules.gate.infrastructure.persistence import models as gate_models  # noqa: F401
 from app.modules.procurement.infrastructure.persistence import models as procurement_models  # noqa: F401
+from app.modules.dock.infrastructure.persistence import models as dock_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

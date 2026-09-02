@@ -1,6 +1,13 @@
-# Environment variables & Secrets
+# Media Uploads & Temp files
+media_uploads/
+*.log
+.DS_Store
+
+# Environment files
 .env
 .env.*
+.env.local
+.env.production
 !.env.example
 *.env
 
@@ -57,3 +64,4 @@ WMS/
 
 # Python caches and local tooling
 .ruff_cache/
+**/.env

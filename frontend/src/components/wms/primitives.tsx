@@ -17,7 +17,7 @@ export function StatCard({
   delta?: string;
   icon: LucideIcon;
   tone?: "primary" | "teal" | "success" | "warning" | "danger";
-  to: string;
+  to?: string;
 }) {
   const tones: Record<string, string> = {
     primary: "bg-primary-soft text-primary",
@@ -43,6 +43,15 @@ export function StatCard({
       </Card>
     </Link>
   );
+
+  if (to) {
+    return (
+      <Link to={to} className="group block">
+        {cardContent}
+      </Link>
+    );
+  }
+  return <div className="group block">{cardContent}</div>;
 }
 
 export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
