@@ -1,14 +1,21 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Boxes, Eye, History, Loader2, RefreshCw, Truck, Warehouse } from "lucide-react";
+import { Boxes, Eye, History, Loader2, RefreshCw, Truck, FileQuestion } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
+import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/vehicle-queue")({
+  beforeLoad: () => requireRole("GATE_SECURITY"),
   head: () => ({ meta: [{ title: "Inbound Arrivals · NexusWMS" }] }),
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      status: (search.status as string) || undefined,
+    };
+  },
   component: InboundArrivals,
 });
 
@@ -57,17 +64,26 @@ type Dock = {
 };
 
 function InboundArrivals() {
+  const { status: filterStatus } = useSearch({ from: "/vehicle-queue" });
+  return <ArrivalsPage filterStatus={filterStatus} />;
+}
+
+export function ArrivalsPage({ filterStatus }: { filterStatus?: string }) {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [selectedDock, setSelectedDock] = useState<Record<string, string>>({});
-  const [assigning, setAssigning] = useState<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
   const [view, setView] = useState<"active" | "history">("active");
 
   const historyStatuses = new Set(["RECEIVING_COMPLETED", "EXIT_APPROVED", "GATE_EXIT_COMPLETED"]);
-  const activeArrivals = arrivals.filter((arrival) => !historyStatuses.has(arrival.status));
-  const historyArrivals = arrivals.filter((arrival) => historyStatuses.has(arrival.status));
+
+  const filteredArrivals = filterStatus
+    ? arrivals.filter(a => a.status === filterStatus)
+    : arrivals;
+
+  const activeArrivals = filteredArrivals.filter((arrival) => !historyStatuses.has(arrival.status));
+  const historyArrivals = filteredArrivals.filter((arrival) => historyStatuses.has(arrival.status));
   const visibleArrivals = view === "active" ? activeArrivals : historyArrivals;
 
   const load = useCallback(async (quiet = false) => {
@@ -92,64 +108,28 @@ function InboundArrivals() {
     return () => window.clearInterval(timer);
   }, [load]);
 
-  async function assignDock(arrival: Arrival) {
-    const dockId = selectedDock[arrival.id];
-    if (!dockId) return toast.error("Select an available dock");
-    setAssigning(arrival.id);
-    try {
-      await api.assignDock(arrival.id, dockId);
-      toast.success(`${dockId} assigned`, {
-        description: `${arrival.vehicle_number} can proceed to the dock.`,
-      });
-      await load(true);
-    } catch (error) {
-      toast.error("Dock assignment failed", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-      await load(true);
-    } finally {
-      setAssigning(null);
-    }
-  }
-
   async function startMovement(arrival: Arrival) {
-    setAssigning(arrival.id);
+    setMoving(arrival.id);
     try {
       await api.startDockMovement(arrival.id);
-      toast.success("Vehicle instructed to move", {
-        description: `${arrival.vehicle_number} is moving to ${arrival.assigned_dock_id}.`,
-      });
+      toast.success(`${arrival.vehicle_number} instructed to move to ${arrival.assigned_dock_id}`);
       await load(true);
     } catch (error) {
       toast.error("Unable to start dock movement", {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
-      setAssigning(null);
-    }
-  }
-
-  async function confirmDockArrival(arrival: Arrival) {
-    setAssigning(arrival.id);
-    try {
-      await api.confirmDockCheckIn(arrival.id);
-      toast.success("Vehicle arrived", {
-        description: `${arrival.vehicle_number} checked in at ${arrival.assigned_dock_id}.`,
-      });
-      await load(true);
-    } catch (error) {
-      toast.error("Dock check-in failed", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setAssigning(null);
+      setMoving(null);
     }
   }
 
   return (
     <AppShell
-      title="Inbound arrivals"
-      subtitle="Active inbound vehicles and completed arrival history"
+      title={filterStatus === "UNSCHEDULED_ARRIVAL" ? "Unscheduled Arrivals" : "Inbound arrivals"}
+      subtitle={filterStatus === "UNSCHEDULED_ARRIVAL"
+        ? "Monitoring unexpected vehicle arrivals at the warehouse gate"
+        : "Active inbound vehicles and completed arrival history"
+      }
       actions={
         <Button variant="outline" className="rounded-xl" onClick={() => void load()}>
           <RefreshCw className="size-4" /> Refresh
@@ -229,13 +209,8 @@ function InboundArrivals() {
                     arrival={arrival}
                     expanded={expanded === arrival.id}
                     onToggle={() => setExpanded(expanded === arrival.id ? null : arrival.id)}
-                    docks={docks}
-                    selected={selectedDock[arrival.id] || ""}
-                    onSelect={(dockId) => setSelectedDock((v) => ({ ...v, [arrival.id]: dockId }))}
-                    onAssign={() => void assignDock(arrival)}
                     onMove={() => void startMovement(arrival)}
-                    onCheckIn={() => void confirmDockArrival(arrival)}
-                    busy={assigning === arrival.id}
+                    moving={moving === arrival.id}
                   />
                 ))}
               </tbody>
@@ -251,24 +226,14 @@ function ArrivalRows({
   arrival,
   expanded,
   onToggle,
-  docks,
-  selected,
-  onSelect,
-  onAssign,
   onMove,
-  onCheckIn,
-  busy,
+  moving,
 }: {
   arrival: Arrival;
   expanded: boolean;
   onToggle: () => void;
-  docks: Dock[];
-  selected: string;
-  onSelect: (id: string) => void;
-  onAssign: () => void;
   onMove: () => void;
-  onCheckIn: () => void;
-  busy: boolean;
+  moving: boolean;
 }) {
   return (
     <>
@@ -313,24 +278,23 @@ function ArrivalRows({
           )}
         </td>
         <td className="px-4 py-4">
-          <Button size="sm" variant="outline" className="rounded-lg" onClick={onToggle}>
-            <Eye className="size-3.5" /> Details
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" className="rounded-lg" onClick={onToggle}>
+              <Eye className="size-3.5" /> Details
+            </Button>
+            {arrival.status === "DOCK_ASSIGNED" && (
+              <Button size="sm" className="rounded-lg" disabled={moving} onClick={onMove}>
+                {moving ? <Loader2 className="size-3.5 animate-spin" /> : <Truck className="size-3.5" />}
+                Move to dock
+              </Button>
+            )}
+          </div>
         </td>
       </tr>
       {expanded && (
         <tr>
           <td colSpan={7} className="bg-muted/20 px-4 py-5">
-            <ArrivalDetails
-              arrival={arrival}
-              docks={docks}
-              selected={selected}
-              onSelect={onSelect}
-              onAssign={onAssign}
-              onMove={onMove}
-              onCheckIn={onCheckIn}
-              busy={busy}
-            />
+            <ArrivalDetails arrival={arrival} />
           </td>
         </tr>
       )}
@@ -349,22 +313,8 @@ function Summary({ label, value }: { label: string; value: number }) {
 
 function ArrivalDetails({
   arrival,
-  docks,
-  selected,
-  onSelect,
-  onAssign,
-  onMove,
-  onCheckIn,
-  busy,
 }: {
   arrival: Arrival;
-  docks: Dock[];
-  selected: string;
-  onSelect: (id: string) => void;
-  onAssign: () => void;
-  onMove: () => void;
-  onCheckIn: () => void;
-  busy: boolean;
 }) {
   return (
     <div className="space-y-5">
@@ -389,7 +339,7 @@ function ArrivalDetails({
           <Detail label="Arrival time" value={new Date(arrival.arrival_time).toLocaleString()} />
         </dl>
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-2">
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Boxes className="size-4 text-primary" /> Gate entry information
@@ -405,8 +355,6 @@ function ArrivalDetails({
             <dd>
               {arrival.shipment.number_of_packages ?? "—"} {arrival.shipment.package_type || ""}
             </dd>
-            <dt className="text-muted-foreground">Method</dt>
-            <dd>{arrival.shipment.shipping_method || "—"}</dd>
             <dt className="text-muted-foreground">Expected arrival</dt>
             <dd>
               {arrival.expected_arrival_at
@@ -435,6 +383,7 @@ function ArrivalDetails({
             ))}
           </div>
         </div>
+        {/* Dock movement controls intentionally removed from Inbound Arrivals.
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Warehouse className="size-4 text-primary" /> Dock movement
@@ -535,6 +484,7 @@ function ArrivalDetails({
             </>
           )}
         </div>
+        */}
       </div>
     </div>
   );

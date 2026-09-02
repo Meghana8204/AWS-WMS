@@ -21,7 +21,14 @@ from app.modules.assembly.infrastructure.persistence.models import (
     AssemblyOrderModel,
     AssemblyTeamModel,
 )
-from app.modules.procurement.infrastructure.persistence.models import MaterialIssueModel, MaterialStockModel, NotificationModel, PickTaskModel
+from app.modules.procurement.infrastructure.persistence.models import (
+    MaterialIssueModel,
+    MaterialStockModel,
+    MaterialRequestModel,
+    MaterialRequestItemModel,
+    NotificationModel,
+    PickTaskModel,
+)
 from app.modules.storage.infrastructure.persistence.models import HandlingUnitModel, PutawayMovementModel, StorageLocationModel
 
 router = APIRouter(prefix="/api/v1/assembly", tags=["assembly"])
@@ -305,7 +312,7 @@ def serialize_consumption(record: AssemblyMaterialConsumptionModel, material_nam
     }
 
 
-def serialize_order(order: AssemblyOrderModel) -> dict:
+def serialize_order(order: AssemblyOrderModel, quality_status: str | None = None) -> dict:
     progress = calculate_assembly_progress(order.planned_quantity, order.completed_quantity, order.status)
     return {
         "id": str(order.id), "order_number": order.order_number,
@@ -315,7 +322,8 @@ def serialize_order(order: AssemblyOrderModel) -> dict:
         "priority": order.priority, "required_date": order.required_date.isoformat() if order.required_date else None,
         "assigned_team": order.assigned_team, "materials_count": len(order.items or []),
         "assembly_steps": order.assembly_steps or default_assembly_steps(),
-        "status": order.status, "planned_quantity": float(order.planned_quantity),
+        "status": order.status, "quality_status": quality_status,
+        "planned_quantity": float(order.planned_quantity),
         "completed_quantity": float(order.completed_quantity), "rejected_quantity": float(order.rejected_quantity),
         "assigned_line": order.assigned_line, "assigned_operator": order.assigned_operator,
         "notes": order.notes, "created_by": order.created_by, "created_at": order.created_at.isoformat(),
@@ -443,7 +451,9 @@ async def create_order_for_issue(uow: UnitOfWork, task: PickTaskModel, issue: Ma
         id=uuid.uuid4(), order_number=f"AO-{now.year}-{count + 1:04d}", material_request_id=task.request_id,
         pick_task_id=task.id, material_issue_id=issue.id, request_number=task.request_number,
         department=task.department, product_name=task.department or "Assembly Order", items=task.items,
-        status="DRAFT", priority="MEDIUM", required_date=None, assigned_team=None,
+        # The source pick task has already been issued to production, so these
+        # materials are ready for assembly and must not be reserved a second time.
+        status="READY", priority="MEDIUM", required_date=None, assigned_team=None,
         assembly_steps=default_assembly_steps(),
         planned_quantity=Decimal("1"), completed_quantity=Decimal("0"),
         rejected_quantity=Decimal("0"), created_by=issue.received_by, created_at=now, updated_at=now,
@@ -525,7 +535,10 @@ async def update_assembly_team(team_id: uuid.UUID, request: AssemblyTeamRequest,
 async def list_orders(uow: UnitOfWork = Depends(get_uow)):
     await backfill_issued_orders(uow)
     result = await uow.session.execute(select(AssemblyOrderModel).order_by(AssemblyOrderModel.created_at.desc()))
-    return [serialize_order(order) for order in result.scalars().all()]
+    orders = list(result.scalars().all())
+    inspections = (await uow.session.execute(select(AssemblyQualityInspectionModel))).scalars().all()
+    quality_by_order = {inspection.assembly_order_id: inspection.status for inspection in inspections}
+    return [serialize_order(order, quality_by_order.get(order.id)) for order in orders]
 
 
 @router.get("/orders/{order_id}")
@@ -533,7 +546,10 @@ async def get_order(order_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow)):
     order = await uow.session.get(AssemblyOrderModel, order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Assembly order not found")
-    return serialize_order(order)
+    quality_status = await uow.session.scalar(select(AssemblyQualityInspectionModel.status).where(
+        AssemblyQualityInspectionModel.assembly_order_id == order.id
+    ))
+    return serialize_order(order, quality_status)
 
 
 @router.patch("/orders/{order_id}")
@@ -567,7 +583,9 @@ async def update_order(order_id: uuid.UUID, request: AssemblyOrderUpdate, uow: U
 @router.patch("/orders/{order_id}/status")
 async def update_order_status(order_id: uuid.UUID, request: AssemblyStatusUpdate, uow: UnitOfWork = Depends(get_uow)):
     transitions = {
-        "DRAFT": {"RELEASED"}, "RELEASED": {"MATERIAL_CHECK"},
+        # READY is retained here for orders created before issued-material
+        # assembly orders began opening directly in the ready state.
+        "DRAFT": {"RELEASED", "READY"}, "RELEASED": {"MATERIAL_CHECK"},
         "MATERIAL_CHECK": {"READY", "MATERIAL_SHORTAGE"}, "MATERIAL_SHORTAGE": {"MATERIAL_CHECK"},
         "READY": {"IN_PROGRESS"}, "IN_PROGRESS": {"COMPLETED", "ON_HOLD"},
         "ON_HOLD": {"IN_PROGRESS"}, "COMPLETED": {"QUALITY_CHECK"},
@@ -1165,6 +1183,87 @@ async def get_order_requirements(order_id: uuid.UUID, uow: UnitOfWork = Depends(
             "all_materials_ready": all(row["status"] != "SHORTAGE" for row in requirements),
         },
         "requirements": requirements
+    }
+
+
+@router.post("/orders/{order_id}/material-request")
+async def request_shortage_materials(order_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow)):
+    order = await uow.session.get(AssemblyOrderModel, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Assembly order not found")
+
+    reservation_result = await uow.session.execute(
+        select(AssemblyMaterialReservationModel).where(
+            AssemblyMaterialReservationModel.assembly_order_id == order.id,
+            AssemblyMaterialReservationModel.status == "RESERVED",
+        )
+    )
+    reservations = {row.material_code: row for row in reservation_result.scalars().all()}
+
+    shortage_items = []
+    for material_code, requirement in aggregate_requirements(order.items or []).items():
+        required_qty = requirement["quantity"]
+        stock = await uow.session.scalar(
+            select(MaterialStockModel).where(MaterialStockModel.material_code == material_code)
+        )
+        free_qty = stock.available if stock else Decimal("0")
+        reserved_qty = reservations[material_code].quantity if material_code in reservations else Decimal("0")
+
+        shortage = float(max(required_qty - free_qty - reserved_qty, Decimal("0")))
+        if shortage > 0:
+            shortage_items.append({
+                "material_code": material_code,
+                "material_name": requirement["item"].get("material_name") or material_code,
+                "quantity": shortage,
+                "uom": requirement["item"].get("uom") or "PCS"
+            })
+
+    if not shortage_items:
+        raise HTTPException(status_code=400, detail="No material shortages found for this order")
+
+    now = datetime.now()
+    count = await uow.session.scalar(select(func.count(MaterialRequestModel.id))) or 0
+    request_number = f"MR-ASM-{now.year}-{count + 1:04d}"
+
+    new_mr = MaterialRequestModel(
+        id=uuid.uuid4(),
+        request_number=request_number,
+        warehouse_id="WH_PUNE-01",
+        department="Assembly",
+        requested_by=order.assigned_operator or order.created_by or "Assembly Manager",
+        status="PENDING",
+        required_date=order.required_date or (now + timedelta(days=2)).date(),
+        remarks=f"Auto-generated for shortage in Assembly Order {order.order_number}",
+        created_at=now
+    )
+
+    for item in shortage_items:
+        new_mr.items.append(MaterialRequestItemModel(
+            id=uuid.uuid4(),
+            material_code=item["material_code"],
+            material_name=item["material_name"],
+            quantity=Decimal(str(item["quantity"])),
+            uom=item["uom"]
+        ))
+
+    uow.session.add(new_mr)
+
+    uow.session.add(NotificationModel(
+        id=uuid.uuid4(),
+        user_role="WAREHOUSE",
+        title="New Material Request from Assembly",
+        message=f"Material request {request_number} created for Assembly Order {order.order_number} shortages.",
+        link="/procurement/material-requests",
+        is_read=False,
+        created_at=now
+    ))
+
+    await uow.commit()
+
+    return {
+        "status": "success",
+        "request_number": request_number,
+        "items_count": len(shortage_items)
     }
 
 

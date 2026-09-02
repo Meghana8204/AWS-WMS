@@ -3,6 +3,7 @@
  * Links frontend components to the backend python business-service (port 8000)
  * and Java auth-service (port 8080).
  */
+import QRCode from "qrcode";
 
 const BUSINESS_API_URL =
   import.meta.env.VITE_BUSINESS_SERVICE_URL ||
@@ -78,7 +79,18 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     throw new Error(errorMessage);
   }
 
-  return response.json() as Promise<T>;
+  // Successful DELETE requests commonly return 204 with no response body.
+  // Calling response.json() for an empty body throws "Unexpected end of JSON input".
+  if (response.status === 204 || response.status === 205) {
+    return undefined as T;
+  }
+
+  const responseText = await response.text();
+  if (!responseText.trim()) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
 }
 
 export const api = {
@@ -196,6 +208,13 @@ export const api = {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
   },
 
+  async createUnscheduledGateEntry(formData: FormData): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/unscheduled`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
   async getDocks(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/docks`);
   },
@@ -261,20 +280,6 @@ export const api = {
     );
   },
 
-  async getQuantityVerificationPolicy(): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quantity-verification-policy`);
-  },
-
-  async updateQuantityVerificationPolicy(payload: {
-    shortage_tolerance: number;
-    excess_tolerance: number;
-  }): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quantity-verification-policy`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
-  },
-
   async recordMaterialConditions(
     gateEntryId: string,
     items: Array<{
@@ -283,6 +288,11 @@ export const api = {
       damaged_quantity: number;
       rejected_quantity: number;
       inspection_required: boolean;
+      physical_condition_ok: boolean;
+      packaging_ok: boolean;
+      specifications_ok: boolean;
+      serial_batch_number?: string;
+      serial_batch_verified: boolean;
       notes?: string;
     }>,
   ): Promise<any> {
@@ -291,6 +301,51 @@ export const api = {
       body: JSON.stringify({ items }),
     });
   },
+
+  async createDamageReport(
+    gateEntryId: string,
+    data: { itemCode: string; damagedQuantity: number; damageReason: string; remarks?: string; photos: File[] },
+  ): Promise<any> {
+    const form = new FormData();
+    form.append("item_code", data.itemCode);
+    form.append("damaged_quantity", String(data.damagedQuantity));
+    form.append("damage_reason", data.damageReason);
+    if (data.remarks) form.append("remarks", data.remarks);
+    data.photos.forEach((photo) => form.append("photos", photo));
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/damage-reports`, {
+      method: "POST",
+      body: form,
+    });
+  },
+
+  async quarantineDamagedMaterial(gateEntryId: string, itemCode: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/materials/${encodeURIComponent(itemCode)}/quarantine`,
+      { method: "POST" },
+    );
+  },
+
+  async submitDamageReport(reportId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/damage-reports/${reportId}/submit`, {
+      method: "POST",
+    });
+  },
+
+  async createSupplierDamageClaim(reportId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quality/damage-reports/${reportId}/claims`, { method: "POST" });
+  },
+
+  async getDamageClaims(): Promise<any[]> { return request<any[]>(`${BUSINESS_API_URL}/api/damage-claims`); },
+  async respondToDamageClaim(id: string, data: any): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/${id}/respond`, { method: "POST", body: JSON.stringify(data) }); },
+  async createReplacementShipment(id: string, data: any): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/${id}/replacement-shipments`, { method: "POST", body: JSON.stringify(data) }); },
+  async replacementGateEntry(id: string, vehicle_number: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/replacement-shipments/${id}/gate-entry`, { method: "POST", body: JSON.stringify({ vehicle_number }) }); },
+  async receiveReplacement(id: string, received_quantity: number): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/replacement-shipments/${id}/receive`, { method: "POST", body: JSON.stringify({ received_quantity }) }); },
+  async inspectReplacement(id: string, accepted_quantity: number, damaged_quantity: number): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/replacement-shipments/${id}/inspect`, { method: "POST", body: JSON.stringify({ accepted_quantity, damaged_quantity }) }); },
+  async putawayReplacement(id: string, location: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/replacement-shipments/${id}/putaway`, { method: "POST", body: JSON.stringify({ location }) }); },
+  async postReplacementInventory(id: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/replacement-shipments/${id}/post-inventory`, { method: "POST" }); },
+  async createSupplierReturn(id: string, vehicle_number: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/${id}/returns`, { method: "POST", body: JSON.stringify({ vehicle_number }) }); },
+  async completeSupplierReturn(id: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/returns/${id}/gate-exit`, { method: "POST" }); },
+  async closeDamageClaim(id: string): Promise<any> { return request<any>(`${BUSINESS_API_URL}/api/damage-claims/${id}/close`, { method: "POST" }); },
 
   async generateHandlingUnits(gateEntryId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/handling-units`, {
@@ -308,6 +363,26 @@ export const api = {
       body: JSON.stringify({ decision, notes }),
     });
   },
+
+  async sendQualityIssue(gateEntryId: string, image: File): Promise<any> {
+    const formData = new FormData();
+    formData.append("image", image);
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/quality-issue`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  async getQualityIssues(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/quality/issues`, { cache: "no-store" });
+  },
+
+  async forwardQualityIssue(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quality/issues/${gateEntryId}/forward`, {
+      method: "POST",
+    });
+  },
+
 
   async completeReceiving(gateEntryId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-receiving`, {
@@ -488,6 +563,13 @@ export const api = {
   },
 
   async downloadGatePass(id: string, gateEntryNumber?: string): Promise<void> {
+    // Open synchronously from the click handler so browser pop-up protection
+    // does not prevent the printable pass from appearing after the fetch.
+    const passWindow = window.open("", "gate-pass", "width=520,height=760");
+    if (!passWindow) {
+      throw new Error("Allow pop-ups to print the gate pass");
+    }
+
     const token = getAuthToken();
     const headers = new Headers();
     if (token) {
@@ -496,32 +578,60 @@ export const api = {
       headers.set("Authorization", "Bearer local_dev_mock_token");
     }
 
-    const response = await fetch(`${BUSINESS_API_URL}/api/gate-entries/${id}/pass`, {
-      headers,
-    });
+    try {
+      const response = await fetch(`${BUSINESS_API_URL}/api/gate-entries/${id}/pass`, {
+        headers,
+      });
 
-    if (!response.ok) {
-      throw new Error("Failed to download gate pass");
-    }
-
-    let filename = gateEntryNumber ? `Pass-${gateEntryNumber}.pdf` : `GatePass-${id}.pdf`;
-    const disposition = response.headers.get("Content-Disposition");
-    if (disposition && disposition.includes("filename=")) {
-      const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1];
+      if (!response.ok) {
+        passWindow.close();
+        throw new Error("Failed to download gate pass");
       }
-    }
 
-    const blob = await response.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    window.URL.revokeObjectURL(url);
-    document.body.removeChild(a);
+      let passHtml = await response.text();
+
+      // Generate QR Code to embed in the pass for digital verification at internal checkpoints
+      try {
+        const qrData = gateEntryNumber || id;
+        const qrDataUrl = await QRCode.toDataURL(qrData, {
+          width: 160,
+          margin: 1,
+          color: {
+            dark: "#000000",
+            light: "#ffffff",
+          },
+        });
+
+        const qrHtml = `
+          <div style="display: flex; flex-direction: column; align-items: center;" class="qr-container">
+            <img src="${qrDataUrl}" style="width: 140px; height: 140px; border: 1px solid #eee; padding: 8px; border-radius: 12px; background: #fff;" alt="Pass QR Code" />
+          </div>
+        `;
+
+        // Replace the placeholder entirely if it exists
+        if (passHtml.includes('<div class="pass-number">')) {
+          // Find the end of the div and replace its contents or the whole div
+          // For simplicity with string replacement, we'll just target the placeholder text if found
+          const placeholderText = '(Auto-generated)';
+          if (passHtml.includes(placeholderText)) {
+             passHtml = passHtml.replace(/<div class="pass-number">[\s\S]*?<\/div>/, qrHtml);
+          } else {
+             passHtml = passHtml.replace('<div class="pass-number">', `${qrHtml}<div class="pass-number">`);
+          }
+        }
+      } catch (qrErr) {
+        console.error("QR generation failed", qrErr);
+      }
+
+      passWindow.document.open();
+      passWindow.document.write(passHtml);
+      passWindow.document.close();
+      passWindow.focus();
+      window.setTimeout(() => passWindow.print(), 250);
+    } catch (error) {
+      if (passWindow) passWindow.close();
+      throw error;
+    }
   },
 
   async scanOcr(file: File, kind = "general"): Promise<any> {
@@ -789,25 +899,82 @@ export const api = {
   },
 
   async getMaterialCatalog(): Promise<any[]> {
-    try {
-      return await request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-catalog`, {
-        cache: "no-store",
-      });
-    } catch {
-      // Compatibility for a backend worker that has not reloaded the catalog route yet.
-      return [
-        {
-          name: "Wire",
-          uom: "MTR",
-          variants: [
-            { category: "0.5 mm", priceMin: 0, priceMax: 100, materialCode: null },
-            { category: "1 mm", priceMin: 100, priceMax: 200, materialCode: null },
-            { category: "1.5 mm", priceMin: 200, priceMax: 300, materialCode: null },
-            { category: "2 mm", priceMin: 300, priceMax: 400, materialCode: null },
-          ],
-        },
-      ];
-    }
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-catalog`, {
+      cache: "no-store",
+    });
+  },
+
+  async getMaterials(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/materials`, {
+      cache: "no-store",
+    });
+  },
+
+  async getMaterialSubCategories(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-sub-categories`, {
+      cache: "no-store",
+    });
+  },
+
+  async createMaterialSubCategory(name: string): Promise<{ id: number; name: string }> {
+    return request<{ id: number; name: string }>(
+      `${BUSINESS_API_URL}/api/v1/procurement/material-sub-categories`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      },
+    );
+  },
+
+  async createMaterial(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/materials`, {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        materialType: data.type,
+        minimumPrice: data.minimumPrice || null,
+        standardPrice: data.standardPrice || null,
+        maximumPrice: data.maximumPrice || null,
+        lastPurchasePrice: data.lastPurchasePrice || null,
+        priceEffectiveFrom: data.priceEffectiveFrom || null,
+        priceEffectiveTo: data.priceEffectiveTo || null,
+        gstRate: data.gstRate || null,
+        minimumStock: data.minimumStock || null,
+        maximumStock: data.maximumStock || null,
+        reorderLevel: data.reorderLevel || null,
+        safetyStock: data.safetyStock || null,
+        leadTimeDays: data.leadTimeDays || null,
+      }),
+    });
+  },
+
+  async updateMaterial(id: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/materials/${id}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        ...data,
+        materialType: data.type,
+        minimumPrice: data.minimumPrice || null,
+        standardPrice: data.standardPrice || null,
+        maximumPrice: data.maximumPrice || null,
+        lastPurchasePrice: data.lastPurchasePrice || null,
+        priceEffectiveFrom: data.priceEffectiveFrom || null,
+        priceEffectiveTo: data.priceEffectiveTo || null,
+        gstRate: data.gstRate || null,
+        minimumStock: data.minimumStock || null,
+        maximumStock: data.maximumStock || null,
+        reorderLevel: data.reorderLevel || null,
+        safetyStock: data.safetyStock || null,
+        leadTimeDays: data.leadTimeDays || null,
+      }),
+    });
+  },
+
+  async deleteMaterial(id: string): Promise<void> {
+    return request<void>(`${BUSINESS_API_URL}/api/v1/procurement/materials/${id}`, {
+      method: "DELETE",
+    });
   },
 
   async createRawMaterial(name: string): Promise<any> {
@@ -1052,7 +1219,9 @@ export const api = {
   },
 
   async getAssemblyModuleOverview(section: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/overview/${encodeURIComponent(section)}`);
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/assembly/overview/${encodeURIComponent(section)}`,
+    );
   },
 
   async getAssemblyOrders(): Promise<any[]> {
@@ -1087,13 +1256,15 @@ export const api = {
 
   async updateAssemblyStep(orderId: string, stepId: string, status: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/steps/${stepId}`, {
-      method: "PATCH", body: JSON.stringify({ status }),
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     });
   },
 
   async updateAssemblyProgress(orderId: string, completedQuantity: number): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/progress`, {
-      method: "PATCH", body: JSON.stringify({ completed_quantity: completedQuantity }),
+      method: "PATCH",
+      body: JSON.stringify({ completed_quantity: completedQuantity }),
     });
   },
 
@@ -1103,7 +1274,8 @@ export const api = {
 
   async recordAssemblyConsumption(orderId: string, data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/consumption`, {
-      method: "PUT", body: JSON.stringify(data),
+      method: "PUT",
+      body: JSON.stringify(data),
     });
   },
 
@@ -1112,13 +1284,20 @@ export const api = {
   },
 
   async createAssemblyScrap(orderId: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/scrap`, { method: "POST", body: JSON.stringify(data) });
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/scrap`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async approveAssemblyScrap(orderId: string, scrapId: string, approvedBy: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/scrap/${scrapId}/approve`, {
-      method: "PATCH", body: JSON.stringify({ approved_by: approvedBy }),
-    });
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/scrap/${scrapId}/approve`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ approved_by: approvedBy }),
+      },
+    );
   },
 
   async getAssemblyQualityInspection(orderId: string): Promise<any> {
@@ -1126,9 +1305,13 @@ export const api = {
   },
 
   async recordAssemblyQualityInspection(orderId: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/quality-inspection`, {
-      method: "PUT", body: JSON.stringify(data),
-    });
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/quality-inspection`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    );
   },
 
   async getAssemblyFinishedGoods(): Promise<any[]> {
@@ -1141,14 +1324,19 @@ export const api = {
 
   async createAssemblyRework(orderId: string, data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework`, {
-      method: "POST", body: JSON.stringify(data),
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 
   async updateAssemblyRework(orderId: string, reworkId: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework/${reworkId}`, {
-      method: "PATCH", body: JSON.stringify(data),
-    });
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework/${reworkId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    );
   },
 
   async getAssemblyTeams(): Promise<any[]> {
@@ -1156,10 +1344,22 @@ export const api = {
   },
 
   async createAssemblyTeam(data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/teams`, { method: "POST", body: JSON.stringify(data) });
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/teams`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async updateAssemblyTeam(id: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/teams/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/teams/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async requestShortageMaterials(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${id}/material-request`, {
+      method: "POST",
+    });
   },
 };

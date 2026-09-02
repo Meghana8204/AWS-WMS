@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.receiving.infrastructure.persistence.models import GrnModel
@@ -14,6 +14,11 @@ from app.modules.storage.infrastructure.persistence.models import HandlingUnitMo
 from app.security.dependencies import require_permission
 
 router = APIRouter(prefix="/api/storage/putaway-tasks", tags=["storage"])
+
+
+def canonical_warehouse_id(warehouse_id: str) -> str:
+    """Treat legacy underscore and current hyphen warehouse IDs as the same warehouse."""
+    return warehouse_id.strip().upper().replace("_", "-")
 
 
 class LocationAssignmentRequest(BaseModel):
@@ -212,7 +217,10 @@ async def list_storage_locations(
     if not include_inactive:
         query = query.where(StorageLocationModel.active.is_(True))
     if warehouse_id:
-        query = query.where(StorageLocationModel.warehouse_id == warehouse_id)
+        query = query.where(
+            func.replace(func.upper(StorageLocationModel.warehouse_id), "_", "-")
+            == canonical_warehouse_id(warehouse_id)
+        )
     result = await uow.session.execute(query.order_by(StorageLocationModel.warehouse_id, StorageLocationModel.zone, StorageLocationModel.rack, StorageLocationModel.bin))
     return [location_response(location) for location in result.scalars().all()]
 
@@ -224,7 +232,7 @@ async def create_storage_location(
     uow: UnitOfWork = Depends(get_uow),
 ):
     code = request.location_code.strip().upper()
-    warehouse_id = request.warehouse_id.strip().upper()
+    warehouse_id = canonical_warehouse_id(request.warehouse_id)
     existing = await uow.session.execute(select(StorageLocationModel).where(StorageLocationModel.location_code == code))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Storage location {code} already exists")
@@ -255,7 +263,7 @@ async def update_storage_location(
     if request.warehouse_id is not None:
         if location.occupied_quantity > 0:
             raise HTTPException(status_code=409, detail="An occupied location cannot change warehouses")
-        location.warehouse_id = request.warehouse_id.strip().upper()
+        location.warehouse_id = canonical_warehouse_id(request.warehouse_id)
     if request.zone is not None: location.zone = request.zone.strip()
     if request.rack is not None: location.rack = request.rack.strip()
     if request.bin is not None: location.bin = request.bin.strip()
@@ -275,7 +283,7 @@ async def list_inventory_location_balances(
 ):
     query = (select(InventoryLocationBalanceModel, StorageLocationModel)
              .join(StorageLocationModel, StorageLocationModel.id == InventoryLocationBalanceModel.storage_location_id)
-             .where(InventoryLocationBalanceModel.quantity > 0, StorageLocationModel.active.is_(True)))
+             .where(StorageLocationModel.active.is_(True)))
     if material_code:
         query = query.where(InventoryLocationBalanceModel.material_code == material_code)
     result = await uow.session.execute(query.order_by(InventoryLocationBalanceModel.material_code, StorageLocationModel.location_code))
@@ -283,7 +291,7 @@ async def list_inventory_location_balances(
              "warehouse_id": balance.warehouse_id, "storage_location_id": str(location.id), "location_code": location.location_code,
              "zone": location.zone, "rack": location.rack, "bin": location.bin,
              "quantity": float(balance.quantity), "available_quantity": float(balance.available_quantity), "uom": balance.uom,
-             "status": "ACTIVE", "stored": True,
+             "status": "ACTIVE" if balance.quantity > 0 else "DEPLETED", "stored": balance.quantity > 0,
              "last_putaway_task_id": str(balance.last_putaway_task_id), "last_grn_number": balance.last_grn_number,
              "updated_at": balance.updated_at.isoformat()}
             for balance, location in result.all()]
@@ -321,7 +329,7 @@ async def assign_storage_location(
     location = await uow.session.get(StorageLocationModel, request.location_id)
     if location is None or not location.active:
         raise HTTPException(status_code=422, detail="Storage location is unavailable")
-    if location.warehouse_id != task.warehouse_id:
+    if canonical_warehouse_id(location.warehouse_id) != canonical_warehouse_id(task.warehouse_id):
         raise HTTPException(status_code=422, detail="Storage location belongs to a different warehouse")
     if location.capacity - location.occupied_quantity < task.quantity:
         raise HTTPException(status_code=409, detail="Storage location has insufficient available capacity")

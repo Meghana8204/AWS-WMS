@@ -99,13 +99,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     if (typeof window === "undefined") return;
 
     // List of routes that don't require authentication
-    const publicRoutes = ["/login"];
+    const publicRoutes = new Set(["/login"]);
 
-    if (!publicRoutes.includes(location.pathname) && !isAuthenticated()) {
+    if (!publicRoutes.has(location.pathname) && !isAuthenticated()) {
       throw redirect({
         to: "/login",
         search: {
-          redirect: location.pathname,
+          redirect: `${location.pathname}${location.searchStr}${location.hash}`,
         },
       });
     }

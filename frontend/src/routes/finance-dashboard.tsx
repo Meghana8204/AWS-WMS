@@ -118,7 +118,7 @@ function FinanceDashboard() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Comparison Matrix Area */}
+        {/* Approval Queue */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="flex flex-row items-center justify-between">
@@ -151,12 +151,7 @@ function FinanceDashboard() {
                   {Object.entries(groupedByRfq).map(([rfqId, rfqApprovals]: [string, any], index) => (
                     <Link
                       key={rfqId}
-                      to={
-                        rfqId === "no-rfq"
-                          ? "/finance/approvals"
-                          : "/finance/approvals/compare/$rfqId"
-                      }
-                      params={rfqId === "no-rfq" ? {} : { rfqId }}
+                      to="/finance/approvals"
                       className="flex items-center justify-between p-4 rounded-2xl border border-border/60 hover:border-primary/30 hover:shadow-glow transition-all bg-card/50 group"
                     >
                       <div className="flex items-center gap-4">
@@ -195,7 +190,7 @@ function FinanceDashboard() {
                           size="sm"
                           className="rounded-xl h-8 text-xs font-bold pointer-events-none group-hover:bg-primary group-hover:text-white transition-colors"
                         >
-                          Review Comparison
+                          View Approvals
                         </Button>
                       </div>
                     </Link>

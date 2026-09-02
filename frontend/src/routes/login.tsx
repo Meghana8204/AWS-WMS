@@ -9,7 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { isAuthenticated, getUserInfo } from "@/lib/auth-utils";
+import {
+  getDefaultRouteForUser,
+  getSafeRedirectPath,
+  getUserInfo,
+  isAuthenticated,
+} from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/login")({
   beforeLoad: () => {
@@ -18,14 +23,7 @@ export const Route = createFileRoute("/login")({
 
     if (isAuthenticated()) {
       const user = getUserInfo();
-      let target = "/warehouse-dashboard";
-      if (user?.roles.includes("FINANCE")) target = "/finance-dashboard";
-      else if (user?.roles.includes("PROCUREMENT")) target = "/procurement-dashboard";
-      else if (user?.roles.includes("GATE_SECURITY")) target = "/gate-entry";
-      else if (user?.roles.includes("SUPPLIER")) target = "/submit-quotation";
-      else if (user?.roles.includes("ASSEMBLY_MANAGER")) target = "/assembly-dashboard";
-
-      throw redirect({ to: target as any });
+      throw redirect({ to: getDefaultRouteForUser(user) as any });
     }
   },
   component: LoginPage,
@@ -34,13 +32,36 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as any;
-  const redirect = search.redirect || "";
+  const redirectPath = getSafeRedirectPath(search.redirect || search.next);
+  const magicToken = search.token;
 
   const [employeeId, setEmployeeId] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [rememberMe, setRememberMe] = React.useState(false);
+
+  // Handle auto-login via magic token
+  React.useEffect(() => {
+    if (magicToken && !isLoading) {
+      const performAutoLogin = async () => {
+        setIsLoading(true);
+        try {
+          // magicToken is a base64 string of "username:password_hash"
+          const decoded = atob(magicToken);
+          const [u, p] = decoded.split(":");
+          const data = await api.login(u, p);
+          completeAuthentication(data);
+        } catch (error) {
+          console.error("Auto-login failed", error);
+          toast.error("Magic link expired or invalid. Please login manually.");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      void performAutoLogin();
+    }
+  }, [magicToken]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,40 +83,16 @@ function LoginPage() {
 
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
-    const isSupplier = data.roles?.includes("SUPPLIER");
-    const isProcurement = data.roles?.includes("PROCUREMENT");
-    const isFinance = data.roles?.includes("FINANCE");
-    const isGate = data.roles?.includes("GATE_SECURITY");
-    const isAssemblyManager = data.roles?.includes("ASSEMBLY_MANAGER");
-
-    let targetPath = "/warehouse-dashboard";
-    if (isSupplier) {
-      targetPath = redirect || "/submit-quotation";
-    } else if (isProcurement) {
-      targetPath = redirect || "/procurement-dashboard";
-    } else if (isFinance) {
-      targetPath = redirect || "/finance-dashboard";
-    } else if (isGate) {
-      targetPath = redirect || "/gate-entry";
-    } else if (isAssemblyManager) {
-      targetPath = redirect || "/assembly-dashboard";
-    } else {
-      targetPath = redirect || "/warehouse-dashboard";
-    }
+    const targetPath = redirectPath || getDefaultRouteForUser(data);
 
     setTimeout(() => {
-      if (targetPath.startsWith("http")) {
-        window.location.href = targetPath;
-      } else {
-        // Robustly handle redirects with query strings
-        const [path, queryString] = targetPath.split("?");
-        if (queryString) {
-          const searchParams = Object.fromEntries(new URLSearchParams(queryString));
-          navigate({ to: path as any, search: searchParams });
-        } else {
-          navigate({ to: path as any });
-        }
-      }
+      // Keep route transitions internal. `redirectPath` has already rejected external URLs.
+      const target = new URL(targetPath, window.location.origin);
+      navigate({
+        to: target.pathname as any,
+        search: Object.fromEntries(target.searchParams) as any,
+        hash: target.hash,
+      });
     }, 500);
   };
 

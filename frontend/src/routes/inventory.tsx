@@ -28,45 +28,83 @@ function Inventory() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [locationBalances, setLocationBalances] = useState<any[]>([]);
   const [putawayTasks, setPutawayTasks] = useState<any[]>([]);
+  const [finishedGoods, setFinishedGoods] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [showAwaitingOnly, setShowAwaitingOnly] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (showLoader = true, showError = true) => {
     try {
-      setLoading(true);
-      const [data, transactionData, locationData, taskData] = await Promise.all([
+      if (showLoader) setLoading(true);
+      const [data, transactionData, locationData, taskData, finishedGoodsData] = await Promise.all([
         api.getMaterialStock(),
         api.getInventoryTransactions(),
         api.getInventoryLocationBalances(),
         api.getPutawayTasks(),
+        api.getAssemblyFinishedGoods(),
       ]);
       setStock(data);
       setTransactions(transactionData);
       setLocationBalances(locationData);
       setPutawayTasks(taskData);
+      setFinishedGoods(finishedGoodsData);
     } catch (error) {
-      toast.error("Failed to load inventory", {
-        description: error instanceof Error ? error.message : undefined,
-      });
+      if (showError) {
+        toast.error("Failed to load inventory", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void fetchData();
+
+    const refreshFromBackend = () => {
+      if (document.visibilityState === "visible") void fetchData(false, false);
+    };
+    const interval = window.setInterval(refreshFromBackend, 5_000);
+    window.addEventListener("focus", refreshFromBackend);
+    document.addEventListener("visibilitychange", refreshFromBackend);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshFromBackend);
+      document.removeEventListener("visibilitychange", refreshFromBackend);
+    };
   }, [fetchData]);
 
   const inventoryRows = useMemo(
     () =>
       stock
         .map((item) => {
-          const locations = locationBalances.filter(
+          const trackedLocations = locationBalances.filter(
             (location) =>
               location.material_code === item.materialCode &&
               location.warehouse_id === item.warehouseId,
           );
+          const postedLocations = finishedGoods
+            .filter(
+              (posting) =>
+                posting.product_code === item.materialCode &&
+                posting.warehouse === item.warehouseId &&
+                posting.status === "AVAILABLE",
+            )
+            .map((posting) => ({
+              id: `finished-good-${posting.id}`,
+              material_code: posting.product_code,
+              material_name: posting.product_name,
+              warehouse_id: posting.warehouse,
+              location_code: posting.location,
+              quantity: Number(posting.quantity),
+              available_quantity: Number(posting.quantity),
+              uom: posting.uom,
+              status: "ACTIVE",
+              source: "FINISHED_GOODS_POSTING",
+            }));
+          const locations = trackedLocations.length ? trackedLocations : postedLocations;
           const pendingTasks = putawayTasks.filter(
             (task) =>
               task.item_code === item.materialCode &&
@@ -90,7 +128,7 @@ function Inventory() {
             item.materialCode.toLocaleLowerCase().includes(search);
           return matchesSearch && (!showAwaitingOnly || item.awaitingQuantity > 0);
         }),
-    [locationBalances, putawayTasks, query, showAwaitingOnly, stock],
+    [finishedGoods, locationBalances, putawayTasks, query, showAwaitingOnly, stock],
   );
 
   return (
@@ -212,7 +250,12 @@ function Inventory() {
                           {materialLocations.map((location) => (
                             <div
                               key={location.id}
-                              className="rounded-lg border border-success/25 bg-success-soft/30 px-3 py-2"
+                              className={cn(
+                                "rounded-lg border px-3 py-2",
+                                location.quantity > 0
+                                  ? "border-success/25 bg-success-soft/30"
+                                  : "border-muted-foreground/20 bg-muted/30",
+                              )}
                             >
                               <p className="flex items-center gap-1 font-mono text-xs font-bold">
                                 <MapPin className="size-3 text-primary" />
@@ -225,10 +268,20 @@ function Inventory() {
                                   {location.quantity.toLocaleString()} {location.uom}
                                 </b>{" "}
                                 · Available:{" "}
-                                <b className="text-success">
+                                <b className={location.available_quantity > 0 ? "text-success" : "text-muted-foreground"}>
                                   {location.available_quantity.toLocaleString()} {location.uom}
                                 </b>
                               </p>
+                              {location.status === "DEPLETED" && (
+                                <p className="mt-1 text-[11px] font-semibold text-muted-foreground">
+                                  Bin depleted after material issue
+                                </p>
+                              )}
+                              {location.source === "FINISHED_GOODS_POSTING" && (
+                                <p className="mt-1 text-[11px] font-semibold text-primary">
+                                  Finished-goods production posting
+                                </p>
+                              )}
                             </div>
                           ))}
                           {awaitingQuantity === 0 && materialLocations.length === 0 && (
@@ -238,7 +291,9 @@ function Inventory() {
                           )}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-muted-foreground font-medium">{s.category}</td>
+                      <td className="px-6 py-4 text-muted-foreground font-medium">
+                        {String(s.category).replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                      </td>
                       <td className="px-6 py-4 text-right font-mono font-bold">
                         {parseFloat(s.onHand).toLocaleString()}
                       </td>
@@ -257,7 +312,13 @@ function Inventory() {
                       </td>
                       <td className="px-6 py-4">
                         <StatusBadge
-                          status={awaitingQuantity > 0 ? "AWAITING_PUTAWAY" : "Active"}
+                          status={
+                            awaitingQuantity > 0
+                              ? "AWAITING_PUTAWAY"
+                              : Number(s.onHand) === 0
+                                ? "OUT_OF_STOCK"
+                                : "ACTIVE"
+                          }
                         />
                       </td>
                       <td className="px-6 py-4 text-right" />
@@ -357,9 +418,9 @@ function StoredInventoryTable({ locations }: { locations: any[] }) {
       <div className="flex items-center gap-3 border-b p-5">
         <MapPin className="size-5 text-success" />
         <div>
-          <h2 className="font-bold">Stored Inventory</h2>
+          <h2 className="font-bold">Tracked Bin Inventory</h2>
           <p className="text-xs text-muted-foreground">
-            Warehouse-available stock by actual storage location
+            Current and depleted stock by actual storage location
           </p>
         </div>
       </div>

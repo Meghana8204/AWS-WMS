@@ -16,6 +16,7 @@ import { Route as AssemblyDashboardRouteImport } from './routes/assembly-dashboa
 import { Route as AssemblyFinishedGoodsRouteImport } from './routes/assembly-finished-goods'
 import { Route as AssemblyMaterialConsumptionRouteImport } from './routes/assembly-material-consumption'
 import { Route as AssemblyMaterialIssuesRouteImport } from './routes/assembly-material-issues'
+import { Route as AssemblyMaterialRequestsRouteImport } from './routes/assembly-material-requests'
 import { Route as AssemblyMaterialRequirementsRouteImport } from './routes/assembly-material-requirements'
 import { Route as AssemblyMaterialReservationsRouteImport } from './routes/assembly-material-reservations'
 import { Route as AssemblyOrdersRouteImport } from './routes/assembly-orders'
@@ -26,6 +27,7 @@ import { Route as AssemblyReworkRouteImport } from './routes/assembly-rework'
 import { Route as AssemblyScrapWastageRouteImport } from './routes/assembly-scrap-wastage'
 import { Route as AssemblyWorkOrdersRouteImport } from './routes/assembly-work-orders'
 import { Route as AssemblyWorkforceRouteImport } from './routes/assembly-workforce'
+import { Route as DamageClaimsRouteImport } from './routes/damage-claims'
 import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DockManagementRouteImport } from './routes/dock-management'
 import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
@@ -36,6 +38,7 @@ import { Route as GrnRouteImport } from './routes/grn'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MasterDataRouteImport } from './routes/master-data'
+import { Route as MaterialDataRouteImport } from './routes/material-data'
 import { Route as NewSupplierRouteImport } from './routes/new-supplier'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as PickTasksRouteImport } from './routes/pick-tasks'
@@ -47,6 +50,7 @@ import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
 import { Route as SupplierDashboardRouteImport } from './routes/supplier-dashboard'
+import { Route as UnscheduledArrivalsRouteImport } from './routes/unscheduled-arrivals'
 import { Route as VehicleExitRouteImport } from './routes/vehicle-exit'
 import { Route as VehicleQueueRouteImport } from './routes/vehicle-queue'
 import { Route as VehicleVerificationRouteImport } from './routes/vehicle-verification'
@@ -57,9 +61,11 @@ import { Route as ProcurementAsnsRouteImport } from './routes/procurement.asns'
 import { Route as ProcurementMaterialRequestsRouteImport } from './routes/procurement.material-requests'
 import { Route as ProcurementNewRfqRouteImport } from './routes/procurement.new-rfq'
 import { Route as ProcurementPurchaseOrdersRouteImport } from './routes/procurement.purchase-orders'
+import { Route as ProcurementQualityIssuesRouteImport } from './routes/procurement.quality-issues'
 import { Route as ProcurementQuotationsRouteImport } from './routes/procurement.quotations'
 import { Route as ProcurementRfqsRouteImport } from './routes/procurement.rfqs'
 import { Route as SupplierSupplierIdRouteImport } from './routes/supplier.$supplierId'
+import { Route as SupplierQualityIssuesRouteImport } from './routes/supplier.quality-issues'
 import { Route as WarehouseMaterialRequestsRouteImport } from './routes/warehouse.material-requests'
 import { Route as FinanceApprovalsIndexRouteImport } from './routes/finance.approvals.index'
 import { Route as FinanceApprovalsApprovalIdRouteImport } from './routes/finance.approvals.$approvalId'
@@ -104,6 +110,12 @@ const AssemblyMaterialIssuesRoute = AssemblyMaterialIssuesRouteImport.update({
   path: '/assembly-material-issues',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AssemblyMaterialRequestsRoute =
+  AssemblyMaterialRequestsRouteImport.update({
+    id: '/assembly-material-requests',
+    path: '/assembly-material-requests',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AssemblyMaterialRequirementsRoute =
   AssemblyMaterialRequirementsRouteImport.update({
     id: '/assembly-material-requirements',
@@ -157,6 +169,11 @@ const AssemblyWorkforceRoute = AssemblyWorkforceRouteImport.update({
   path: '/assembly-workforce',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DamageClaimsRoute = DamageClaimsRouteImport.update({
+  id: '/damage-claims',
+  path: '/damage-claims',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DockAssignmentRoute = DockAssignmentRouteImport.update({
   id: '/dock-assignment',
   path: '/dock-assignment',
@@ -205,6 +222,11 @@ const LoginRoute = LoginRouteImport.update({
 const MasterDataRoute = MasterDataRouteImport.update({
   id: '/master-data',
   path: '/master-data',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MaterialDataRoute = MaterialDataRouteImport.update({
+  id: '/material-data',
+  path: '/material-data',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NewSupplierRoute = NewSupplierRouteImport.update({
@@ -262,6 +284,11 @@ const SupplierDashboardRoute = SupplierDashboardRouteImport.update({
   path: '/supplier-dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
+const UnscheduledArrivalsRoute = UnscheduledArrivalsRouteImport.update({
+  id: '/unscheduled-arrivals',
+  path: '/unscheduled-arrivals',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VehicleExitRoute = VehicleExitRouteImport.update({
   id: '/vehicle-exit',
   path: '/vehicle-exit',
@@ -314,6 +341,12 @@ const ProcurementPurchaseOrdersRoute =
     path: '/procurement/purchase-orders',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ProcurementQualityIssuesRoute =
+  ProcurementQualityIssuesRouteImport.update({
+    id: '/procurement/quality-issues',
+    path: '/procurement/quality-issues',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ProcurementQuotationsRoute = ProcurementQuotationsRouteImport.update({
   id: '/procurement/quotations',
   path: '/procurement/quotations',
@@ -327,6 +360,11 @@ const ProcurementRfqsRoute = ProcurementRfqsRouteImport.update({
 const SupplierSupplierIdRoute = SupplierSupplierIdRouteImport.update({
   id: '/supplier/$supplierId',
   path: '/supplier/$supplierId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SupplierQualityIssuesRoute = SupplierQualityIssuesRouteImport.update({
+  id: '/supplier/quality-issues',
+  path: '/supplier/quality-issues',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WarehouseMaterialRequestsRoute =
@@ -376,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
   '/assembly-material-issues': typeof AssemblyMaterialIssuesRoute
+  '/assembly-material-requests': typeof AssemblyMaterialRequestsRoute
   '/assembly-material-requirements': typeof AssemblyMaterialRequirementsRoute
   '/assembly-material-reservations': typeof AssemblyMaterialReservationsRoute
   '/assembly-orders': typeof AssemblyOrdersRoute
@@ -386,6 +425,7 @@ export interface FileRoutesByFullPath {
   '/assembly-scrap-wastage': typeof AssemblyScrapWastageRoute
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
+  '/damage-claims': typeof DamageClaimsRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
@@ -396,6 +436,7 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
+  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -407,6 +448,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
@@ -417,9 +459,11 @@ export interface FileRoutesByFullPath {
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
+  '/procurement/quality-issues': typeof ProcurementQualityIssuesRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/supplier/quality-issues': typeof SupplierQualityIssuesRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
@@ -436,6 +480,7 @@ export interface FileRoutesByTo {
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
   '/assembly-material-issues': typeof AssemblyMaterialIssuesRoute
+  '/assembly-material-requests': typeof AssemblyMaterialRequestsRoute
   '/assembly-material-requirements': typeof AssemblyMaterialRequirementsRoute
   '/assembly-material-reservations': typeof AssemblyMaterialReservationsRoute
   '/assembly-orders': typeof AssemblyOrdersRoute
@@ -446,6 +491,7 @@ export interface FileRoutesByTo {
   '/assembly-scrap-wastage': typeof AssemblyScrapWastageRoute
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
+  '/damage-claims': typeof DamageClaimsRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
@@ -456,6 +502,7 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
+  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -467,6 +514,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
@@ -475,9 +523,11 @@ export interface FileRoutesByTo {
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
+  '/procurement/quality-issues': typeof ProcurementQualityIssuesRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/supplier/quality-issues': typeof SupplierQualityIssuesRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
@@ -495,6 +545,7 @@ export interface FileRoutesById {
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
   '/assembly-material-issues': typeof AssemblyMaterialIssuesRoute
+  '/assembly-material-requests': typeof AssemblyMaterialRequestsRoute
   '/assembly-material-requirements': typeof AssemblyMaterialRequirementsRoute
   '/assembly-material-reservations': typeof AssemblyMaterialReservationsRoute
   '/assembly-orders': typeof AssemblyOrdersRoute
@@ -505,6 +556,7 @@ export interface FileRoutesById {
   '/assembly-scrap-wastage': typeof AssemblyScrapWastageRoute
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
+  '/damage-claims': typeof DamageClaimsRoute
   '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/driver-verification': typeof DriverVerificationRoute
@@ -515,6 +567,7 @@ export interface FileRoutesById {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
+  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -526,6 +579,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
+  '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
   '/vehicle-verification': typeof VehicleVerificationRoute
@@ -536,9 +590,11 @@ export interface FileRoutesById {
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
+  '/procurement/quality-issues': typeof ProcurementQualityIssuesRoute
   '/procurement/quotations': typeof ProcurementQuotationsRoute
   '/procurement/rfqs': typeof ProcurementRfqsRoute
   '/supplier/$supplierId': typeof SupplierSupplierIdRoute
+  '/supplier/quality-issues': typeof SupplierQualityIssuesRoute
   '/warehouse/material-requests': typeof WarehouseMaterialRequestsRoute
   '/finance/approvals/$approvalId': typeof FinanceApprovalsApprovalIdRoute
   '/procurement/asns/$asnId': typeof ProcurementAsnsAsnIdRoute
@@ -557,6 +613,7 @@ export interface FileRouteTypes {
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
     | '/assembly-material-issues'
+    | '/assembly-material-requests'
     | '/assembly-material-requirements'
     | '/assembly-material-reservations'
     | '/assembly-orders'
@@ -567,6 +624,7 @@ export interface FileRouteTypes {
     | '/assembly-scrap-wastage'
     | '/assembly-work-orders'
     | '/assembly-workforce'
+    | '/damage-claims'
     | '/dock-assignment'
     | '/dock-management'
     | '/driver-verification'
@@ -577,6 +635,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
+    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -588,6 +647,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
@@ -598,9 +658,11 @@ export interface FileRouteTypes {
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
+    | '/procurement/quality-issues'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/supplier/quality-issues'
     | '/warehouse/material-requests'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
@@ -617,6 +679,7 @@ export interface FileRouteTypes {
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
     | '/assembly-material-issues'
+    | '/assembly-material-requests'
     | '/assembly-material-requirements'
     | '/assembly-material-reservations'
     | '/assembly-orders'
@@ -627,6 +690,7 @@ export interface FileRouteTypes {
     | '/assembly-scrap-wastage'
     | '/assembly-work-orders'
     | '/assembly-workforce'
+    | '/damage-claims'
     | '/dock-assignment'
     | '/dock-management'
     | '/driver-verification'
@@ -637,6 +701,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
+    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -648,6 +713,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
@@ -656,9 +722,11 @@ export interface FileRouteTypes {
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
+    | '/procurement/quality-issues'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/supplier/quality-issues'
     | '/warehouse/material-requests'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
@@ -675,6 +743,7 @@ export interface FileRouteTypes {
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
     | '/assembly-material-issues'
+    | '/assembly-material-requests'
     | '/assembly-material-requirements'
     | '/assembly-material-reservations'
     | '/assembly-orders'
@@ -685,6 +754,7 @@ export interface FileRouteTypes {
     | '/assembly-scrap-wastage'
     | '/assembly-work-orders'
     | '/assembly-workforce'
+    | '/damage-claims'
     | '/dock-assignment'
     | '/dock-management'
     | '/driver-verification'
@@ -695,6 +765,7 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
+    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -706,6 +777,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
+    | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
     | '/vehicle-verification'
@@ -716,9 +788,11 @@ export interface FileRouteTypes {
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
+    | '/procurement/quality-issues'
     | '/procurement/quotations'
     | '/procurement/rfqs'
     | '/supplier/$supplierId'
+    | '/supplier/quality-issues'
     | '/warehouse/material-requests'
     | '/finance/approvals/$approvalId'
     | '/procurement/asns/$asnId'
@@ -736,6 +810,7 @@ export interface RootRouteChildren {
   AssemblyFinishedGoodsRoute: typeof AssemblyFinishedGoodsRoute
   AssemblyMaterialConsumptionRoute: typeof AssemblyMaterialConsumptionRoute
   AssemblyMaterialIssuesRoute: typeof AssemblyMaterialIssuesRoute
+  AssemblyMaterialRequestsRoute: typeof AssemblyMaterialRequestsRoute
   AssemblyMaterialRequirementsRoute: typeof AssemblyMaterialRequirementsRoute
   AssemblyMaterialReservationsRoute: typeof AssemblyMaterialReservationsRoute
   AssemblyOrdersRoute: typeof AssemblyOrdersRoute
@@ -746,6 +821,7 @@ export interface RootRouteChildren {
   AssemblyScrapWastageRoute: typeof AssemblyScrapWastageRoute
   AssemblyWorkOrdersRoute: typeof AssemblyWorkOrdersRoute
   AssemblyWorkforceRoute: typeof AssemblyWorkforceRoute
+  DamageClaimsRoute: typeof DamageClaimsRoute
   DockAssignmentRoute: typeof DockAssignmentRoute
   DockManagementRoute: typeof DockManagementRoute
   DriverVerificationRoute: typeof DriverVerificationRoute
@@ -756,6 +832,7 @@ export interface RootRouteChildren {
   InventoryRoute: typeof InventoryRoute
   LoginRoute: typeof LoginRoute
   MasterDataRoute: typeof MasterDataRoute
+  MaterialDataRoute: typeof MaterialDataRoute
   NewSupplierRoute: typeof NewSupplierRoute
   NotificationsRoute: typeof NotificationsRoute
   PickTasksRoute: typeof PickTasksRoute
@@ -767,6 +844,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SubmitQuotationRoute: typeof SubmitQuotationRoute
   SupplierDashboardRoute: typeof SupplierDashboardRoute
+  UnscheduledArrivalsRoute: typeof UnscheduledArrivalsRoute
   VehicleExitRoute: typeof VehicleExitRoute
   VehicleQueueRoute: typeof VehicleQueueRoute
   VehicleVerificationRoute: typeof VehicleVerificationRoute
@@ -777,9 +855,11 @@ export interface RootRouteChildren {
   ProcurementMaterialRequestsRoute: typeof ProcurementMaterialRequestsRoute
   ProcurementNewRfqRoute: typeof ProcurementNewRfqRoute
   ProcurementPurchaseOrdersRoute: typeof ProcurementPurchaseOrdersRoute
+  ProcurementQualityIssuesRoute: typeof ProcurementQualityIssuesRoute
   ProcurementQuotationsRoute: typeof ProcurementQuotationsRoute
   ProcurementRfqsRoute: typeof ProcurementRfqsRoute
   SupplierSupplierIdRoute: typeof SupplierSupplierIdRoute
+  SupplierQualityIssuesRoute: typeof SupplierQualityIssuesRoute
   WarehouseMaterialRequestsRoute: typeof WarehouseMaterialRequestsRoute
   SupplierAsnsNewRoute: typeof SupplierAsnsNewRoute
 }
@@ -833,6 +913,13 @@ declare module '@tanstack/react-router' {
       path: '/assembly-material-issues'
       fullPath: '/assembly-material-issues'
       preLoaderRoute: typeof AssemblyMaterialIssuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/assembly-material-requests': {
+      id: '/assembly-material-requests'
+      path: '/assembly-material-requests'
+      fullPath: '/assembly-material-requests'
+      preLoaderRoute: typeof AssemblyMaterialRequestsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assembly-material-requirements': {
@@ -905,6 +992,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AssemblyWorkforceRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/damage-claims': {
+      id: '/damage-claims'
+      path: '/damage-claims'
+      fullPath: '/damage-claims'
+      preLoaderRoute: typeof DamageClaimsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dock-assignment': {
       id: '/dock-assignment'
       path: '/dock-assignment'
@@ -973,6 +1067,13 @@ declare module '@tanstack/react-router' {
       path: '/master-data'
       fullPath: '/master-data'
       preLoaderRoute: typeof MasterDataRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/material-data': {
+      id: '/material-data'
+      path: '/material-data'
+      fullPath: '/material-data'
+      preLoaderRoute: typeof MaterialDataRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/new-supplier': {
@@ -1052,6 +1153,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SupplierDashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/unscheduled-arrivals': {
+      id: '/unscheduled-arrivals'
+      path: '/unscheduled-arrivals'
+      fullPath: '/unscheduled-arrivals'
+      preLoaderRoute: typeof UnscheduledArrivalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/vehicle-exit': {
       id: '/vehicle-exit'
       path: '/vehicle-exit'
@@ -1122,6 +1230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProcurementPurchaseOrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/procurement/quality-issues': {
+      id: '/procurement/quality-issues'
+      path: '/procurement/quality-issues'
+      fullPath: '/procurement/quality-issues'
+      preLoaderRoute: typeof ProcurementQualityIssuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/procurement/quotations': {
       id: '/procurement/quotations'
       path: '/procurement/quotations'
@@ -1141,6 +1256,13 @@ declare module '@tanstack/react-router' {
       path: '/supplier/$supplierId'
       fullPath: '/supplier/$supplierId'
       preLoaderRoute: typeof SupplierSupplierIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/supplier/quality-issues': {
+      id: '/supplier/quality-issues'
+      path: '/supplier/quality-issues'
+      fullPath: '/supplier/quality-issues'
+      preLoaderRoute: typeof SupplierQualityIssuesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/warehouse/material-requests': {
@@ -1232,6 +1354,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssemblyFinishedGoodsRoute: AssemblyFinishedGoodsRoute,
   AssemblyMaterialConsumptionRoute: AssemblyMaterialConsumptionRoute,
   AssemblyMaterialIssuesRoute: AssemblyMaterialIssuesRoute,
+  AssemblyMaterialRequestsRoute: AssemblyMaterialRequestsRoute,
   AssemblyMaterialRequirementsRoute: AssemblyMaterialRequirementsRoute,
   AssemblyMaterialReservationsRoute: AssemblyMaterialReservationsRoute,
   AssemblyOrdersRoute: AssemblyOrdersRoute,
@@ -1242,6 +1365,7 @@ const rootRouteChildren: RootRouteChildren = {
   AssemblyScrapWastageRoute: AssemblyScrapWastageRoute,
   AssemblyWorkOrdersRoute: AssemblyWorkOrdersRoute,
   AssemblyWorkforceRoute: AssemblyWorkforceRoute,
+  DamageClaimsRoute: DamageClaimsRoute,
   DockAssignmentRoute: DockAssignmentRoute,
   DockManagementRoute: DockManagementRoute,
   DriverVerificationRoute: DriverVerificationRoute,
@@ -1252,6 +1376,7 @@ const rootRouteChildren: RootRouteChildren = {
   InventoryRoute: InventoryRoute,
   LoginRoute: LoginRoute,
   MasterDataRoute: MasterDataRoute,
+  MaterialDataRoute: MaterialDataRoute,
   NewSupplierRoute: NewSupplierRoute,
   NotificationsRoute: NotificationsRoute,
   PickTasksRoute: PickTasksRoute,
@@ -1263,6 +1388,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SubmitQuotationRoute: SubmitQuotationRoute,
   SupplierDashboardRoute: SupplierDashboardRoute,
+  UnscheduledArrivalsRoute: UnscheduledArrivalsRoute,
   VehicleExitRoute: VehicleExitRoute,
   VehicleQueueRoute: VehicleQueueRoute,
   VehicleVerificationRoute: VehicleVerificationRoute,
@@ -1273,9 +1399,11 @@ const rootRouteChildren: RootRouteChildren = {
   ProcurementMaterialRequestsRoute: ProcurementMaterialRequestsRoute,
   ProcurementNewRfqRoute: ProcurementNewRfqRoute,
   ProcurementPurchaseOrdersRoute: ProcurementPurchaseOrdersRoute,
+  ProcurementQualityIssuesRoute: ProcurementQualityIssuesRoute,
   ProcurementQuotationsRoute: ProcurementQuotationsRoute,
   ProcurementRfqsRoute: ProcurementRfqsRoute,
   SupplierSupplierIdRoute: SupplierSupplierIdRoute,
+  SupplierQualityIssuesRoute: SupplierQualityIssuesRoute,
   WarehouseMaterialRequestsRoute: WarehouseMaterialRequestsRoute,
   SupplierAsnsNewRoute: SupplierAsnsNewRoute,
 }

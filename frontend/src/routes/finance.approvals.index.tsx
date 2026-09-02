@@ -95,7 +95,9 @@ function FinanceApprovals() {
         <div className="space-y-8">
           {Object.entries(rfqGroups).map(([rfqId, group]) => {
             const { number: rfqNumber, pos } = group;
-            const isGrouped = rfqId !== "none" && pos.length > 1;
+            // Procurement completes the bid comparison before creating PO proposals.
+            // Finance reviews each proposal independently.
+            const isGrouped = false;
 
             if (isGrouped) {
               return (

@@ -26,59 +26,64 @@ import {
   Loader2,
   Factory,
   Users,
+  Menu,
+  AlertTriangle,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+  { label: "Material Data", to: "/material-data", icon: Database },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
   { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
   { label: "Pick Tasks", to: "/pick-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
-  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
   { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
   { label: "GRN", to: "/grn", icon: FileCheck2 },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
+  { label: "Damage Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
 
 const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
-  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
   { label: "RFQs", to: "/procurement/rfqs", icon: FileQuestion },
   { label: "Quotations", to: "/procurement/quotations", icon: FileBadge },
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
+  { label: "Quality Issues", to: "/procurement/quality-issues", icon: AlertTriangle },
+  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
-  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
+  { label: "Quality Issues", to: "/supplier/quality-issues", icon: AlertTriangle },
+  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
-  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
 const gateSecurityNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
-  { label: "Notifications", to: "/notifications", icon: Bell },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
-  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
+  { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
+  { label: "Unscheduled Arrivals", to: "/unscheduled-arrivals", icon: FileQuestion },
+  { label: "Replacement Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
 
 const assemblyNav = [
@@ -103,6 +108,27 @@ function isActiveRoute(path: string, target: string): boolean {
   return path === target || path.startsWith(`${target}/`);
 }
 
+function isActiveNavItem(
+  path: string,
+  currentSearch: Record<string, unknown>,
+  item: { to: string; search?: Record<string, unknown> },
+  navItems: ReadonlyArray<{ to: string; search?: Record<string, unknown> }>,
+): boolean {
+  if (!isActiveRoute(path, item.to)) return false;
+
+  if (item.search) {
+    return Object.entries(item.search).every(([key, value]) => currentSearch[key] === value);
+  }
+
+  // A base link and a filtered link can share a pathname. Keep the base link
+  // inactive while one of its sibling filters is selected.
+  const siblingSearchKeys = navItems
+    .filter((navItem) => navItem.to === item.to && navItem.search)
+    .flatMap((navItem) => Object.keys(navItem.search ?? {}));
+
+  return siblingSearchKeys.every((key) => currentSearch[key] == null);
+}
+
 export function AppShell({
   children,
   title,
@@ -115,9 +141,15 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const path = useRouterState({ select: (s) => s.location.pathname });
+  const { path, currentSearch } = useRouterState({
+    select: (s) => ({
+      path: s.location.pathname,
+      currentSearch: s.location.search as Record<string, unknown>,
+    }),
+  });
   const navigate = useNavigate();
   const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -205,46 +237,60 @@ export function AppShell({
   // pages can select their sidebar immediately rather than waiting for the
   // client-side localStorage role lookup.
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
-  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
+  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
-  const isGateSecurityRoute = path === "/gate-entry" || path === "/vehicle-exit";
+  const isGateSecurityRoute =
+    path === "/gate-entry" || path === "/vehicle-exit" || path === "/unscheduled-arrivals";
   const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
   const isWarehouseRoute =
     path === "/warehouse-dashboard" ||
     [
       "/inventory",
+      "/material-data",
       "/warehouse-storage",
       "/warehouse/material-requests",
       "/notifications",
-      "/vehicle-queue",
       "/receiving",
       "/grn",
       "/reports",
     ].some((p) => path.startsWith(p));
 
-  const nav = mounted
-    ? user?.roles?.includes("SUPPLIER")
-      ? supplierNav
-      : user?.roles?.includes("FINANCE")
-        ? financeNav
-        : user?.roles?.includes("PROCUREMENT")
-          ? procurementNav
-      : user?.roles?.includes("GATE_SECURITY")
-            ? gateSecurityNav
-            : user?.roles?.includes("ASSEMBLY_MANAGER")
-              ? assemblyNav
-            : warehouseNav
-    : isSupplierRoute
-      ? supplierNav
+  // Keep each module's navigation isolated. The current route takes precedence
+  // over role order so multi-role (or stale localStorage) users do not see the
+  // Supplier menu on Procurement pages, or vice versa.
+  const routeNav = isSupplierRoute
+    ? supplierNav
+    : isProcurementRoute
+      ? procurementNav
       : isFinanceRoute
         ? financeNav
-        : isProcurementRoute
-          ? procurementNav
-          : isGateSecurityRoute
-            ? gateSecurityNav
-            : isAssemblyRoute
-              ? assemblyNav
+        : isGateSecurityRoute
+          ? gateSecurityNav
+          : isAssemblyRoute
+            ? assemblyNav
+            : isWarehouseRoute
+              ? warehouseNav
+              : null;
+
+  const roleNav = user?.roles?.includes("SUPPLIER")
+    ? supplierNav
+    : user?.roles?.includes("FINANCE")
+      ? financeNav
+      : user?.roles?.includes("PROCUREMENT")
+        ? procurementNav
+        : user?.roles?.includes("GATE_SECURITY")
+          ? gateSecurityNav
+          : user?.roles?.includes("ASSEMBLY_MANAGER")
+            ? assemblyNav
             : warehouseNav;
+
+  const nav = routeNav ?? (mounted ? roleNav : warehouseNav);
+
+  const moduleLabel = isSupplierRoute
+    ? "Supplier Portal"
+    : isProcurementRoute
+      ? "Procurement Portal"
+      : "Warehouse navigation";
 
   const handleLogout = () => {
     api.logout();
@@ -274,11 +320,12 @@ export function AppShell({
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {nav.map((item) => {
-            const active = isActiveRoute(path, item.to);
+            const active = isActiveNavItem(path, currentSearch, item, nav);
             return (
               <Link
-                key={item.to}
+                key={`${item.label}-${item.to}`}
                 to={item.to}
+                search={item.search}
                 title={item.label}
                 aria-current={active ? "page" : undefined}
                 className={cn(
@@ -325,15 +372,63 @@ export function AppShell({
         </div>
       </aside>
 
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="flex w-[300px] flex-col gap-0 border-sidebar-border bg-sidebar p-0 sm:max-w-[320px]">
+          <SheetTitle className="sr-only">{moduleLabel}</SheetTitle>
+          <SheetDescription className="sr-only">Navigate within the current module</SheetDescription>
+          <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
+            <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+              <Warehouse className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold tracking-tight">NexusWMS</p>
+              <p className="text-[11px] text-muted-foreground">Pune DC · Plant 1200</p>
+            </div>
+          </div>
+          <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            {nav.map((item) => {
+              const active = isActiveNavItem(path, currentSearch, item, nav);
+              return (
+                <Link
+                  key={`${item.label}-${item.to}`}
+                  to={item.to}
+                  search={item.search}
+                  onClick={() => setMobileMenuOpen(false)}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent",
+                    active && "bg-primary-soft text-primary",
+                  )}
+                >
+                  <item.icon className="size-[18px] shrink-0" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          <div className="border-t border-sidebar-border p-3">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-destructive hover:bg-danger-soft"
+            >
+              <LogOut className="size-[18px]" /> Logout
+            </button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-            <Link
-              to={nav[0].to}
-              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
+              className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground shadow-sm md:hidden"
             >
-              <Warehouse className="size-4" />
-            </Link>
+              <Menu className="size-5" />
+            </button>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
@@ -463,25 +558,6 @@ export function AppShell({
           </div>
         </main>
 
-        <nav className="sticky bottom-0 z-30 grid grid-cols-5 border-t border-border glass-strong md:hidden">
-          {nav.slice(0, 5).map((item) => {
-            const active = isActiveRoute(path, item.to);
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium text-muted-foreground",
-                  active && "text-primary",
-                )}
-              >
-                <item.icon className="size-[18px]" />
-                {item.label.split(" ")[0]}
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </div>
   );

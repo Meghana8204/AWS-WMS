@@ -142,7 +142,8 @@ class GateEntry(AggregateRoot):
 
     def approve_gate_entry(self, security_officer_id: str) -> None:
         """Approve a verified gate entry, including a permitted direct arrival."""
-        self.status = GateEntryStatus.GATE_ENTRY_APPROVED
+        if self.status != GateEntryStatus.UNSCHEDULED_ARRIVAL:
+            self.status = GateEntryStatus.GATE_ENTRY_APPROVED
         self.verified_by = security_officer_id
         self.updated_at = datetime.now(timezone.utc)
         self._emit_ready_event()

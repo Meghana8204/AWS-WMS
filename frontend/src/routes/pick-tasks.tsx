@@ -19,6 +19,20 @@ import { api } from "@/lib/api-client";
 
 export const Route = createFileRoute("/pick-tasks")({ component: PickTasks });
 
+function stockUpdateDescription(stock: any): string | undefined {
+  if (!stock) return undefined;
+
+  if (stock.after) {
+    return `${stock.material_name}: On Hand ${stock.after.on_hand.toLocaleString()} · Allocated ${stock.after.allocated.toLocaleString()} · Available ${stock.after.available.toLocaleString()} ${stock.uom}`;
+  }
+
+  if (stock.on_hand_after != null) {
+    return `${stock.material_name}: Issued ${stock.issued.toLocaleString()} ${stock.uom} · On Hand ${stock.on_hand_after.toLocaleString()} · Available ${stock.available_after.toLocaleString()}`;
+  }
+
+  return undefined;
+}
+
 function PickTasks() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [operators, setOperators] = useState<Record<string, string>>({});
@@ -40,18 +54,14 @@ function PickTasks() {
   useEffect(() => {
     void load();
   }, [load]);
-  const update = (id: string, values: any) =>
-    setTasks((current) => current.map((task) => (task.id === id ? { ...task, ...values } : task)));
   const run = async (key: string, action: () => Promise<any>, message: string) => {
     setBusy(key);
     try {
       const result = await action();
-      update(key, result);
+      await load();
       const stock = result.stock_updates?.[0];
       toast.success(message, {
-        description: stock
-          ? `${stock.material_name}: On Hand ${stock.after.on_hand.toLocaleString()} · Allocated ${stock.after.allocated.toLocaleString()} · Available ${stock.after.available.toLocaleString()} ${stock.uom}`
-          : undefined,
+        description: stockUpdateDescription(stock),
       });
     } catch (error) {
       toast.error(message, { description: error instanceof Error ? error.message : undefined });

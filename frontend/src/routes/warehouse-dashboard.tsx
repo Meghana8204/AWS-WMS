@@ -141,7 +141,7 @@ function WarehouseDashboard() {
           delta="Live from gate"
           icon={Truck}
           tone="primary"
-          to="/vehicle-queue"
+          to="/receiving"
         />
         <StatCard
           label="Verified POs"
@@ -149,7 +149,7 @@ function WarehouseDashboard() {
           delta="Matched in DB"
           icon={Clock3}
           tone="success"
-          to="/vehicle-queue"
+          to="/receiving"
         />
         <StatCard
           label="Unscheduled"
@@ -173,7 +173,7 @@ function WarehouseDashboard() {
           delta="Avg wait 12 min"
           icon={ListOrdered}
           tone="danger"
-          to="/vehicle-queue"
+          to="/receiving"
         />
       </div>
 
@@ -299,7 +299,7 @@ function WarehouseDashboard() {
                 />
               </div>
               <Button variant="ghost" size="sm" className="rounded-lg" asChild>
-                <Link to="/vehicle-queue">
+                <Link to="/receiving">
                   View all <ArrowUpRight className="size-3.5" />
                 </Link>
               </Button>

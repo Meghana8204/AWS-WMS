@@ -98,12 +98,17 @@ type HandlingUnit = {
   destination?: string;
 };
 
+const normalizeWarehouseId = (warehouseId?: string) =>
+  warehouseId?.trim().toUpperCase().replaceAll("_", "-") || "";
+
 function PutawayTasks() {
   const [tasks, setTasks] = useState<Task[]>([]),
     [locations, setLocations] = useState<StorageLocation[]>([]),
-    [loading, setLoading] = useState(true);
+    [loading, setLoading] = useState(true),
+    [fetchingLocations, setFetchingLocations] = useState(false);
   const [selections, setSelections] = useState<Record<string, string>>({}),
     [saving, setSaving] = useState<string>();
+  const [locationSearch, setLocationSearch] = useState<Record<string, string>>({});
   const [operators, setOperators] = useState<Record<string, string>>({});
   const [confirmations, setConfirmations] = useState<
     Record<
@@ -153,6 +158,21 @@ function PutawayTasks() {
   useEffect(() => {
     void load();
   }, [load]);
+  const refreshLocations = async (taskId?: string) => {
+    setFetchingLocations(true);
+    try {
+      // Always fetch all locations to ensure we have a complete registry for all tasks on the page
+      const data = await api.getStorageLocations(undefined, false);
+      setLocations(data);
+      toast.success("Storage locations synced from backend");
+    } catch (error) {
+      console.error("Failed to fetch locations:", error);
+      toast.error("Failed to sync locations");
+    } finally {
+      setFetchingLocations(false);
+    }
+  };
+
   const assign = async (task: Task) => {
     const locationId = selections[task.id];
     if (!locationId) return toast.error("Select a storage bin");
@@ -457,35 +477,66 @@ function PutawayTasks() {
                     )}
                   </div>
                   <div className="mt-4 rounded-xl border bg-muted/20 p-3">
-                    <p className="mb-2 text-xs font-bold uppercase text-muted-foreground">
-                      Storage Location Assignment
-                    </p>
-                    <div className="flex gap-2">
-                      <select
-                        className="h-10 min-w-0 flex-1 rounded-lg border bg-background px-3 text-sm"
-                        value={selections[task.id] ?? ""}
-                        onChange={(event) =>
-                          setSelections((current) => ({
-                            ...current,
-                            [task.id]: event.target.value,
-                          }))
-                        }
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-xs font-bold uppercase text-muted-foreground">
+                        Storage Location Assignment
+                      </p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-[10px] font-bold text-primary"
+                        onClick={() => void refreshLocations(task.id)}
+                        disabled={fetchingLocations}
                       >
-                        <option value="">Select warehouse / zone / rack / bin</option>
-                        {locations
-                          .filter(
+                        {fetchingLocations ? (
+                          <Loader2 className="mr-1 size-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="mr-1 size-3" />
+                        )}
+                        Fetch from backend
+                      </Button>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        {(() => {
+                          const taskWarehouseId = normalizeWarehouseId(task.warehouse_id);
+                          const matchingLocations = locations.filter(
                             (location) =>
-                              location.warehouse_id === task.warehouse_id &&
-                              location.available_capacity >= task.quantity,
-                          )
-                          .map((location) => (
-                            <option key={location.id} value={location.id}>
-                              {location.warehouse_id} / {location.zone} / {location.rack} /{" "}
-                              {location.bin} ({location.available_capacity.toLocaleString()}{" "}
-                              available)
-                            </option>
+                              normalizeWarehouseId(location.warehouse_id) === taskWarehouseId,
+                          );
+                          const availableLocations = matchingLocations.filter(
+                            (location) => location.available_capacity >= task.quantity,
+                          );
+
+                          return (
+                            <>
+                        <select
+                          className="h-10 w-full rounded-lg border bg-background px-3 text-sm pr-10"
+                          value={selections[task.id] ?? ""}
+                          onChange={(event) =>
+                            setSelections((current) => ({
+                              ...current,
+                              [task.id]: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select warehouse / zone / rack / bin</option>
+                          {availableLocations.map((location) => (
+                              <option key={location.id} value={location.id}>
+                                {location.location_code} ({location.available_capacity.toLocaleString()}{" "}
+                                available)
+                              </option>
                           ))}
-                      </select>
+                        </select>
+                        {matchingLocations.length === 0 && !fetchingLocations && (
+                          <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/80 text-[10px] text-destructive font-bold pointer-events-none px-4 text-center">
+                            No locations found in {task.warehouse_id}. Found {locations.length} total locations in registry.
+                          </div>
+                        )}
+                            </>
+                          );
+                        })()}
+                      </div>
                       <Button
                         className="rounded-lg"
                         disabled={!selections[task.id] || saving === task.id}

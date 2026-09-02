@@ -57,7 +57,7 @@ function DockManagement() {
         dock_number: String(data.get("dock_number")),
         warehouse_id: String(data.get("warehouse_id")),
         dock_type: String(data.get("dock_type")),
-        capacity: Number(data.get("capacity")),
+        capacity: 1, // Defaulting to 1 as it's required by backend but hidden from UI
         status: String(data.get("status")),
       });
       toast.success("Dock created");
@@ -100,7 +100,7 @@ function DockManagement() {
         </div>
       }
     >
-      <div className="mb-4 grid gap-3 sm:grid-cols-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-3">
         {["AVAILABLE", "OCCUPIED", "MAINTENANCE"].map((status) => (
           <Card key={status} className="rounded-2xl p-4">
             <p className="text-xs text-muted-foreground">{status.replace("_", " ")}</p>
@@ -109,18 +109,13 @@ function DockManagement() {
             </p>
           </Card>
         ))}
-        <Card className="rounded-2xl p-4">
-          <p className="text-xs text-muted-foreground">TOTAL CAPACITY</p>
-          <p className="mt-1 text-2xl font-bold">{docks.reduce((sum, d) => sum + d.capacity, 0)}</p>
-        </Card>
       </div>
       {showCreate && (
         <Card className="mb-4 rounded-2xl p-5">
-          <form onSubmit={createDock} className="grid gap-3 sm:grid-cols-5">
+          <form onSubmit={createDock} className="grid gap-3 sm:grid-cols-4">
             <Field name="dock_number" label="Dock number" placeholder="DOCK-05" />
             <Field name="warehouse_id" label="Warehouse" placeholder="WH-PUNE-01" />
             <Field name="dock_type" label="Dock type" placeholder="GENERAL" />
-            <Field name="capacity" label="Capacity" placeholder="20" type="number" />
             <div>
               <Label>Status</Label>
               <select
@@ -131,7 +126,7 @@ function DockManagement() {
                 <option>MAINTENANCE</option>
               </select>
             </div>
-            <div className="sm:col-span-5 flex justify-end">
+            <div className="sm:col-span-4 flex justify-end">
               <Button disabled={saving}>
                 {saving && <Loader2 className="size-4 animate-spin" />} Create dock
               </Button>
@@ -146,19 +141,14 @@ function DockManagement() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-left text-sm">
+            <table className="w-full text-left text-sm">
               <thead className="border-b bg-muted/50 text-xs uppercase text-muted-foreground">
                 <tr>
                   {[
                     "Dock number",
                     "Warehouse",
                     "Dock type",
-                    "Capacity",
                     "Status",
-                    "Current vehicle",
-                    "Current ASN",
-                    "Current PO",
-                    "Assignment",
                     "Action",
                   ].map((h) => (
                     <th key={h} className="px-4 py-3">
@@ -173,29 +163,8 @@ function DockManagement() {
                     <td className="px-4 py-4 font-mono font-bold">{dock.dock_number}</td>
                     <td className="px-4 py-4">{dock.warehouse_id}</td>
                     <td className="px-4 py-4">{dock.dock_type}</td>
-                    <td className="px-4 py-4 font-semibold">{dock.capacity}</td>
                     <td className="px-4 py-4">
                       <StatusBadge status={dock.status} />
-                    </td>
-                    <td className="px-4 py-4 font-mono">{dock.current_vehicle || "—"}</td>
-                    <td className="px-4 py-4">
-                      {dock.current_asn_id ? (
-                        <Link
-                          to="/procurement/asns/$asnId"
-                          params={{ asnId: dock.current_asn_id }}
-                          className="font-mono text-primary hover:underline"
-                        >
-                          {dock.current_asn}
-                        </Link>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-4 font-mono">{dock.current_po || "—"}</td>
-                    <td className="px-4 py-4 text-xs">
-                      {dock.assigned_by || "—"}
-                      <br />
-                      {dock.assigned_at ? new Date(dock.assigned_at).toLocaleString() : ""}
                     </td>
                     <td className="px-4 py-4">
                       <Button

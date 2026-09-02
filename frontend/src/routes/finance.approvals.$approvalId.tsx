@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -14,8 +14,6 @@ import {
   Info,
   Download,
   MessageSquare,
-  Sparkles,
-  ArrowRight,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -38,7 +36,6 @@ function ApprovalDetail() {
   const [processing, setProcessing] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
-  const [hasRelatedProposals, setHasRelatedProposals] = useState(false);
 
   const fetchPo = async () => {
     try {
@@ -46,14 +43,6 @@ function ApprovalDetail() {
       const data = await api.getPurchaseOrder(approvalId);
       setPo(data);
 
-      // Check for related proposals if rfqId exists
-      if (data.rfqId) {
-        const allApprovals = await api.getFinanceApprovals();
-        const related = allApprovals.filter(
-          (p: any) => p.rfqId === data.rfqId && p.id !== approvalId,
-        );
-        setHasRelatedProposals(related.length > 0);
-      }
     } catch (error) {
       console.error("Failed to fetch PO:", error);
       toast.error("Failed to load purchase order details");
@@ -109,6 +98,13 @@ function ApprovalDetail() {
 
   if (!po) return null;
 
+  const subtotal = Number(po.subtotal) || 0;
+  const discountAmount = Number(po.discountAmount) || 0;
+  const taxAmount = Number(po.taxAmount) || 0;
+  const taxableAmount = subtotal - discountAmount;
+  const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+
   return (
     <AppShell
       title={`Review PO Proposal: ${po.poNumber}`}
@@ -126,29 +122,6 @@ function ApprovalDetail() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left Column: PO Info & Material Details */}
         <div className="lg:col-span-2 space-y-6">
-          {hasRelatedProposals && (
-            <Card className="bg-primary/5 border-primary/20 shadow-soft overflow-hidden">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Sparkles className="size-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm">Related Proposals Found</h4>
-                    <p className="text-xs text-muted-foreground">
-                      Multiple suppliers were selected for RFQ: {po.rfqId}
-                    </p>
-                  </div>
-                </div>
-                <Button size="sm" className="rounded-xl shadow-glow bg-primary font-bold" asChild>
-                  <Link to="/finance/approvals/compare/$rfqId" params={{ rfqId: po.rfqId }}>
-                    Open Comparison Matrix <ArrowRight className="ml-2 size-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
@@ -265,9 +238,16 @@ function ApprovalDetail() {
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Selected supplier quotation totals
+              </p>
               <SummaryRow label="Subtotal" value={po.subtotal} />
-              <SummaryRow label="Discount" value={po.discountAmount} isNegative />
-              <SummaryRow label="Tax (GST)" value={po.taxAmount} />
+              <SummaryRow
+                label={`Discount (${discountPercentage.toFixed(2)}%)`}
+                value={po.discountAmount}
+                isNegative
+              />
+              <SummaryRow label={`Tax (GST ${taxPercentage.toFixed(2)}%)`} value={po.taxAmount} />
               <SummaryRow label="Freight" value={po.freightCharges} />
 
               <div className="pt-4 border-t border-border mt-2">

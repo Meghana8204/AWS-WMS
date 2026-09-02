@@ -23,7 +23,7 @@ export const Route = createFileRoute("/assembly-orders")({
 });
 
 const nextStatus: Record<string, { label: string; status: string }[]> = {
-  DRAFT: [{ label: "Release order", status: "RELEASED" }],
+  DRAFT: [{ label: "Accept issued materials", status: "READY" }],
   RELEASED: [{ label: "Start material check", status: "MATERIAL_CHECK" }],
   MATERIAL_CHECK: [{ label: "Materials ready", status: "READY" }, { label: "Report shortage", status: "MATERIAL_SHORTAGE" }],
   MATERIAL_SHORTAGE: [{ label: "Recheck materials", status: "MATERIAL_CHECK" }],
@@ -31,7 +31,7 @@ const nextStatus: Record<string, { label: string; status: string }[]> = {
   IN_PROGRESS: [{ label: "Complete assembly", status: "COMPLETED" }, { label: "Put on hold", status: "ON_HOLD" }],
   ON_HOLD: [{ label: "Resume assembly", status: "IN_PROGRESS" }],
   COMPLETED: [{ label: "Send to quality", status: "QUALITY_CHECK" }],
-  QUALITY_CHECK: [{ label: "Close order", status: "CLOSED" }, { label: "Return for rework", status: "IN_PROGRESS" }],
+  QUALITY_CHECK: [],
   CLOSED: [],
 };
 
@@ -46,6 +46,7 @@ const statusClass: Record<string, string> = {
 function AssemblyOrders() {
   const [orders, setOrders] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [loadingTeams, setLoadingTeams] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string>();
   const [query, setQuery] = useState("");
@@ -67,8 +68,31 @@ function AssemblyOrders() {
   const [reworkForm, setReworkForm] = useState<any>({ assigned_team: "", assigned_worker: "", reason_for_failure: "", notes: "" });
   const [loadingReqs, setLoadingReqs] = useState(false);
 
+  const refreshTeams = useCallback(async (showError = false) => {
+    setLoadingTeams(true);
+    try {
+      const teamRows = await api.getAssemblyTeams();
+      setTeams(teamRows.filter((team: any) => team.active));
+    } catch (error) {
+      if (showError) {
+        toast.error("Unable to load assembly teams", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
+    } finally {
+      setLoadingTeams(false);
+    }
+  }, []);
+
   const load = useCallback(async () => {
-    try { const [orderRows, teamRows] = await Promise.all([api.getAssemblyOrders(), api.getAssemblyTeams()]); setOrders(orderRows); setTeams(teamRows.filter((team: any) => team.active)); }
+    try {
+      const [orderRows, teamRows] = await Promise.all([
+        api.getAssemblyOrders(),
+        api.getAssemblyTeams(),
+      ]);
+      setOrders(orderRows);
+      setTeams(teamRows.filter((team: any) => team.active));
+    }
     catch (error) { toast.error("Unable to load assembly orders", { description: error instanceof Error ? error.message : undefined }); }
     finally { setLoading(false); }
   }, []);
@@ -88,11 +112,24 @@ function AssemblyOrders() {
   }), [orders, query, filter]);
 
   async function transition(order: any, status: string) {
+    if (status === "IN_PROGRESS" && !order.assigned_team) {
+      openWorkOrder(order);
+      toast.info("Assign an assembly team before starting the work order");
+      return;
+    }
+    if (
+      status === "COMPLETED" &&
+      (order.assembly_steps || []).some((step: any) => step.status !== "COMPLETED")
+    ) {
+      openWorkOrder(order);
+      toast.info("Complete every assembly step before completing the work order");
+      return;
+    }
     setBusy(order.id);
     try {
       const updated = await api.updateAssemblyOrder(order.id, { status });
       toast.success(
-        status === "RELEASED" ? `${order.order_number} released and materials reserved` : `${order.order_number} moved to ${status.replaceAll("_", " ").toLowerCase()}`,
+        `${order.order_number} moved to ${updated.status.replaceAll("_", " ").toLowerCase()}`,
         updated.reservation ? { description: `${updated.reservation.materials_count} component${updated.reservation.materials_count === 1 ? "" : "s"} protected from other departments.` } : undefined,
       );
       await load();
@@ -119,13 +156,30 @@ function AssemblyOrders() {
     setLoadingReqs(true);
     try {
       const data = await api.getOrderRequirements(order.id);
-      setRequirements(data);
+      setRequirements({ ...data, order_id: order.id });
     } catch (error) {
       toast.error("Unable to load material requirements", {
         description: error instanceof Error ? error.message : undefined
       });
     } finally {
       setLoadingReqs(false);
+    }
+  }
+
+  async function requestShortages() {
+    if (!requirements?.order_id) return;
+    setBusy(`shortage:${requirements.order_id}`);
+    try {
+      await api.requestShortageMaterials(requirements.order_id);
+      toast.success("Material request sent to Warehouse Manager");
+      setRequirements(undefined);
+      await load();
+    } catch (error) {
+      toast.error("Failed to send material request", {
+        description: error instanceof Error ? error.message : undefined
+      });
+    } finally {
+      setBusy(undefined);
     }
   }
 
@@ -248,7 +302,12 @@ function AssemblyOrders() {
     finally { setBusy(undefined); }
   }
 
-  function openWorkOrder(order: any) { setWorkOrder(order); setWorkTeam(order.assigned_team || ""); setProgressQuantity(order.completed_quantity || 0); }
+  function openWorkOrder(order: any) {
+    setWorkOrder(order);
+    setWorkTeam(order.assigned_team || "");
+    setProgressQuantity(order.completed_quantity || 0);
+    void refreshTeams(true);
+  }
 
   async function saveWorkTeam() {
     if (!workOrder || !workTeam.trim()) return;
@@ -329,7 +388,49 @@ function AssemblyOrders() {
           {['COMPLETED', 'QUALITY_CHECK', 'IN_PROGRESS', 'CLOSED'].includes(order.status) && <Button size="sm" variant="outline" onClick={() => openRework(order)} disabled={loadingReqs}><Wrench className="size-3.5" /> Rework</Button>}
           <Button size="sm" variant="outline" onClick={() => openWorkOrder(order)}><ListChecks className="size-3.5" /> Work order</Button>
           {!["IN_PROGRESS", "COMPLETED", "QUALITY_CHECK", "CLOSED", "ON_HOLD"].includes(order.status) && <Button size="sm" variant="outline" onClick={() => openEdit(order)}><Pencil className="size-3.5" /> Edit details</Button>}
-          <div className="ml-auto flex flex-wrap gap-2">{(nextStatus[order.status] || []).map((action, index) => <Button key={action.status} size="sm" variant={index === 0 ? "default" : "outline"} disabled={busy === order.id} onClick={() => void transition(order, action.status)}>{busy === order.id ? <Loader2 className="size-3.5 animate-spin" /> : <ChevronRight className="size-3.5" />}{action.label}</Button>)}</div>
+          {order.status === "QUALITY_CHECK" && order.quality_status === "PENDING_INSPECTION" && (
+            <Button size="sm" className="ml-auto" onClick={() => void openQuality(order)}>
+              <ClipboardCheck className="size-3.5" /> Record quality result
+            </Button>
+          )}
+          {order.status === "QUALITY_CHECK" && order.quality_status === "PASSED" && (
+            <Button size="sm" className="ml-auto" disabled={busy === order.id} onClick={() => void transition(order, "CLOSED")}>
+              <ChevronRight className="size-3.5" /> Close order
+            </Button>
+          )}
+          {order.status === "QUALITY_CHECK" && ["FAILED", "REWORK_REQUIRED"].includes(order.quality_status) && (
+            <Button size="sm" className="ml-auto" onClick={() => void openRework(order)}>
+              <Wrench className="size-3.5" /> Create rework order
+            </Button>
+          )}
+          <div className="ml-auto flex flex-wrap gap-2">
+            {(nextStatus[order.status] || []).map((action, index) => {
+              const needsTeam = action.status === "IN_PROGRESS" && !order.assigned_team;
+              const needsSteps =
+                action.status === "COMPLETED" &&
+                (order.assembly_steps || []).some((step: any) => step.status !== "COMPLETED");
+              return (
+                <Button
+                  key={action.status}
+                  size="sm"
+                  variant={index === 0 ? "default" : "outline"}
+                  disabled={busy === order.id}
+                  onClick={() => void transition(order, action.status)}
+                >
+                  {busy === order.id ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : needsTeam ? (
+                    <Users className="size-3.5" />
+                  ) : needsSteps ? (
+                    <ListChecks className="size-3.5" />
+                  ) : (
+                    <ChevronRight className="size-3.5" />
+                  )}
+                  {needsTeam ? "Assign team to start" : needsSteps ? "Complete work steps" : action.label}
+                </Button>
+              );
+            })}
+          </div>
         </div>
       </Card>)}</div>}
 
@@ -398,7 +499,19 @@ function AssemblyOrders() {
         </table>
       </div>
 
-      <div className="flex justify-end pt-2">
+      <div className="flex justify-between items-center pt-2">
+        {requirements?.summary?.shortage > 0 && (
+          <Button
+            variant="default"
+            className="rounded-xl bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => void requestShortages()}
+            disabled={busy === `shortage:${requirements.order_id}`}
+          >
+            {busy === `shortage:${requirements.order_id}` ? <Loader2 className="size-4 animate-spin mr-2" /> : <RefreshCw className="size-4 mr-2" />}
+            Request Missing Materials from Warehouse
+          </Button>
+        )}
+        <div className="flex-1"></div>
         <Button variant="outline" className="rounded-xl px-8" onClick={() => setRequirements(undefined)}>Dismiss</Button>
       </div>
     </DialogContent></Dialog>
@@ -452,8 +565,8 @@ function AssemblyOrders() {
         </div>}
       </div>
       <div className="grid gap-3 rounded-xl border bg-muted/20 p-4 sm:grid-cols-[1fr_auto]">
-        <div className="space-y-2"><Label>Assembly team</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={workTeam} disabled={["IN_PROGRESS", "COMPLETED", "QUALITY_CHECK", "CLOSED"].includes(workOrder?.status)} onChange={(event) => setWorkTeam(event.target.value)}><option value="">Select team</option>{teams.map((team) => <option key={team.id} value={team.name}>{team.name} · {team.workers_count} workers · {team.workstation}</option>)}</select></div>
-        <Button className="self-end" variant="outline" disabled={!workTeam.trim() || busy === workOrder?.id || ["IN_PROGRESS", "COMPLETED", "QUALITY_CHECK", "CLOSED"].includes(workOrder?.status)} onClick={() => void saveWorkTeam()}><Users className="size-4" /> Assign team</Button>
+        <div className="space-y-2"><Label>Assembly team</Label><select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={workTeam} disabled={loadingTeams || ["IN_PROGRESS", "COMPLETED", "QUALITY_CHECK", "CLOSED"].includes(workOrder?.status)} onChange={(event) => setWorkTeam(event.target.value)}><option value="">{loadingTeams ? "Loading teams..." : teams.length ? "Select team" : "No active teams found"}</option>{teams.map((team) => <option key={team.id} value={team.name}>{team.name} · {team.workers_count} workers · {team.workstation}</option>)}</select></div>
+        <Button className="self-end" variant="outline" disabled={loadingTeams || !workTeam.trim() || busy === workOrder?.id || ["IN_PROGRESS", "COMPLETED", "QUALITY_CHECK", "CLOSED"].includes(workOrder?.status)} onClick={() => void saveWorkTeam()}><Users className="size-4" /> Assign team</Button>
       </div>
       <div className="space-y-2">
         {(workOrder?.assembly_steps || []).map((step: any, index: number) => {

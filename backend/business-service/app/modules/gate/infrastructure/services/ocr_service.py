@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import re
 import shutil
 from datetime import date
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
+
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
 from app.modules.gate.domain.value_objects import AnprResult, OcrResult
 
@@ -32,7 +36,7 @@ class TesseractOcrService:
     """Runs the local Tesseract binary against the bytes captured by the camera."""
 
     def __init__(self, command: str = "tesseract") -> None:
-        self.command = command
+        self.command = _resolve_tesseract_command(command)
 
     async def process_po_document(self, document_data: bytes | str) -> OcrResult:
         if isinstance(document_data, str):
@@ -73,7 +77,7 @@ class TesseractAnprService:
     """Reads vehicle plates from a live camera image using the OCR engine."""
 
     def __init__(self, command: str = "tesseract") -> None:
-        self.command = command
+        self.command = _resolve_tesseract_command(command)
 
     async def recognize_license_plate(self, image_data: bytes | str) -> AnprResult:
         if isinstance(image_data, str):
@@ -82,20 +86,63 @@ class TesseractAnprService:
         if not image_data:
             raise ValueError("The captured vehicle image is empty.")
 
-        raw_text = await _read_image_text(self.command, image_data, page_segmentation_mode="11")
-        compact_text = re.sub(r"[^A-Z0-9]", "", raw_text.upper())
-        # Indian registration formats: MH12AB1234, DL01C1234, BH12AB1234A, etc.
-        match = re.search(r"\b(?:[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|[A-Z]{2}\d{2}[A-Z]{2}\d{4}[A-Z]?)\b", compact_text)
-        if not match:
+        images = _prepare_anpr_images(image_data)
+        readings = []
+        for prepared, psm in ((images[0], "11"), (images[1], "7"), (images[1], "6")):
+            try:
+                readings.append(await _read_image_text(self.command, prepared, page_segmentation_mode=psm))
+            except OcrUnavailableError:
+                raise
+            except Exception:
+                continue
+
+        plate = None
+        for raw_text in readings:
+            # Try each OCR line first so unrelated text around a plate cannot
+            # destroy the token boundaries, then try the complete reading.
+            candidates = raw_text.splitlines() + [raw_text]
+            for candidate in candidates:
+                compact = re.sub(r"[^A-Z0-9]", "", candidate.upper())
+                match = re.search(r"(?:\d{2}BH\d{4}[A-Z]{2}|[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4})", compact)
+                if match:
+                    try:
+                        plate = normalize_vehicle_registration(match.group(0))
+                        break
+                    except ValueError:
+                        pass
+            if plate:
+                break
+
+        if not plate:
             raise ValueError("No vehicle registration number could be read. Reposition the plate and scan again.")
 
-        plate = normalize_vehicle_registration(match.group(0))
         confidence = min(0.99, 0.65 + len(plate) / 40)
-        return AnprResult(detected_vehicle_number=plate, confidence=round(confidence, 2), raw_metadata={"raw_text": raw_text})
+        return AnprResult(detected_vehicle_number=plate, confidence=round(confidence, 2), raw_metadata={"raw_text": "\n".join(readings)})
+
+
+def _prepare_anpr_images(image_data: bytes) -> tuple[bytes, bytes]:
+    """Convert browser formats such as WebP and create a plate-friendly OCR variant."""
+    with Image.open(io.BytesIO(image_data)) as source:
+        rgb = source.convert("RGB")
+        normal_buffer = io.BytesIO()
+        rgb.save(normal_buffer, format="PNG")
+
+        grayscale = ImageOps.grayscale(rgb)
+        grayscale = ImageOps.autocontrast(grayscale, cutoff=1)
+        scale = max(2, min(4, 1600 // max(1, grayscale.width)))
+        grayscale = grayscale.resize(
+            (grayscale.width * scale, grayscale.height * scale),
+            Image.Resampling.LANCZOS,
+        )
+        grayscale = ImageEnhance.Contrast(grayscale).enhance(1.8)
+        grayscale = grayscale.filter(ImageFilter.SHARPEN)
+        enhanced_buffer = io.BytesIO()
+        grayscale.save(enhanced_buffer, format="PNG")
+        return normal_buffer.getvalue(), enhanced_buffer.getvalue()
 
 
 async def _read_image_text(command: str, image_data: bytes, page_segmentation_mode: str) -> str:
-    if not shutil.which(command):
+    if not shutil.which(command) and not Path(command).is_file():
         raise OcrUnavailableError(
             "Tesseract OCR is not installed. Run the Docker business-service or install Tesseract and set OCR_TESSERACT_COMMAND."
         )
@@ -113,3 +160,17 @@ async def _read_image_text(command: str, image_data: bytes, page_segmentation_mo
     if process.returncode != 0:
         raise OcrUnavailableError(f"Tesseract could not read the image: {stderr.decode(errors='replace').strip()}")
     return stdout.decode("utf-8", errors="replace")
+
+
+def _resolve_tesseract_command(command: str) -> str:
+    discovered = shutil.which(command)
+    if discovered:
+        return discovered
+    if command == "tesseract":
+        for candidate in (
+            Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+            Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+        ):
+            if candidate.is_file():
+                return str(candidate)
+    return command

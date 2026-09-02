@@ -91,7 +91,8 @@ class Settings(BaseSettings):
 
     # --- Email SMTP Settings ----------------------------------------------------
     email_host: str = Field(default="smtp.gmail.com")
-    email_port: int = Field(default=587)
+    email_port: int = Field(default=465)
+    email_timeout_seconds: int = Field(default=8, ge=1, le=60)
     email_host_user: str = Field(default="")
     email_host_password: str = Field(default="")
     email_from_name: str = Field(default="NexusWMS Procurement")

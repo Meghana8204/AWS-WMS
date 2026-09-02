@@ -20,6 +20,8 @@ from app.modules.gate.infrastructure.api.router import (
     router as gate_router,
 )
 from app.modules.gate.infrastructure.api.dashboard import router as dashboard_router
+from app.modules.gate.infrastructure.api.quality import router as quality_router
+from app.modules.gate.infrastructure.api.damage_claims import router as damage_claims_router
 from app.modules.notification.infrastructure.api.router import router as notification_router
 from app.modules.procurement.infrastructure.api.router import router as procurement_router
 from app.modules.receiving.infrastructure.api.router import router as receiving_router
@@ -173,6 +175,52 @@ async def lifespan(app: FastAPI):
             logger.debug(f"JSONB migration skipped or already done: {e}")
 
         logger.debug("Ensured columns exist on supplier")
+
+        # Receiving/damage-claim compatibility for local databases created
+        # before the damaged-goods workflow was introduced. SQLAlchemy's
+        # create_all creates missing tables but intentionally does not add
+        # columns to existing tables.
+        for col in [
+            ("physical_condition_ok", "BOOLEAN"),
+            ("packaging_ok", "BOOLEAN"),
+            ("specifications_ok", "BOOLEAN"),
+            ("serial_batch_number", "VARCHAR(128)"),
+            ("serial_batch_verified", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("disposition_status", "VARCHAR(32)"),
+            ("quarantine_location", "VARCHAR(128)"),
+            ("quarantined_by", "VARCHAR(128)"),
+            ("quarantined_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE receiving_line ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure receiving_line.%s: %s", col[0], exc)
+
+        for col in [
+            ("report_number", "VARCHAR(32)"),
+            ("received_quantity", "NUMERIC(18,4)"),
+            ("status", "VARCHAR(32) NOT NULL DEFAULT 'PENDING_PROCUREMENT'"),
+            ("submitted_by", "VARCHAR(128)"),
+            ("submitted_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE damage_report ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure damage_report.%s: %s", col[0], exc)
+
+        for col in [
+            ("supplier_response", "VARCHAR(32)"),
+            ("resolution", "VARCHAR(32)"),
+            ("supplier_remarks", "TEXT"),
+            ("return_required", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("responded_at", "TIMESTAMP WITH TIME ZONE"),
+            ("closed_by", "VARCHAR(128)"),
+            ("closed_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE supplier_damage_claim ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure supplier_damage_claim.%s: %s", col[0], exc)
 
         # Ensure rfq has missing columns
         for col in [
@@ -546,6 +594,18 @@ async def lifespan(app: FastAPI):
             except Exception: pass
 
         # Create warehouse workflow tables if not exist
+        for col, col_type in [
+            ("quality_issue_image_data", "BYTEA"),
+            ("quality_issue_filename", "VARCHAR(256)"),
+            ("quality_issue_content_type", "VARCHAR(128)"),
+            ("quality_issue_status", "VARCHAR(32)"),
+            ("quality_issue_sent_at", "TIMESTAMP WITH TIME ZONE"),
+            ("quality_issue_forwarded_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE dock_assignment ADD COLUMN IF NOT EXISTS {col} {col_type}")
+            except Exception: pass
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS warehouse_dock (
@@ -886,6 +946,8 @@ def create_app() -> FastAPI:
     app.include_router(gate_router)
     app.include_router(gate_preview_router)
     app.include_router(dashboard_router)
+    app.include_router(quality_router)
+    app.include_router(damage_claims_router)
     app.include_router(procurement_router)
     app.include_router(assembly_router)
 

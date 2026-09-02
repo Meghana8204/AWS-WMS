@@ -24,6 +24,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
@@ -43,6 +51,7 @@ function SubmitQuotation() {
   const [existingQuote, setExistingQuote] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   // Supplier user state
   const [supplierId, setSupplierId] = useState("");
@@ -121,9 +130,19 @@ function SubmitQuotation() {
           });
           setItemsData(mappedItems);
 
+          // Map the stored INR discount back to a percentage for the workspace.
+          const existingSubtotal = (existing.lines || []).reduce((total: number, line: any) => {
+            const quantity = Number(line.quantity || 0);
+            const unitPrice = Number(line.unitPrice || line.unit_price || 0);
+            return total + quantity * unitPrice;
+          }, 0);
+          const existingDiscount = Number(existing.discount || 0);
+
           // Map meta data
           setMetaData({
-            discount: String(Math.floor(parseFloat(existing.discount || "0"))),
+            discount: existingSubtotal > 0
+              ? String(Number(((existingDiscount / existingSubtotal) * 100).toFixed(2)))
+              : "0",
             tax: String(Math.floor(parseFloat(existing.tax || "0"))),
             freightCharges: String(
               Math.floor(parseFloat(existing.freightCharges || existing.freight_charges || "0")),
@@ -266,7 +285,7 @@ function SubmitQuotation() {
           quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
           unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
         })),
-        discount: parseFloat(metaData.discount) || 0,
+        discount: calculateDiscountAmount(),
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
         delivery_time: metaData.deliveryTime,
@@ -300,6 +319,7 @@ function SubmitQuotation() {
       )
     ) {
       toast.error("Please enter a valid unit price for all items before submitting");
+      setShowSummaryModal(false);
       return;
     }
 
@@ -311,6 +331,7 @@ function SubmitQuotation() {
         toast.error(
           `Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`,
         );
+        setShowSummaryModal(false);
         return;
       }
     }
@@ -326,7 +347,7 @@ function SubmitQuotation() {
           quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
           unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
         })),
-        discount: parseFloat(metaData.discount) || 0,
+        discount: calculateDiscountAmount(),
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
         delivery_time: metaData.deliveryTime,
@@ -346,6 +367,7 @@ function SubmitQuotation() {
 
       toast.success("Quotation submitted and locked!");
       setIsLocked(true);
+      setShowSummaryModal(false);
       navigate({ to: "/supplier-dashboard" });
     } catch (error: any) {
       toast.error("Operation failed: " + error.message);
@@ -353,6 +375,47 @@ function SubmitQuotation() {
       setSubmitting(false);
     }
   };
+
+  const calculateSubtotal = () =>
+    (rfq?.items || []).reduce((total: number, item: any) => {
+      const itemData = itemsData[item.materialCode] || {};
+      return total + (Number(itemData.availableQty) || 0) * (Number(itemData.unitPrice) || 0);
+    }, 0);
+
+  const calculateDiscountAmount = () => {
+    const percentage = Math.min(Math.max(Number(metaData.discount) || 0, 0), 100);
+    return calculateSubtotal() * (percentage / 100);
+  };
+
+  const quotationSummary = (() => {
+    const subtotal = calculateSubtotal();
+    const discountPercentage = Math.min(Math.max(Number(metaData.discount) || 0, 0), 100);
+    const discount = calculateDiscountAmount();
+    const taxRate = Number(metaData.tax) || 0;
+    const freight = Number(metaData.freightCharges) || 0;
+    const taxableAmount = subtotal - discount;
+    const taxAmount = taxableAmount * (taxRate / 100);
+
+    return {
+      quotedItems: (rfq?.items || []).filter(
+        (item: any) => Number(itemsData[item.materialCode]?.unitPrice) > 0,
+      ).length,
+      subtotal,
+      discountPercentage,
+      discount,
+      taxRate,
+      taxAmount,
+      freight,
+      total: taxableAmount + taxAmount + freight,
+    };
+  })();
+
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
 
   if (loading) {
     return (
@@ -539,11 +602,12 @@ function SubmitQuotation() {
         >
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Discount (INR)</Label>
+              <Label className="text-xs">Discount (%)</Label>
               <div className="relative">
                 <Input
                   type="number"
                   min="0"
+                  max="100"
                   name="discount"
                   step="1"
                   className="rounded-xl h-10 font-mono"
@@ -652,15 +716,15 @@ function SubmitQuotation() {
                 <div className="flex flex-col gap-2 rounded-2xl border border-border p-4 bg-muted/5">
                   <span className="text-xs font-bold">{docType.label}</span>
                   {uploaded ? (
-                    <div className="flex items-center justify-between gap-2 rounded-xl bg-success-soft/20 px-3 py-2 text-xs text-success-foreground border border-success/20">
+                    <div className="flex items-center justify-between gap-2 rounded-xl border border-success/35 bg-success-soft/35 px-3 py-2 text-xs text-foreground">
                       <div className="flex items-center gap-2">
-                        <FileCheck className="size-4" />
+                        <FileCheck className="size-4 text-success" />
                         <span className="truncate max-w-[300px] font-mono">
                           {uploaded.file_name}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-[10px] uppercase font-bold">Uploaded</span>
+                        <span className="text-[10px] font-bold uppercase text-success">Uploaded</span>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -715,21 +779,141 @@ function SubmitQuotation() {
                 size="lg"
                 className="rounded-xl h-12 text-xs bg-success text-success-foreground hover:bg-success/90 shadow-glow"
                 disabled={submitting}
-                onClick={() => handleSave("SUBMITTED")}
+                onClick={() => setShowSummaryModal(true)}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 size-4 animate-spin" /> Processing...
-                  </>
-                ) : (
-                  <>
-                    <FileCheck className="mr-2 size-4" /> Submit Quotation
-                  </>
-                )}
+                <FileCheck className="mr-2 size-4" /> Submit Quotation
               </Button>
             </div>
           </div>
         )}
+
+        {/* Quotation Summary Modal */}
+        <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
+          <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+            <div className="bg-success p-6 text-white">
+              <DialogHeader>
+                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                  <ShieldCheck className="size-6" /> Quotation Final Review
+                </DialogTitle>
+                <DialogDescription className="text-white/80 font-medium">
+                  Please review your quotation summary before final submission. This action is
+                  irreversible.
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Financial Breakdown */}
+              <div className="rounded-2xl border border-border/60 bg-muted/5 p-5">
+                <h4 className="text-xs font-black uppercase text-muted-foreground tracking-widest mb-4">
+                  Financial Summary
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground font-medium">Subtotal</span>
+                    <span className="font-bold">{formatCurrency(quotationSummary.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground font-medium">
+                      Discount ({quotationSummary.discountPercentage}%)
+                    </span>
+                    <span className="font-bold text-success">
+                      − {formatCurrency(quotationSummary.discount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground font-medium">
+                      GST ({quotationSummary.taxRate}%)
+                    </span>
+                    <span className="font-bold">{formatCurrency(quotationSummary.taxAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground font-medium">Freight Charges</span>
+                    <span className="font-bold">{formatCurrency(quotationSummary.freight)}</span>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
+                    <span className="text-base font-black uppercase">Final Total</span>
+                    <span className="text-2xl font-black text-primary">
+                      {formatCurrency(quotationSummary.total)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Logistics Summary */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    Delivery Time
+                  </Label>
+                  <p className="font-bold text-sm">{metaData.deliveryTime || "Not Specified"}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    Expected Delivery
+                  </Label>
+                  <p className="font-bold text-sm tabular-nums">
+                    {metaData.expectedDeliveryDate || "Not Specified"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    Payment Terms
+                  </Label>
+                  <p className="font-bold text-sm">{metaData.paymentTerms || "Not Specified"}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    Items Quoted
+                  </Label>
+                  <p className="font-bold text-sm">
+                    {quotationSummary.quotedItems} of {rfq.items?.length} Items
+                  </p>
+                </div>
+              </div>
+
+              {/* Remarks Preview */}
+              {metaData.remarks && (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    Special Remarks / Terms
+                  </Label>
+                  <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-xl border border-border/40 italic leading-relaxed">
+                    {metaData.remarks}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="p-6 bg-muted/10 border-t border-border/60">
+              <div className="flex w-full items-center justify-between gap-4">
+                <Button
+                  variant="ghost"
+                  className="rounded-2xl h-11 px-6 font-bold text-xs uppercase"
+                  onClick={() => setShowSummaryModal(false)}
+                  disabled={submitting}
+                >
+                  Go Back & Edit
+                </Button>
+                <Button
+                  className="rounded-2xl h-11 px-8 shadow-glow font-bold text-xs uppercase bg-success hover:bg-success/90 text-white"
+                  onClick={() => handleSave("SUBMITTED")}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="mr-2 size-4 animate-spin" /> Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <FileCheck className="mr-2 size-4" /> Confirm & Submit Bid
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppShell>
   );

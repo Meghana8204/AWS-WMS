@@ -74,6 +74,11 @@ function AssemblyDashboard() {
   }
 
   const stats = data?.stats ?? {};
+  const statusChart = data?.status_chart ?? [];
+  const outputChart = data?.output_chart ?? [];
+  const consumptionChart = data?.consumption_chart ?? [];
+  const quality = data?.quality ?? { defect_rate: 0, completed: 0, rejected: 0 };
+  const orders = data?.orders ?? [];
   const cards = [
     ["Total Assembly Orders", stats.total, "All work orders", ClipboardList, "primary"],
     ["Pending Assembly Orders", stats.pending, "Awaiting start", TimerReset, "warning"],
@@ -125,20 +130,20 @@ function AssemblyDashboard() {
             <SectionCard title="Assembly orders by status" description="Current work-order distribution" icon={Factory}>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <PieChart><Pie data={data.status_chart} dataKey="count" nameKey="status" innerRadius={58} outerRadius={88} paddingAngle={3}>
-                    {data.status_chart.map((_: any, index: number) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
+                  <PieChart><Pie data={statusChart} dataKey="count" nameKey="status" innerRadius={58} outerRadius={88} paddingAngle={3}>
+                    {statusChart.map((_: any, index: number) => <Cell key={index} fill={COLORS[index % COLORS.length]} />)}
                   </Pie><Tooltip /></PieChart>
                 </ResponsiveContainer>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground">
-                {data.status_chart.map((entry: any, index: number) => <span key={entry.status} className="flex items-center gap-1.5"><i className="size-2 rounded-full" style={{ background: COLORS[index] }} />{entry.status}: {entry.count}</span>)}
+                {statusChart.map((entry: any, index: number) => <span key={entry.status} className="flex items-center gap-1.5"><i className="size-2 rounded-full" style={{ background: COLORS[index] }} />{entry.status}: {entry.count}</span>)}
               </div>
             </SectionCard>
 
             <SectionCard title="Daily assembly output" description="Completed and rejected quantity · Last 7 days" icon={Gauge}>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data.output_chart} margin={{ left: -22, right: 8, top: 8 }}>
+                  <AreaChart data={outputChart} margin={{ left: -22, right: 8, top: 8 }}>
                     <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="var(--color-border)" />
                     <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={11} />
                     <YAxis tickLine={false} axisLine={false} fontSize={11} />
@@ -151,8 +156,8 @@ function AssemblyDashboard() {
 
             <SectionCard title="Material consumption" description="Materials issued against assembly orders" icon={PackageSearch}>
               <div className="h-[280px]">
-                {data.consumption_chart.length ? <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.consumption_chart} layout="vertical" margin={{ left: 24, right: 16 }}>
+                {consumptionChart.length ? <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={consumptionChart} layout="vertical" margin={{ left: 24, right: 16 }}>
                     <CartesianGrid strokeDasharray="4 4" horizontal={false} stroke="var(--color-border)" />
                     <XAxis type="number" tickLine={false} axisLine={false} fontSize={11} />
                     <YAxis dataKey="material" type="category" tickLine={false} axisLine={false} width={105} fontSize={11} />
@@ -166,18 +171,18 @@ function AssemblyDashboard() {
               <div className="grid h-[280px] place-items-center">
                 <div className="text-center">
                   <div className="mx-auto grid size-36 place-items-center rounded-full border-[14px] border-primary-soft">
-                    <div><p className="text-4xl font-bold text-primary">{data.quality.defect_rate}%</p><p className="text-xs text-muted-foreground">Defect rate</p></div>
+                    <div><p className="text-4xl font-bold text-primary">{quality.defect_rate}%</p><p className="text-xs text-muted-foreground">Defect rate</p></div>
                   </div>
-                  <div className="mt-6 flex gap-8 text-sm"><span><b>{data.quality.completed}</b> completed</span><span className="text-destructive"><b>{data.quality.rejected}</b> rejected</span></div>
+                  <div className="mt-6 flex gap-8 text-sm"><span><b>{quality.completed}</b> completed</span><span className="text-destructive"><b>{quality.rejected}</b> rejected</span></div>
                 </div>
               </div>
             </SectionCard>
           </div>
 
           <SectionCard title="Assembly orders" description="Orders are created automatically when warehouse material is issued" icon={ClipboardList} className="mt-4">
-            {data.orders.length === 0 ? (
+            {orders.length === 0 ? (
               <div className="grid h-44 place-items-center text-center text-muted-foreground"><div><Factory className="mx-auto mb-2 size-8 opacity-40" /><p>No assembly orders yet.</p><p className="text-xs">Issue a completed warehouse pick task to create the first order.</p></div></div>
-            ) : <div className="grid gap-3 xl:grid-cols-2">{data.orders.map((order: any) => (
+            ) : <div className="grid gap-3 xl:grid-cols-2">{orders.map((order: any) => (
               <Card key={order.id} className="gap-3 rounded-xl p-4 shadow-none">
                 <div className="flex items-start justify-between gap-3"><div><p className="font-mono text-sm font-bold text-primary">{order.order_number}</p><p className="text-sm font-semibold">{order.product_name}</p><p className="text-xs text-muted-foreground">{order.request_number} · {order.department}</p></div><Badge className={statusTone[order.status]}>{order.status.replaceAll("_", " ")}</Badge></div>
                 <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">{order.items.map((item: any) => <span key={item.material_code} className="rounded-lg bg-muted px-2 py-1">{item.material_name || item.material_code}: {item.quantity} {item.uom}</span>)}</div>

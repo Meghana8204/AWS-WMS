@@ -40,6 +40,7 @@ function SupplierDashboard() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
   const [asns, setAsns] = useState<any[]>([]);
+  const [qualityIssues, setQualityIssues] = useState<any[]>([]);
 
   useEffect(() => {
     const userInfoStr = localStorage.getItem("user_info");
@@ -62,15 +63,17 @@ function SupplierDashboard() {
     const fetchAllData = async () => {
       try {
         const sid = userInfo.supplierId || "";
-        const [fetchedRfqs, fetchedQuotes, fetchedAsns] = await Promise.all([
+        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedQualityIssues] = await Promise.all([
           api.getRfqs(sid),
           api.getQuotations(undefined, sid),
           api.getAsns(sid),
+          api.getQualityIssues(),
         ]);
 
         setRfqs(fetchedRfqs);
         setQuotations(fetchedQuotes);
         setAsns(fetchedAsns);
+        setQualityIssues(fetchedQualityIssues);
       } catch (error: any) {
         toast.error("Error loading dashboard data: " + error.message);
       } finally {
@@ -160,6 +163,49 @@ function SupplierDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {qualityIssues.length > 0 && (
+          <Card className="border-destructive/30 bg-destructive/5 shadow-soft">
+            <CardHeader className="flex flex-row items-start justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base text-destructive">
+                  <AlertCircle className="size-5" /> Receiving Quality Issues
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Procurement forwarded failed inspection evidence requiring your attention.
+                </CardDescription>
+              </div>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/supplier/quality-issues">View all</Link>
+              </Button>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-2">
+              {qualityIssues.slice(0, 2).map((issue) => (
+                <div key={issue.gate_entry_id} className="rounded-xl border bg-card p-4">
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-mono font-bold">{issue.asn_number}</p>
+                      <p className="text-xs text-muted-foreground">{issue.po_number}</p>
+                    </div>
+                    <span className="rounded-full bg-destructive/10 px-2 py-1 text-[10px] font-bold text-destructive">
+                      INSPECTION FAILED
+                    </span>
+                  </div>
+                  {issue.image_base64 && (
+                    <img
+                      src={`data:${issue.content_type};base64,${issue.image_base64}`}
+                      alt="Failed receiving inspection"
+                      className="max-h-56 w-full rounded-lg border object-contain"
+                    />
+                  )}
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Vehicle {issue.vehicle_number} · Forwarded {issue.forwarded_at ? new Date(issue.forwarded_at).toLocaleString() : "—"}
+                  </p>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tabular Lists */}
         <Tabs defaultValue="rfqs" className="w-full space-y-4">
