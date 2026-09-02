@@ -248,11 +248,17 @@ function Notifications() {
     if (!damageGrnData?.lines) return [];
     const cleanMat = matString.toLowerCase();
     const matchedLine = damageGrnData.lines.find((l: any) => {
-      const code = (l.item_code || "").toLowerCase();
-      const name = (l.material_name || "").toLowerCase();
+      const code = (l.itemCode || l.item_code || "").toLowerCase();
+      const name = (l.materialName || l.material_name || "").toLowerCase();
       return (code && cleanMat.includes(code)) || (name && cleanMat.includes(name));
     });
-    return matchedLine?.damage_evidence || [];
+    const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence;
+    if (Array.isArray(lineEvidence) && lineEvidence.length > 0) return lineEvidence;
+    if (damageGrnData.lines.length === 1) {
+      const ev = damageGrnData.lines[0]?.damageEvidence || damageGrnData.lines[0]?.damage_evidence;
+      if (Array.isArray(ev) && ev.length > 0) return ev;
+    }
+    return [];
   };
 
   return (
@@ -539,20 +545,22 @@ function Notifications() {
                       ) : linePhotos.length > 0 ? (
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                           {linePhotos.map((photo: any, pIdx: number) => {
-                            const fullUrl = photo.file_path.startsWith("http")
-                              ? photo.file_path
-                              : `${BUSINESS_API_URL}${photo.file_path.startsWith("/") ? "" : "/"}${photo.file_path}`;
+                            const filePath = photo.filePath || photo.file_path || "";
+                            const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
+                            const fullUrl = filePath.startsWith("http")
+                              ? filePath
+                              : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
 
                             return (
                               <div
-                                key={photo.evidence_id || pIdx}
+                                key={photo.evidenceId || photo.evidence_id || pIdx}
                                 className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
                                 onClick={() => setEnlargedPhoto(fullUrl)}
                               >
                                 <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
                                   <img
                                     src={fullUrl}
-                                    alt={photo.file_name || "Damage photo evidence"}
+                                    alt={fileName}
                                     className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
                                     onError={(e) => {
                                       // Fallback on missing or invalid image path
@@ -566,7 +574,7 @@ function Notifications() {
                                   <span className="text-[10px] font-bold">View Full Picture</span>
                                 </div>
                                 <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
-                                  {photo.file_name || `damage_photo_${pIdx + 1}.jpg`}
+                                  {fileName}
                                 </div>
                               </div>
                             );
@@ -586,19 +594,7 @@ function Notifications() {
           </div>
 
           {/* FOOTER */}
-          <DialogFooter className="pt-4 border-t flex flex-wrap items-center justify-between gap-3">
-            <Button
-              variant="default"
-              className="rounded-xl font-bold text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-sm"
-              onClick={() => {
-                setShowDamageModal(false);
-                const targetId = damageGrnData?.grn_id || damageDetails?.grnNumber;
-                window.location.href = targetId ? `/grn?grn_id=${targetId}` : "/grn";
-              }}
-            >
-              <FileText className="mr-1.5 size-4" /> Open Full GRN Details (/grn)
-            </Button>
-
+          <DialogFooter className="pt-4 border-t flex justify-end">
             <Button
               variant="outline"
               className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted"

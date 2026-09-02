@@ -730,6 +730,28 @@ async def notify_vendor_damage(
     if attachments:
         intro_msg += "\n" + "\n".join(name for name, _, _ in attachments)
 
+    import base64
+    from html import escape as html_escape
+
+    photos_html_gallery = ""
+    if attachments:
+        photos_cards = []
+        for fn, cb, mt in attachments:
+            b64_data = base64.b64encode(cb).decode("ascii")
+            data_uri = f"data:{mt};base64,{b64_data}"
+            photos_cards.append(
+                f'<div style="display:inline-block;margin:6px 6px 12px;border:1px solid #fecdd3;border-radius:12px;overflow:hidden;background:#ffffff;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.05)">'
+                f'<img src="{data_uri}" alt="{html_escape(fn)}" style="width:260px;height:180px;object-fit:cover;display:block" />'
+                f'<div style="padding:6px 10px;font-size:11px;font-family:monospace;font-weight:bold;color:#9f1239;background:#fff1f2;border-top:1px solid #fecdd3;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{html_escape(fn)}</div>'
+                f'</div>'
+            )
+        photos_html_gallery = (
+            f'<div style="margin:24px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:14px">'
+            f'<div style="font-size:13px;font-weight:800;color:#9f1239;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">📸 Attached Damage Photo Evidence ({len(attachments)} photo(s))</div>'
+            f'<div style="text-align:center">{"".join(photos_cards)}</div>'
+            f'</div>'
+        )
+
     html_email = render_premium_email(
         eyebrow="DAMAGE & REJECTION NOTICE",
         title=f"Inbound Goods Damage Report – {grn_number}",
@@ -739,6 +761,7 @@ async def notify_vendor_damage(
         items=items_for_render,
         items_title="Damaged & Rejected Materials Breakdown",
         col_headers=("Material Code & Name", "Damaged Qty", "Damage Reason"),
+        custom_html=photos_html_gallery,
         signoff="NexusWMS Receiving & Quality Control Team",
     )
 
@@ -797,6 +820,9 @@ async def notify_vendor_damage(
         link="/notifications",
         is_read=False,
         created_at=datetime.now(),
+        po_number=po_number,
+        vehicle_number=getattr(grn, "vehicle_number", None),
+        warehouse_name=warehouse_name,
     )
     uow.session.add(procurement_notif)
     await uow.commit()
@@ -829,6 +855,7 @@ async def notify_vendor_damage(
         items=items_for_render,
         items_title="Damaged & Rejected Materials Breakdown",
         col_headers=("Material Code & Name", "Damaged Qty", "Damage Reason"),
+        custom_html=photos_html_gallery,
         signoff="NexusWMS Inbound Receiving & Quality Team",
     )
 
