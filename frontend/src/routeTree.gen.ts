@@ -39,7 +39,6 @@ import { Route as GrnRouteImport } from './routes/grn'
 import { Route as InventoryRouteImport } from './routes/inventory'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as MasterDataRouteImport } from './routes/master-data'
-import { Route as MaterialDataRouteImport } from './routes/material-data'
 import { Route as NewSupplierRouteImport } from './routes/new-supplier'
 import { Route as NotificationsRouteImport } from './routes/notifications'
 import { Route as PickTasksRouteImport } from './routes/pick-tasks'
@@ -229,11 +228,6 @@ const LoginRoute = LoginRouteImport.update({
 const MasterDataRoute = MasterDataRouteImport.update({
   id: '/master-data',
   path: '/master-data',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const MaterialDataRoute = MaterialDataRouteImport.update({
-  id: '/material-data',
-  path: '/material-data',
   getParentRoute: () => rootRouteImport,
 } as any)
 const NewSupplierRoute = NewSupplierRouteImport.update({
@@ -449,7 +443,6 @@ export interface FileRoutesByFullPath {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
-  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -517,7 +510,6 @@ export interface FileRoutesByTo {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
-  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -584,7 +576,6 @@ export interface FileRoutesById {
   '/inventory': typeof InventoryRoute
   '/login': typeof LoginRoute
   '/master-data': typeof MasterDataRoute
-  '/material-data': typeof MaterialDataRoute
   '/new-supplier': typeof NewSupplierRoute
   '/notifications': typeof NotificationsRoute
   '/pick-tasks': typeof PickTasksRoute
@@ -654,7 +645,6 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
-    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -722,7 +712,6 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
-    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -788,7 +777,6 @@ export interface FileRouteTypes {
     | '/inventory'
     | '/login'
     | '/master-data'
-    | '/material-data'
     | '/new-supplier'
     | '/notifications'
     | '/pick-tasks'
@@ -857,7 +845,6 @@ export interface RootRouteChildren {
   InventoryRoute: typeof InventoryRoute
   LoginRoute: typeof LoginRoute
   MasterDataRoute: typeof MasterDataRoute
-  MaterialDataRoute: typeof MaterialDataRoute
   NewSupplierRoute: typeof NewSupplierRoute
   NotificationsRoute: typeof NotificationsRoute
   PickTasksRoute: typeof PickTasksRoute
@@ -1100,13 +1087,6 @@ declare module '@tanstack/react-router' {
       path: '/master-data'
       fullPath: '/master-data'
       preLoaderRoute: typeof MasterDataRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/material-data': {
-      id: '/material-data'
-      path: '/material-data'
-      fullPath: '/material-data'
-      preLoaderRoute: typeof MaterialDataRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/new-supplier': {
@@ -1417,7 +1397,6 @@ const rootRouteChildren: RootRouteChildren = {
   InventoryRoute: InventoryRoute,
   LoginRoute: LoginRoute,
   MasterDataRoute: MasterDataRoute,
-  MaterialDataRoute: MaterialDataRoute,
   NewSupplierRoute: NewSupplierRoute,
   NotificationsRoute: NotificationsRoute,
   PickTasksRoute: PickTasksRoute,

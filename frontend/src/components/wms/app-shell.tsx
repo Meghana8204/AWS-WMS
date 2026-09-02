@@ -41,7 +41,6 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
-  { label: "Material Data", to: "/material-data", icon: Database },
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
   { label: "Inventory", to: "/inventory", icon: Boxes },
   { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
@@ -258,7 +257,6 @@ export function AppShell({
     path === "/warehouse-dashboard" ||
     [
       "/inventory",
-      "/material-data",
       "/warehouse-storage",
       "/warehouse/material-requests",
       "/notifications",
