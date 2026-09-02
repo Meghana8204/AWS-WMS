@@ -38,45 +38,48 @@ def test_good_and_damage_qr_payload_independence():
     grn_num = "GRN-2026-0001"
     item_code = "MAT-001"
     mat_name = "Steel Coil"
-    uom = "PCS"
+    uom = "BUNDLE"
 
     # Good QR Payload format
     good_qty = Decimal("7")
-    good_payload = (
-        f"📦 WMS GOOD STOCK QR\n"
-        f"----------------------------------------\n"
-        f"• GRN Number    : {grn_num}\n"
-        f"• Material Code : {item_code}\n"
-        f"• Material Name : {mat_name}\n"
-        f"• Category      : Raw Materials\n"
-        f"• Batch Number  : BATCH-001\n"
-        f"• Good Quantity : {good_qty} {uom}\n"
-        f"• UOM           : {uom}\n"
-        f"• Quality Status: GOOD / ACCEPTED\n"
-        f"• QR ID         : QR-MAT-{item_code}\n"
-        f"----------------------------------------"
-    )
+    good_payload = "\n".join([
+        f"Material Code: {item_code}",
+        f"Material Name: {mat_name}",
+        "Material Category: Raw Materials",
+        f"Material Variant Code: {item_code}-V001",
+        "Batch: BATCH-001",
+        "Size: 25 mm × 3 m",
+        "Color: White",
+        "Warehouse: Main Warehouse",
+        "Grade: ISI",
+        f"UOM: {uom}",
+        "Inspection Status: COMPLETED",
+        f"Batch Quantity: {good_qty} {uom}",
+    ])
 
-    assert "GOOD / ACCEPTED" in good_payload
-    assert f"Good Quantity : {good_qty}" in good_payload
+    assert "Material Code: MAT-001" in good_payload
+    assert f"Batch Quantity: {good_qty} {uom}" in good_payload
+    assert "Inspection Status: COMPLETED" in good_payload
 
     # Damage QR Payload format
     dmg_qty = Decimal("3")
-    dmg_payload = (
-        f"⚠️ WMS DAMAGED / REJECTED GOODS QR\n"
-        f"----------------------------------------\n"
-        f"• GRN Number      : {grn_num}\n"
-        f"• Material Code   : {item_code}\n"
-        f"• Material Name   : {mat_name}\n"
-        f"• Damage Lot No   : DMG-LOT-{grn_num}-{item_code}\n"
-        f"• Damaged Qty     : {dmg_qty} {uom}\n"
-        f"• UOM             : {uom}\n"
-        f"• Damage Reason   : Physical Damage\n"
-        f"• Quality Status  : DAMAGED / REJECTED\n"
-        f"• Quarantine Loc  : QUARANTINE-ZONE-A\n"
-        f"• QR ID           : DMG-{grn_num}-{item_code}-01\n"
-        f"----------------------------------------"
-    )
+    dmg_payload = "\n".join([
+        f"Material Code: {item_code}",
+        f"Material Name: {mat_name}",
+        "Material Category: Raw Materials",
+        f"Material Variant Code: {item_code}-V001",
+        f"Batch: DMG-LOT-{grn_num}-{item_code}",
+        "Size: 25 mm × 3 m",
+        "Color: White",
+        "Warehouse: Main Warehouse",
+        "Grade: ISI",
+        f"UOM: {uom}",
+        "Inspection Status: PARTIAL",
+        f"Batch Quantity: {dmg_qty} {uom}",
+    ])
 
-    assert "DAMAGED / REJECTED" in dmg_payload
-    assert f"Damaged Qty     : {dmg_qty}" in dmg_payload
+    assert "Material Code: MAT-001" in dmg_payload
+    assert f"Batch Quantity: {dmg_qty} {uom}" in dmg_payload
+    assert "Inspection Status: PARTIAL" in dmg_payload
+
+

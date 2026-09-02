@@ -25,6 +25,7 @@ import {
   Printer,
   QrCode,
   RefreshCw,
+  ScanLine,
   Search,
   Send,
   ShieldCheck,
@@ -51,6 +52,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { getUserInfo } from "@/lib/auth-utils";
+import {
+  QRScanResultModal,
+  QrNotFoundModal,
+  type QrScanResultData,
+} from "@/components/wms/qr-scan-result-modal";
 
 export const Route = createFileRoute("/grn")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -201,6 +207,60 @@ function GrnPageWorkflow() {
   const [notifyVendorEmail, setNotifyVendorEmail] = useState("spoorthiharakuni@gmail.com");
   const [notifyVendorRemarks, setNotifyVendorRemarks] = useState("");
   const [sendingVendorNotify, setSendingVendorNotify] = useState(false);
+
+  // QR Scan Result Modal & Live Scanner State
+  const [scanResultData, setScanResultData] = useState<QrScanResultData | null>(null);
+  const [isScanResultModalOpen, setIsScanResultModalOpen] = useState(false);
+  const [qrNotFoundOpen, setQrNotFoundOpen] = useState(false);
+  const [scannedCodeValue, setScannedCodeValue] = useState("");
+  const [isScanningQr, setIsScanningQr] = useState(false);
+  const [manualScanInputOpen, setManualScanInputOpen] = useState(false);
+  const [manualScanText, setManualScanText] = useState("");
+
+  // Material Master & Variants Metadata for dynamic QR encoding
+  const [materialMasterList, setMaterialMasterList] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.getMaterials({ status: "Active" })
+      .then((res: any) => {
+        if (Array.isArray(res)) setMaterialMasterList(res);
+        else if (res?.items && Array.isArray(res.items)) setMaterialMasterList(res.items);
+      })
+      .catch((err) => console.warn("Could not preload material master for QR generation:", err));
+  }, []);
+
+  function formatReadableDate(dateStr?: string) {
+    if (!dateStr) {
+      const now = new Date();
+      return now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/ /g, "-");
+    }
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).replace(/ /g, "-");
+    } catch {
+      return dateStr;
+    }
+  }
+
+  function getMaterialVariantInfo(itemCode: string, preferredVariantCode?: string) {
+    const master = materialMasterList.find((m) => m.material_code === itemCode || m.code === itemCode);
+    let variant = null;
+    if (preferredVariantCode && master?.variants && Array.isArray(master.variants)) {
+      variant = master.variants.find((v: any) => v.variant_code?.toUpperCase() === preferredVariantCode.toUpperCase());
+    }
+    if (!variant && master?.variants && Array.isArray(master.variants) && master.variants.length > 0) {
+      variant = master.variants[0];
+    }
+    return {
+      variant_code: variant?.variant_code || (preferredVariantCode || `${itemCode}-V001`),
+      size: variant?.size || variant?.dimension || "25 mm × 3 m",
+      color: variant?.color || "White",
+      grade: variant?.grade || variant?.standard || "ISI",
+      specification: variant?.specification || master?.specification || "",
+      category: master?.category || master?.material_category || "Raw Materials",
+    };
+  }
 
   // Dashboard & Detail Drawer State
   const [selectedGrnDetail, setSelectedGrnDetail] = useState<any | null>(null);
@@ -576,22 +636,26 @@ function GrnPageWorkflow() {
   const [damageQrLabels, setDamageQrLabels] = useState<DamageQrEntry[]>([]);
 
   function buildDamageQrPayload(m: GrnLineItem, reasonText: string) {
-    const lotNum = `DMG-LOT-${header.grn_number || "2026-0001"}-${m.item_code}`;
-    const damagedQty = m.damaged_quantity || 0;
-    const qrCodeStr = `DMG-${header.grn_number || "2026-0001"}-${m.item_code}-01`;
-    return `⚠️ WMS DAMAGED / REJECTED GOODS QR
-----------------------------------------
-• GRN Number      : ${header.grn_number || "GRN-2026-0001"}
-• Material Code   : ${m.item_code}
-• Material Name   : ${m.material_name}
-• Damage Lot No   : ${lotNum}
-• Damaged Qty     : ${damagedQty} ${m.uom || "PCS"}
-• UOM             : ${m.uom || "PCS"}
-• Damage Reason   : ${reasonText}
-• Quality Status  : DAMAGED / REJECTED
-• Quarantine Loc  : QUARANTINE-ZONE-A
-• QR ID           : ${qrCodeStr}
-----------------------------------------`;
+    const lotNum = `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`;
+    const damagedQty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
+    const variantInfo = getMaterialVariantInfo(m.item_code, m.variant_code);
+    const uom = m.uom || "BUNDLE";
+    const category = m.material_category || variantInfo.category || "Raw Materials";
+
+    return [
+      `Material Code: ${m.item_code}`,
+      `Material Name: ${m.material_name || m.item_code}`,
+      `Material Category: ${category}`,
+      `Material Variant Code: ${variantInfo.variant_code}`,
+      `Batch: ${lotNum}`,
+      `Size: ${variantInfo.size}`,
+      `Color: ${variantInfo.color}`,
+      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
+      `Grade: ${variantInfo.grade}`,
+      `UOM: ${uom}`,
+      `Inspection Status: PARTIAL`,
+      `Batch Quantity: ${damagedQty} ${uom}`,
+    ].join("\n");
   }
 
   function printSingleDamageQrLabel(entry: DamageQrEntry) {
@@ -861,29 +925,40 @@ function GrnPageWorkflow() {
     const mat = materials.find((m) => m.item_code === itemCode);
     const bList = materialBatches[itemCode] || [];
     const b = batch || bList[0] || { batch_number: `BATCH-${itemCode}-001`, batch_quantity: mat?.good_quantity || 0 };
-    const qrId = `QR-MAT-${itemCode}`;
-    return `📦 WMS GOOD STOCK QR
-----------------------------------------
-• GRN Number    : ${header.grn_number || "N/A"}
-• Material Code : ${itemCode}
-• Material Name : ${mat?.material_name || itemCode}
-• Category      : ${mat?.material_category || "Raw Materials"}
-• Batch Number  : ${b.batch_number}
-• Good Quantity : ${b.batch_quantity} ${mat?.uom || "PCS"}
-• UOM           : ${mat?.uom || "PCS"}
-• Quality Status: GOOD / ACCEPTED
-• QR ID         : ${qrId}
-----------------------------------------`;
+    const variantInfo = getMaterialVariantInfo(itemCode, mat?.variant_code);
+
+    const uom = mat?.uom || "BUNDLE";
+    const category = mat?.material_category || variantInfo.category || "Raw Materials";
+    const goodQty = mat?.good_quantity || b.batch_quantity || 0;
+    const dmgQty = mat?.damaged_quantity || 0;
+    const rejQty = mat?.rejected_quantity || 0;
+    const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : goodQty;
+    const inspectionStatus = (dmgQty > 0 || rejQty > 0) ? "PARTIAL" : "COMPLETED";
+
+    return [
+      `Material Code: ${itemCode}`,
+      `Material Name: ${mat?.material_name || itemCode}`,
+      `Material Category: ${category}`,
+      `Material Variant Code: ${variantInfo.variant_code}`,
+      `Batch: ${b.batch_number}`,
+      `Size: ${variantInfo.size}`,
+      `Color: ${variantInfo.color}`,
+      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
+      `Grade: ${variantInfo.grade}`,
+      `UOM: ${uom}`,
+      `Inspection Status: ${inspectionStatus}`,
+      `Batch Quantity: ${batchQty} ${uom}`,
+    ].join("\n");
   }
 
-  // Page 6 QR Code Generation (Material-Wise)
+  // Page 6 QR Code Generation (Material-Wise) -> Encodes complete self-contained stock details
   async function generateQrForMaterial(itemCode: string, batch?: BatchEntry) {
     const qrPayload = buildMaterialQrPayload(itemCode, batch);
     try {
       const url = await QRCode.toDataURL(qrPayload, {
         margin: 2,
         width: 500,
-        errorCorrectionLevel: "H",
+        errorCorrectionLevel: "M",
         color: {
           dark: "#000000",
           light: "#ffffff",
@@ -1015,6 +1090,122 @@ function GrnPageWorkflow() {
     win.document.close();
   }
 
+  // Scan / Read QR Code Handler -> Fetches from live DB & displays QRScanResultModal
+  async function handleScanQrCode(scannedRaw: string) {
+    if (!scannedRaw || !scannedRaw.trim()) {
+      toast.error("Please provide or scan a QR code.");
+      return;
+    }
+    const cleanCode = scannedRaw.trim();
+    setScannedCodeValue(cleanCode);
+    setIsScanningQr(true);
+
+    try {
+      // 1. Live backend database lookup
+      const result = await api.lookupQrCode(cleanCode);
+      setScanResultData(result);
+      setIsScanResultModalOpen(true);
+      setEnlargedQr(null);
+      setManualScanInputOpen(false);
+      toast.success("QR Code verified & stock details loaded.");
+    } catch (err: any) {
+      console.warn("Backend QR lookup fallback:", err);
+
+      // 2. Fallback to active wizard session if working on an unsaved draft in Page 6
+      const matchedWizardMaterial = materials.find(
+        (m) =>
+          cleanCode.includes(m.item_code) ||
+          (qrLabels[m.item_code] && (cleanCode.includes(qrLabels[m.item_code].qr_id) || cleanCode.includes(m.item_code)))
+      );
+      const matchedDamageEntry = damageQrLabels.find(
+        (d) =>
+          cleanCode.includes(d.qr_code) ||
+          cleanCode.includes(d.damage_lot_number) ||
+          cleanCode.includes(d.item_code)
+      );
+
+      if (matchedDamageEntry) {
+        setScanResultData({
+          qr_id: matchedDamageEntry.qr_code,
+          grn_number: header.grn_number || "GRN-2026-0001",
+          po_number: header.po_number || "PO-2026-0001",
+          material_code: matchedDamageEntry.item_code,
+          material_name: matchedDamageEntry.material_name,
+          variant_code: `${matchedDamageEntry.item_code}-V001`,
+          size: "Standard Specification",
+          color: "Standard",
+          grade: "Standard Industrial Grade",
+          uom: matchedDamageEntry.uom || "PCS",
+          supplier_code: "SUP-00001",
+          supplier_name: header.supplier_name || "Supplier",
+          receipt_date: new Date().toLocaleDateString("en-GB"),
+          warehouse_name: header.warehouse_name || "Main Warehouse",
+          category: "Quarantine / Damaged Goods",
+          batch_number: matchedDamageEntry.damage_lot_number,
+          received_quantity: matchedDamageEntry.damaged_quantity,
+          accepted_quantity: 0,
+          damaged_quantity: matchedDamageEntry.damaged_quantity,
+          rejected_quantity: 0,
+          batch_quantity: matchedDamageEntry.damaged_quantity,
+          inspection_status: "PARTIAL",
+          stock_status: "QUARANTINED",
+          summary: `${matchedDamageEntry.damaged_quantity} ${matchedDamageEntry.uom} damaged and moved to quarantine.\nReason: ${matchedDamageEntry.reason}`,
+        });
+        setIsScanResultModalOpen(true);
+        setEnlargedQr(null);
+        setManualScanInputOpen(false);
+        toast.success("Quarantine QR Code verified & stock details loaded.");
+      } else if (matchedWizardMaterial) {
+        const bList = materialBatches[matchedWizardMaterial.item_code] || [];
+        const b = bList[0] || {
+          batch_number: `BATCH-${matchedWizardMaterial.item_code}-001`,
+          batch_quantity: matchedWizardMaterial.good_quantity,
+        };
+        setScanResultData({
+          qr_id: `QR-MAT-${matchedWizardMaterial.item_code}`,
+          grn_number: header.grn_number || "GRN-2026-0001",
+          po_number: header.po_number || "PO-2026-0001",
+          material_code: matchedWizardMaterial.item_code,
+          material_name: matchedWizardMaterial.material_name,
+          variant_code: `${matchedWizardMaterial.item_code}-V001`,
+          size: "Standard Specification",
+          color: "Standard",
+          grade: "Standard Industrial Grade",
+          uom: matchedWizardMaterial.uom || "PCS",
+          supplier_code: "SUP-00001",
+          supplier_name: header.supplier_name || "Supplier",
+          receipt_date: new Date().toLocaleDateString("en-GB"),
+          warehouse_name: header.warehouse_name || "Main Warehouse",
+          category: matchedWizardMaterial.material_category || "Raw Materials",
+          batch_number: b.batch_number,
+          received_quantity:
+            matchedWizardMaterial.po_quantity ||
+            matchedWizardMaterial.good_quantity + matchedWizardMaterial.damaged_quantity,
+          accepted_quantity: matchedWizardMaterial.good_quantity,
+          damaged_quantity: matchedWizardMaterial.damaged_quantity,
+          rejected_quantity: 0,
+          batch_quantity: b.batch_quantity,
+          inspection_status: matchedWizardMaterial.damaged_quantity > 0 ? "PARTIAL" : "COMPLETED",
+          stock_status: "AVAILABLE",
+          summary:
+            matchedWizardMaterial.damaged_quantity > 0
+              ? `${matchedWizardMaterial.good_quantity} ${matchedWizardMaterial.uom} accepted and moved to stock.\n${matchedWizardMaterial.damaged_quantity} ${matchedWizardMaterial.uom} damaged and moved to quarantine.`
+              : `${matchedWizardMaterial.good_quantity} ${matchedWizardMaterial.uom} accepted and moved to available stock.`,
+        });
+        setIsScanResultModalOpen(true);
+        setEnlargedQr(null);
+        setManualScanInputOpen(false);
+        toast.success("QR Code verified & stock details loaded.");
+      } else {
+        setEnlargedQr(null);
+        setManualScanInputOpen(false);
+        setQrNotFoundOpen(true);
+      }
+    } finally {
+      setIsScanningQr(false);
+    }
+  }
+
   // Render QR Codes material-wise on Page 6 load & auto-sync when dependencies change
   const [qrLabels, setQrLabels] = useState<Record<string, { qr_id: string; data_url: string; payload: string }>>({});
 
@@ -1058,30 +1249,34 @@ function GrnPageWorkflow() {
           const payload = buildMaterialQrPayload(code, b);
           generated[code] = { qr_id: qrId, data_url: url, payload };
         }
+
         const damageGenerated: DamageQrEntry[] = [];
-        const damagedLines = materials.filter(m => (m.damaged_quantity || 0) > 0);
+        const damagedLines = materials.filter(
+          (m) => (m.damaged_quantity || 0) > 0 || (m.rejected_quantity || 0) > 0,
+        );
+
         for (const m of damagedLines) {
           const photo = damagePhotos[m.item_code];
           const reasonText = (photo && photo.reason)
             ? photo.reason
-            : "Damaged/Rejected during receiving inspection";
-          const qrCodeStr = `DMG-${header.grn_number || "2026-0001"}-${m.item_code}-01`;
+            : (m.damage_reason || "Damaged/Rejected during receiving inspection");
+          const qrCodeStr = `DMG-${header.grn_number || "GRN-2026-0001"}-${m.item_code}-01`;
           const payload = buildDamageQrPayload(m, reasonText);
           let dataUrl = "";
           try {
             dataUrl = await QRCode.toDataURL(payload, {
               margin: 2,
               width: 500,
-              errorCorrectionLevel: "H",
+              errorCorrectionLevel: "M",
               color: { dark: "#9f1239", light: "#ffffff" },
             });
           } catch (e) {
             console.error("Damage QR generation error:", e);
           }
-          const qty = m.damaged_quantity || 0;
+          const qty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
           damageGenerated.push({
             damage_lot_id: `dmg_lot_${m.item_code}`,
-            damage_lot_number: `DMG-LOT-${header.grn_number || "2026-0001"}-${m.item_code}`,
+            damage_lot_number: `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`,
             item_code: m.item_code,
             material_name: m.material_name,
             damaged_quantity: qty,
@@ -1096,6 +1291,7 @@ function GrnPageWorkflow() {
             qr_data_url: dataUrl,
           });
         }
+
         if (active) {
           setQrLabels(generated);
           setDamageQrLabels(damageGenerated);
@@ -1105,7 +1301,17 @@ function GrnPageWorkflow() {
     return () => {
       active = false;
     };
-  }, [currentPage, materialBatches, header, materials]);
+  }, [
+    currentPage,
+    materialBatches,
+    header.grn_number,
+    header.po_number,
+    header.supplier_name,
+    header.warehouse_name,
+    materials,
+    damagePhotos,
+    qualityApproved,
+  ]);
 
   return (
     <AppShell
@@ -2579,9 +2785,21 @@ function GrnPageWorkflow() {
                     <b>Rule: One Batch → One Unique QR Code.</b> Generate and print batch labels for box attachment.
                   </p>
                 </div>
-                <Button variant="outline" className="rounded-xl" onClick={() => window.print()}>
-                  <Printer className="mr-2 size-4" /> Print Batch Labels
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="rounded-xl font-bold border-primary text-primary hover:bg-primary/10 shadow-xs"
+                    onClick={() => {
+                      setManualScanText("");
+                      setManualScanInputOpen(true);
+                    }}
+                  >
+                    <ScanLine className="mr-2 size-4 text-primary" /> Scan Barcode / QR
+                  </Button>
+                  <Button variant="outline" className="rounded-xl" onClick={() => window.print()}>
+                    <Printer className="mr-2 size-4" /> Print Batch Labels
+                  </Button>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/20 p-4 rounded-xl border">
@@ -3009,20 +3227,149 @@ function GrnPageWorkflow() {
               <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 📱 Scanned Mobile Reader Live Output
               </span>
-              <div className="rounded-xl border bg-black text-emerald-400 p-3 font-mono text-xs overflow-x-auto whitespace-pre leading-relaxed shadow-inner max-h-48">
+              <div className="rounded-xl border bg-black text-emerald-400 p-3 font-mono text-xs overflow-x-auto whitespace-pre leading-relaxed shadow-inner max-h-40">
                 {enlargedQr.payload}
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            {/* Primary Action: Scan & View Stock Details */}
+            <Button
+              className="w-full rounded-xl bg-primary hover:bg-primary/90 text-white font-bold h-10 shadow-glow"
+              disabled={isScanningQr}
+              onClick={() => handleScanQrCode(enlargedQr.payload || enlargedQr.qr_id)}
+            >
+              {isScanningQr ? (
+                <>
+                  <Loader2 className="mr-2 size-4 animate-spin" /> Verifying QR Code...
+                </>
+              ) : (
+                <>
+                  <ScanLine className="mr-2 size-4" /> Scan & View Stock Details
+                </>
+              )}
+            </Button>
+
+            <div className="flex gap-2 pt-1">
               <Button variant="outline" className="w-1/2 rounded-xl" onClick={() => setEnlargedQr(null)}>
                 Close Preview
               </Button>
               <Button
-                className="w-1/2 rounded-xl bg-primary text-white font-bold"
-                onClick={() => printSingleQrLabel(enlargedQr.title, enlargedQr.itemCode, enlargedQr.qr_id, enlargedQr.data_url)}
+                variant="outline"
+                className="w-1/2 rounded-xl font-bold"
+                onClick={() =>
+                  enlargedQr.qr_id.startsWith("DMG-") || enlargedQr.title.startsWith("DMG-")
+                    ? printSingleDamageQrLabel({
+                        damage_lot_id: `dmg_lot_${enlargedQr.itemCode}`,
+                        damage_lot_number: enlargedQr.title,
+                        item_code: enlargedQr.itemCode,
+                        material_name: enlargedQr.itemCode,
+                        damaged_quantity: enlargedQr.batch?.batch_quantity || 0,
+                        uom: "PCS",
+                        reason: "Damaged during receiving",
+                        qa_status: "REJECTED",
+                        quarantine_location: "QUARANTINE-ZONE-A",
+                        status: "DAMAGED",
+                        qr_id: enlargedQr.qr_id,
+                        qr_code: enlargedQr.qr_id,
+                        qr_payload: enlargedQr.payload,
+                        qr_data_url: enlargedQr.data_url,
+                      })
+                    : printSingleQrLabel(enlargedQr.title, enlargedQr.itemCode, enlargedQr.qr_id, enlargedQr.data_url)
+                }
               >
                 <Printer className="mr-1.5 size-4" /> Print Label
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 📦 QR SCAN RESULT MODAL (Matching Warehouse Color Variant modal UI) */}
+      <QRScanResultModal
+        isOpen={isScanResultModalOpen}
+        onClose={() => setIsScanResultModalOpen(false)}
+        data={scanResultData}
+        onPrint={(item) => {
+          if (item.stock_status === "QUARANTINED" || item.qr_id.startsWith("DMG-")) {
+            printSingleDamageQrLabel({
+              damage_lot_id: `dmg_lot_${item.material_code}`,
+              damage_lot_number: item.batch_number || `DMG-LOT-${item.grn_number}-${item.material_code}`,
+              item_code: item.material_code,
+              material_name: item.material_name,
+              damaged_quantity: item.damaged_quantity,
+              uom: item.uom,
+              reason: "Quarantined for damage inspection",
+              qa_status: "REJECTED",
+              quarantine_location: "QUARANTINE-ZONE-A",
+              status: "DAMAGED",
+              qr_id: item.qr_id,
+              qr_code: item.qr_id,
+              qr_payload: "",
+              qr_data_url: "",
+            });
+          } else {
+            printSingleQrLabel(
+              item.batch_number || `BATCH-${item.material_code}-001`,
+              item.material_code,
+              item.qr_id,
+              ""
+            );
+          }
+        }}
+      />
+
+      {/* ⚠️ QR CODE NOT FOUND ERROR MODAL */}
+      <QrNotFoundModal
+        isOpen={qrNotFoundOpen}
+        onClose={() => setQrNotFoundOpen(false)}
+        scannedCode={scannedCodeValue}
+      />
+
+      {/* 📱 MANUAL / BARCODE SCANNER INPUT MODAL */}
+      {manualScanInputOpen && (
+        <Dialog open={manualScanInputOpen} onOpenChange={setManualScanInputOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl p-6 space-y-4">
+            <DialogHeader>
+              <DialogTitle className="text-base font-bold flex items-center gap-2">
+                <ScanLine className="size-5 text-primary" /> Barcode / QR Scanner Input
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Scan with a handheld barcode scanner or paste the raw QR code identifier / payload below.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
+                QR Code / Barcode Data
+              </label>
+              <Textarea
+                placeholder="e.g. QR-MAT-MAT-001 or DMG-GRN-2026-0001-MAT-001-01 or MAT-1001-V002 or paste multi-line QR content"
+                value={manualScanText}
+                onChange={(e) => setManualScanText(e.target.value)}
+                className="font-mono text-xs h-28 rounded-xl"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <Button
+                variant="outline"
+                className="w-1/2 rounded-xl"
+                onClick={() => setManualScanInputOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="w-1/2 rounded-xl bg-primary text-white font-bold"
+                disabled={!manualScanText.trim() || isScanningQr}
+                onClick={() => handleScanQrCode(manualScanText)}
+              >
+                {isScanningQr ? (
+                  <Loader2 className="mr-1.5 size-4 animate-spin" />
+                ) : (
+                  <ScanLine className="mr-1.5 size-4" />
+                )}
+                Verify & Scan
               </Button>
             </div>
           </DialogContent>

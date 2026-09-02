@@ -5,11 +5,12 @@
  */
 
 export const BUSINESS_API_URL =
-  typeof window !== "undefined"
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_BUSINESS_API_URL) ||
+  (typeof window !== "undefined"
     ? window.location.hostname.includes("loca.lt")
       ? "https://wms-mobile-backend-8000.loca.lt"
       : `http://${window.location.hostname}:8000`
-    : "http://localhost:8000";
+    : "http://localhost:8000");
 function getApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") return fallback;
   const { detail, message } = payload as {
@@ -224,18 +225,21 @@ export const api = {
       method: "POST",
     });
   },
-  async completeReceiving(allocationRequestId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/complete`, {
+  async completeDockReceiving(allocationRequestId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(allocationRequestId)}/complete`, {
+      method: "POST",
+    });
+  },
+  async releaseDock(id: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/release`, {
       method: "POST",
     });
   },
   async releaseDockAssignment(allocationRequestId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/release`, {
-      method: "POST",
-    });
+    return this.releaseDock(allocationRequestId);
   },
   async cancelDockAllocation(allocationRequestId: string, reason?: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/cancel`, {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(allocationRequestId)}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
@@ -302,28 +306,6 @@ export const api = {
         body: JSON.stringify({ status, reason }),
       },
     );
-  },
-  async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
-      method: "POST",
-      body: JSON.stringify({ allocation_request_id: allocationRequestId, dock_id: dockId }),
-    });
-  },
-  async markVehicleArrived(id: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/arrive`, {
-      method: "POST",
-    });
-  },
-  async releaseDock(id: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${encodeURIComponent(id)}/release`, {
-      method: "POST",
-    });
-  },
-  async getPendingAllocations(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
-  },
-  async getDockHistory(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
   },
   async assignDock(gateEntryId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/assign-dock`, {
@@ -1263,6 +1245,12 @@ export const api = {
       body: JSON.stringify(batches),
     });
   },
+  async generateDamageQrs(grnId: string): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/receiving/grn/${encodeURIComponent(grnId)}/damage-qrs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  },
   async uploadGrnDocument(grnId: string, formData: FormData): Promise<any> {
     const token = localStorage.getItem("auth_token");
     const headers: Record<string, string> = {};
@@ -1294,5 +1282,9 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+  },
+  async lookupQrCode(code: string): Promise<any> {
+    const encoded = encodeURIComponent(code.trim());
+    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/qr-lookup?code=${encoded}`);
   },
 };

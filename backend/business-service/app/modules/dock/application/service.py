@@ -175,10 +175,10 @@ class DockAllocationService:
     ) -> List[DockMasterModel]:
         await DockAllocationService.seed_default_docks_if_empty(session)
         query = select(DockMasterModel).where(DockMasterModel.is_active == True)
-        if dock_type:
-            query = query.where(DockMasterModel.dock_type == dock_type.upper())
-        if status:
-            query = query.where(DockMasterModel.status == status.upper())
+        if dock_type and isinstance(dock_type, str) and dock_type.strip().upper() != "ALL":
+            query = query.where(DockMasterModel.dock_type == dock_type.strip().upper())
+        if status and isinstance(status, str) and status.strip().upper() != "ALL":
+            query = query.where(DockMasterModel.status == status.strip().upper())
         query = query.order_by(DockMasterModel.dock_code)
         result = await session.execute(query)
         return list(result.scalars().all())

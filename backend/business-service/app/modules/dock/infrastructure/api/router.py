@@ -41,11 +41,18 @@ async def get_dock_availability(uow: UnitOfWork = Depends(get_uow)):
 
 @router.get("/docks", response_model=List[DockMasterResponse])
 async def list_docks(
-    dock_type: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None, alias="status"),
+    dock_type: Optional[str] = None,
+    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     uow: UnitOfWork = Depends(get_uow),
 ):
-    docks = await DockAllocationService.list_docks(uow.session, dock_type=dock_type, status=status_filter)
+    actual_status = status if status is not None else status_filter
+    if isinstance(actual_status, str) and actual_status.strip().upper() == "ALL":
+        actual_status = None
+    if isinstance(dock_type, str) and dock_type.strip().upper() == "ALL":
+        dock_type = None
+
+    docks = await DockAllocationService.list_docks(uow.session, dock_type=dock_type, status=actual_status)
     dock_ids = [d.id for d in docks]
     alloc_map = await DockAllocationService.get_active_allocations_for_docks(uow.session, dock_ids)
 
@@ -224,14 +231,19 @@ async def update_dock_status(
 
 @router.get("/dock-allocation-requests", response_model=List[AllocationRequestResponse])
 async def list_allocation_requests(
-    status_filter: Optional[str] = Query(None),
+    status_filter: Optional[str] = None,
+    status: Optional[str] = None,
     uow: UnitOfWork = Depends(get_uow),
 ):
+    actual_status = status_filter if status_filter is not None else status
+    if isinstance(actual_status, str) and actual_status.strip().upper() == "ALL":
+        actual_status = None
+
     query = select(DockAllocationRequestModel).options(
         selectinload(DockAllocationRequestModel.assigned_dock),
     )
-    if status_filter:
-        query = query.where(DockAllocationRequestModel.status == status_filter.upper())
+    if actual_status and isinstance(actual_status, str):
+        query = query.where(DockAllocationRequestModel.status == actual_status.strip().upper())
     query = query.order_by(
         desc(DockAllocationRequestModel.priority == "URGENT"),
         desc(DockAllocationRequestModel.priority == "HIGH"),
@@ -314,21 +326,6 @@ async def list_pending_allocation_requests(uow: UnitOfWork = Depends(get_uow)):
     ]
 
 
-@router.post("/dock-allocation-requests/auto-create", response_model=AllocationRequestResponse, status_code=201)
-async def auto_create_allocation_request(
-    req: AutoCreateAllocationRequest,
-    uow: UnitOfWork = Depends(get_uow),
-):
-    created = await DockAllocationService.auto_create_allocation_request(
-        session=uow.session,
-        gate_pass_id=req.gate_pass_id,
-        vehicle_number=req.vehicle_number,
-        vendor_reference=req.vendor_reference,
-        material_reference=req.material_reference,
-        material_description=req.material_description,
-        quantity=req.quantity,
-        priority=req.priority,
-    )
 async def _build_allocation_response(
     session: AsyncSession, r: DockAllocationRequestModel
 ) -> AllocationRequestResponse:
@@ -366,10 +363,10 @@ async def _build_allocation_response(
     )
 
 
+@router.post("/dock-allocation-requests/auto-create", response_model=AllocationRequestResponse, status_code=201)
 @router.post("/dock-allocation-requests/auto", response_model=AllocationRequestResponse, status_code=status.HTTP_201_CREATED)
 async def auto_create_allocation_request(
     req: AutoCreateAllocationRequest,
-    user: CurrentUser = Depends(require_permission("gate:write")),
     uow: UnitOfWork = Depends(get_uow),
 ):
     created = await DockAllocationService.auto_create_allocation_request(

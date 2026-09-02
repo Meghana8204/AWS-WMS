@@ -101,6 +101,8 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
     with open(log_path, "a") as lf:
         lf.write(f"SMTP Start: {to_email} via {host_user}\n")
 
+    msg_id = make_msgid(domain=host_user.split('@')[-1] if '@' in host_user else 'gmail.com')
+
     msg = MIMEMultipart('mixed')
     alternative = MIMEMultipart('alternative')
     msg.attach(alternative)
@@ -108,7 +110,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
     msg['To'] = to_email
     msg['Subject'] = subject
     msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = make_msgid(domain=host_user.split('@')[-1] if '@' in host_user else 'gmail.com')
+    msg['Message-ID'] = msg_id
     msg['Auto-Submitted'] = 'auto-generated'
     alternative.attach(MIMEText(body, 'plain', 'utf-8'))
     if html_body:
@@ -126,6 +128,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
         server = None
         send_started = False
         try:
+            logger.info(f"Connecting to SMTP server {settings.email_host}:{port} (SSL={use_ssl}) for recipient {to_email}")
             if use_ssl:
                 server = smtplib.SMTP_SSL(settings.email_host, port, timeout=15)
             else:
@@ -134,6 +137,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                 server.starttls()
                 server.ehlo()
             server.login(host_user, host_pass)
+            logger.info(f"SMTP authentication successful as {host_user}. Dispatching message ID {msg_id}")
             send_started = True
             refused = server.send_message(msg)
             if refused:
@@ -142,9 +146,10 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                 server.quit()
             except Exception:
                 server.close()
+            logger.info(f"SMTP server accepted message for {to_email} via port {port}. Message-ID: {msg_id}")
             try:
                 with open(log_path, "a") as lf:
-                    lf.write(f"SMTP Success: {to_email} via port {port}\n")
+                    lf.write(f"SMTP Success: {to_email} via port {port} (Message-ID: {msg_id})\n")
             except OSError:
                 pass
             return True
@@ -156,7 +161,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                     except Exception:
                         pass
                 raise RuntimeError(
-                    "SMTP send was rejected or could not be confirmed. Check logs and inbox before retrying."
+                    f"SMTP send was rejected or could not be confirmed: {smtp_err}"
                 ) from smtp_err
             errors.append(f"port {port}: {smtp_err}")
             if server is not None:
@@ -166,6 +171,7 @@ def _send_sync(to_email: str, subject: str, body: str, html_body: str | None = N
                     pass
 
     error_message = "; ".join(errors)
+    logger.error(f"All SMTP transport attempts failed for recipient {to_email}: {error_message}")
     with open(log_path, "a") as lf:
         lf.write(f"SMTP Error: {error_message}\n")
     raise RuntimeError(error_message)
@@ -195,8 +201,10 @@ async def send_email(to_email: str, subject: str, body: str, html_body: str | No
                 intro=body,
             )
 
+        logger.info(f"send_email initiated for recipient={to_email}, subject={subject}")
         await anyio.to_thread.run_sync(_send_sync, to_email, subject, body, html_body, attachments)
+        logger.info(f"send_email completed successfully for recipient={to_email}")
         return True
     except Exception as e:
-        logger.error(f"Email failed: {e}")
+        logger.error(f"send_email failed for recipient={to_email}: {e}")
         raise

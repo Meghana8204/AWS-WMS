@@ -55,7 +55,8 @@ def create_fake_asn():
     return asn
 
 
-def test_dispatch_asn_email_content_and_recipient():
+@pytest.mark.asyncio
+async def test_dispatch_asn_email_content_and_recipient():
     asn = create_fake_asn()
     po = PurchaseOrderModel(
         id=uuid.UUID(asn.po_id),
@@ -70,12 +71,13 @@ def test_dispatch_asn_email_content_and_recipient():
     custom_settings = Settings(
         procurement_email="procurement-team@nexuswms.com",
         warehouse_email="warehouse-ops@nexuswms.com",
-        email_host_user="obaiahkade12@gmail.com",
+        email_host_user="test_host_user@example.com",
         email_host_password="test_password",
     )
 
-    with patch("app.modules.procurement.infrastructure.api.router.get_settings", return_value=custom_settings):
-        _dispatch_asn_email(
+    with patch("app.modules.procurement.infrastructure.api.router.get_settings", return_value=custom_settings), \
+         patch("app.modules.procurement.infrastructure.api.router.send_email", return_value=True) as mock_send:
+        await _dispatch_asn_email(
             asn=asn,
             po_obj=po,
             supplier_name="obys",
@@ -84,68 +86,76 @@ def test_dispatch_asn_email_content_and_recipient():
             is_resubmit=False,
         )
 
-    # Verify background task was queued
-    assert bg_tasks.add_task.called
-    args = bg_tasks.add_task.call_args[0]
-    func, to_email, subject, body, html_body, context = args
+        # Verify direct email dispatch to Supplier
+        assert mock_send.called
+        call_kwargs = mock_send.call_args[1] if mock_send.call_args[1] else {}
+        call_args = mock_send.call_args[0]
+        to_email = call_kwargs.get("to_email") or call_args[0]
+        subject = call_kwargs.get("subject") or call_args[1]
+        body = call_kwargs.get("body") or call_args[2]
+        html_body = call_kwargs.get("html_body") or call_args[3]
 
-    # Check recipient: should prefer warehouse_email or procurement_email, not supplier
-    assert to_email == "warehouse-ops@nexuswms.com"
-    assert to_email != po.supplier_email
+        assert to_email == "supplier@example.com"
+        assert subject == "Advance Shipment Notice - ASN ASN-2026-0008 - PO PO-2026-0009"
+        assert "Dear obys," in body
+        assert "ASN Number:\nASN-2026-0008" in body
+        assert "PO Number:\nPO-2026-0009" in body
+        assert "Supplier:\nobys" in body
+        assert "MAT-0019" in body
+        assert "Steel Rod 10mm" in body
+        assert "MAT-0020" in body
+        assert "Aluminium Sheet" in body
+        assert "Regards,\nNexusWMS Procurement" in body
 
-    # Check Subject
-    assert subject == "NEXUSWMS · ADVANCE SHIPMENT NOTICE – ASN-2026-0008"
-
-    # Check Plain text body fields
-    assert "ASN Number: ASN-2026-0008" in body
-    assert "PO Number: PO-2026-0009" in body
-    assert "Supplier: obys" in body
-    assert "Warehouse: Main Warehouse" in body
-    assert "Vehicle: AP-13-N-0001" in body
-    assert "Driver: Rajesh Kumar" in body
-    assert "Driver Phone: +91 9876543210" in body
-    assert "MAT-0019" in body
-    assert "Steel Rod 10mm" in body
-    assert "MAT-0020" in body
-    assert "Aluminium Sheet" in body
-
-    # Check HTML body contains key details
-    assert "ASN-2026-0008" in html_body
-    assert "PO-2026-0009" in html_body
-    assert "obys" in html_body
-    assert "Main Warehouse" in html_body
-    assert "AP-13-N-0001" in html_body
-    assert "Rajesh Kumar" in html_body
+        # Verify internal copy queued for warehouse
+        assert bg_tasks.add_task.called
+        internal_recipient = bg_tasks.add_task.call_args[0][1]
+        assert internal_recipient == "warehouse-ops@nexuswms.com"
 
 
-def test_dispatch_asn_email_guards_against_supplier_email_recipient():
+@pytest.mark.asyncio
+async def test_dispatch_asn_email_with_explicit_supplier_email():
     asn = create_fake_asn()
-    po = PurchaseOrderModel(
-        id=uuid.UUID(asn.po_id),
-        po_number="PO-2026-0009",
-        supplier_name="obys",
-        delivery_warehouse_name="Main Warehouse",
-        supplier_email="supplier@example.com",
-    )
-
     bg_tasks = MagicMock()
 
-    # In case settings has supplier email as procurement email
     custom_settings = Settings(
-        procurement_email="supplier@example.com",
-        warehouse_email="supplier@example.com",
-        email_host_user="supplier@example.com",
+        procurement_email="procurement@nexuswms.com",
+        warehouse_email="",
+        email_host_user="",
     )
 
-    with patch("app.modules.procurement.infrastructure.api.router.get_settings", return_value=custom_settings):
-        _dispatch_asn_email(
+    with patch("app.modules.procurement.infrastructure.api.router.get_settings", return_value=custom_settings), \
+         patch("app.modules.procurement.infrastructure.api.router.send_email", return_value=True) as mock_send:
+        await _dispatch_asn_email(
             asn=asn,
-            po_obj=po,
-            supplier_name="obys",
-            warehouse_name="Main Warehouse",
+            po_obj=None,
+            supplier_name="Acme Corp",
+            warehouse_name="North Hub",
             background_tasks=bg_tasks,
             is_resubmit=False,
+            supplier_email="acme-dispatch@example.com",
         )
 
-    # Should NOT send email to supplier when warehouse/procurement is expected
-    assert not bg_tasks.add_task.called
+        assert mock_send.called
+        to_email = mock_send.call_args[1].get("to_email") or mock_send.call_args[0][0]
+        assert to_email == "acme-dispatch@example.com"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_asn_email_missing_supplier_email_raises_error():
+    from fastapi import HTTPException
+    asn = create_fake_asn()
+    asn.po_number = "PO-2026-0099"
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _dispatch_asn_email(
+            asn=asn,
+            po_obj=None,
+            supplier_name="NoEmail Supplier",
+            warehouse_name="Main Warehouse",
+            supplier_email=None,
+        )
+    assert exc_info.value.status_code == 400
+    assert "Supplier email not found" in exc_info.value.detail
+
+

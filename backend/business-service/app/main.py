@@ -307,7 +307,24 @@ async def lifespan(app: FastAPI):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            logger.debug("Ensured notification table exists")
+            for col, col_type in [
+                ("dock_code", "VARCHAR(32)"),
+                ("dock_name", "VARCHAR(128)"),
+                ("dock_location", "VARCHAR(128)"),
+                ("dock_type", "VARCHAR(64)"),
+                ("warehouse_name", "VARCHAR(128)"),
+                ("allocation_time", "TIMESTAMP"),
+                ("gate_pass_number", "VARCHAR(64)"),
+                ("vehicle_number", "VARCHAR(64)"),
+                ("driver_name", "VARCHAR(128)"),
+                ("driver_phone", "VARCHAR(32)"),
+                ("asn_number", "VARCHAR(64)"),
+                ("po_number", "VARCHAR(64)"),
+            ]:
+                try:
+                    await run_ddl(f"ALTER TABLE notification ADD COLUMN IF NOT EXISTS {col} {col_type}")
+                except Exception: pass
+            logger.debug("Ensured notification table and columns exist")
         except Exception as e:
             logger.warning(f"Failed to create notification table: {e}")
 
@@ -826,7 +843,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|.*\.loca\.lt)(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

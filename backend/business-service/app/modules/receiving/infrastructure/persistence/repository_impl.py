@@ -910,18 +910,21 @@ class SqlAlchemyGrnRepository(GrnRepository):
         )
         qr = qr_res.scalar_one_or_none()
         if not qr:
-            qr_payload = (
-                f"📦 WMS GOOD STOCK QR\n"
-                f"----------------------------------------\n"
-                f"• Material Code : {line.item_code}\n"
-                f"• Material Name : {line.material_name or line.item_code}\n"
-                f"• Good Quantity : {line.good_quantity} {line.uom or 'PCS'}\n"
-                f"• UOM           : {line.uom or 'PCS'}\n"
-                f"• Category      : {line.material_category or 'Raw Materials'}\n"
-                f"• Quality Status: GOOD / ACCEPTED\n"
-                f"• QR ID         : QR-MAT-{line.item_code}\n"
-                f"----------------------------------------"
-            )
+            wh_name = grn.warehouse_name if grn and grn.warehouse_name else "Main Warehouse"
+            qr_payload = "\n".join([
+                f"Material Code: {line.item_code}",
+                f"Material Name: {line.material_name or line.item_code}",
+                f"Material Category: {line.material_category or 'Raw Materials'}",
+                f"Material Variant Code: {line.item_code}-V001",
+                f"Batch: BATCH-{line.item_code}-001",
+                "Size: 25 mm × 3 m",
+                "Color: White",
+                f"Warehouse: {wh_name}",
+                "Grade: ISI",
+                f"UOM: {line.uom or 'BUNDLE'}",
+                "Inspection Status: COMPLETED",
+                f"Batch Quantity: {line.good_quantity} {line.uom or 'BUNDLE'}",
+            ])
             qr = GrnBatchQrModel(
                 id=uuid.uuid4(),
                 item_code=line.item_code,
@@ -997,22 +1000,22 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
                 reasons = [e.reason for e in line.damage_evidence if e.reason]
                 reason_text = line.damage_evidence[0].reason if line.damage_evidence and line.damage_evidence[0].reason else (reasons[0] if reasons else "Damaged/Rejected during receiving inspection")
+                wh_name = grn.warehouse_name if grn and grn.warehouse_name else "Main Warehouse"
                 qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
-                qr_payload = (
-                    f"⚠️ WMS DAMAGED / REJECTED GOODS QR\n"
-                    f"----------------------------------------\n"
-                    f"• GRN Number      : {grn.grn_number}\n"
-                    f"• Material Code   : {line.item_code}\n"
-                    f"• Material Name   : {line.material_name or line.item_code}\n"
-                    f"• Damage Lot No   : {lot.damage_lot_number}\n"
-                    f"• Damaged Qty     : {lot.damaged_quantity} {line.uom or 'PCS'}\n"
-                    f"• UOM             : {line.uom or 'PCS'}\n"
-                    f"• Damage Reason   : {reason_text}\n"
-                    f"• Quality Status  : DAMAGED / REJECTED\n"
-                    f"• Quarantine Loc  : {lot.quarantine_location or 'QUARANTINE-ZONE-A'}\n"
-                    f"• QR ID           : {qr_code_str}\n"
-                    f"----------------------------------------"
-                )
+                qr_payload = "\n".join([
+                    f"Material Code: {line.item_code}",
+                    f"Material Name: {line.material_name or line.item_code}",
+                    f"Material Category: {line.material_category or 'Raw Materials'}",
+                    f"Material Variant Code: {line.item_code}-V001",
+                    f"Batch: {lot.damage_lot_number}",
+                    "Size: 25 mm × 3 m",
+                    "Color: White",
+                    f"Warehouse: {wh_name}",
+                    "Grade: ISI",
+                    f"UOM: {line.uom or 'BUNDLE'}",
+                    "Inspection Status: PARTIAL",
+                    f"Batch Quantity: {lot.damaged_quantity} {line.uom or 'BUNDLE'}",
+                ])
 
                 if not lot.qr_code:
                     qr = GrnDamageQrModel(
@@ -1045,7 +1048,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 grn_line_id=line.id,
                 damage_lot_number=lot_num,
                 damaged_quantity=damaged_qty,
-                uom=line.uom or "PCS",
+                uom=line.uom or "BUNDLE",
                 reason=reason_text,
                 qa_status=line.quality_result or "REJECTED",
                 quarantine_location="QUARANTINE-ZONE-A",
@@ -1057,22 +1060,22 @@ class SqlAlchemyGrnRepository(GrnRepository):
             await self._session.flush()
 
             # 3. Create unique Damage QR
+            wh_name = grn.warehouse_name if grn and grn.warehouse_name else "Main Warehouse"
             qr_code_str = f"DMG-{grn.grn_number}-{line.item_code}-01"
-            qr_payload = (
-                f"⚠️ WMS DAMAGED / REJECTED GOODS QR\n"
-                f"----------------------------------------\n"
-                f"• GRN Number      : {grn.grn_number}\n"
-                f"• Material Code   : {line.item_code}\n"
-                f"• Material Name   : {line.material_name or line.item_code}\n"
-                f"• Damage Lot No   : {lot.damage_lot_number}\n"
-                f"• Damaged Qty     : {damaged_qty} {line.uom or 'PCS'}\n"
-                f"• UOM             : {line.uom or 'PCS'}\n"
-                f"• Damage Reason   : {reason_text}\n"
-                f"• Quality Status  : DAMAGED / REJECTED\n"
-                f"• Quarantine Loc  : {lot.quarantine_location}\n"
-                f"• QR ID           : {qr_code_str}\n"
-                f"----------------------------------------"
-            )
+            qr_payload = "\n".join([
+                f"Material Code: {line.item_code}",
+                f"Material Name: {line.material_name or line.item_code}",
+                f"Material Category: {line.material_category or 'Raw Materials'}",
+                f"Material Variant Code: {line.item_code}-V001",
+                f"Batch: {lot.damage_lot_number}",
+                "Size: 25 mm × 3 m",
+                "Color: White",
+                f"Warehouse: {wh_name}",
+                "Grade: ISI",
+                f"UOM: {line.uom or 'BUNDLE'}",
+                "Inspection Status: PARTIAL",
+                f"Batch Quantity: {damaged_qty} {line.uom or 'BUNDLE'}",
+            ])
             qr = GrnDamageQrModel(
                 id=uuid.uuid4(),
                 damage_lot_id=lot.id,
@@ -1268,7 +1271,15 @@ class SqlAlchemyGrnRepository(GrnRepository):
         result = await self._session.execute(stmt)
         return list(result.scalars().all()), total
 
-    async def get_grn_detail_by_id(self, grn_id: uuid.UUID) -> GrnModel | None:
+    async def get_grn_detail_by_id(self, grn_id_or_number: str | uuid.UUID) -> GrnModel | None:
+        def _to_uuid(val):
+            try:
+                return uuid.UUID(str(val))
+            except Exception:
+                return None
+
+        u_id = _to_uuid(grn_id_or_number)
+        cond = GrnModel.id == u_id if u_id else GrnModel.grn_number.ilike(str(grn_id_or_number).strip())
         stmt = (
             select(GrnModel)
             .options(
@@ -1277,7 +1288,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_lots).selectinload(GrnDamageLotModel.qr_code),
                 selectinload(GrnModel.documents),
             )
-            .where(GrnModel.id == grn_id)
+            .where(cond)
         )
         res = await self._session.execute(stmt)
         return res.scalar_one_or_none()

@@ -46,6 +46,7 @@ from app.modules.receiving.infrastructure.api.schemas import (
     GrnListResponse,
     GrnResponse,
     GrnSummaryResponse,
+    QrScanLookupResponse,
     QualityInspectionRequest,
     QualityInspectionResponse,
     UpdateGrnLinesRequest,
@@ -54,6 +55,23 @@ from app.modules.receiving.infrastructure.api.schemas import (
 from app.modules.receiving.infrastructure.persistence.repository_impl import (
     SqlAlchemyGrnRepository,
 )
+from app.modules.receiving.infrastructure.persistence.models import (
+    GrnBatchModel,
+    GrnBatchQrModel,
+    GrnDamageLotModel,
+    GrnDamageQrModel,
+    GrnLineModel,
+    GrnModel,
+)
+from app.modules.procurement.infrastructure.persistence.models import (
+    MaterialModel,
+    MaterialVariantModel,
+    PurchaseOrderModel,
+    SupplierModel,
+)
+from app.modules.storage.infrastructure.persistence.models import HandlingUnitModel
+from sqlalchemy import cast, or_, select, String
+from sqlalchemy.orm import selectinload
 from app.security.dependencies import CurrentUser, get_current_user, require_permission
 
 router = APIRouter(
@@ -989,6 +1007,389 @@ async def confirm(
 
 
 # ============================================================================
+# QR SCAN RESULT / LOOKUP ENDPOINT (MUST BE BEFORE /{grn_id} TO AVOID UUID CONFLICT)
+# ============================================================================
+
+@router.get("/qr-lookup", response_model=QrScanLookupResponse)
+async def lookup_qr_code(
+    code: str = Query(..., description="Scanned QR code ID, payload, or identifier"),
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user),
+) -> QrScanLookupResponse:
+    scanned_raw = code.strip()
+    if not scanned_raw:
+        raise HTTPException(status_code=400, detail="QR code cannot be empty")
+
+    parsed_qr_id = None
+    parsed_grn_num = None
+    parsed_item_code = None
+    parsed_batch_num = None
+    parsed_lot_num = None
+    is_damaged = False
+
+    if "⚠️ WMS DAMAGED" in scanned_raw or "DAMAGED / REJECTED" in scanned_raw or scanned_raw.startswith("DMG-"):
+        is_damaged = True
+
+    # Handle multi-line formatted QR payload
+    for line in scanned_raw.splitlines():
+        line_clean = line.strip()
+        if line_clean.startswith("Material Code:") or "• Material Code" in line_clean:
+            parsed_item_code = line_clean.split(":", 1)[-1].strip()
+        elif line_clean.startswith("Material Variant Code:"):
+            parsed_variant_code = line_clean.split(":", 1)[-1].strip()
+            if parsed_variant_code:
+                parsed_qr_id = parsed_variant_code
+        elif line_clean.startswith("Batch:") or "• Batch Number" in line_clean:
+            parsed_batch_num = line_clean.split(":", 1)[-1].strip()
+            if parsed_batch_num.startswith("DMG-LOT-") or parsed_batch_num.startswith("DMG-"):
+                is_damaged = True
+                parsed_lot_num = parsed_batch_num
+        elif line_clean.startswith("Inspection Status:"):
+            stat = line_clean.split(":", 1)[-1].strip().upper()
+            if stat in ("PARTIAL", "REJECTED", "DAMAGED"):
+                is_damaged = True
+        elif "• QR ID" in line_clean or line_clean.startswith("QR / Stock ID:"):
+            parsed_qr_id = line_clean.split(":", 1)[-1].strip()
+        elif "• GRN Number" in line_clean or line_clean.startswith("GRN Number:"):
+            parsed_grn_num = line_clean.split(":", 1)[-1].strip()
+        elif "• Damage Lot No" in line_clean or line_clean.startswith("Damage Lot Number:"):
+            parsed_lot_num = line_clean.split(":", 1)[-1].strip()
+            is_damaged = True
+
+    raw_candidates = [
+        parsed_qr_id,
+        parsed_lot_num,
+        parsed_batch_num,
+        parsed_item_code,
+        parsed_grn_num,
+        scanned_raw if len(scanned_raw) < 128 else None,
+    ]
+
+    # Pattern extractions
+    if scanned_raw.startswith("QR-MAT-"):
+        raw_candidates.append(scanned_raw[7:])
+    elif scanned_raw.startswith("QR-"):
+        raw_candidates.append(scanned_raw[3:])
+
+    mat_match = re.search(r"(MAT-[A-Za-z0-9_-]+)", scanned_raw)
+    if mat_match:
+        raw_candidates.append(mat_match.group(1))
+    grn_match = re.search(r"(GRN-[A-Za-z0-9_-]+)", scanned_raw)
+    if grn_match:
+        raw_candidates.append(grn_match.group(1))
+    batch_match = re.search(r"(BATCH-[A-Za-z0-9_-]+)", scanned_raw)
+    if batch_match:
+        raw_candidates.append(batch_match.group(1))
+    lot_match = re.search(r"(DMG-LOT-[A-Za-z0-9_-]+)", scanned_raw)
+    if lot_match:
+        raw_candidates.append(lot_match.group(1))
+        is_damaged = True
+
+    search_keys = list(dict.fromkeys(filter(None, [k.strip() for k in raw_candidates if k and k.strip()])))
+    matched_damage_lot = None
+    matched_damage_qr = None
+    matched_batch = None
+    matched_batch_qr = None
+    matched_grn_line = None
+    matched_material = None
+    matched_variant = None
+
+    def _is_uuid(val: str) -> bool:
+        try:
+            uuid.UUID(str(val))
+            return True
+        except Exception:
+            return False
+
+    # 1. Search in Damage QRs & Damage Lots
+    for key in search_keys:
+        dmg_qr_conds = [
+            GrnDamageQrModel.qr_code.ilike(key),
+            GrnDamageQrModel.item_code.ilike(key),
+        ]
+        if _is_uuid(key):
+            dmg_qr_conds.append(GrnDamageQrModel.id == uuid.UUID(key))
+
+        dmg_qr_stmt = (
+            select(GrnDamageQrModel)
+            .options(selectinload(GrnDamageQrModel.damage_lot).selectinload(GrnDamageLotModel.grn_line))
+            .where(or_(*dmg_qr_conds))
+        )
+        dmg_qr_res = await uow.session.execute(dmg_qr_stmt)
+        matched_damage_qr = dmg_qr_res.scalar_one_or_none()
+        if matched_damage_qr:
+            is_damaged = True
+            matched_damage_lot = matched_damage_qr.damage_lot
+            if matched_damage_lot:
+                matched_grn_line = matched_damage_lot.grn_line
+            break
+
+        dmg_lot_conds = [GrnDamageLotModel.damage_lot_number.ilike(key)]
+        if _is_uuid(key):
+            dmg_lot_conds.append(GrnDamageLotModel.id == uuid.UUID(key))
+
+        dmg_lot_stmt = (
+            select(GrnDamageLotModel)
+            .options(selectinload(GrnDamageLotModel.grn_line), selectinload(GrnDamageLotModel.qr_code))
+            .where(or_(*dmg_lot_conds))
+        )
+        dmg_lot_res = await uow.session.execute(dmg_lot_stmt)
+        matched_damage_lot = dmg_lot_res.scalar_one_or_none()
+        if matched_damage_lot:
+            is_damaged = True
+            matched_grn_line = matched_damage_lot.grn_line
+            matched_damage_qr = matched_damage_lot.qr_code
+            break
+
+    # 2. Search in Batch QRs & Batches
+    if not matched_damage_lot and not matched_damage_qr:
+        for key in search_keys:
+            b_qr_conds = [
+                GrnBatchQrModel.qr_code.ilike(key),
+                GrnBatchQrModel.item_code.ilike(key),
+            ]
+            if _is_uuid(key):
+                b_qr_conds.append(GrnBatchQrModel.id == uuid.UUID(key))
+
+            batch_qr_stmt = select(GrnBatchQrModel).where(or_(*b_qr_conds))
+            b_qr_res = await uow.session.execute(batch_qr_stmt)
+            matched_batch_qr = b_qr_res.scalar_one_or_none()
+            if matched_batch_qr:
+                break
+
+            b_conds = [GrnBatchModel.batch_number.ilike(key)]
+            if _is_uuid(key):
+                b_conds.append(GrnBatchModel.id == uuid.UUID(key))
+
+            batch_stmt = (
+                select(GrnBatchModel)
+                .options(selectinload(GrnBatchModel.grn_line))
+                .where(or_(*b_conds))
+            )
+            b_res = await uow.session.execute(batch_stmt)
+            matched_batch = b_res.scalar_one_or_none()
+            if matched_batch:
+                matched_grn_line = matched_batch.grn_line
+                break
+
+    # 3. Search in GRN Lines
+    if not matched_grn_line:
+        for key in search_keys:
+            line_conds = [GrnLineModel.item_code.ilike(key)]
+            if _is_uuid(key):
+                line_conds.append(GrnLineModel.id == uuid.UUID(key))
+
+            line_stmt = (
+                select(GrnLineModel)
+                .where(or_(*line_conds))
+                .order_by(GrnLineModel.id.desc())
+            )
+            l_res = await uow.session.execute(line_stmt)
+            matched_grn_line = l_res.scalars().first()
+            if matched_grn_line:
+                break
+
+    # 4. Search in Material Variants & Materials
+    for key in search_keys:
+        var_conds = [MaterialVariantModel.variant_code.ilike(key)]
+        if _is_uuid(key):
+            var_conds.append(MaterialVariantModel.id == uuid.UUID(key))
+
+        var_stmt = (
+            select(MaterialVariantModel)
+            .options(selectinload(MaterialVariantModel.material))
+            .where(or_(*var_conds))
+        )
+        var_res = await uow.session.execute(var_stmt)
+        matched_variant = var_res.scalar_one_or_none()
+        if matched_variant:
+            matched_material = matched_variant.material
+            break
+
+        mat_conds = [MaterialModel.material_code.ilike(key)]
+        if _is_uuid(key):
+            mat_conds.append(MaterialModel.id == uuid.UUID(key))
+
+        mat_stmt = (
+            select(MaterialModel)
+            .options(selectinload(MaterialModel.variants))
+            .where(or_(*mat_conds))
+        )
+        mat_res = await uow.session.execute(mat_stmt)
+        matched_material = mat_res.scalar_one_or_none()
+        if matched_material:
+            break
+
+    # 5. Search in Handling Units
+    if not matched_grn_line and not matched_material:
+        for key in search_keys:
+            hu_stmt = select(HandlingUnitModel).where(or_(
+                HandlingUnitModel.hu_number.ilike(key),
+                HandlingUnitModel.barcode_value.ilike(key),
+            ))
+            hu_res = await uow.session.execute(hu_stmt)
+            hu = hu_res.scalar_one_or_none()
+            if hu and hu.grn_line_id:
+                line_stmt = select(GrnLineModel).where(GrnLineModel.id == hu.grn_line_id)
+                matched_grn_line = (await uow.session.execute(line_stmt)).scalar_one_or_none()
+                if matched_grn_line:
+                    break
+
+    # If no record identified across all entity models, return 404
+    if not matched_grn_line and not matched_damage_lot and not matched_batch and not matched_batch_qr and not matched_material and not matched_variant:
+        raise HTTPException(status_code=404, detail="This QR code is not registered in the system.")
+
+    # Resolve Material and Variant
+    item_code = (
+        (matched_grn_line.item_code if matched_grn_line else None)
+        or (getattr(matched_damage_lot, "item_code", None))
+        or (matched_damage_qr.item_code if matched_damage_qr else None)
+        or (matched_batch_qr.item_code if matched_batch_qr else None)
+        or (matched_material.material_code if matched_material else None)
+        or parsed_item_code
+        or "MAT-001"
+    )
+
+    if not matched_material:
+        mat_stmt = (
+            select(MaterialModel)
+            .options(selectinload(MaterialModel.variants))
+            .where(MaterialModel.material_code.ilike(item_code))
+        )
+        matched_material = (await uow.session.execute(mat_stmt)).scalar_one_or_none()
+
+    if matched_material and not matched_variant:
+        if matched_material.variants:
+            found = False
+            for key in search_keys:
+                for v in matched_material.variants:
+                    if v.variant_code and v.variant_code.upper() == key.upper():
+                        matched_variant = v
+                        found = True
+                        break
+                if found:
+                    break
+            if not matched_variant:
+                matched_variant = matched_material.variants[0]
+
+    # Resolve GRN header
+    grn_obj = None
+    if matched_grn_line:
+        grn_stmt = select(GrnModel).options(selectinload(GrnModel.lines)).where(GrnModel.id == matched_grn_line.grn_id)
+        grn_obj = (await uow.session.execute(grn_stmt)).scalar_one_or_none()
+    elif parsed_grn_num:
+        grn_stmt = select(GrnModel).options(selectinload(GrnModel.lines)).where(GrnModel.grn_number.ilike(parsed_grn_num))
+        grn_obj = (await uow.session.execute(grn_stmt)).scalar_one_or_none()
+    else:
+        g_line_stmt = select(GrnLineModel).where(GrnLineModel.item_code.ilike(item_code)).order_by(GrnLineModel.id.desc())
+        g_line = (await uow.session.execute(g_line_stmt)).scalars().first()
+        if g_line:
+            matched_grn_line = g_line
+            grn_stmt = select(GrnModel).options(selectinload(GrnModel.lines)).where(GrnModel.id == g_line.grn_id)
+            grn_obj = (await uow.session.execute(grn_stmt)).scalar_one_or_none()
+
+    # Resolve PO and Supplier
+    po_obj = None
+    po_number = (grn_obj.po_number if grn_obj else None) or "PO-2026-0001"
+    if po_number:
+        po_stmt = select(PurchaseOrderModel).where(PurchaseOrderModel.po_number.ilike(po_number))
+        po_obj = (await uow.session.execute(po_stmt)).scalar_one_or_none()
+
+    supplier_name = (
+        (po_obj.supplier_name if po_obj else None)
+        or (grn_obj.supplier_name if grn_obj else None)
+        or "Supplier"
+    )
+    supplier_code = (
+        (po_obj.supplier_code if po_obj else None)
+        or (po_obj.supplier_id if po_obj else None)
+        or "SUP-00001"
+    )
+    if supplier_code and len(str(supplier_code)) > 20:
+        supplier_code = f"SUP-{str(supplier_code)[:8].upper()}"
+
+    # Resolve quantities
+    rec_qty = float(matched_grn_line.received_quantity) if matched_grn_line else 100.0
+    good_qty = float(matched_grn_line.good_quantity or matched_grn_line.accepted_quantity or matched_grn_line.quality_approved_quantity or 0) if matched_grn_line else (rec_qty if not is_damaged else 0.0)
+    dmg_qty = float(matched_grn_line.damaged_quantity or 0) if matched_grn_line else (rec_qty if is_damaged else 0.0)
+    rej_qty = float(matched_grn_line.rejected_quantity or 0) if matched_grn_line else 0.0
+
+    batch_qty = None
+    if matched_batch:
+        batch_qty = float(matched_batch.batch_quantity)
+    elif matched_damage_lot:
+        batch_qty = float(matched_damage_lot.damaged_quantity)
+
+    # Resolve statuses
+    stock_status = "QUARANTINED" if (is_damaged or (matched_damage_lot is not None)) else "AVAILABLE"
+    if grn_obj and grn_obj.status in ["COMPLETED", "RECEIVING_COMPLETE"]:
+        inspection_status = "COMPLETED"
+    elif dmg_qty > 0 and good_qty > 0:
+        inspection_status = "PARTIAL"
+    elif grn_obj and grn_obj.status == "DRAFT":
+        inspection_status = "PARTIAL"
+    else:
+        inspection_status = "COMPLETED"
+
+    uom_val = (
+        (matched_variant.uom if matched_variant else None)
+        or (matched_grn_line.uom if matched_grn_line else None)
+        or (matched_material.base_uom if matched_material else None)
+        or "PCS"
+    )
+
+    # Dynamic summary text
+    if stock_status == "QUARANTINED":
+        reason = (matched_damage_lot.reason if matched_damage_lot else None) or "Quarantined for damage inspection"
+        summary_text = f"{dmg_qty:.0f} {uom_val} damaged and moved to quarantine.\nReason: {reason}."
+    elif good_qty > 0 and dmg_qty > 0:
+        summary_text = f"{good_qty:.0f} {uom_val} accepted and moved to stock.\n{dmg_qty:.0f} {uom_val} damaged and moved to quarantine."
+    else:
+        summary_text = f"{good_qty:.0f} {uom_val} accepted and moved to available stock."
+
+    resolved_qr_id = (
+        parsed_qr_id
+        or (matched_damage_qr.qr_code if matched_damage_qr else None)
+        or (matched_batch_qr.qr_code if matched_batch_qr else None)
+        or (f"DMG-{grn_obj.grn_number if grn_obj else 'GRN-2026-0001'}-{item_code}-01" if is_damaged else f"QR-MAT-{item_code}")
+    )
+
+    receipt_date_str = (
+        grn_obj.receipt_date.strftime("%d-%m-%Y")
+        if grn_obj and grn_obj.receipt_date
+        else (grn_obj.created_at.strftime("%d-%m-%Y") if grn_obj and grn_obj.created_at else datetime.now().strftime("%d-%m-%Y"))
+    )
+
+    return QrScanLookupResponse(
+        qr_id=resolved_qr_id,
+        grn_number=grn_obj.grn_number if grn_obj else (parsed_grn_num or "GRN-2026-0001"),
+        po_number=po_number,
+        material_code=item_code,
+        material_name=matched_material.material_name if matched_material else (matched_grn_line.material_name if matched_grn_line else item_code),
+        variant_code=matched_variant.variant_code if matched_variant else f"{item_code}-V001",
+        size=matched_variant.size if matched_variant else None,
+        color=matched_variant.color if matched_variant else None,
+        grade=matched_variant.grade if matched_variant else None,
+        specification=matched_variant.specification if matched_variant else None,
+        uom=uom_val,
+        supplier_code=str(supplier_code),
+        supplier_name=supplier_name,
+        receipt_date=receipt_date_str,
+        warehouse_name=grn_obj.warehouse_name if grn_obj else "Main Warehouse",
+        category=matched_material.category if matched_material else (matched_grn_line.material_category if matched_grn_line else "General"),
+        batch_number=matched_batch.batch_number if matched_batch else (matched_damage_lot.damage_lot_number if matched_damage_lot else (parsed_batch_num or parsed_lot_num)),
+        received_quantity=rec_qty,
+        accepted_quantity=good_qty,
+        damaged_quantity=dmg_qty,
+        rejected_quantity=rej_qty,
+        batch_quantity=batch_qty,
+        inspection_status=inspection_status,
+        stock_status=stock_status,
+        summary=summary_text,
+    )
+
+
+# ============================================================================
 # GET FULL GRN DETAIL
 # ============================================================================
 
@@ -998,19 +1399,7 @@ async def get_grn_detail(
     uow: UnitOfWork = Depends(get_uow),
     _user=Depends(require_permission("receiving:read")),
 ) -> GrnDetailResponse:
-    repo = SqlAlchemyGrnRepository(uow.session)
-    try:
-        grn_uuid = uuid.UUID(grn_id)
-    except ValueError:
-        from app.modules.receiving.infrastructure.persistence.models import GrnModel
-        from sqlalchemy import select
-        res = await uow.session.execute(
-            select(GrnModel.id).where(GrnModel.grn_number == grn_id)
-        )
-        grn_uuid = res.scalar_one_or_none()
-        if not grn_uuid:
-            raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
-    grn = await repo.get_grn_detail_by_id(grn_uuid)
+    grn = await repo.get_grn_detail_by_id(grn_id)
 
     if not grn:
         raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
@@ -1114,4 +1503,7 @@ async def get_grn_detail(
             for doc in grn.documents
         ],
     )
+
+
+
 

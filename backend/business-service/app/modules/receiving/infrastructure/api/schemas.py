@@ -650,3 +650,35 @@ class GrnSummaryResponse(ApiModel):
 class GrnListResponse(ApiModel):
     items: list[GrnSummaryResponse] = Field(default_factory=list)
     total: int = 0
+
+
+# ============================================================================
+# QR SCAN RESULT / LOOKUP RESPONSE
+# ============================================================================
+
+class QrScanLookupResponse(ApiModel):
+    qr_id: str
+    grn_number: str
+    po_number: str
+    material_code: str
+    material_name: str
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
+    specification: str | None = None
+    uom: str
+    supplier_code: str | None = None
+    supplier_name: str
+    receipt_date: str | None = None
+    warehouse_name: str | None = None
+    category: str | None = None
+    batch_number: str | None = None
+    received_quantity: float
+    accepted_quantity: float
+    damaged_quantity: float
+    rejected_quantity: float = 0.0
+    batch_quantity: float | None = None
+    inspection_status: str
+    stock_status: str
+    summary: str

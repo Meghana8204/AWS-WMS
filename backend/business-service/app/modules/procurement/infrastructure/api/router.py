@@ -1190,15 +1190,16 @@ async def _send_email_logged(to_email: str, subject: str, body: str, html_body: 
         logger.error(f"Email delivery failed: context={context}, recipient={to_email}, reason={error}", exc_info=True)
 
 
-def _dispatch_asn_email(
+async def _dispatch_asn_email(
     asn: AsnModel,
     po_obj: PurchaseOrderModel | None,
     supplier_name: str,
     warehouse_name: str,
     background_tasks: BackgroundTasks | None = None,
     is_resubmit: bool = False,
+    supplier_email: str | None = None,
 ) -> None:
-    """Generate and queue the Advance Shipment Notice (ASN) email notification."""
+    """Generate and deliver the Advance Shipment Notice (ASN) email notification to supplier and warehouse."""
     settings = get_settings()
 
     expected_arrival_str = (
@@ -1212,13 +1213,14 @@ def _dispatch_asn_email(
         else "Not specified"
     )
 
+    po_ref = asn.po_number or (po_obj.po_number if po_obj else "N/A")
     action_label = "updated" if is_resubmit else "submitted"
     subject_suffix = " (UPDATED)" if is_resubmit else ""
-    email_subject = f"NEXUSWMS · ADVANCE SHIPMENT NOTICE{subject_suffix} – {asn.asn_number}"
+    email_subject = f"Advance Shipment Notice - ASN {asn.asn_number} - PO {po_ref}{subject_suffix}"
 
     details_for_render: list[tuple[str, str]] = [
         ("ASN Number", asn.asn_number),
-        ("PO Number", asn.po_number or "N/A"),
+        ("PO Number", po_ref),
         ("Supplier Name", supplier_name),
         ("Warehouse", warehouse_name),
         ("Expected Arrival", expected_arrival_str),
@@ -1243,92 +1245,155 @@ def _dispatch_asn_email(
         for l in (asn.lines or [])
     ]
 
-    materials_text_lines = [
-        f"• {l.item_code} | {l.material_name or l.item_code} | Qty: {float(l.shipped_quantity):.4f} {l.uom or 'PCS'}"
-        for l in (asn.lines or [])
-    ]
-    materials_text = "\n".join(materials_text_lines) if materials_text_lines else "No materials listed"
+    items_list = [f"• {l.item_code} - {l.material_name or l.item_code}" for l in (asn.lines or [])]
+    items_str = "\n".join(items_list) if items_list else "No materials listed"
+
+    quantities_list = [f"• {l.item_code}: {float(l.shipped_quantity):.4f} {l.uom or 'PCS'}" for l in (asn.lines or [])]
+    quantities_str = "\n".join(quantities_list) if quantities_list else "No quantities listed"
 
     email_body = (
-        f"Advance Shipment Notice\n\n"
-        f"ASN Number: {asn.asn_number}\n"
-        f"PO Number: {asn.po_number or 'N/A'}\n"
-        f"Supplier: {supplier_name}\n"
-        f"Warehouse: {warehouse_name}\n"
-        f"Expected Arrival: {expected_arrival_str}\n"
-        f"Vehicle: {asn.vehicle_number or 'Not specified'}\n"
-        f"Driver: {asn.driver_name or 'Not specified'}\n"
-        f"Driver Phone: {asn.driver_contact or 'Not specified'}\n"
-        f"Status: {asn.status or 'SUBMITTED'}\n\n"
-        f"Shipment Materials:\n"
-        f"Material Code | Material Name | Quantity | UOM\n"
-        f"{materials_text}\n"
+        f"Dear {supplier_name},\n\n"
+        f"This is to inform you that an Advance Shipment Notice has been {action_label} for the following purchase order.\n\n"
+        f"ASN Number:\n{asn.asn_number}\n\n"
+        f"PO Number:\n{po_ref}\n\n"
+        f"Supplier:\n{supplier_name}\n\n"
+        f"Shipment Date:\n{shipment_date_str}\n\n"
+        f"Expected Delivery Date:\n{expected_arrival_str}\n\n"
+        f"Items:\n{items_str}\n\n"
+        f"Quantities:\n{quantities_str}\n\n"
+        f"Vehicle Number: {asn.vehicle_number or 'Not specified'}\n"
+        f"Driver Name: {asn.driver_name or 'Not specified'}\n"
+        f"Driver Contact: {asn.driver_contact or 'Not specified'}\n"
+        f"Transporter: {asn.transporter or 'Not specified'}\n\n"
+        f"Please review the shipment details.\n\n"
+        f"Regards,\nNexusWMS Procurement"
     )
 
     asn_link = f"http://localhost:8080/procurement/asns/{asn.id}"
-    email_html = render_premium_email(
-        eyebrow="ADVANCE SHIPMENT NOTICE",
+
+    # 1. Deliver email to Supplier
+    actual_supplier_email = (supplier_email or (po_obj.supplier_email if po_obj else None) or "").strip()
+    if not actual_supplier_email or "@" not in actual_supplier_email:
+        logger.error(f"Supplier email not found for ASN {asn.asn_number}, PO {po_ref}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Supplier email not found for PO {po_ref}"
+        )
+
+    supplier_email_html = render_premium_email(
+        eyebrow="Advance Shipment Notice",
         title=f"Advance Shipment Notice · {asn.asn_number}",
-        greeting="Dear Warehouse & Procurement Team,",
-        intro=f"Supplier {supplier_name} has {action_label} an Advance Shipment Notice (ASN) for PO {asn.po_number or 'N/A'}. The shipment is in transit with the schedule and materials detailed below:",
+        greeting=f"Dear {supplier_name},",
+        intro=f"This is to inform you that an Advance Shipment Notice has been {action_label} for Purchase Order {po_ref}. Below are the confirmed shipment schedule, driver details, and materials list:",
         details=details_for_render,
         items=items_for_render,
-        items_title="Shipment Materials",
+        items_title="Shipment Materials & Quantities",
         col_headers=("Material Code & Name", "Shipped Quantity", "Expected Arrival", "Destination Warehouse"),
         primary_cta=("View ASN in Portal", asn_link),
-        note="Please notify inbound receiving and dock management teams to prepare for unloading and inspection upon vehicle arrival.",
-        signoff="NexusWMS Logistics & Inbound Operations",
+        note="Please ensure the driver carries a copy of this ASN and the Purchase Order document for smooth gate entry and dock verification upon arrival.",
+        signoff="NexusWMS Procurement",
     )
 
     os.makedirs(os.path.join("media_uploads", "emails"), exist_ok=True)
-    email_preview_path = os.path.join("media_uploads", "emails", f"asn_{asn.asn_number}.html")
+    email_preview_path = os.path.join("media_uploads", "emails", f"asn_supplier_{asn.asn_number}.html")
     try:
         with open(email_preview_path, "w", encoding="utf-8") as f:
-            f.write(email_html)
+            f.write(supplier_email_html)
     except Exception as fe:
         logger.warning(f"Failed to write mock ASN email preview: {fe}")
 
-    recipient_email = (
+    logger.info(
+        f"ASN email dispatch started:\n"
+        f"ASN={asn.asn_number}\n"
+        f"PO={po_ref}\n"
+        f"Supplier={supplier_name}\n"
+        f"Recipient={actual_supplier_email}\n"
+        f"Subject={email_subject}"
+    )
+
+    try:
+        delivered = await send_email(
+            to_email=actual_supplier_email,
+            subject=email_subject,
+            body=email_body,
+            html_body=supplier_email_html,
+        )
+        if delivered:
+            logger.info(
+                f"ASN email send returned successfully:\n"
+                f"ASN={asn.asn_number}\n"
+                f"Recipient={actual_supplier_email}\n"
+                f"SMTP server accepted the message."
+            )
+        else:
+            logger.warning(
+                f"ASN email sending skipped (SMTP credentials not configured or using placeholder):\n"
+                f"ASN={asn.asn_number}\n"
+                f"Recipient={actual_supplier_email}"
+            )
+    except Exception as email_err:
+        logger.error(
+            f"ASN email send failed:\n"
+            f"ASN={asn.asn_number}\n"
+            f"PO={po_ref}\n"
+            f"Recipient={actual_supplier_email}\n"
+            f"ExceptionType={type(email_err).__name__}\n"
+            f"Message={email_err}",
+            exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to send ASN email to supplier ({actual_supplier_email}): {str(email_err)}"
+        )
+
+    # 2. Dispatch internal copy to Warehouse / Procurement Operations
+    internal_recipient = (
         getattr(settings, "warehouse_email", None)
         or getattr(settings, "procurement_email", None)
         or getattr(settings, "email_host_user", None)
-        or "obaiahkade223@gmail.com"
+        or ""
     )
-    if recipient_email:
-        recipient_email = recipient_email.strip()
+    if internal_recipient:
+        internal_recipient = internal_recipient.strip()
 
-    if not recipient_email or "@" not in recipient_email:
-        logger.warning(f"ASN {asn.asn_number} notification skipped: No valid recipient email configured")
-        return
-
-    if po_obj and po_obj.supplier_email and recipient_email.lower() == po_obj.supplier_email.strip().lower():
-        logger.warning(
-            f"ASN {asn.asn_number} notification skipped: Configured recipient {recipient_email} matches supplier email instead of warehouse/procurement"
+    if (
+        internal_recipient
+        and "@" in internal_recipient
+        and internal_recipient.lower() != actual_supplier_email.lower()
+    ):
+        internal_email_html = render_premium_email(
+            eyebrow="Advance Shipment Notice",
+            title=f"Advance Shipment Notice · {asn.asn_number}",
+            greeting="Dear Warehouse & Procurement Team,",
+            intro=f"Supplier {supplier_name} has {action_label} an Advance Shipment Notice (ASN) for PO {po_ref}. The shipment is in transit with the schedule and materials detailed below:",
+            details=details_for_render,
+            items=items_for_render,
+            items_title="Shipment Materials",
+            col_headers=("Material Code & Name", "Shipped Quantity", "Expected Arrival", "Destination Warehouse"),
+            primary_cta=("View ASN in Portal", asn_link),
+            note="Please notify inbound receiving and dock management teams to prepare for unloading and inspection upon vehicle arrival.",
+            signoff="NexusWMS Logistics & Inbound Operations",
         )
-        return
 
-    logger.info(
-        f"Dispatching ASN notification email: ASN={asn.asn_number}, recipient={recipient_email}, subject={email_subject}"
-    )
-    if background_tasks is not None:
-        background_tasks.add_task(
-            _send_email_logged,
-            recipient_email,
-            email_subject,
-            email_body,
-            email_html,
-            f"ASN {asn.asn_number}",
-        )
-    else:
-        asyncio.create_task(
-            _send_email_logged(
-                recipient_email,
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _send_email_logged,
+                internal_recipient,
                 email_subject,
                 email_body,
-                email_html,
-                f"ASN {asn.asn_number}",
+                internal_email_html,
+                f"ASN {asn.asn_number} (Internal)",
             )
-        )
+        else:
+            asyncio.create_task(
+                _send_email_logged(
+                    internal_recipient,
+                    email_subject,
+                    email_body,
+                    internal_email_html,
+                    f"ASN {asn.asn_number} (Internal)",
+                )
+            )
 
 
 @router.post("/rfqs/{rfq_id}/select-supplier")
@@ -2091,8 +2156,17 @@ async def send_po_to_supplier(id: str, background_tasks: BackgroundTasks, uow: U
         ))
 
         await uow.commit()
-        background_tasks.add_task(_send_email_logged, recipient_email, subject, body, html_body, f"PO {po.po_number}")
-        return {"status": "queued", "message": "Purchase order saved. Email delivery is running in the background.", "recipient": recipient_email, "resent": is_resend}
+        try:
+            await send_email(recipient_email, subject, body, html_body)
+            logger.info(f"Purchase Order {po.po_number} email successfully delivered to {recipient_email}")
+        except Exception as send_err:
+            logger.error(f"Failed to send PO email to {recipient_email}: {send_err}", exc_info=True)
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to send Purchase Order email to supplier ({recipient_email}): {str(send_err)}"
+            )
+
+        return {"status": "sent", "message": f"Purchase order email sent successfully to {recipient_email}.", "recipient": recipient_email, "resent": is_resend}
     except HTTPException:
         raise
     except Exception as e:
@@ -2758,37 +2832,79 @@ async def create_asn(
         po_obj = None
         supplier_name = "Supplier"
         warehouse_name = "Main Warehouse"
+        resolved_supplier_email = None
 
         if request.po_id:
             try:
                 po_stmt = (
                     select(PurchaseOrderModel)
-                    .options(selectinload(PurchaseOrderModel.history))
-                    .where(PurchaseOrderModel.id == uuid.UUID(request.po_id))
+                    .options(selectinload(PurchaseOrderModel.history), selectinload(PurchaseOrderModel.items))
+                    .where(PurchaseOrderModel.id == uuid.UUID(str(request.po_id).strip()))
                 )
                 po_res = await uow.session.execute(po_stmt)
                 po_obj = po_res.scalar_one_or_none()
-                if po_obj:
-                    po_obj.status = "SHIPPED"
-                    supplier_name = po_obj.supplier_name or supplier_name
-                    warehouse_name = po_obj.delivery_warehouse_name or po_obj.warehouse_id or warehouse_name
+            except ValueError:
+                pass
 
-                    po_obj.history.append(POApprovalHistoryModel(
-                        id=uuid.uuid4(),
-                        status="SHIPPED",
-                        actor_name=_user.username or "supplier",
-                        comments=f"ASN {request.asn_number} submitted. Shipment is in transit."
-                    ))
+        if not po_obj and request.po_number:
+            try:
+                po_stmt = (
+                    select(PurchaseOrderModel)
+                    .options(selectinload(PurchaseOrderModel.history), selectinload(PurchaseOrderModel.items))
+                    .where(PurchaseOrderModel.po_number == str(request.po_number).strip())
+                )
+                po_res = await uow.session.execute(po_stmt)
+                po_obj = po_res.scalar_one_or_none()
+            except Exception:
+                pass
 
-                    uow.session.add(NotificationModel(
-                        id=uuid.uuid4(),
-                        user_role="PROCUREMENT",
-                        title="Shipment Dispatched",
-                        message=f"Supplier has dispatched goods for PO {po_obj.po_number}. ASN: {request.asn_number}",
-                        link=f"/procurement/asns/{asn_id.value}"
-                    ))
-            except Exception as po_err:
-                logger.warning(f"Failed to update PO status on ASN submission: {po_err}")
+        if po_obj:
+            po_obj.status = "SHIPPED"
+            supplier_name = po_obj.supplier_name or supplier_name
+            warehouse_name = po_obj.delivery_warehouse_name or po_obj.warehouse_id or warehouse_name
+
+            po_obj.history.append(POApprovalHistoryModel(
+                id=uuid.uuid4(),
+                status="SHIPPED",
+                actor_name=_user.username or "supplier",
+                comments=f"ASN {request.asn_number} submitted. Shipment is in transit."
+            ))
+
+            uow.session.add(NotificationModel(
+                id=uuid.uuid4(),
+                user_role="PROCUREMENT",
+                title="Shipment Dispatched",
+                message=f"Supplier has dispatched goods for PO {po_obj.po_number}. ASN: {request.asn_number}",
+                link=f"/procurement/asns/{asn_id.value}"
+            ))
+
+        target_sup_id = supplier_id or (po_obj.supplier_id if po_obj else None)
+        if target_sup_id:
+            try:
+                sup_stmt = select(SupplierModel).options(
+                    selectinload(SupplierModel.contact)
+                ).where(SupplierModel.id == uuid.UUID(str(target_sup_id)))
+                sup_res = await uow.session.execute(sup_stmt)
+                sup_obj = sup_res.scalar_one_or_none()
+                if sup_obj:
+                    if sup_obj.supplier_name:
+                        supplier_name = sup_obj.supplier_name
+                    if sup_obj.contact and sup_obj.contact.primary_email and "@" in sup_obj.contact.primary_email:
+                        resolved_supplier_email = sup_obj.contact.primary_email.strip()
+            except Exception as sup_err:
+                logger.warning(f"Failed to query supplier details: {sup_err}")
+
+        # Fallback to PO supplier_email if supplier contact record not found
+        if not resolved_supplier_email and po_obj and po_obj.supplier_email and "@" in po_obj.supplier_email:
+            resolved_supplier_email = po_obj.supplier_email.strip()
+
+        po_ref_display = (po_obj.po_number if po_obj else None) or request.po_number or "N/A"
+        if not resolved_supplier_email or "@" not in resolved_supplier_email:
+            logger.error(f"Supplier email not found for ASN {request.asn_number}, PO {po_ref_display}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Supplier email not found for PO {po_ref_display}"
+            )
 
         # Commit transaction FIRST before triggering external email dispatch
         await uow.commit()
@@ -2801,25 +2917,15 @@ async def create_asn(
         res = await uow.session.execute(stmt)
         asn = res.scalar_one()
 
-        if supplier_name == "Supplier" and asn.supplier_id:
-            try:
-                sup_res = await uow.session.execute(
-                    select(SupplierModel).where(SupplierModel.id == uuid.UUID(str(asn.supplier_id)))
-                )
-                sup = sup_res.scalar_one_or_none()
-                if sup and sup.supplier_name:
-                    supplier_name = sup.supplier_name
-            except Exception:
-                pass
-
-        # Trigger ASN email notification to warehouse/procurement
-        _dispatch_asn_email(
+        # Trigger ASN email notification to supplier and warehouse/procurement
+        await _dispatch_asn_email(
             asn=asn,
             po_obj=po_obj,
             supplier_name=supplier_name,
             warehouse_name=warehouse_name,
             background_tasks=background_tasks,
             is_resubmit=False,
+            supplier_email=resolved_supplier_email,
         )
 
         return AsnResponse(
@@ -3162,13 +3268,43 @@ async def resubmit_asn(
             except Exception:
                 pass
 
-        _dispatch_asn_email(
+        resolved_supplier_email = None
+
+        target_sup_id = asn.supplier_id or resolved_id or (po_obj.supplier_id if po_obj else None)
+        if target_sup_id:
+            try:
+                sup_stmt = select(SupplierModel).options(
+                    selectinload(SupplierModel.contact)
+                ).where(SupplierModel.id == uuid.UUID(str(target_sup_id)))
+                sup_res = await uow.session.execute(sup_stmt)
+                sup_obj = sup_res.scalar_one_or_none()
+                if sup_obj:
+                    if sup_obj.supplier_name:
+                        supplier_name = sup_obj.supplier_name
+                    if sup_obj.contact and sup_obj.contact.primary_email and "@" in sup_obj.contact.primary_email:
+                        resolved_supplier_email = sup_obj.contact.primary_email.strip()
+            except Exception:
+                pass
+
+        # Fallback to PO supplier_email if supplier contact record not found
+        if not resolved_supplier_email and po_obj and po_obj.supplier_email and "@" in po_obj.supplier_email:
+            resolved_supplier_email = po_obj.supplier_email.strip()
+
+        po_ref_display = asn.po_number or (po_obj.po_number if po_obj else "N/A")
+        if not resolved_supplier_email or "@" not in resolved_supplier_email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Supplier email not found for PO {po_ref_display}"
+            )
+
+        await _dispatch_asn_email(
             asn=asn,
             po_obj=po_obj,
             supplier_name=supplier_name or "Supplier",
             warehouse_name=warehouse_name,
             background_tasks=background_tasks,
             is_resubmit=True,
+            supplier_email=resolved_supplier_email,
         )
     except HTTPException:
         raise

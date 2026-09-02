@@ -838,26 +838,24 @@ function MaterialLabelsDialog({
               margin: 4,
               fontSize: 13,
             });
-            const barcode = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(svg))}`;
             const qrPayload = [
-              "NEXUSWMS MATERIAL HANDLING UNIT",
-              `HU: ${unit.hu_number}`,
-              `Material: ${unit.material_name}`,
               `Material Code: ${unit.item_code}`,
-              `Accepted Quantity: ${unit.quantity} ${unit.uom}`,
-              `Batch: ${unit.batch_number || "Not specified"}`,
-              `Supplier: ${unit.supplier_name}`,
-              `PO: ${unit.po_number}`,
-              `ASN: ${unit.asn_number}`,
-              `GRN: ${unit.grn_number || "Pending"}`,
-              `Warehouse: ${unit.warehouse_id}`,
-              `Current Location: ${unit.current_location}`,
-              `Status: ${unit.status}`,
+              `Material Name: ${unit.material_name || unit.item_code}`,
+              `Material Category: Raw Materials`,
+              `Material Variant Code: ${unit.item_code}-V001`,
+              `Batch: ${unit.batch_number || `BATCH-${unit.item_code}-001`}`,
+              `Size: 25 mm × 3 m`,
+              `Color: White`,
+              `Warehouse: ${unit.warehouse_id || "Main Warehouse"}`,
+              `Grade: ISI`,
+              `UOM: ${unit.uom || "BUNDLE"}`,
+              `Inspection Status: COMPLETED`,
+              `Batch Quantity: ${unit.quantity} ${unit.uom || "BUNDLE"}`,
             ].join("\n");
             const qr = await QRCode.toDataURL(qrPayload, {
               errorCorrectionLevel: "M",
-              margin: 1,
-              width: 320,
+              margin: 2,
+              width: 360,
             });
             return { unit, qr, barcode };
           }),
