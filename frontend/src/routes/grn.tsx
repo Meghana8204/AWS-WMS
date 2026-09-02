@@ -2227,16 +2227,22 @@ function GrnPageWorkflow() {
                               damagedQuantity={m.damaged_quantity}
                               reason={m.damage_reason}
                               onSuccess={(ev) => {
-                                setDamagePhotos((prev) => ({
-                                  ...prev,
-                                  [m.item_code]: {
-                                    ...prev[m.item_code],
-                                    evidenceId: ev.evidenceId,
-                                    reason: m.damage_reason,
-                                    previewUrl: ev.filePath,
-                                    file: ev.file,
-                                  },
-                                }));
+                                setDamagePhotos((prev) => {
+                                  const existing = prev[m.item_code] || {};
+                                  const existingIds = (existing as any).evidenceIds || (existing.evidenceId ? [existing.evidenceId] : []);
+                                  const newIds = Array.from(new Set([...existingIds, ev.evidenceId])).filter(Boolean);
+                                  return {
+                                    ...prev,
+                                    [m.item_code]: {
+                                      ...existing,
+                                      evidenceId: ev.evidenceId,
+                                      evidenceIds: newIds,
+                                      reason: m.damage_reason,
+                                      previewUrl: ev.filePath,
+                                      file: ev.file,
+                                    },
+                                  };
+                                });
                               }}
                             />
                           </td>
@@ -3488,13 +3494,15 @@ function GrnPageWorkflow() {
                   setSendingVendorNotify(true);
                   try {
                     const currentPhotoIds = Object.values(damagePhotos)
-                      .map((p) => p.evidenceId)
+                      .flatMap((p: any) => (p.evidenceIds && p.evidenceIds.length > 0 ? p.evidenceIds : (p.evidenceId ? [p.evidenceId] : [])))
                       .filter((id): id is string => Boolean(id && id.trim()));
 
                     const damagePayloadItems = damagedMaterials.length > 0
                       ? damagedMaterials.map((m) => {
-                          const photo = damagePhotos[m.item_code];
-                          const pIds = photo?.evidenceId ? [photo.evidenceId] : [];
+                          const photo = damagePhotos[m.item_code] as any;
+                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
+                            ? photo.evidenceIds
+                            : (photo?.evidenceId ? [photo.evidenceId] : []);
                           return {
                             item_code: m.item_code,
                             material_name: m.material_name,
@@ -3506,8 +3514,10 @@ function GrnPageWorkflow() {
                         })
                       : (damageQrLabels || []).map((d: any) => {
                           const code = d.item_code || d.itemCode || "ITEM";
-                          const photo = damagePhotos[code];
-                          const pIds = photo?.evidenceId ? [photo.evidenceId] : [];
+                          const photo = damagePhotos[code] as any;
+                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
+                            ? photo.evidenceIds
+                            : (photo?.evidenceId ? [photo.evidenceId] : []);
                           return {
                             item_code: code,
                             material_name: d.material_name || d.materialName || "Material",

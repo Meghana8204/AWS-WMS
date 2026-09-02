@@ -43,7 +43,10 @@ def collect_damage_attachments(
         if hasattr(getattr(grn, "id", None), "hex")
         else current_grn_id_str.replace("-", "")
     )
-    media_root = Path(os.getcwd(), "media_uploads").resolve()
+    possible_roots = [Path(os.getcwd(), "media_uploads").resolve()]
+    if upload_dir:
+        u_p = Path(upload_dir).resolve()
+        possible_roots.extend([u_p, u_p.parent])
 
     selected_set = {str(c).strip() for c in item_codes if c} if item_codes else None
     photo_id_set = {str(pid).strip().lower() for pid in photo_ids if pid} if photo_ids is not None else None
@@ -83,34 +86,36 @@ def collect_damage_attachments(
             if not file_path_str:
                 continue
 
-            # Resolve physical file on disk
+            # Resolve physical file on disk across possible roots
             raw_path = str(file_path_str).strip()
             resolved_file: Path | None = None
 
             if raw_path.startswith("/media/"):
                 sub_path = raw_path[len("/media/"):].lstrip("/\\")
-                cand = (media_root / sub_path).resolve()
-                if cand.exists() and cand.is_file():
-                    resolved_file = cand
+                for root in possible_roots:
+                    cand = (root / sub_path).resolve()
+                    if cand.exists() and cand.is_file():
+                        resolved_file = cand
+                        break
 
             if resolved_file is None:
                 # Fallback to direct upload_dir or grn_documents check
                 stored_name = PurePosixPath(raw_path).name
-                cand1 = (Path(upload_dir or (media_root / "grn_documents")) / stored_name).resolve()
-                cand2 = (media_root / "grn_documents" / stored_name).resolve()
-                if cand1.exists() and cand1.is_file():
-                    resolved_file = cand1
-                elif cand2.exists() and cand2.is_file():
-                    resolved_file = cand2
+                for root in possible_roots:
+                    cand1 = (root / stored_name).resolve()
+                    cand2 = (root / "grn_documents" / stored_name).resolve()
+                    if cand1.exists() and cand1.is_file():
+                        resolved_file = cand1
+                        break
+                    elif cand2.exists() and cand2.is_file():
+                        resolved_file = cand2
+                        break
 
             if resolved_file is None or not resolved_file.exists():
                 continue
 
             # Ensure file is inside media root or upload_dir (prevent path traversal)
-            allowed_roots = [media_root]
-            if upload_dir:
-                allowed_roots.append(Path(upload_dir).resolve())
-            if not any(str(resolved_file).startswith(str(ar)) for ar in allowed_roots):
+            if not any(str(resolved_file).startswith(str(ar)) for ar in possible_roots):
                 continue
 
             # If path contains damage_evidence subfolder, verify it belongs to current GRN

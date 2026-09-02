@@ -835,7 +835,7 @@ async def notify_vendor_damage(
         user_role="PROCUREMENT",
         title="Damaged / Rejected Goods Detected",
         message=procurement_msg,
-        link="/notifications",
+        link=f"/notifications?grn_id={grn.id}&grn_number={grn_number}",
         is_read=False,
         created_at=datetime.now(),
         po_number=po_number,
@@ -1397,7 +1397,7 @@ async def lookup_qr_code(
 async def get_grn_detail(
     grn_id: str,
     uow: UnitOfWork = Depends(get_uow),
-    _user=Depends(require_permission("receiving:read")),
+    _user=Depends(require_permission("receiving:read", "procurement:read")),
 ) -> GrnDetailResponse:
     grn = await repo.get_grn_detail_by_id(grn_id)
 

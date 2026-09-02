@@ -144,13 +144,55 @@ function Notifications() {
         const parsed = parseDamageNotificationMessage(selectedDamageNotif.message);
         let targetId = parsed.grnNumber;
         if (selectedDamageNotif.link) {
-          const match = selectedDamageNotif.link.match(/grn_id=([^&]+)/);
-          if (match && match[1]) targetId = match[1];
+          const matchId = selectedDamageNotif.link.match(/grn_id=([^&]+)/);
+          const matchNum = selectedDamageNotif.link.match(/grn_number=([^&]+)/);
+          if (matchId && matchId[1]) targetId = matchId[1];
+          else if (matchNum && matchNum[1]) targetId = matchNum[1];
         }
+
+        let grnResult = null;
         if (targetId) {
-          const data = await api.getGrn(targetId);
-          if (isMounted) setDamageGrnData(data);
+          try {
+            grnResult = await api.getGrn(targetId);
+          } catch (grnErr) {
+            console.warn("api.getGrn failed for", targetId, grnErr);
+          }
         }
+
+        // PO-level fallback if GRN detail is not found or has empty evidence
+        const hasEvidence = grnResult?.lines?.some(
+          (l: any) =>
+            (Array.isArray(l.damageEvidence) && l.damageEvidence.length > 0) ||
+            (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0)
+        );
+
+        if (!hasEvidence && (parsed.poNumber || selectedDamageNotif.po_number)) {
+          const poNum = (parsed.poNumber || selectedDamageNotif.po_number || "").trim();
+          try {
+            const poDmg = await api.getPoDamagedGoods(poNum);
+            if (poDmg?.has_damaged_goods && Array.isArray(poDmg.materials)) {
+              if (!grnResult) grnResult = { lines: [] };
+              grnResult.lines = poDmg.materials.map((m: any) => ({
+                item_code: m.item_code,
+                itemCode: m.item_code,
+                material_name: m.material_name,
+                materialName: m.material_name,
+                damage_evidence: (m.photos || []).map((p: any) => ({
+                  evidence_id: p.id,
+                  evidenceId: p.id,
+                  file_name: p.file_name,
+                  fileName: p.file_name,
+                  file_path: p.url,
+                  filePath: p.url,
+                })),
+              }));
+            }
+          } catch (poErr) {
+            console.warn("api.getPoDamagedGoods fallback failed for", poNum, poErr);
+          }
+        }
+
+        if (isMounted) setDamageGrnData(grnResult);
       } catch (err) {
         console.warn("Could not fetch full GRN details for damage photos", err);
       } finally {
@@ -246,16 +288,22 @@ function Notifications() {
 
   const getPhotosForMaterial = (matString: string) => {
     if (!damageGrnData?.lines) return [];
-    const cleanMat = matString.toLowerCase();
+    const cleanMat = matString.toLowerCase().trim();
+    const codeMatch = matString.match(/^([A-Za-z0-9_-]+)/);
+    const extractedCode = codeMatch ? codeMatch[1].toLowerCase() : "";
+
     const matchedLine = damageGrnData.lines.find((l: any) => {
-      const code = (l.itemCode || l.item_code || "").toLowerCase();
-      const name = (l.materialName || l.material_name || "").toLowerCase();
-      return (code && cleanMat.includes(code)) || (name && cleanMat.includes(name));
+      const code = (l.itemCode || l.item_code || "").toLowerCase().trim();
+      const name = (l.materialName || l.material_name || "").toLowerCase().trim();
+      return (
+        (code && (cleanMat.includes(code) || (extractedCode && (code === extractedCode || cleanMat.startsWith(code))))) ||
+        (name && (cleanMat.includes(name) || name.includes(cleanMat)))
+      );
     });
-    const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence;
+    const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence || matchedLine?.photos;
     if (Array.isArray(lineEvidence) && lineEvidence.length > 0) return lineEvidence;
     if (damageGrnData.lines.length === 1) {
-      const ev = damageGrnData.lines[0]?.damageEvidence || damageGrnData.lines[0]?.damage_evidence;
+      const ev = damageGrnData.lines[0]?.damageEvidence || damageGrnData.lines[0]?.damage_evidence || damageGrnData.lines[0]?.photos;
       if (Array.isArray(ev) && ev.length > 0) return ev;
     }
     return [];
