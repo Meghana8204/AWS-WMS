@@ -224,9 +224,15 @@ function WarehouseMaterials() {
   };
 
   const addVariantRow = () => {
-    const nextIdx = variantsList.length + 1;
     const codePrefix = materialCode.trim().toUpperCase() || "MAT";
-    const nextCode = `${codePrefix}-V${String(nextIdx).padStart(3, "0")}`;
+    const existingSeqs = variantsList
+      .map((v) => {
+        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n) && n > 0);
+    const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
+    const nextCode = `${codePrefix}-V${String(maxSeq + 1).padStart(3, "0")}`;
     setVariantsList([
       ...variantsList,
       {
@@ -266,6 +272,18 @@ function WarehouseMaterials() {
       toast.error("Material Name is required");
       return;
     }
+
+    const trimmedName = materialName.trim().toLowerCase();
+    const existingMat = materials.find(
+      (m) => m.material_name?.trim().toLowerCase() === trimmedName,
+    );
+    if (existingMat) {
+      toast.error(
+        `Material "${existingMat.material_name}" already exists (${existingMat.material_code}). Please use a unique Material Name.`,
+      );
+      return;
+    }
+
     const finalCategory = category === "OTHER" ? customCategory.trim() : category;
     if (!finalCategory) {
       toast.error("Please specify a category");
@@ -367,10 +385,20 @@ function WarehouseMaterials() {
     }
   };
 
-  const openAddVariantForExisting = () => {
+  const openAddVariantForExisting = async () => {
     if (!selectedMaterial) return;
-    const nextSeq = (selectedMaterial.variants?.length || 0) + 1;
-    setNewVarCode(`${selectedMaterial.material_code}-V${String(nextSeq).padStart(3, "0")}`);
+    
+    // Extract existing sequences from all existing variant codes (Active, Inactive, etc.)
+    const existingSeqs = (selectedMaterial.variants || [])
+      .map((v: any) => {
+        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n: number) => !isNaN(n) && n > 0);
+    const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
+    const initialCode = `${selectedMaterial.material_code}-V${String(maxSeq + 1).padStart(3, "0")}`;
+
+    setNewVarCode(initialCode);
     setNewVarSize("");
     setNewVarColor("");
     setNewVarGrade("");
@@ -380,6 +408,16 @@ function WarehouseMaterials() {
     setAttrKey("");
     setAttrVal("");
     setIsAddVariantModalOpen(true);
+
+    // Also fetch suggested variant code from backend API to ensure 100% synchronization
+    try {
+      const res = await api.getNextVariantCode(selectedMaterial.id);
+      if (res?.suggested_variant_code) {
+        setNewVarCode(res.suggested_variant_code);
+      }
+    } catch {
+      // Keep calculated fallback
+    }
   };
 
   const handleAddVariantSubmit = async (e: React.FormEvent) => {
@@ -454,7 +492,7 @@ function WarehouseMaterials() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Parent Materials
+                Base Materials
               </p>
               <h3 className="mt-1 text-2xl font-black tabular-nums">
                 {loading ? "..." : totalMaterials}
@@ -712,14 +750,14 @@ function WarehouseMaterials() {
           </DialogHeader>
 
           <form onSubmit={handleCreateSubmit} className="space-y-6 pt-3">
-            {/* Step 1: Parent Material Master Fields */}
+            {/* Step 1: Base Material Master Fields */}
             <div className="rounded-2xl bg-muted/20 border border-border/60 p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Badge className="bg-primary text-primary-foreground font-mono text-[10px]">
                   STEP 1
                 </Badge>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
-                  Parent Material Details
+                  Base Material Details
                 </h4>
               </div>
 

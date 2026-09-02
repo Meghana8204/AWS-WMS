@@ -56,10 +56,12 @@ type Dock = {
 
 const DOCK_TYPE_CONFIG: Record<string, { prefix: string; namePrefix: string }> = {
   RAW_MATERIAL: { prefix: "RM", namePrefix: "Raw Material Dock" },
-  CHEMICAL: { prefix: "CH", namePrefix: "Chemical Dock" },
-  HAZARDOUS_ITEMS: { prefix: "HZ", namePrefix: "Hazardous Dock" },
-  ELECTRONICS: { prefix: "EL", namePrefix: "Electronics Dock" },
+  CHEMICAL_HAZARDOUS: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
+  ELECTRICAL: { prefix: "EL", namePrefix: "Electrical Dock" },
+  ELECTRONICS: { prefix: "EC", namePrefix: "Electronics Dock" },
   MAIN_RECEIVING: { prefix: "MR", namePrefix: "Main Receiving Dock" },
+  CHEMICAL: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
+  HAZARDOUS_ITEMS: { prefix: "HZ", namePrefix: "Chemical/Hazardous Dock" },
 };
 
 function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
@@ -359,8 +361,8 @@ function DockMaster() {
           >
             <option value="ALL">All Types</option>
             <option value="RAW_MATERIAL">Raw Material</option>
-            <option value="CHEMICAL">Chemical</option>
-            <option value="HAZARDOUS_ITEMS">Hazardous Items</option>
+            <option value="CHEMICAL_HAZARDOUS">Chemical/Hazardous</option>
+            <option value="ELECTRICAL">Electrical</option>
             <option value="ELECTRONICS">Electronics</option>
             <option value="MAIN_RECEIVING">Main Receiving</option>
           </select>
@@ -392,9 +394,9 @@ function DockMaster() {
                 className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
               >
                 <option value="RAW_MATERIAL">RAW_MATERIAL (Raw Material — RM)</option>
-                <option value="CHEMICAL">CHEMICAL (Chemical — CH)</option>
-                <option value="HAZARDOUS_ITEMS">HAZARDOUS_ITEMS (Hazardous — HZ)</option>
-                <option value="ELECTRONICS">ELECTRONICS (Electronics — EL)</option>
+                <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS (Chemical/Hazardous — CH)</option>
+                <option value="ELECTRICAL">ELECTRICAL (Electrical — EL)</option>
+                <option value="ELECTRONICS">ELECTRONICS (Electronics — EC)</option>
                 <option value="MAIN_RECEIVING">MAIN_RECEIVING (Main Receiving — MR)</option>
               </select>
             </div>
@@ -489,8 +491,8 @@ function DockMaster() {
                   className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium"
                 >
                   <option value="RAW_MATERIAL">RAW_MATERIAL</option>
-                  <option value="CHEMICAL">CHEMICAL</option>
-                  <option value="HAZARDOUS_ITEMS">HAZARDOUS_ITEMS</option>
+                  <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS</option>
+                  <option value="ELECTRICAL">ELECTRICAL</option>
                   <option value="ELECTRONICS">ELECTRONICS</option>
                   <option value="MAIN_RECEIVING">MAIN_RECEIVING</option>
                 </select>
@@ -699,7 +701,7 @@ function MasterDockCard({
 
         <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
         <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-          {dock.dock_type.replaceAll("_", " ")}
+          {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")}
         </span>
         {dock.location && (
           <p className="mt-2 text-[11px] text-muted-foreground font-medium">📍 {dock.location}</p>

@@ -202,3 +202,84 @@ def test_material_stock_model_variant_linkage():
     assert stock.variant_code == "MAT-001-V001"
     assert stock.on_hand == Decimal("1500.0000")
     assert stock.warehouse_id == "WH-MAIN-01"
+
+
+def test_extract_variant_sequence_cases():
+    from app.modules.procurement.infrastructure.api.material_router import extract_variant_sequence
+
+    assert extract_variant_sequence("MAT-005-V001") == 1
+    assert extract_variant_sequence("MAT-005-V002") == 2
+    assert extract_variant_sequence("MAT-005-V010") == 10
+    assert extract_variant_sequence("MAT-005-v003") == 3
+    assert extract_variant_sequence("MAT-005-V1") == 1
+    assert extract_variant_sequence("MAT-005-VAR-004") == 4
+    assert extract_variant_sequence("MAT-005_V005") == 5
+    assert extract_variant_sequence("MAT-WIRE-001-V099") == 99
+    assert extract_variant_sequence("MAT-005-SPECIAL") is None
+    assert extract_variant_sequence("MAT-005") is None
+    assert extract_variant_sequence("") is None
+    assert extract_variant_sequence(None) is None
+
+
+def test_generate_next_variant_code_scenarios():
+    from app.modules.procurement.infrastructure.api.material_router import generate_next_variant_code
+
+    # 1. Standard existing V001, V002 -> next = V003
+    codes = ["MAT-005-V001", "MAT-005-V002"]
+    assert generate_next_variant_code("MAT-005", codes) == "MAT-005-V003"
+
+    # 2. Remove V001, V002 remains -> next = V003 (NEVER reuse V001 or duplicate V002)
+    codes_v2_only = ["MAT-005-V002"]
+    assert generate_next_variant_code("MAT-005", codes_v2_only) == "MAT-005-V003"
+
+    # 3. Remove V002, V003 remains -> next = V004
+    codes_v1_v3 = ["MAT-005-V001", "MAT-005-V003"]
+    assert generate_next_variant_code("MAT-005", codes_v1_v3) == "MAT-005-V004"
+
+    # 4. Only V003 remains -> next = V004
+    codes_v3_only = ["MAT-005-V003"]
+    assert generate_next_variant_code("MAT-005", codes_v3_only) == "MAT-005-V004"
+
+    # 5. No variants -> next = V001
+    assert generate_next_variant_code("MAT-005", []) == "MAT-005-V001"
+    assert generate_next_variant_code("MAT-005", None) == "MAT-005-V001"
+
+    # 6. Malformed or custom variants handled safely
+    codes_custom = ["MAT-005-SPECIAL", "MAT-005-CUSTOM-A"]
+    assert generate_next_variant_code("MAT-005", codes_custom) == "MAT-005-V001"
+
+
+def test_user_exact_scenario_remove_deactivate_v001_generates_v003():
+    """
+    Exact User Scenario:
+    - Material MAT-005 has variants MAT-005-V001 and MAT-005-V002
+    - If V001 is removed or deactivated and V002 remains
+    - Next generated variant code MUST be V003, NEVER V002.
+    """
+    from app.modules.procurement.infrastructure.api.material_router import generate_next_variant_code
+
+    # Case A: V001 removed, only V002 in active list
+    remaining_variants_after_delete = ["MAT-005-V002"]
+    next_code = generate_next_variant_code("MAT-005", remaining_variants_after_delete)
+    assert next_code == "MAT-005-V003", f"Expected MAT-005-V003 but got {next_code}"
+
+    # Case B: V001 deactivated (status=Inactive), both still in DB
+    variants_with_inactive = ["MAT-005-V001", "MAT-005-V002"]
+    next_code_b = generate_next_variant_code("MAT-005", variants_with_inactive)
+    assert next_code_b == "MAT-005-V003", f"Expected MAT-005-V003 but got {next_code_b}"
+
+
+def test_variant_sequence_gaps_and_mixed_case():
+    from app.modules.procurement.infrastructure.api.material_router import generate_next_variant_code
+
+    # Gaps in sequences
+    assert generate_next_variant_code("MAT-100", ["MAT-100-V001", "MAT-100-V005"]) == "MAT-100-V006"
+    assert generate_next_variant_code("MAT-100", ["MAT-100-V010"]) == "MAT-100-V011"
+    
+    # Mixed cases
+    assert generate_next_variant_code("mat-100", ["mat-100-v001", "MAT-100-V002"]) == "MAT-100-V003"
+    
+    # Empty material code fallback
+    assert generate_next_variant_code("", ["V001", "V002"]) == "MAT-V003"
+
+

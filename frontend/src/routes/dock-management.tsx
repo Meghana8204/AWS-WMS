@@ -107,10 +107,12 @@ type DockHistory = {
 
 const DOCK_TYPE_CONFIG: Record<string, { prefix: string; namePrefix: string }> = {
   RAW_MATERIAL: { prefix: "RM", namePrefix: "Raw Material Dock" },
-  CHEMICAL: { prefix: "CH", namePrefix: "Chemical Dock" },
-  HAZARDOUS_ITEMS: { prefix: "HZ", namePrefix: "Hazardous Dock" },
-  ELECTRONICS: { prefix: "EL", namePrefix: "Electronics Dock" },
+  CHEMICAL_HAZARDOUS: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
+  ELECTRICAL: { prefix: "EL", namePrefix: "Electrical Dock" },
+  ELECTRONICS: { prefix: "EC", namePrefix: "Electronics Dock" },
   MAIN_RECEIVING: { prefix: "MR", namePrefix: "Main Receiving Dock" },
+  CHEMICAL: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
+  HAZARDOUS_ITEMS: { prefix: "HZ", namePrefix: "Chemical/Hazardous Dock" },
 };
 
 function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
@@ -544,8 +546,8 @@ function DockManagement() {
             >
               <option value="ALL">All Types</option>
               <option value="RAW_MATERIAL">Raw Material</option>
-              <option value="CHEMICAL">Chemical</option>
-              <option value="HAZARDOUS_ITEMS">Hazardous Items</option>
+              <option value="CHEMICAL_HAZARDOUS">Chemical/Hazardous</option>
+              <option value="ELECTRICAL">Electrical</option>
               <option value="ELECTRONICS">Electronics</option>
               <option value="MAIN_RECEIVING">Main Receiving</option>
             </select>
@@ -576,9 +578,9 @@ function DockManagement() {
                 className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
               >
                 <option value="RAW_MATERIAL">RAW_MATERIAL (Raw Material — RM)</option>
-                <option value="CHEMICAL">CHEMICAL (Chemical — CH)</option>
-                <option value="HAZARDOUS_ITEMS">HAZARDOUS_ITEMS (Hazardous — HZ)</option>
-                <option value="ELECTRONICS">ELECTRONICS (Electronics — EL)</option>
+                <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS (Chemical/Hazardous — CH)</option>
+                <option value="ELECTRICAL">ELECTRICAL (Electrical — EL)</option>
+                <option value="ELECTRONICS">ELECTRONICS (Electronics — EC)</option>
                 <option value="MAIN_RECEIVING">MAIN_RECEIVING (Main Receiving — MR)</option>
               </select>
             </div>
@@ -673,8 +675,8 @@ function DockManagement() {
                   className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium"
                 >
                   <option value="RAW_MATERIAL">RAW_MATERIAL</option>
-                  <option value="CHEMICAL">CHEMICAL</option>
-                  <option value="HAZARDOUS_ITEMS">HAZARDOUS_ITEMS</option>
+                  <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS</option>
+                  <option value="ELECTRICAL">ELECTRICAL</option>
                   <option value="ELECTRONICS">ELECTRONICS</option>
                   <option value="MAIN_RECEIVING">MAIN_RECEIVING</option>
                 </select>
@@ -801,8 +803,14 @@ function DockManagement() {
                       <td className="px-4 py-3 font-mono font-bold">{req.vehicle_number}</td>
                       <td className="px-4 py-3 text-xs font-medium">{req.vendor_reference || "Vendor"}</td>
                       <td className="px-4 py-3 text-xs">
-                        <div className="font-medium">{req.material_reference || req.material_description || "Material"}</div>
-                        {req.quantity && <div className="text-[11px] text-muted-foreground">Qty: {req.quantity}</div>}
+                        <div className="font-semibold text-foreground">
+                          {req.material_reference && req.material_reference !== "General Material" && req.material_reference !== "Material"
+                            ? req.material_reference
+                            : (req.material_description && req.material_description !== "Inbound Material Shipment"
+                              ? req.material_description
+                              : "Raw Material / Goods")}
+                        </div>
+                        {req.quantity && <div className="text-[11px] text-muted-foreground tabular-nums">Qty: {req.quantity}</div>}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
                         {req.security_approved_at ? new Date(req.security_approved_at).toLocaleString() : "—"}
@@ -888,7 +896,9 @@ function DockManagement() {
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Dock Type</span>
-                    <span className="font-semibold text-foreground">{selectedDetailsDock.dock_type.replaceAll("_", " ")}</span>
+                    <span className="font-semibold text-foreground">
+                      {selectedDetailsDock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : selectedDetailsDock.dock_type === "ELECTRICAL" ? "Electrical" : selectedDetailsDock.dock_type === "ELECTRONICS" ? "Electronics" : selectedDetailsDock.dock_type.replaceAll("_", " ")}
+                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Current Status</span>
@@ -966,9 +976,11 @@ function DockManagement() {
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Material Code / Name</span>
                         <span className="font-semibold text-foreground">
-                          {selectedDetailsDock.current_allocation?.material_reference ||
-                            selectedDetailsDock.current_allocation?.material_description ||
-                            "Inbound Material Batch"}
+                          {selectedDetailsDock.current_allocation?.material_reference && selectedDetailsDock.current_allocation.material_reference !== "General Material" && selectedDetailsDock.current_allocation.material_reference !== "Material"
+                            ? selectedDetailsDock.current_allocation.material_reference
+                            : (selectedDetailsDock.current_allocation?.material_description && selectedDetailsDock.current_allocation.material_description !== "Inbound Material Shipment"
+                              ? selectedDetailsDock.current_allocation.material_description
+                              : "Raw Material / Goods")}
                         </span>
                       </div>
                       <div>
@@ -1142,7 +1154,11 @@ function DockManagement() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Material:</span>
                   <span className="font-semibold text-foreground">
-                    {allocateModalPendingReq.material_reference || allocateModalPendingReq.material_description || "Inbound Goods"}
+                    {allocateModalPendingReq.material_reference && allocateModalPendingReq.material_reference !== "General Material"
+                      ? allocateModalPendingReq.material_reference
+                      : (allocateModalPendingReq.material_description && allocateModalPendingReq.material_description !== "Inbound Material Shipment"
+                        ? allocateModalPendingReq.material_description
+                        : "Raw Material / Goods")}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1190,7 +1206,7 @@ function DockManagement() {
                             <StatusBadge status="AVAILABLE" />
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            {dock.dock_type.replaceAll("_", " ")} · {dock.location || "Main Facade"}
+                            {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")} · {dock.location || "Main Facade"}
                           </p>
                         </div>
                         <input
@@ -1424,7 +1440,7 @@ function DockCard({
 
         <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
         <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-          {dock.dock_type.replaceAll("_", " ")}
+          {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")}
         </span>
 
         {/* Assigned Vehicle Preview */}

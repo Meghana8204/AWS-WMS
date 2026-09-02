@@ -380,7 +380,7 @@ def _gate_entry_from_model(model: GateEntryModel) -> GateEntry:
     try:
         parsed_status = GateEntryStatus(raw_status)
     except ValueError:
-        parsed_status = GateEntryStatus.PENDING_VERIFICATION
+        parsed_status = getattr(GateEntryStatus, raw_status, GateEntryStatus.PENDING_VERIFICATION)
 
     created_at = model.created_at or datetime.datetime.now(datetime.timezone.utc)
     updated_at = model.updated_at or datetime.datetime.now(datetime.timezone.utc)

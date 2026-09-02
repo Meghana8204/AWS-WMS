@@ -232,7 +232,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
         try:
             parsed_status = GateEntryStatus(raw_status)
         except ValueError:
-            parsed_status = GateEntryStatus.PENDING_VERIFICATION
+            parsed_status = getattr(GateEntryStatus, raw_status, GateEntryStatus.PENDING_VERIFICATION)
 
         v_res = None
         if entity.verification_type:

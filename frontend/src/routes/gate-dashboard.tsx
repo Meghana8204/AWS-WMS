@@ -116,7 +116,7 @@ function GateDashboard() {
                 const rawDock = entry.dock_name || entry.dock_number || entry.assigned_dock_id;
                 const assignedDock =
                   rawDock && rawDock !== "—" && rawDock.toUpperCase() !== "UNASSIGNED"
-                    ? (rawDock.startsWith("Dock") ? rawDock : `Dock ${rawDock}`)
+                    ? (rawDock.includes("Dock") ? rawDock : `Dock ${rawDock}`)
                     : null;
 
                 return (

@@ -46,8 +46,8 @@ async def test_seed_and_get_overview_metrics(async_session):
     docks = await DockAllocationService.list_docks(async_session)
     types_found = {d.dock_type for d in docks}
     assert "RAW_MATERIAL" in types_found
-    assert "CHEMICAL" in types_found
-    assert "HAZARDOUS_ITEMS" in types_found
+    assert "CHEMICAL_HAZARDOUS" in types_found
+    assert "ELECTRICAL" in types_found
     assert "ELECTRONICS" in types_found
     assert "MAIN_RECEIVING" in types_found
 
@@ -60,8 +60,14 @@ async def test_dock_type_filtering(async_session):
     for d in rm_docks:
         assert d.dock_type == "RAW_MATERIAL"
 
-    chem_docks = await DockAllocationService.list_docks(async_session, dock_type="CHEMICAL")
-    assert len(chem_docks) == 2
+    chem_haz_docks = await DockAllocationService.list_docks(async_session, dock_type="CHEMICAL_HAZARDOUS")
+    assert len(chem_haz_docks) == 2
+
+    elec_docks = await DockAllocationService.list_docks(async_session, dock_type="ELECTRICAL")
+    assert len(elec_docks) == 2
+
+    electronics_docks = await DockAllocationService.list_docks(async_session, dock_type="ELECTRONICS")
+    assert len(electronics_docks) == 2
 
     mr_docks = await DockAllocationService.list_docks(async_session, dock_type="MAIN_RECEIVING")
     assert len(mr_docks) == 1

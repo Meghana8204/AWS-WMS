@@ -553,12 +553,17 @@ export function StatusBadge({ status }: { status: string }) {
     DISPATCHED: "bg-teal-soft text-teal border-teal/30",
   };
   const isLive = ["PO_VERIFIED", "APPROVED", "Receiving", "Active"].includes(status);
+  let displayLabel = status.replace(/_/g, " ");
+  if (displayLabel.toUpperCase() === "OCCUPIED") {
+    displayLabel = "AT DOCK";
+  }
+
   return (
     <Badge
       variant="outline"
       className={cn(
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-        map[status] ?? map["Hold"],
+        map[status] ?? map[displayLabel] ?? map["Hold"],
         isLive && "pl-5",
       )}
     >
@@ -568,7 +573,7 @@ export function StatusBadge({ status }: { status: string }) {
           <span className="relative inline-flex size-1.5 rounded-full bg-current"></span>
         </span>
       )}
-      {status.replace(/_/g, " ")}
+      {displayLabel}
     </Badge>
   );
 }

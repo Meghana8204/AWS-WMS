@@ -56,18 +56,38 @@ async def list_docks(
     dock_ids = [d.id for d in docks]
     alloc_map = await DockAllocationService.get_active_allocations_for_docks(uow.session, dock_ids)
 
+    from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+    ge_res = await uow.session.execute(select(GateEntryModel))
+    ge_list = ge_res.scalars().all()
+    ge_map_by_pass = {ge.gate_entry_number: ge for ge in ge_list if ge.gate_entry_number}
+    ge_map_by_id = {str(ge.id): ge for ge in ge_list}
+    ge_map_by_veh = {ge.vehicle_number: ge for ge in ge_list if ge.vehicle_number}
+
     res = []
     for d in docks:
         alloc_req = alloc_map.get(d.id)
         current_alloc = None
         if alloc_req:
+            ge = ge_map_by_pass.get(alloc_req.existing_gate_pass_id) or ge_map_by_id.get(alloc_req.existing_gate_pass_id) or ge_map_by_veh.get(alloc_req.vehicle_number)
+            mat_ref = alloc_req.material_reference
+            if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
+                if ge:
+                    mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
+            if not mat_ref:
+                mat_ref = "Raw Material / Goods"
+
+            vendor_ref = alloc_req.vendor_reference
+            if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
+                if ge and ge.ocr_supplier_name:
+                    vendor_ref = ge.ocr_supplier_name
+
             current_alloc = AllocationRequestResponse(
                 id=alloc_req.id,
                 existing_gate_pass_id=alloc_req.existing_gate_pass_id,
-                vendor_reference=alloc_req.vendor_reference,
+                vendor_reference=vendor_ref,
                 vehicle_number=alloc_req.vehicle_number,
-                material_reference=alloc_req.material_reference,
-                material_description=alloc_req.material_description,
+                material_reference=mat_ref,
+                material_description=alloc_req.material_description if (alloc_req.material_description and alloc_req.material_description not in ("Inbound Material Shipment", "General Material")) else mat_ref,
                 quantity=alloc_req.quantity,
                 security_approved_at=alloc_req.security_approved_at,
                 priority=alloc_req.priority,
@@ -136,13 +156,33 @@ async def get_dock_by_id(dock_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow))
     alloc_req = alloc_map.get(dock.id)
     current_alloc = None
     if alloc_req:
+        from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+        ge_res = await uow.session.execute(
+            select(GateEntryModel).where(
+                (GateEntryModel.gate_entry_number == alloc_req.existing_gate_pass_id) |
+                (GateEntryModel.vehicle_number == alloc_req.vehicle_number)
+            )
+        )
+        ge = ge_res.scalars().first()
+        mat_ref = alloc_req.material_reference
+        if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
+            if ge:
+                mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
+        if not mat_ref:
+            mat_ref = "Raw Material / Goods"
+
+        vendor_ref = alloc_req.vendor_reference
+        if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
+            if ge and ge.ocr_supplier_name:
+                vendor_ref = ge.ocr_supplier_name
+
         current_alloc = AllocationRequestResponse(
             id=alloc_req.id,
             existing_gate_pass_id=alloc_req.existing_gate_pass_id,
-            vendor_reference=alloc_req.vendor_reference,
+            vendor_reference=vendor_ref,
             vehicle_number=alloc_req.vehicle_number,
-            material_reference=alloc_req.material_reference,
-            material_description=alloc_req.material_description,
+            material_reference=mat_ref,
+            material_description=alloc_req.material_description if (alloc_req.material_description and alloc_req.material_description not in ("Inbound Material Shipment", "General Material")) else mat_ref,
             quantity=alloc_req.quantity,
             security_approved_at=alloc_req.security_approved_at,
             priority=alloc_req.priority,
@@ -297,33 +337,57 @@ async def list_pending_allocation_requests(uow: UnitOfWork = Depends(get_uow)):
     )
     result = await uow.session.execute(query)
     reqs = result.scalars().all()
-    return [
-        AllocationRequestResponse(
-            id=r.id,
-            existing_gate_pass_id=r.existing_gate_pass_id,
-            vendor_reference=r.vendor_reference,
-            vehicle_number=r.vehicle_number,
-            material_reference=r.material_reference,
-            material_description=r.material_description,
-            quantity=r.quantity,
-            security_approved_at=r.security_approved_at,
-            priority=r.priority,
-            status=r.status,
-            assigned_dock_id=r.assigned_dock_id,
-            assigned_dock_code=r.assigned_dock.dock_code if r.assigned_dock else None,
-            assigned_by=r.assigned_by,
-            assigned_at=r.assigned_at,
-            arrived_at=r.arrived_at,
-            started_at=r.started_at,
-            completed_at=r.completed_at,
-            released_at=r.released_at,
-            cancelled_at=r.cancelled_at,
-            cancellation_reason=r.cancellation_reason,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
+
+    from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+    ge_res = await uow.session.execute(select(GateEntryModel))
+    ge_list = ge_res.scalars().all()
+    ge_map_by_pass = {ge.gate_entry_number: ge for ge in ge_list if ge.gate_entry_number}
+    ge_map_by_id = {str(ge.id): ge for ge in ge_list}
+    ge_map_by_veh = {ge.vehicle_number: ge for ge in ge_list if ge.vehicle_number}
+
+    res_list = []
+    for r in reqs:
+        ge = ge_map_by_pass.get(r.existing_gate_pass_id) or ge_map_by_id.get(r.existing_gate_pass_id) or ge_map_by_veh.get(r.vehicle_number)
+
+        mat_ref = r.material_reference
+        if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
+            if ge:
+                mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
+        if not mat_ref:
+            mat_ref = "Raw Material / Goods"
+
+        vendor_ref = r.vendor_reference
+        if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
+            if ge and ge.ocr_supplier_name:
+                vendor_ref = ge.ocr_supplier_name
+
+        res_list.append(
+            AllocationRequestResponse(
+                id=r.id,
+                existing_gate_pass_id=r.existing_gate_pass_id,
+                vendor_reference=vendor_ref,
+                vehicle_number=r.vehicle_number,
+                material_reference=mat_ref,
+                material_description=r.material_description if (r.material_description and r.material_description not in ("Inbound Material Shipment", "General Material")) else mat_ref,
+                quantity=r.quantity,
+                security_approved_at=r.security_approved_at,
+                priority=r.priority,
+                status=r.status,
+                assigned_dock_id=r.assigned_dock_id,
+                assigned_dock_code=r.assigned_dock.dock_code if r.assigned_dock else None,
+                assigned_by=r.assigned_by,
+                assigned_at=r.assigned_at,
+                arrived_at=r.arrived_at,
+                started_at=r.started_at,
+                completed_at=r.completed_at,
+                released_at=r.released_at,
+                cancelled_at=r.cancelled_at,
+                cancellation_reason=r.cancellation_reason,
+                created_at=r.created_at,
+                updated_at=r.updated_at,
+            )
         )
-        for r in reqs
-    ]
+    return res_list
 
 
 async def _build_allocation_response(

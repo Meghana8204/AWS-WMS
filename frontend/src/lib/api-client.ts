@@ -1287,4 +1287,11 @@ export const api = {
     const encoded = encodeURIComponent(code.trim());
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/qr-lookup?code=${encoded}`);
   },
+  async getNextVariantCode(materialId: string): Promise<{
+    material_code: string;
+    suggested_variant_code: string;
+  }> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${materialId}/next-variant-code`);
+  },
 };
+
