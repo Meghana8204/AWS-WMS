@@ -570,71 +570,66 @@ function Notifications() {
                       </span>
                     </div>
 
-                    {/* PHOTO EVIDENCE (PICS) GALLERY */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
-                        </span>
-                        {linePhotos.length > 0 && (
+                    {/* PHOTO EVIDENCE (PICS) GALLERY - Rendered only when photos exist */}
+                    {linePhotos.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
+                          </span>
                           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
                             ✓ {linePhotos.length} Photo(s) Attached
                           </span>
+                        </div>
+
+                        {damageLoading ? (
+                          <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
+                            <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
+                            <span className="text-xs text-muted-foreground font-medium">
+                              Loading damage photos...
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {linePhotos.map((photo: any, pIdx: number) => {
+                              const filePath = photo.filePath || photo.file_path || "";
+                              const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
+                              const fullUrl = filePath.startsWith("http")
+                                ? filePath
+                                : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
+
+                              return (
+                                <div
+                                  key={photo.evidenceId || photo.evidence_id || pIdx}
+                                  className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
+                                  onClick={() => setEnlargedPhoto(fullUrl)}
+                                >
+                                  <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
+                                    <img
+                                      src={fullUrl}
+                                      alt={fileName}
+                                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      onError={(e) => {
+                                        // Fallback on missing or invalid image path
+                                        const target = e.target as HTMLImageElement;
+                                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
+                                    <Eye className="size-5 text-rose-200" />
+                                    <span className="text-[10px] font-bold">View Full Picture</span>
+                                  </div>
+                                  <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
+                                    {fileName}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
-
-                      {damageLoading ? (
-                        <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
-                          <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
-                          <span className="text-xs text-muted-foreground font-medium">
-                            Loading damage photos...
-                          </span>
-                        </div>
-                      ) : linePhotos.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {linePhotos.map((photo: any, pIdx: number) => {
-                            const filePath = photo.filePath || photo.file_path || "";
-                            const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
-                            const fullUrl = filePath.startsWith("http")
-                              ? filePath
-                              : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
-
-                            return (
-                              <div
-                                key={photo.evidenceId || photo.evidence_id || pIdx}
-                                className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
-                                onClick={() => setEnlargedPhoto(fullUrl)}
-                              >
-                                <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
-                                  <img
-                                    src={fullUrl}
-                                    alt={fileName}
-                                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    onError={(e) => {
-                                      // Fallback on missing or invalid image path
-                                      const target = e.target as HTMLImageElement;
-                                      target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
-                                    }}
-                                  />
-                                </div>
-                                <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
-                                  <Eye className="size-5 text-rose-200" />
-                                  <span className="text-[10px] font-bold">View Full Picture</span>
-                                </div>
-                                <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
-                                  {fileName}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-xl border border-dashed text-xs text-muted-foreground">
-                          <Camera className="size-4 text-muted-foreground/50 shrink-0" />
-                          <span>No photo evidence uploaded for this material during receiving inspection.</span>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
                 );
               })}
