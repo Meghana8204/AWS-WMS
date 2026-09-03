@@ -57,6 +57,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import { getUserInfo } from "@/lib/auth-utils";
+import {
+  QRScanResultModal,
+  QrNotFoundModal,
+  type QrScanResultData,
+} from "@/components/wms/qr-scan-result-modal";
 
 export const Route = createFileRoute("/grn")({
   validateSearch: (search: Record<string, unknown>) => ({
