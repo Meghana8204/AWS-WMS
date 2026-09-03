@@ -1,10 +1,6 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-<<<<<<< HEAD
 export default (defineConfig as any)({
-=======
-export default defineConfig({
->>>>>>> main
   server: {
     port: 8080,
     strictPort: true,
