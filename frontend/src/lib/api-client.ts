@@ -1448,7 +1448,6 @@ export const api = {
       },
     );
   },
->>>>>>> main
 
   async getMaterials(filters?: {
     search?: string;
