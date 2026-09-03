@@ -599,7 +599,6 @@ function GateEntry() {
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
-      }
 
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
