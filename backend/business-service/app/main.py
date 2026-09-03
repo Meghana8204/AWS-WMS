@@ -567,6 +567,72 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
+        # Ensure grn table and all columns exist
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn (
+                    id UUID PRIMARY KEY,
+                    po_id UUID,
+                    po_number VARCHAR(64),
+                    grn_number VARCHAR(64),
+                    asn_id UUID,
+                    asn_number VARCHAR(64),
+                    gate_entry_id UUID,
+                    gate_entry_number VARCHAR(64),
+                    supplier_name VARCHAR(255),
+                    supplier_company_name VARCHAR(255),
+                    warehouse_id VARCHAR(64),
+                    warehouse_name VARCHAR(255),
+                    dock_number VARCHAR(32),
+                    vehicle_number VARCHAR(64),
+                    driver_name VARCHAR(128),
+                    invoice_number VARCHAR(64),
+                    receipt_type VARCHAR(32),
+                    receipt_date TIMESTAMP WITH TIME ZONE,
+                    received_by VARCHAR(128),
+                    status VARCHAR(32) DEFAULT 'DRAFT',
+                    posted_by VARCHAR(128),
+                    posted_at TIMESTAMP WITH TIME ZONE,
+                    verification_notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            grn_cols = [
+                ("po_id", "UUID"),
+                ("po_number", "VARCHAR(64)"),
+                ("grn_number", "VARCHAR(64)"),
+                ("asn_id", "UUID"),
+                ("asn_number", "VARCHAR(64)"),
+                ("gate_entry_id", "UUID"),
+                ("gate_entry_number", "VARCHAR(64)"),
+                ("supplier_name", "VARCHAR(255)"),
+                ("supplier_company_name", "VARCHAR(255)"),
+                ("warehouse_id", "VARCHAR(64)"),
+                ("warehouse_name", "VARCHAR(255)"),
+                ("dock_number", "VARCHAR(32)"),
+                ("vehicle_number", "VARCHAR(64)"),
+                ("driver_name", "VARCHAR(128)"),
+                ("invoice_number", "VARCHAR(64)"),
+                ("receipt_type", "VARCHAR(32)"),
+                ("receipt_date", "TIMESTAMP WITH TIME ZONE"),
+                ("received_by", "VARCHAR(128)"),
+                ("status", "VARCHAR(32)"),
+                ("posted_by", "VARCHAR(128)"),
+                ("posted_at", "TIMESTAMP WITH TIME ZONE"),
+                ("verification_notes", "TEXT"),
+                ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+                ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ]
+            for col_name, col_type in grn_cols:
+                try:
+                    await run_ddl(f"ALTER TABLE grn ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+                except Exception:
+                    pass
+            logger.debug("Ensured grn table and all columns exist")
+        except Exception as e:
+            logger.warning(f"Failed to create or alter grn table: {e}")
+
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS grn_damage_lot (
