@@ -171,7 +171,6 @@ export const api = {
       const isFinance = username.toLowerCase().includes("finance");
       const isWarehouse = username.toLowerCase().includes("warehouse");
       const isGate = username.toLowerCase().includes("gate");
-      const isGate = username.toLowerCase().includes("gate");
       const isGrn = username.toLowerCase().includes("grn") || username.toLowerCase().includes("receiving");
       const isAssembly = username.toLowerCase().includes("assembly");
       const mockUser = {
