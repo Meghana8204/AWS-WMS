@@ -2495,8 +2495,8 @@ function GrnPageWorkflow() {
                 </div>
 
                 {/* PO NUMBER ENTRY & SIDE FETCH DETAILS BUTTON */}
-                <div className="flex flex-wrap items-end gap-3 max-w-2xl">
-                  <div className="flex-1 min-w-[280px]">
+                <div className="flex flex-wrap items-end gap-3 max-w-xl">
+                  <div className="flex-1 min-w-[260px]">
                     <label className="text-xs font-bold text-foreground mb-1 flex items-center justify-between">
                       <span>PO Number *</span>
                       {loadingContext && (
@@ -2505,50 +2505,25 @@ function GrnPageWorkflow() {
                         </span>
                       )}
                     </label>
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter PO Number (e.g. PO-2026-0001)"
-                        value={header.po_number}
-                        disabled={busyAction || loadingContext}
-                        onChange={(e) => changePoNumber(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            void fetchPoContext();
-                          }
-                        }}
-                        className="rounded-xl font-mono text-base font-bold text-primary flex-1"
-                      />
-                      {availablePos.length > 0 && (
-                        <select
-                          disabled={busyAction || loadingContext}
-                          value={header.po_number}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val) {
-                              changePoNumber(val);
-                            }
-                          }}
-                          className="rounded-xl border bg-background px-3 py-2 text-xs font-bold text-muted-foreground max-w-[180px]"
-                        >
-                          <option value="">Select PO...</option>
-                          {availablePos.map((p: any) => {
-                            const num = p.poNumber || p.po_number;
-                            return (
-                              <option key={p.id || num} value={num}>
-                                {num}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      )}
-                    </div>
+                    <Input
+                      placeholder="Enter PO Number (e.g. PO-2026-0001)"
+                      value={header.po_number}
+                      disabled={busyAction || loadingContext}
+                      onChange={(e) => changePoNumber(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          void fetchPoContext();
+                        }
+                      }}
+                      className="rounded-xl font-mono text-base font-bold text-primary"
+                    />
                   </div>
                   <Button
                     type="button"
                     onClick={() => void fetchPoContext()}
                     disabled={loadingContext || busyAction || !header.po_number.trim()}
-                    className="rounded-xl font-semibold shadow-xs"
+                    className="rounded-xl font-semibold shadow-xs h-10 px-5"
                   >
                     {loadingContext ? (
                       <>
@@ -2806,7 +2781,8 @@ function GrnPageWorkflow() {
                                 type="number"
                                 min={0}
                                 max={m.po_quantity}
-                                value={recQty}
+                                placeholder="0"
+                                value={recQty === 0 ? "" : (recQty ?? "")}
                                 onChange={(e) => {
                                   const raw = e.target.value;
                                   const val = raw === "" ? 0 : Number(raw);
@@ -2984,10 +2960,11 @@ function GrnPageWorkflow() {
                                 type="number"
                                 min={0}
                                 max={recQty}
-                                value={acceptedVal}
+                                placeholder="0"
+                                value={acceptedVal === 0 ? "" : (acceptedVal ?? "")}
                                 onChange={(e) => {
                                   const raw = e.target.value;
-                                  const val = Math.max(0, Math.min(raw === "" ? 0 : Number(raw), recQty));
+                                  const val = raw === "" ? 0 : Math.max(0, Math.min(Number(raw), recQty));
                                   const newDamaged = Math.max(recQty - val, 0);
                                   setQualityApproved((prev) => ({ ...prev, [m.item_code]: val }));
                                   setMaterials((prev) =>
@@ -3006,10 +2983,11 @@ function GrnPageWorkflow() {
                                 type="number"
                                 min={0}
                                 max={recQty}
-                                value={damagedVal}
+                                placeholder="0"
+                                value={damagedVal === 0 ? "" : (damagedVal ?? "")}
                                 onChange={(e) => {
                                   const raw = e.target.value;
-                                  const val = Math.max(0, Math.min(raw === "" ? 0 : Number(raw), recQty));
+                                  const val = raw === "" ? 0 : Math.max(0, Math.min(Number(raw), recQty));
                                   const newAccepted = Math.max(recQty - val, 0);
                                   setQualityApproved((prev) => ({ ...prev, [m.item_code]: newAccepted }));
                                   setMaterials((prev) =>
@@ -3208,9 +3186,10 @@ function GrnPageWorkflow() {
                             />
                             <Input
                               type="number"
-                              value={b.batch_quantity}
+                              placeholder="0"
+                              value={b.batch_quantity === 0 ? "" : (b.batch_quantity ?? "")}
                               onChange={(e) => {
-                                const val = Number(e.target.value);
+                                const val = e.target.value === "" ? 0 : Number(e.target.value);
                                 setMaterialBatches((prev) => {
                                   const list = [...(prev[m.item_code] || [])];
                                   if (list[bIdx]) {
