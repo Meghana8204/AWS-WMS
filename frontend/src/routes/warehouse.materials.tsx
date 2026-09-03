@@ -52,11 +52,11 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/warehouse/materials")({
   head: () => ({
     meta: [
-      { title: "Material Master & Material Specifications · NexusWMS" },
+      { title: "Material Master · NexusWMS" },
       {
         name: "description",
         content:
-          "Manage canonical Material Master codes and multi-specification material items for warehouse operations.",
+          "Manage canonical Material Master codes for warehouse operations.",
       },
     ],
   }),
@@ -486,8 +486,7 @@ function WarehouseMaterials() {
 
   return (
     <AppShell
-      title="Material Master & Material Specifications"
-      subtitle="Warehouse Manager · Canonical Material Code catalog with multiple specifications & attributes"
+      title="Material Master"
       actions={
         <div className="flex items-center gap-2.5">
           <Button
