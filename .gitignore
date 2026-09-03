@@ -2,6 +2,8 @@
 media_uploads/
 *.log
 .DS_Store
+<<<<<<< HEAD
+=======
 
 # Environment files
 .env
@@ -65,3 +67,4 @@ WMS/
 # Python caches and local tooling
 .ruff_cache/
 **/.env
+>>>>>>> main

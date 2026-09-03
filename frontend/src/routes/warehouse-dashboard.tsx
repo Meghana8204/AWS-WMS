@@ -13,6 +13,7 @@ import {
   Loader2,
   Search,
   Boxes,
+  Database,
 } from "lucide-react";
 import {
   Area,
@@ -52,7 +53,9 @@ export const Route = createFileRoute("/warehouse-dashboard")({
 });
 
 const quickActions = [
-  { label: "Receiving", to: "/receiving", icon: PackageCheck },
+  { label: "Material Master", to: "/warehouse/materials", icon: Database },
+  { label: "Dock Management", to: "/dock-management", icon: Warehouse },
+  { label: "Goods Receiving", to: "/grn", icon: PackageCheck },
 ];
 
 function WarehouseDashboard() {

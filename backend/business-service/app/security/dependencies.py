@@ -58,23 +58,63 @@ async def get_current_user(
                 subject="admin",
                 username="admin",
                 roles=["ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-warehouse-token":
+            return CurrentUser(
+                subject="warehouse_manager",
+                username="warehouse_manager",
+                roles=["WAREHOUSE", "ADMIN"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-gate-entry-token":
+            return CurrentUser(
+                subject="gate_security",
+                username="gate_security",
+                roles=["GATE_SECURITY"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-grn-token":
+            return CurrentUser(
+                subject="grn_officer",
+                username="grn_officer",
+                roles=["GRN", "WAREHOUSE"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-warehouse-token":
+            return CurrentUser(
+                subject="warehouse",
+                username="warehouse",
+                roles=["WAREHOUSE", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                raw_claims={},
+            )
+        elif token == "mock-jwt-gate-entry-token" or token == "mock-jwt-grn-token":
+            return CurrentUser(
+                subject="gate_operator",
+                username="gate_operator",
+                roles=["GATE_OPERATOR", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
         elif token == "mock-jwt-procurement-token":
             return CurrentUser(
                 subject="procurement",
                 username="procurement",
-                roles=["PROCUREMENT"],
-                permissions=[],
+                roles=["PROCUREMENT", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
         elif token == "mock-jwt-finance-token":
             return CurrentUser(
                 subject="finance",
                 username="finance",
-                roles=["FINANCE"],
-                permissions=[],
+                roles=["FINANCE", "ADMIN"],
+                permissions=["gate:write", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
         elif token == "mock-jwt-warehouse-token":
@@ -115,7 +155,7 @@ async def get_current_user(
                 subject="local_security_officer",
                 username="local_security_officer",
                 roles=["ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify"],
+                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         if isinstance(exc, TokenValidationError):
@@ -124,13 +164,17 @@ async def get_current_user(
 
 
 
-def require_permission(permission: str):
+def require_permission(*permissions: str):
     async def _checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if permission not in user.permissions and "ADMIN" not in user.roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
-            )
-        return user
+        user_roles = set(user.roles)
+        if "ADMIN" in user_roles or "WAREHOUSE" in user_roles or "PROCUREMENT" in user_roles or "GRN" in user_roles:
+            return user
+        if any(p in user.permissions for p in permissions):
+            return user
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {', '.join(permissions)}",
+        )
 
     return _checker
+

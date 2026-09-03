@@ -84,7 +84,6 @@ function LoginPage() {
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
     const targetPath = redirectPath || getDefaultRouteForUser(data);
-
     setTimeout(() => {
       // Keep route transitions internal. `redirectPath` has already rejected external URLs.
       const target = new URL(targetPath, window.location.origin);
@@ -171,7 +170,7 @@ function LoginPage() {
               <Label htmlFor="employeeId">Employee ID / Username</Label>
               <Input
                 id="employeeId"
-                placeholder="EMP-001 or supplier_acme"
+                placeholder="e.g. emp_001"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 required
@@ -207,6 +206,7 @@ function LoginPage() {
                 </button>
               </div>
             </div>
+
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="remember"
@@ -220,7 +220,7 @@ function LoginPage() {
                 Remember me on this device
               </Label>
             </div>
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full font-bold" disabled={isLoading}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

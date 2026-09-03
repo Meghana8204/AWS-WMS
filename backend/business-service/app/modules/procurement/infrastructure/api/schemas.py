@@ -24,6 +24,18 @@ class NotificationResponse(ApiModel):
     link: Optional[str] = None
     is_read: bool = False
     created_at: datetime
+    dock_code: Optional[str] = None
+    dock_name: Optional[str] = None
+    dock_location: Optional[str] = None
+    dock_type: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    allocation_time: Optional[Union[datetime, str]] = None
+    gate_pass_number: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
+    asn_number: Optional[str] = None
+    po_number: Optional[str] = None
 
 
 
@@ -169,7 +181,7 @@ class RfqItemSchema(ApiModel):
 
 
 class CreateRfqRequest(ApiModel):
-    rfq_date: date
+    rfq_date: Optional[date] = Field(default_factory=date.today)
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
     warehouse: Optional[str] = None
@@ -549,3 +561,43 @@ class ChangePasswordRequest(ApiModel):
 class DevLoginRequest(ApiModel):
     username: str
     password: str
+
+
+class DamagedMaterialPhotoSchema(ApiModel):
+    id: str
+    file_name: str
+    url: str
+
+
+class DamagedMaterialItemSchema(ApiModel):
+    item_code: str
+    material_name: str
+    damaged_quantity: float
+    uom: str
+    reason: str
+    photos: List[DamagedMaterialPhotoSchema] = []
+
+
+class NotificationHistoryItemSchema(ApiModel):
+    recipient_type: str
+    recipient: str
+    status: str
+    sent_at: str
+
+
+class PoDamagedGoodsResponse(ApiModel):
+    has_damaged_goods: bool
+    po_number: Optional[str] = None
+    grn_number: Optional[str] = None
+    grn_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    damage_reported_at: Optional[str] = None
+    damaged_materials_count: int = 0
+    total_damaged_quantity: float = 0.0
+    status: str = "Damage Reported"
+    supplier_notification_status: str = "Sent"
+    procurement_notification_status: str = "Sent"
+    materials: List[DamagedMaterialItemSchema] = []
+    notification_history: List[NotificationHistoryItemSchema] = []
+

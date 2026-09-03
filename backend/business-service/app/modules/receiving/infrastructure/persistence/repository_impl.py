@@ -595,6 +595,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         self._session.add(entity)
 
+        # Same local transaction as the GRN write above - the outbox
+        # pattern. If the commit fails, the GRN write rolls back too, so
+        # the two never go out of sync.
         for event in grn.domain_events:
             self._session.add(
                 to_outbox_row(
@@ -680,7 +683,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
         if po_id or po_number:
             existing_snapshot = await self.find_grn_header_by_po(po_id=po_id, po_number=po_number)
             if existing_snapshot:
-                grn_uuid = _uuid_or_none(existing_snapshot.id)
+                grn_uuid = uuid.UUID(existing_snapshot.id)
 
         if grn_uuid:
             res = await self._session.execute(
@@ -760,14 +763,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
         )
 
         if po_uuid or po_number:
-            po_snap = None
-            if po_uuid:
-                try:
-                    po_snap = await self.find_purchase_order(PurchaseOrderId.of(po_uuid))
-                except Exception:
-                    pass
-            if not po_snap and po_number:
-                po_snap = await self.find_purchase_order_by_number(po_number)
+            po_snap = await self.find_purchase_order(PurchaseOrderId.of(po_id)) if po_id else await self.find_purchase_order_by_number(po_number)
             if po_snap:
                 for line in po_snap.lines:
                     new_grn.lines.append(
@@ -806,20 +802,15 @@ class SqlAlchemyGrnRepository(GrnRepository):
         line_map = {l.item_code: l for l in grn.lines}
         for item in lines_data:
             code = item["item_code"]
-            if item.get("received_quantity") is not None:
-                received = Decimal(str(item["received_quantity"]))
-                good = Decimal(str(item["good_quantity"])) if item.get("good_quantity") is not None else received
-                damaged = Decimal(str(item["damaged_quantity"])) if item.get("damaged_quantity") is not None else Decimal("0")
-            else:
-                good = Decimal(str(item.get("good_quantity", 0)))
-                damaged = Decimal(str(item.get("damaged_quantity", 0)))
-                received = good + damaged
+            good = Decimal(str(item.get("good_quantity", 0)))
+            damaged = Decimal(str(item.get("damaged_quantity", 0)))
+            received = good + damaged
 
             if code in line_map:
                 line = line_map[code]
-                line.received_quantity = received
                 line.good_quantity = good
                 line.damaged_quantity = damaged
+                line.received_quantity = received
                 ordered = line.ordered_quantity or Decimal("0")
                 line.balance_quantity = max(ordered - received, Decimal("0"))
             else:
@@ -1261,15 +1252,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
     ) -> tuple[list[GrnModel], int]:
         stmt = select(GrnModel).options(selectinload(GrnModel.lines))
         conditions = []
-        if status and status.strip() and status.strip().upper() != "ALL":
-            s = status.strip().upper().replace(" ", "_").replace("-", "_")
-            if s in ["COMPLETED", "POSTED", "APPROVED", "ACCEPTED"]:
-                conditions.append(GrnModel.status.in_(["COMPLETED", "POSTED", "APPROVED", "RECEIVING_COMPLETE"]))
-            elif s in ["PARTIAL", "PARTIALLY_COMPLETED", "IN_PROGRESS", "DRAFT", "PENDING", "RECEIVING"]:
-                conditions.append(GrnModel.status.in_(["PARTIALLY_COMPLETED", "PARTIALLY COMPLETED", "IN_PROGRESS", "DRAFT", "PENDING", "RECEIVING"]))
-            else:
-                conditions.append(GrnModel.status == status.strip())
-        if search and search.strip():
+        if status:
+            conditions.append(GrnModel.status == status.strip())
+        if search:
             term = f"%{search.strip()}%"
             conditions.append(
                 or_(
@@ -1277,19 +1262,13 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     GrnModel.po_number.ilike(term),
                     GrnModel.supplier_name.ilike(term),
                     GrnModel.vehicle_number.ilike(term),
-                    GrnModel.driver_name.ilike(term),
-                    GrnModel.dock_number.ilike(term),
                 )
             )
         if conditions:
             stmt = stmt.where(*conditions)
 
-        from sqlalchemy import func
-        count_stmt = select(func.count(GrnModel.id))
-        if conditions:
-            count_stmt = count_stmt.where(*conditions)
-        total_res = await self._session.execute(count_stmt)
-        total = total_res.scalar() or 0
+        total_res = await self._session.execute(stmt)
+        total = len(total_res.scalars().all())
 
         stmt = stmt.order_by(GrnModel.created_at.desc()).limit(limit).offset(offset)
         result = await self._session.execute(stmt)

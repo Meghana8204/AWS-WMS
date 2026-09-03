@@ -52,17 +52,42 @@ import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/warehouse/materials")({
   head: () => ({
     meta: [
-      { title: "Material Master & Variants · NexusWMS" },
+      { title: "Material Master · NexusWMS" },
       {
         name: "description",
         content:
-          "Manage canonical Material Master codes and multi-specification material variants for warehouse operations.",
+          "Manage canonical Material Master codes for warehouse operations.",
       },
     ],
   }),
   component: WarehouseMaterials,
 });
 
+const DEFAULT_UOMS = [
+  "INGOT",
+  "ROLL",
+  "COIL",
+  "LENGTH",
+  "BUNDLE",
+  "TON",
+  "PCS",
+  "MTR",
+  "KG",
+  "LTR",
+  "BOX",
+  "PKT",
+  "ROL",
+  "SQM",
+  "SET",
+  "NOS",
+  "DRUM",
+];
+
+// Helper to format specification codes to use "S" for user display
+export const formatSpecCode = (code?: string): string => {
+  if (!code) return "";
+  return code.replace(/-V(\d+)$/i, "-S$1");
+};
 interface VariantItem {
   variant_code?: string;
   size: string;
@@ -101,7 +126,7 @@ function WarehouseMaterials() {
   const [baseUom, setBaseUom] = useState("");
   const [materialStatus, setMaterialStatus] = useState("Active");
 
-  // Multi-variants builder inside Create Material
+  // Multi-variants/specifications builder inside Create Material
   const [variantsList, setVariantsList] = useState<VariantItem[]>([
     {
       variant_code: "",
@@ -115,11 +140,11 @@ function WarehouseMaterials() {
     },
   ]);
 
-  // Attribute Key-Value input for new variant modal
+  // Attribute Key-Value input for new specification modal
   const [attrKey, setAttrKey] = useState("");
   const [attrVal, setAttrVal] = useState("");
 
-  // Single new variant form for existing material
+  // Single new specification form for existing material
   const [newVarSize, setNewVarSize] = useState("");
   const [newVarColor, setNewVarColor] = useState("");
   const [newVarGrade, setNewVarGrade] = useState("");
@@ -165,8 +190,9 @@ function WarehouseMaterials() {
 
   const openCreateModal = async () => {
     try {
-      const { suggested_material_code } = await api.getNextMaterialCode();
+      const { suggested_material_code, suggested_variant_code } = await api.getNextMaterialCode();
       const code = suggested_material_code || "MAT-001";
+      const specCode = formatSpecCode(suggested_variant_code) || `${code}-S001`;
       setMaterialCode(code);
       setMaterialName("");
       setDescription("");
@@ -175,7 +201,7 @@ function WarehouseMaterials() {
       setCustomCategory("");
       setVariantsList([
         {
-          variant_code: `${code}-V001`,
+          variant_code: specCode,
           size: "",
           color: "",
           grade: "",
@@ -190,7 +216,7 @@ function WarehouseMaterials() {
       setMaterialCode("MAT-001");
       setVariantsList([
         {
-          variant_code: "MAT-001-V001",
+          variant_code: "MAT-001-S001",
           size: "",
           color: "",
           grade: "",
@@ -208,12 +234,13 @@ function WarehouseMaterials() {
     const codePrefix = materialCode.trim().toUpperCase() || "MAT";
     const existingSeqs = variantsList
       .map((v) => {
-        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        const match =
+          v.variant_code?.match(/[-_]?[vVsS](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter((n) => !isNaN(n) && n > 0);
     const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
-    const nextCode = `${codePrefix}-V${String(maxSeq + 1).padStart(3, "0")}`;
+    const nextCode = `${codePrefix}-S${String(maxSeq + 1).padStart(3, "0")}`;
     setVariantsList([
       ...variantsList,
       {
@@ -231,7 +258,7 @@ function WarehouseMaterials() {
 
   const removeVariantRow = (idx: number) => {
     if (variantsList.length === 1) {
-      toast.info("A material must have at least one variant.");
+      toast.info("A material must have at least one specification.");
       return;
     }
     setVariantsList(variantsList.filter((_, i) => i !== idx));
@@ -283,7 +310,7 @@ function WarehouseMaterials() {
         variants: variantsList.map((v, i) => ({
           variant_code:
             v.variant_code?.trim().toUpperCase() ||
-            `${materialCode.trim().toUpperCase()}-V${String(i + 1).padStart(3, "0")}`,
+            `${materialCode.trim().toUpperCase()}-S${String(i + 1).padStart(3, "0")}`,
           size: v.size.trim() || undefined,
           color: v.color.trim() || undefined,
           grade: v.grade.trim() || undefined,
@@ -296,7 +323,7 @@ function WarehouseMaterials() {
 
       await api.createMaterial(payload);
       toast.success(
-        `Material ${payload.material_code} (${payload.material_name}) created with ${payload.variants.length} variant(s)!`,
+        `Material ${payload.material_code} (${payload.material_name}) created with ${payload.variants.length} specification(s)!`,
       );
       setIsAddModalOpen(false);
       fetchMaterialsData();
@@ -326,32 +353,32 @@ function WarehouseMaterials() {
     const newStatus = variant.status === "Active" ? "Inactive" : "Active";
     try {
       await api.updateMaterialVariantStatus(selectedMaterial.id, variant.id, newStatus);
-      toast.success(`Variant ${variant.variant_code} marked as ${newStatus}`);
+      toast.success(`Specification ${formatSpecCode(variant.variant_code)} marked as ${newStatus}`);
       const updated = await api.getMaterial(selectedMaterial.id);
       setSelectedMaterial(updated);
       fetchMaterialsData();
     } catch (err: any) {
-      toast.error("Failed to update variant status: " + err.message);
+      toast.error("Failed to update specification status: " + err.message);
     }
   };
 
   const handleRemoveVariant = async (variant: any) => {
     if (!selectedMaterial) return;
     if ((selectedMaterial.variants?.length || 0) <= 1) {
-      toast.error("Cannot remove the only variant of a material. A material must retain at least one variant.");
+      toast.error("Cannot remove the only specification of a material. A material must retain at least one specification.");
       return;
     }
-    if (!window.confirm(`Are you sure you want to remove variant "${variant.variant_code}"?`)) {
+    if (!window.confirm(`Are you sure you want to remove specification "${formatSpecCode(variant.variant_code)}"?`)) {
       return;
     }
     try {
       await api.deleteMaterialVariant(selectedMaterial.id, variant.id);
-      toast.success(`Variant ${variant.variant_code} removed successfully`);
+      toast.success(`Specification ${formatSpecCode(variant.variant_code)} removed successfully`);
       const updated = await api.getMaterial(selectedMaterial.id);
       setSelectedMaterial(updated);
       fetchMaterialsData();
     } catch (err: any) {
-      toast.error("Failed to remove variant: " + (err.message || "Unknown error"));
+      toast.error("Failed to remove specification: " + (err.message || "Unknown error"));
     }
   };
 
@@ -369,15 +396,16 @@ function WarehouseMaterials() {
   const openAddVariantForExisting = async () => {
     if (!selectedMaterial) return;
     
-    // Extract existing sequences from all existing variant codes (Active, Inactive, etc.)
+    // Extract existing sequences from all existing variant/specification codes (Active, Inactive, etc.)
     const existingSeqs = (selectedMaterial.variants || [])
       .map((v: any) => {
-        const match = v.variant_code?.match(/[-_]?[vV](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
+        const match =
+          v.variant_code?.match(/[-_]?[vVsS](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
         return match ? parseInt(match[1], 10) : 0;
       })
       .filter((n: number) => !isNaN(n) && n > 0);
     const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
-    const initialCode = `${selectedMaterial.material_code}-V${String(maxSeq + 1).padStart(3, "0")}`;
+    const initialCode = `${selectedMaterial.material_code}-S${String(maxSeq + 1).padStart(3, "0")}`;
 
     setNewVarCode(initialCode);
     setNewVarSize("");
@@ -390,11 +418,11 @@ function WarehouseMaterials() {
     setAttrVal("");
     setIsAddVariantModalOpen(true);
 
-    // Also fetch suggested variant code from backend API to ensure 100% synchronization
+    // Also fetch suggested code from backend API to ensure 100% synchronization
     try {
       const res = await api.getNextVariantCode(selectedMaterial.id);
       if (res?.suggested_variant_code) {
-        setNewVarCode(res.suggested_variant_code);
+        setNewVarCode(formatSpecCode(res.suggested_variant_code));
       }
     } catch {
       // Keep calculated fallback
@@ -418,13 +446,13 @@ function WarehouseMaterials() {
       };
 
       await api.addMaterialVariant(selectedMaterial.id, payload);
-      toast.success(`Variant added to ${selectedMaterial.material_code}!`);
+      toast.success(`Specification added to ${selectedMaterial.material_code}!`);
       setIsAddVariantModalOpen(false);
       const updated = await api.getMaterial(selectedMaterial.id);
       setSelectedMaterial(updated);
       fetchMaterialsData();
     } catch (err: any) {
-      toast.error(err.message || "Failed to add variant");
+      toast.error(err.message || "Failed to add specification");
     } finally {
       setSubmitting(false);
     }
@@ -454,8 +482,7 @@ function WarehouseMaterials() {
 
   return (
     <AppShell
-      title="Material Master & Variants"
-      subtitle="Warehouse Manager · Canonical Material Code catalog with multiple specifications & attributes"
+      title="Material Master"
       actions={
         <div className="flex items-center gap-2.5">
           <Button
@@ -476,7 +503,7 @@ function WarehouseMaterials() {
           tone="primary"
         />
         <StatCard
-          label="Total Variants"
+          label="Total Specifications"
           value={loading ? "..." : String(totalVariants)}
           delta="Stockable SKUs / Specs"
           icon={Layers}
@@ -493,7 +520,7 @@ function WarehouseMaterials() {
           value={loading ? "..." : String(distinctCategories)}
           delta="Material classifications"
           icon={Tag}
-          tone="warning"
+          tone="amber"
         />
       </div>
 
@@ -557,7 +584,7 @@ function WarehouseMaterials() {
           <p className="mt-1 text-sm text-muted-foreground max-w-md">
             {searchTerm || selectedCategory !== "ALL" || selectedStatus !== "ALL"
               ? "No materials match your active search or filter criteria. Try clearing filters."
-              : "Start by creating your first canonical Material Code with variants for wire, steel, fasteners, or consumables."}
+              : "Start by creating your first canonical Material Code with specifications for wire, steel, fasteners, or consumables."}
           </p>
           <Button className="mt-5 rounded-xl shadow-glow" onClick={openCreateModal}>
             <Plus className="mr-1.5 size-4" /> Create Material Master
@@ -604,10 +631,10 @@ function WarehouseMaterials() {
                       )}
                     </div>
 
-                    {/* Variant Pills Preview */}
+                    {/* Specification Pills Preview */}
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-1 mr-1">
-                        <Layers className="size-3 text-teal-600" /> Variants (
+                        <Layers className="size-3 text-teal-600" /> Specifications (
                         {mat.variant_count || mat.variants?.length || 0}):
                       </span>
                       {mat.variants && mat.variants.length > 0 ? (
@@ -625,7 +652,7 @@ function WarehouseMaterials() {
                               )}
                             >
                               <span className={cn("font-bold", isInactive ? "text-muted-foreground" : "text-primary")}>
-                                {v.variant_code}
+                                {formatSpecCode(v.variant_code)}
                               </span>
                               {spec && <span className="text-muted-foreground">({spec})</span>}
                               {isInactive && (
@@ -638,7 +665,7 @@ function WarehouseMaterials() {
                         })
                       ) : (
                         <span className="text-xs text-muted-foreground italic">
-                          No variants yet
+                          No specifications yet
                         </span>
                       )}
                       {(mat.variant_count || mat.variants?.length || 0) > 4 && (
@@ -670,7 +697,7 @@ function WarehouseMaterials() {
         </div>
       )}
 
-      {/* CREATE MATERIAL & MULTI-VARIANT MODAL */}
+      {/* CREATE MATERIAL & MULTI-SPECIFICATION MODAL */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl">
           <DialogHeader className="border-b pb-4 pr-10">
@@ -681,7 +708,7 @@ function WarehouseMaterials() {
               <div>
                 <DialogTitle className="text-xl font-bold">Add Material Master</DialogTitle>
                 <p className="text-xs text-muted-foreground">
-                  Define canonical Material Code with initial specifications / variants
+                  Define canonical Material Code with initial specifications
                 </p>
               </div>
             </div>
@@ -775,7 +802,7 @@ function WarehouseMaterials() {
                     value={baseUom}
                     onValueChange={(val) => {
                       setBaseUom(val);
-                      // sync default variant UOMs if matching
+                      // sync default specification UOMs if matching
                       setVariantsList(variantsList.map((v) => ({ ...v, uom: val })));
                     }}
                   >
@@ -804,17 +831,17 @@ function WarehouseMaterials() {
               </div>
             </div>
 
-            {/* Step 2: Multi-Variants Section */}
+            {/* Step 2: Multi-Specifications Section */}
             <div className="rounded-2xl border border-teal-500/30 bg-teal-500/5 p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Badge className="bg-teal-600 text-white font-mono text-[10px]">STEP 2</Badge>
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-teal-800 dark:text-teal-300">
-                      Material Variants & Specifications
+                      Material Specifications
                     </h4>
                     <p className="text-[11px] text-muted-foreground">
-                      Each variant has its own unique Variant Code sharing the same Material Code.
+                      Each specification has its own unique Specification Code sharing the same Material Code.
                     </p>
                   </div>
                 </div>
@@ -825,7 +852,7 @@ function WarehouseMaterials() {
                   onClick={addVariantRow}
                   className="rounded-xl h-8 border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 text-xs font-bold"
                 >
-                  <Plus className="size-3.5 mr-1" /> Add Variant
+                  <Plus className="size-3.5 mr-1" /> Add Specification
                 </Button>
               </div>
 
@@ -841,7 +868,7 @@ function WarehouseMaterials() {
                           #{idx + 1}
                         </span>
                         <span className="font-mono text-xs font-bold text-primary bg-primary-soft/60 px-2.5 py-0.5 rounded-lg border border-primary/20">
-                          {variant.variant_code}
+                          {formatSpecCode(variant.variant_code)}
                         </span>
                       </div>
                       <Button
@@ -851,7 +878,7 @@ function WarehouseMaterials() {
                         className="h-7 px-2 text-xs font-bold text-destructive hover:bg-destructive/10 rounded-lg inline-flex items-center gap-1"
                         onClick={() => removeVariantRow(idx)}
                         disabled={variantsList.length === 1}
-                        title={variantsList.length === 1 ? "At least one variant required" : "Remove variant"}
+                        title={variantsList.length === 1 ? "At least one specification required" : "Remove specification"}
                       >
                         <Trash2 className="size-3.5" /> Remove
                       </Button>
@@ -948,7 +975,7 @@ function WarehouseMaterials() {
         </DialogContent>
       </Dialog>
 
-      {/* DETAIL & VARIANT MANAGEMENT DRAWER/MODAL */}
+      {/* DETAIL & SPECIFICATION MANAGEMENT DRAWER/MODAL */}
       <Dialog open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
         <DialogContent className="w-[96vw] max-w-5xl max-h-[90vh] overflow-y-auto rounded-3xl p-5 sm:p-7 shadow-2xl">
           {selectedMaterial && (
@@ -994,7 +1021,7 @@ function WarehouseMaterials() {
                     className="h-8.5 rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
                     onClick={openAddVariantForExisting}
                   >
-                    <Plus className="mr-1 size-3.5" /> Add Variant
+                    <Plus className="mr-1 size-3.5" /> Add Specification
                   </Button>
                   <Button
                     variant="outline"
@@ -1014,12 +1041,12 @@ function WarehouseMaterials() {
                 </div>
               )}
 
-              {/* Variants List Section */}
+              {/* Specifications List Section */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                     <Layers className="size-3.5 text-teal-600" />
-                    Material Variants ({selectedMaterial.variants?.length || 0})
+                    Material Specifications ({selectedMaterial.variants?.length || 0})
                   </h3>
                 </div>
 
@@ -1027,7 +1054,7 @@ function WarehouseMaterials() {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-border/70 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
-                        <th className="p-3 whitespace-nowrap">Variant Code</th>
+                        <th className="p-3 whitespace-nowrap">Specification Code</th>
                         <th className="p-3 whitespace-nowrap">Size</th>
                         <th className="p-3 whitespace-nowrap">Color</th>
                         <th className="p-3 whitespace-nowrap">Grade</th>
@@ -1040,7 +1067,7 @@ function WarehouseMaterials() {
                     <tbody className="divide-y divide-border/50 font-medium">
                       {selectedMaterial.variants?.map((v: any) => (
                         <tr key={v.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-3 font-mono font-bold text-primary whitespace-nowrap">{v.variant_code}</td>
+                          <td className="p-3 font-mono font-bold text-primary whitespace-nowrap">{formatSpecCode(v.variant_code)}</td>
                           <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.size || "—"}</td>
                           <td className="p-3 text-foreground whitespace-nowrap">
                             {v.color ? (
@@ -1101,8 +1128,8 @@ function WarehouseMaterials() {
                                 disabled={(selectedMaterial.variants?.length || 0) <= 1}
                                 title={
                                   (selectedMaterial.variants?.length || 0) <= 1
-                                    ? "A material must retain at least one variant"
-                                    : "Remove Variant"
+                                    ? "A material must retain at least one specification"
+                                    : "Remove Specification"
                                 }
                               >
                                 <Trash2 className="size-3.5" />
@@ -1130,7 +1157,7 @@ function WarehouseMaterials() {
         </DialogContent>
       </Dialog>
 
-      {/* ADD VARIANT TO EXISTING MATERIAL MODAL */}
+      {/* ADD SPECIFICATION TO EXISTING MATERIAL MODAL */}
       <Dialog open={isAddVariantModalOpen} onOpenChange={setIsAddVariantModalOpen}>
         <DialogContent className="w-[95vw] max-w-lg rounded-3xl p-6 shadow-2xl">
           <DialogHeader className="border-b pb-3 pr-10">
@@ -1140,7 +1167,7 @@ function WarehouseMaterials() {
               </div>
               <div>
                 <DialogTitle className="text-base font-bold">
-                  Add Variant to {selectedMaterial?.material_code}
+                  Add Specification to {selectedMaterial?.material_code}
                 </DialogTitle>
                 <p className="text-xs text-muted-foreground">{selectedMaterial?.material_name}</p>
               </div>
@@ -1150,12 +1177,12 @@ function WarehouseMaterials() {
           <form onSubmit={handleAddVariantSubmit} className="space-y-4 pt-2">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-xs font-bold">Variant Code</Label>
+                <Label className="text-xs font-bold">Specification Code</Label>
                 <Input
                   value={newVarCode}
                   readOnly
                   disabled
-                  placeholder="e.g. MAT-001-V004"
+                  placeholder="e.g. MAT-001-S004"
                   className="h-9 font-mono text-xs font-bold rounded-xl bg-muted/60 text-foreground cursor-not-allowed border-dashed"
                   required
                 />
@@ -1285,7 +1312,7 @@ function WarehouseMaterials() {
                 ) : (
                   <Save className="mr-2 size-4" />
                 )}
-                Add Variant
+                Add Specification
               </Button>
             </DialogFooter>
           </form>

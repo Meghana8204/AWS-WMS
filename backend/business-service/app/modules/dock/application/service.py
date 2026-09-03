@@ -71,15 +71,6 @@ class DockAllocationService:
                     )
                     session.add(req_model)
                     await session.flush()
-
-                    session.add(
-                        NotificationModel(
-                            user_role="WAREHOUSE",
-                            title="Gate Entry Approved — Awaiting Dock",
-                            message=f"Gate Entry {ge_num} for vehicle {veh_plate} is awaiting dock allocation.",
-                            link=f"/dock-management?gateEntryId={ge.id}",
-                        )
-                    )
             await session.flush()
         except Exception:
             pass
@@ -115,10 +106,10 @@ class DockAllocationService:
     ) -> List[DockMasterModel]:
         await DockAllocationService.seed_default_docks_if_empty(session)
         query = select(DockMasterModel).where(DockMasterModel.is_active == True)
-        if dock_type:
-            query = query.where(DockMasterModel.dock_type == dock_type.upper())
-        if status:
-            query = query.where(DockMasterModel.status == status.upper())
+        if dock_type and isinstance(dock_type, str) and dock_type.strip().upper() != "ALL":
+            query = query.where(DockMasterModel.dock_type == dock_type.strip().upper())
+        if status and isinstance(status, str) and status.strip().upper() != "ALL":
+            query = query.where(DockMasterModel.status == status.strip().upper())
         query = query.order_by(DockMasterModel.dock_code)
         result = await session.execute(query)
         return list(result.scalars().all())
@@ -192,22 +183,6 @@ class DockAllocationService:
             remarks=f"Automatic request triggered upon Security approval of Gate Pass {gate_pass_id}",
         )
         session.add(hist)
-
-        # Send notification to Warehouse Manager
-        notification = NotificationModel(
-            user_role="WAREHOUSE",
-            title="NEW DOCK ALLOCATION REQUEST",
-            message=(
-                f"NEW DOCK ALLOCATION REQUEST\n\n"
-                f"Gate Pass:\n{gate_pass_id}\n\n"
-                f"Vehicle:\n{vehicle_number}\n\n"
-                f"Security has approved this Gate Pass.\n\n"
-                f"Status: AWAITING DOCK.\n"
-                f"Please allocate a Dock."
-            ),
-            link=f"/dock-management?requestId={request_model.id}",
-        )
-        session.add(notification)
         await session.flush()
         return request_model
 
@@ -327,6 +302,45 @@ class DockAllocationService:
         )
         session.add(dock_hist)
 
+        driver_name = None
+        driver_phone = None
+        asn_number = None
+        po_number = req.material_reference
+
+        # Fetch Gate Entry for additional details (driver, ASN, PO)
+        try:
+            from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+            from app.modules.procurement.infrastructure.persistence.models import AsnModel
+            from sqlalchemy import or_
+
+            ge_res = await session.execute(
+                select(GateEntryModel).where(
+                    or_(
+                        GateEntryModel.gate_entry_number == req.existing_gate_pass_id,
+                        GateEntryModel.vehicle_number == req.vehicle_number,
+                    )
+                )
+            )
+            ge = ge_res.scalars().first()
+            if ge:
+                driver_name = ge.driver_name
+                driver_phone = ge.driver_phone
+                if ge.po_number:
+                    po_number = ge.po_number
+                if ge.asn_id:
+                    asn_res = await session.execute(select(AsnModel).where(AsnModel.id == ge.asn_id))
+                    asn_obj = asn_res.scalar_one_or_none()
+                    if asn_obj:
+                        asn_number = asn_obj.asn_number
+                        if not po_number and asn_obj.po_number:
+                            po_number = asn_obj.po_number
+                        if not driver_name and asn_obj.driver_name:
+                            driver_name = asn_obj.driver_name
+                        if not driver_phone and asn_obj.driver_contact:
+                            driver_phone = asn_obj.driver_contact
+        except Exception:
+            pass
+
         material_text = req.material_reference or req.material_description
         notif_msg = f"Dock {dock.dock_code} has been assigned to vehicle {req.vehicle_number}."
         if material_text:
@@ -342,15 +356,73 @@ class DockAllocationService:
             )
         )
 
-        # Mandatory Notification to Store Manager
-        session.add(
-            NotificationModel(
-                user_role="STORE_MANAGER",
-                title="DOCK ALLOCATED",
-                message=notif_msg,
-                link=f"/dock-management?requestId={req.id}",
-            )
+        if not asn_number:
+            try:
+                from app.modules.procurement.infrastructure.persistence.models import AsnModel
+                asn_res = await session.execute(
+                    select(AsnModel).where(AsnModel.vehicle_number == req.vehicle_number).order_by(AsnModel.created_at.desc())
+                )
+                asn_obj = asn_res.scalars().first()
+                if asn_obj:
+                    asn_number = asn_obj.asn_number
+                    if not po_number and asn_obj.po_number:
+                        po_number = asn_obj.po_number
+                    if not driver_name and asn_obj.driver_name:
+                        driver_name = asn_obj.driver_name
+                    if not driver_phone and asn_obj.driver_contact:
+                        driver_phone = asn_obj.driver_contact
+            except Exception:
+                pass
+
+        alloc_time = req.assigned_at or datetime.now(timezone.utc)
+        alloc_time_str = alloc_time.strftime("%d-%b-%Y %I:%M %p")
+        location_str = dock.location or "Receiving Bay - A"
+        warehouse_str = "Main Warehouse"
+
+        notif_msg = (
+            f"DOCK ALLOCATION CONFIRMED\n\n"
+            f"Vehicle Details:\n"
+            f"Gate Pass: {req.existing_gate_pass_id}\n"
+            f"Vehicle: {req.vehicle_number}\n"
+            f"Driver: {driver_name or 'N/A'}\n"
+            f"Driver Phone: {driver_phone or 'N/A'}\n"
+            f"ASN: {asn_number or 'N/A'}\n"
+            f"PO: {po_number or 'N/A'}\n\n"
+            f"Allocated Dock Details:\n"
+            f"Dock Code: {dock.dock_code}\n"
+            f"Dock Name: {dock.dock_name}\n"
+            f"Location: {location_str}\n"
+            f"Dock Type: {dock.dock_type}\n"
+            f"Warehouse: {warehouse_str}\n"
+            f"Allocated At: {alloc_time_str}\n\n"
+            f"Instruction:\n"
+            f"Proceed directly to Dock {dock.dock_code}."
         )
+
+        try:
+            for role in ["WAREHOUSE", "STORE_MANAGER", "QUALITY_INSPECTOR"]:
+                session.add(
+                    NotificationModel(
+                        user_role=role,
+                        title="DOCK ALLOCATION CONFIRMED",
+                        message=notif_msg,
+                        link=f"/dock-management?requestId={req.id}",
+                        dock_code=dock.dock_code,
+                        dock_name=dock.dock_name,
+                        dock_location=location_str,
+                        dock_type=dock.dock_type,
+                        warehouse_name=warehouse_str,
+                        allocation_time=alloc_time.replace(tzinfo=None) if hasattr(alloc_time, "tzinfo") and alloc_time.tzinfo else alloc_time,
+                        gate_pass_number=req.existing_gate_pass_id,
+                        vehicle_number=req.vehicle_number,
+                        driver_name=driver_name,
+                        driver_phone=driver_phone,
+                        asn_number=asn_number,
+                        po_number=po_number,
+                    )
+                )
+        except Exception:
+            pass
 
         await session.commit()
         return req

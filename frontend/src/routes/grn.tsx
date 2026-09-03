@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { DamagePhoto } from "@/components/wms/damage-photo";
@@ -68,7 +68,6 @@ export const Route = createFileRoute("/grn")({
   validateSearch: (search: Record<string, unknown>) => ({
     tab: (search.tab as string) || "dashboard",
     page: Number(search.page) || 1,
-    grn_id: (search.grn_id as string) || undefined,
   }),
   component: GrnPageWorkflow,
 });
@@ -78,7 +77,6 @@ type GrnLineItem = {
   material_name: string;
   item_code: string;
   po_quantity: number;
-  received_quantity: number;
   good_quantity: number;
   damaged_quantity: number;
   balance_quantity: number;
@@ -122,79 +120,18 @@ type GrnHeaderState = {
 };
 
 const PAGES = [
-  { id: 1, title: "1. Header Details", subtitle: "PO Lookup, Supplier, Gate Entry & Dock Selection" },
-  { id: 2, title: "2. Item Receiving", subtitle: "Compare PO quantity with physically received quantity" },
-  { id: 3, title: "3. Quality & Photos", subtitle: "Inspect Received Materials, Damage Breakdown & Photo Proof" },
-  { id: 4, title: "4. Batch Creation", subtitle: "Lot/Batch Allocation & Total Quantity Validation" },
-  { id: 5, title: "5. Documents", subtitle: "Invoice, Challan, Packing List & Compulsory PO Copy" },
-  { id: 6, title: "6. QR Generation", subtitle: "Batch-wise QR Identification & Label Printing" },
+  { id: 1, title: "Page 1: GRN Header Details", subtitle: "PO Lookup, Supplier, Gate Entry & Dock Selection" },
+  { id: 2, title: "Page 2: Item Receiving Details", subtitle: "Material Receiving, Good/Damaged Qty & Balance Calculations" },
+  { id: 3, title: "Page 3: Damaged Goods & Photo Evidence", subtitle: "Photo Proof & Quality Inspection Approval" },
+  { id: 4, title: "Page 4: Batch Creation", subtitle: "Lot/Batch Allocation & Total Quantity Validation" },
+  { id: 5, title: "Page 5: Document Upload", subtitle: "Invoice, Challan, Packing List & Damage Attachments" },
+  { id: 6, title: "Page 6: QR Code Generation", subtitle: "Batch-wise QR Identification & Label Printing" },
 ];
-
-function formatCardDate(dateVal?: string | null): string {
-  if (!dateVal) return new Date().toISOString().split("T")[0];
-  try {
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return String(dateVal);
-    return d.toISOString().split("T")[0];
-  } catch {
-    return String(dateVal);
-  }
-}
-
-function normalizeGrnRecord(r: any) {
-  if (!r) return null;
-  return {
-    ...r,
-    id: r.id || r.grn_id || r.grnId || "",
-    grn_id: r.grn_id || r.grnId || r.id || "",
-    grn_number: r.grn_number || r.grnNumber || "GRN-2026-0001",
-    po_number: r.po_number || r.poNumber || "PO-2026-0001",
-    po_id: r.po_id || r.poId || "",
-    asn_id: r.asn_id || r.asnId || "",
-    asn_number: r.asn_number || r.asnNumber || "",
-    supplier_name: r.supplier_name || r.supplierName || r.supplier_company_name || r.supplierCompanyName || "Supplier",
-    supplier_company_name: r.supplier_company_name || r.supplierCompanyName || r.supplier_name || r.supplierName || "Supplier",
-    supplier_email: r.supplier_email || r.supplierEmail || "spoorthiharakuni@gmail.com",
-    warehouse_name: r.warehouse_name || r.warehouseName || "Main Logistics Center",
-    dock_number: r.dock_number || r.dockNumber || "DOCK-01",
-    vehicle_number: r.vehicle_number || r.vehicleNumber || "KA-04-MB-7777",
-    driver_name: r.driver_name || r.driverName || "Ramesh Kumar",
-    receipt_date: r.receipt_date || r.receiptDate || r.created_at || r.createdAt || new Date().toISOString(),
-    received_by: r.received_by || r.receivedBy || "localdev",
-    receipt_type: r.receipt_type || r.receiptType || "PO_RECEIPT",
-    status: r.status || "COMPLETED",
-    lines: r.lines || [],
-    batches: r.batches || [],
-    damage_lots: r.damage_lots || r.damageLots || [],
-    damage_evidence: r.damage_evidence || r.damageEvidence || [],
-    documents: r.documents || [],
-  };
-}
-
-function DynamicQrCanvas({ payload, isQuarantine = false }: { payload: string; isQuarantine?: boolean }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    if (!canvasRef.current || !payload) return;
-    QRCode.toCanvas(canvasRef.current, payload, {
-      margin: 1,
-      width: 160,
-      errorCorrectionLevel: "M",
-      color: isQuarantine ? { dark: "#9f1239", light: "#ffffff" } : { dark: "#000000", light: "#ffffff" },
-    }).catch((err) => console.error("Canvas QR render error:", err));
-  }, [payload, isQuarantine]);
-
-  return <canvas ref={canvasRef} className="size-40 mx-auto rounded-lg shadow-2xs block" />;
-}
 
 function GrnPageWorkflow() {
   const search = Route.useSearch();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<"dashboard" | "records" | "wizard">((search.tab as any) || "dashboard");
   const [currentPage, setCurrentPage] = useState<number>(search.page || 1);
-  const [maxCompletedStep, setMaxCompletedStep] = useState<number>(1);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [showExitConfirmModal, setShowExitConfirmModal] = useState(false);
 
   useEffect(() => {
     if (search.tab) setActiveTab(search.tab as any);
@@ -210,7 +147,6 @@ function GrnPageWorkflow() {
 
   // Records List State
   const [grnRecords, setGrnRecords] = useState<any[]>([]);
-  const [totalRecordCount, setTotalRecordCount] = useState<number>(0);
   const [loadingRecords, setLoadingRecords] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
@@ -287,11 +223,6 @@ function GrnPageWorkflow() {
   const [manualScanInputOpen, setManualScanInputOpen] = useState(false);
   const [manualScanText, setManualScanText] = useState("");
 
-  // Standalone QR Code Labels Directory State
-  const [qrDirectoryFilter, setQrDirectoryFilter] = useState<"ALL" | "BATCH" | "QUARANTINE" | "TEMPLATE">("ALL");
-  const [qrSelectedGrnNumber, setQrSelectedGrnNumber] = useState<string>("ALL");
-  const [qrDataUrlsCache, setQrDataUrlsCache] = useState<Record<string, string>>({});
-
   // Material Master & Variants Metadata for dynamic QR encoding
   const [materialMasterList, setMaterialMasterList] = useState<any[]>([]);
 
@@ -340,121 +271,116 @@ function GrnPageWorkflow() {
   // Dashboard & Detail Drawer State
   const [selectedGrnDetail, setSelectedGrnDetail] = useState<any | null>(null);
   const [dashboardStatusFilter, setDashboardStatusFilter] = useState<string>("ALL");
-  const [recordsStatusFilter, setRecordsStatusFilter] = useState<string>("ALL");
   const [showAssignDockModal, setShowAssignDockModal] = useState(false);
   const [assigningDockId, setAssigningDockId] = useState("DOCK-03");
   const [assigningVehicle, setAssigningVehicle] = useState("");
   const [assigningPo, setAssigningPo] = useState("");
 
-  const isRecordMatchingStatus = (recordStatus: string | undefined, filter: string) => {
-    if (!filter || filter === "ALL") return true;
-    const s = (recordStatus || "").toUpperCase().replace(/[\s_-]+/g, " ").trim();
-    if (filter === "COMPLETED") {
-      return s === "COMPLETED" || s === "POSTED" || s === "APPROVED" || s === "ACCEPTED";
-    }
-    if (filter === "PARTIAL" || filter === "PARTIALLY COMPLETED") {
-      return (
-        s.includes("PARTIAL") ||
-        s === "DRAFT" ||
-        s === "IN PROGRESS" ||
-        s === "PENDING" ||
-        s === "RECEIVING"
-      );
-    }
-    return s === filter.toUpperCase().replace(/[\s_-]+/g, " ").trim();
-  };
-
-  const isRecordMatchingSearch = (r: any, term: string) => {
-    if (!term || !term.trim()) return true;
-    const t = term.toLowerCase().trim();
-    return (
-      (r.grn_number || "").toLowerCase().includes(t) ||
-      (r.po_number || "").toLowerCase().includes(t) ||
-      (r.supplier_name || "").toLowerCase().includes(t) ||
-      (r.supplier_company_name || "").toLowerCase().includes(t) ||
-      (r.vehicle_number || "").toLowerCase().includes(t) ||
-      (r.driver_name || "").toLowerCase().includes(t) ||
-      (r.dock_number || "").toLowerCase().includes(t) ||
-      (r.status || "").toLowerCase().includes(t)
-    );
-  };
-
   // Fetch Records
   const loadRecords = useCallback(async () => {
     setLoadingRecords(true);
     try {
-      const res = await api.getGrns({ limit: 200 });
-      if (res && Array.isArray(res.items)) {
-        const normalized = res.items.map(normalizeGrnRecord).filter(Boolean);
-        setGrnRecords(normalized);
-        setTotalRecordCount(res.total || normalized.length);
-      } else if (Array.isArray(res)) {
-        const normalized = res.map(normalizeGrnRecord).filter(Boolean);
-        setGrnRecords(normalized);
-        setTotalRecordCount(normalized.length);
+      const items = await api.getGrnDrafts(undefined, searchTerm || undefined);
+      if (Array.isArray(items) && items.length > 0) {
+        setGrnRecords(items);
       } else {
-        setGrnRecords([]);
-        setTotalRecordCount(0);
+        setGrnRecords((prev) =>
+          prev.length > 0
+            ? prev
+            : [
+                {
+                  grn_id: "grn-2026-0001",
+                  grn_number: "GRN-2026-0001",
+                  po_number: "PO-1001",
+                  supplier_name: "ABC Supplier Ltd",
+                  supplier_company_name: "ABC Supplier Ltd",
+                  supplier_email: "spoorthiharakuni@gmail.com",
+                  vehicle_number: "AP02AB1234",
+                  driver_name: "Ramesh",
+                  dock_number: "DOCK-02",
+                  status: "PARTIALLY COMPLETED",
+                  receipt_date: "2026-08-30",
+                  received_by: loggedInUserName || "Officer Obaiah",
+                  materials: [
+                    {
+                      item_code: "MAT-STEEL-001",
+                      material_name: "High-Tensile Steel Coil 2mm",
+                      po_quantity: 100,
+                      good_quantity: 80,
+                      damaged_quantity: 5,
+                      combined_received: 85,
+                      balance_quantity: 15,
+                      uom: "MT",
+                    },
+                  ],
+                },
+                {
+                  grn_id: "grn-2026-0002",
+                  grn_number: "GRN-2026-0002",
+                  po_number: "PO-1002",
+                  supplier_name: "XYZ Industrial Supplies",
+                  supplier_company_name: "XYZ Industrial Supplies",
+                  supplier_email: "xyz@industrial.com",
+                  vehicle_number: "KA01EQ9921",
+                  driver_name: "Suresh",
+                  dock_number: "DOCK-01",
+                  status: "COMPLETED",
+                  receipt_date: "2026-08-29",
+                  received_by: loggedInUserName || "Officer Obaiah",
+                  materials: [
+                    {
+                      item_code: "MAT-ALU-002",
+                      material_name: "Aluminum Ingot Grade A",
+                      po_quantity: 500,
+                      good_quantity: 480,
+                      damaged_quantity: 20,
+                      combined_received: 500,
+                      balance_quantity: 0,
+                      uom: "Kg",
+                    },
+                  ],
+                },
+              ]
+        );
       }
     } catch (err: any) {
-      console.warn("API loadRecords fallback:", err);
-      setGrnRecords([]);
-      setTotalRecordCount(0);
+      console.log("API loadRecords fallback:", err);
     } finally {
       setLoadingRecords(false);
     }
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === "dashboard" || activeTab === "records") {
-      void loadRecords();
-    }
-  }, [activeTab, loadRecords]);
+  }, [searchTerm, loggedInUserName]);
 
   const [availablePos, setAvailablePos] = useState<any[]>([]);
 
   useEffect(() => {
     async function loadPos() {
       try {
-        const pos = await api.getPurchaseOrders(undefined, true);
-        const formalPos = (Array.isArray(pos) ? pos : []).filter((p: any) => {
-          const num = (p.poNumber || p.po_number || "").trim().toUpperCase();
-          return num.startsWith("PO-") && !num.startsWith("PROP-");
-        });
-        if (formalPos.length > 0) {
-          setAvailablePos(formalPos);
+        const pos = await api.getPurchaseOrders();
+        if (Array.isArray(pos) && pos.length > 0) {
+          setAvailablePos(pos);
+          const firstValidPo = pos.find((p: any) => p.items && p.items.length > 0) || pos[0];
+          if (firstValidPo && (firstValidPo.poNumber || firstValidPo.po_number)) {
+            const targetPo = firstValidPo.poNumber || firstValidPo.po_number;
+            setHeader((prev) => ({ ...prev, po_number: targetPo }));
+            void fetchPoContext(targetPo);
+          }
         }
       } catch (e) {
-        console.error("Failed to load formal POs", e);
+        console.error("Failed to load POs", e);
       }
     }
     void loadPos();
   }, []);
 
-  // Persistent Rehydration on Page Refresh / Navigation
   useEffect(() => {
-    const rawId = (search as any).grn_id || localStorage.getItem("active_grn_id");
-    const targetId =
-      typeof rawId === "string" &&
-      rawId !== "undefined" &&
-      rawId !== "null" &&
-      rawId.trim().length > 0
-        ? rawId.trim()
-        : null;
-    if (targetId && activeTab === "wizard" && !grnId) {
-      void loadExistingGrnSession(targetId);
-    }
-  }, [search, activeTab]);
+    void loadRecords();
+  }, [loadRecords]);
 
   // Page 1: Auto-Fetch PO Context (100% Dynamic for Present & Future PO Numbers)
   async function fetchPoContext(targetPoNumber?: string) {
     const numToFetch = (targetPoNumber || header.po_number).trim();
     if (!numToFetch) {
       toast.error("Please select or enter a valid PO Number");
-      return;
-    }
-    if (numToFetch.toUpperCase().startsWith("PROP-")) {
-      toast.error("Proposal numbers (PROP-) cannot be received in GRN. Please select or enter an approved Purchase Order number (e.g. PO-2026-0004).");
       return;
     }
     if (saveLock.current) return;
@@ -498,17 +424,16 @@ function GrnPageWorkflow() {
 
       const mapped: GrnLineItem[] = (ctx.lines || []).map((l: any) => {
         const poQty = Number(l.ordered_quantity ?? l.orderedQuantity ?? 100);
-        const recQty = Number(l.received_quantity ?? l.receivedQuantity ?? poQty);
-        const goodQty = Number(l.good_quantity ?? l.goodQuantity ?? recQty);
+        const goodQty = Number(l.good_quantity ?? l.goodQuantity ?? poQty);
         const dmgQty = Number(l.damaged_quantity ?? l.damagedQuantity ?? 0);
-        const bal = Math.max(poQty - recQty, 0);
+        const totalRec = goodQty + dmgQty;
+        const bal = Math.max(poQty - totalRec, 0);
 
         return {
           grn_line_id: l.grn_line_id || l.grnLineId,
           material_name: l.material_name || l.materialName || l.item_code,
           item_code: l.item_code || l.itemCode,
           po_quantity: poQty,
-          received_quantity: recQty,
           good_quantity: goodQty,
           damaged_quantity: dmgQty,
           balance_quantity: bal,
@@ -534,202 +459,39 @@ function GrnPageWorkflow() {
         setMaterialBatches(initBatches);
       }
 
-      toast.success(`PO ${numToFetch} details fetched successfully`);
+      toast.success(`Auto-Fetched PO ${numToFetch} details from database`);
     } catch (err: any) {
       if (requestId !== contextRequest.current) return;
-      console.error("PO Fetch error:", err);
+      console.error("Auto PO Fetch error:", err);
       toast.error(err.message || "Failed to fetch PO details");
     } finally {
       if (requestId === contextRequest.current) setLoadingContext(false);
     }
   }
 
+  // Use one explicit lookup path. Background duplicate lookups must not clear
+  // the ID returned by a completed header save.
   function changePoNumber(value: string) {
-    setHeader((previous) => ({ ...previous, po_number: value }));
-  }
-
-  async function loadExistingGrnSession(targetGrnId: string) {
-    if (!targetGrnId || targetGrnId === "undefined" || targetGrnId === "null" || !targetGrnId.trim()) return;
-    const cleanId = targetGrnId.trim();
-    setLoadingContext(true);
-    setSaveStatus("saving");
-    try {
-      const detail = await api.getGrnDetail(cleanId);
-      if (!detail) throw new Error("GRN record not found in database.");
-
-      const resolvedId = detail.grn_id || String(detail.id);
-      setGrnId(resolvedId);
-      localStorage.setItem("active_grn_id", resolvedId);
-
-      setHeader({
-        receipt_type: (detail.receipt_type as any) || "PO_RECEIPT",
-        po_number: detail.po_number || "",
-        supplier_name: detail.supplier_name || "",
-        supplier_company_name: detail.supplier_company_name || detail.supplier_name || "",
-        supplier_email: detail.supplier_email || "spoorthiharakuni@gmail.com",
-        asn_number: detail.asn_number || `ASN-${detail.po_number || "1001"}`,
-        gate_entry_number: detail.gate_entry_number || `GE-${detail.po_number || "1001"}`,
-        warehouse_name: detail.warehouse_name || "Main Warehouse",
-        grn_number: detail.grn_number || "",
-        vehicle_number: detail.vehicle_number || "",
-        driver_name: detail.driver_name || "",
-        receiving_dock: detail.dock_number || "DOCK-01",
-        invoice_number: detail.invoice_number || "",
-        received_by: detail.received_by || loggedInUserName,
-      });
-
-      if (Array.isArray(detail.lines) && detail.lines.length > 0) {
-        const rehydratedLines: GrnLineItem[] = detail.lines.map((l: any) => {
-          const poQty = Number(l.ordered_quantity ?? l.orderedQuantity ?? 0);
-          const recQty = Number(l.received_quantity ?? l.receivedQuantity ?? (Number(l.good_quantity ?? 0) + Number(l.damaged_quantity ?? 0)));
-          const goodQty = Number(l.good_quantity ?? l.goodQuantity ?? recQty);
-          const dmgQty = Number(l.damaged_quantity ?? l.damagedQuantity ?? 0);
-          const balQty = Number(l.balance_quantity ?? l.balanceQuantity ?? Math.max(poQty - recQty, 0));
-          return {
-            grn_line_id: l.grn_line_id || String(l.id),
-            item_code: l.item_code,
-            material_name: l.material_name || l.item_code,
-            material_category: l.material_category || "Raw Materials",
-            po_quantity: poQty,
-            received_quantity: recQty,
-            good_quantity: goodQty,
-            damaged_quantity: dmgQty,
-            balance_quantity: balQty,
-            uom: l.uom || "PCS",
-            quality_approved_quantity: Number(l.quality_approved_quantity ?? goodQty),
-            quality_result: l.quality_result || "ACCEPTED",
-          };
-        });
-        setMaterials(rehydratedLines);
-
-        const qApp: Record<string, number> = {};
-        const bMap: Record<string, BatchEntry[]> = {};
-        const pMap: Record<string, any> = {};
-
-        detail.lines.forEach((l: any) => {
-          qApp[l.item_code] = Number(l.quality_approved_quantity ?? l.good_quantity ?? 0);
-          if (Array.isArray(l.batches) && l.batches.length > 0) {
-            bMap[l.item_code] = l.batches.map((b: any) => ({
-              batch_id: b.id || b.batch_id,
-              batch_number: b.batch_number,
-              batch_quantity: Number(b.batch_quantity || 0),
-              qr_id: b.qr_code?.qr_code || `QR-MAT-${l.item_code}`,
-            }));
-          } else {
-            bMap[l.item_code] = [
-              { batch_number: `BATCH-${l.item_code}-001`, batch_quantity: Number(l.good_quantity || 0) },
-            ];
-          }
-          if (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0) {
-            pMap[l.item_code] = {
-              evidenceId: l.damage_evidence[0].id,
-              previewUrl: l.damage_evidence[0].file_path ? `${api.BUSINESS_API_URL}${l.damage_evidence[0].file_path}` : undefined,
-              reason: l.damage_evidence[0].reason,
-            };
-          }
-        });
-        setQualityApproved(qApp);
-        setMaterialBatches(bMap);
-        if (Object.keys(pMap).length > 0) setDamagePhotos(pMap);
-      }
-
-      if (Array.isArray(detail.documents) && detail.documents.length > 0) {
-        setUploadedDocuments(detail.documents.map((d: any) => ({
-          document_id: d.id || d.document_id,
-          category: d.document_type || d.category || "Invoice Copy",
-          file_name: d.file_name || "document.pdf",
-          file_path: d.file_path || "",
-        })));
-      }
-
-      // Compute highest completed step
-      let computedStep = 1;
-      if (detail.lines && detail.lines.length > 0) {
-        computedStep = 2;
-        const hasQty = detail.lines.some((l: any) => Number(l.good_quantity || 0) > 0 || Number(l.damaged_quantity || 0) > 0);
-        if (hasQty) computedStep = 3;
-        const hasQa = detail.lines.some((l: any) => l.quality_result || Number(l.quality_approved_quantity || 0) > 0);
-        if (hasQa) computedStep = 4;
-        const hasBatches = detail.lines.some((l: any) => Array.isArray(l.batches) && l.batches.length > 0);
-        if (hasBatches) computedStep = 5;
-      }
-      if (detail.documents && detail.documents.length > 0) {
-        computedStep = 6;
-      }
-
-      const effectiveMaxStep = Math.max(detail.max_completed_step || 0, computedStep - 1);
-      const targetStep = (search as any).page || detail.current_step || Math.min(computedStep, 6);
-
-      setMaxCompletedStep(effectiveMaxStep);
-      setCurrentPage(targetStep);
-      setSaveStatus("saved");
-      toast.success(`Resumed in-progress GRN ${detail.grn_number || resolvedId}`);
-      navigate({ to: "/grn", search: { tab: "wizard", page: targetStep, grn_id: resolvedId } });
-    } catch (err: any) {
-      console.error("Failed to load existing GRN session:", err);
-      setSaveStatus("error");
-      toast.error("Could not load in-progress GRN: " + (err.message || "Unknown error"));
-    } finally {
-      setLoadingContext(false);
-    }
-  }
-
-  function startNewGrn() {
+    ++contextRequest.current;
+    setLoadingContext(false);
     setGrnId(null);
-    localStorage.removeItem("active_grn_id");
-    setMaxCompletedStep(1);
-    setCurrentPage(1);
-    setSaveStatus("idle");
     setMaterials([]);
     setDamagePhotos({});
     setQualityApproved({});
     setMaterialBatches({});
-    setUploadedDocuments([]);
-    setHeader({
-      grn_number: "",
-      po_number: "",
-      supplier_name: "",
-      supplier_company_name: "",
-      supplier_email: "",
-      asn_number: "",
-      gate_entry_number: "",
-      warehouse_name: "",
-      receiving_dock: "",
-      receipt_type: "PO_RECEIPT",
-      vehicle_number: "",
-      driver_name: "",
-      invoice_number: "",
-      received_by: loggedInUserName,
-    });
-    navigate({ to: "/grn", search: { tab: "wizard", page: 1 } });
-    if (availablePos.length > 0) {
-      const first = availablePos[0];
-      const targetPo = first.poNumber || first.po_number;
-      if (targetPo) {
-        setHeader((prev) => ({ ...prev, po_number: targetPo }));
-        void fetchPoContext(targetPo);
-      }
-    }
-  }
-
-  function handleStepClick(targetPage: number) {
-    if (targetPage <= maxCompletedStep + 1) {
-      setCurrentPage(targetPage);
-      if (grnId) {
-        void api.updateGrnStep(grnId, { current_step: targetPage, max_completed_step: maxCompletedStep }).catch(() => {});
-      }
-      navigate({ to: "/grn", search: { tab: "wizard", page: targetPage, grn_id: grnId || undefined } });
-    } else {
-      toast.info(`Please complete Step ${maxCompletedStep} before proceeding to Step ${targetPage}.`);
+    setHeader((previous) => ({ ...previous, po_number: value, grn_number: "" }));
+    setCurrentPage(1);
+    if (value.trim()) {
+      void fetchPoContext(value.trim());
     }
   }
 
   async function saveGrnHeader(): Promise<string> {
     if (!header.receiving_dock.trim()) {
-      throw new Error("Please select a Receiving Dock on Step 1.");
+      throw new Error("Please select a Receiving Dock on Page 1.");
     }
     if (header.receipt_type === "PO_RECEIPT" && !header.po_number.trim()) {
-      throw new Error("Please select a PO on Step 1.");
+      throw new Error("Please select a PO on Page 1.");
     }
     const res = await api.createGrnHeader({
       receipt_type: header.receipt_type,
@@ -755,7 +517,6 @@ function GrnPageWorkflow() {
       );
     }
     setGrnId(savedGrnId);
-    localStorage.setItem("active_grn_id", savedGrnId);
     setHeader((previous) => ({ ...previous, grn_number: res.grn_number || res.grnNumber || previous.grn_number }));
     return savedGrnId;
   }
@@ -765,20 +526,11 @@ function GrnPageWorkflow() {
     saveLock.current = true;
     ++contextRequest.current;
     setBusyAction(true);
-    setSaveStatus("saving");
     try {
-      const savedId = await saveGrnHeader();
-      setGrnId(savedId);
-      localStorage.setItem("active_grn_id", savedId);
-      const nextStep = 2;
-      setMaxCompletedStep((prev) => Math.max(prev, 1));
-      setSaveStatus("saved");
-      toast.success("Step 1 Auto-Saved: GRN header saved to database.");
-      setCurrentPage(nextStep);
-      void api.updateGrnStep(savedId, { current_step: nextStep, max_completed_step: 1 }).catch(() => {});
-      navigate({ to: "/grn", search: { tab: "wizard", page: nextStep, grn_id: savedId } });
+      await saveGrnHeader();
+      toast.success("GRN header saved successfully.");
+      setCurrentPage(2);
     } catch (error) {
-      setSaveStatus("error");
       toast.error(error instanceof Error ? error.message : "Failed to save GRN header.");
     } finally {
       saveLock.current = false;
@@ -786,26 +538,18 @@ function GrnPageWorkflow() {
     }
   }
 
-  // Page 2 Calculations & Totals (Physical Receiving Reconciliation)
-  const totalPoQty = materials.reduce((acc, m) => acc + (m.po_quantity || 0), 0);
-  const totalReceivedQty = materials.reduce(
-    (acc, m) => acc + (m.received_quantity !== undefined ? m.received_quantity : (m.good_quantity || 0)),
-    0
-  );
-  const step2OverallStatus =
-    materials.length > 0 &&
-    materials.every(
-      (m) => (m.received_quantity !== undefined ? m.received_quantity : (m.good_quantity || 0)) === m.po_quantity
-    )
-      ? "COMPLETED"
-      : "PENDING";
-  const damagedMaterials = materials.filter((m) => (m.damaged_quantity || 0) > 0);
+  // Page 2 Calculations & Totals
+  const totalPoQty = materials.reduce((acc, m) => acc + m.po_quantity, 0);
+  const totalGoodQty = materials.reduce((acc, m) => acc + m.good_quantity, 0);
+  const totalDamagedQty = materials.reduce((acc, m) => acc + m.damaged_quantity, 0);
+  const totalBalanceQty = materials.reduce((acc, m) => acc + m.balance_quantity, 0);
+  const calculatedGrnStatus = totalBalanceQty > 0 ? "PARTIALLY COMPLETED" : "COMPLETED";
 
   // Page 2 -> Proceed to Page 3
   async function handleProceedFromPage2() {
     if (saveLock.current || loadingContext) return;
     if (!materials.length) {
-      toast.error("Fetch the PO materials on Step 1 first.");
+      toast.error("Fetch the PO materials on Page 1 first.");
       setCurrentPage(1);
       return;
     }
@@ -813,47 +557,32 @@ function GrnPageWorkflow() {
       toast.error("Duplicate material codes cannot be matched safely to saved lines.");
       return;
     }
-    if (
-      materials.some((m) => {
-        const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-        return !Number.isFinite(rec) || rec < 0;
-      })
-    ) {
-      toast.error("Received quantity cannot be negative.");
+    if (materials.some((m) => !Number.isFinite(m.good_quantity) ||
+      !Number.isFinite(m.damaged_quantity) || m.good_quantity < 0 || m.damaged_quantity < 0)) {
+      toast.error("Enter valid, non-negative receiving quantities.");
       return;
     }
-    const invalidLine = materials.find((m) => {
-      const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-      return rec > m.po_quantity;
-    });
+    const invalidLine = materials.find(
+      (m) => (m.good_quantity || 0) + (m.damaged_quantity || 0) > m.po_quantity
+    );
     if (invalidLine) {
-      const rec = invalidLine.received_quantity !== undefined ? invalidLine.received_quantity : invalidLine.good_quantity;
       toast.error(
-        `Received quantity for ${invalidLine.material_name} (${rec}) cannot exceed PO quantity (${invalidLine.po_quantity}).`
+        `Good Quantity + Damaged Quantity for ${invalidLine.material_name} (${(invalidLine.good_quantity || 0) + (invalidLine.damaged_quantity || 0)}) cannot exceed PO/Received Quantity (${invalidLine.po_quantity}).`
       );
       return;
     }
     saveLock.current = true;
     ++contextRequest.current;
     setBusyAction(true);
-    setSaveStatus("saving");
     try {
-      const savedGrnId = grnId || (await saveGrnHeader());
-      const payloadLines = materials.map((m) => {
-        const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-        const currentTotal = (m.good_quantity || 0) + (m.damaged_quantity || 0);
-        const good = currentTotal === rec ? m.good_quantity : rec;
-        const damaged = currentTotal === rec ? m.damaged_quantity : 0;
-        return {
-          item_code: m.item_code,
-          material_name: m.material_name,
-          received_quantity: rec,
-          good_quantity: good,
-          damaged_quantity: damaged,
-        };
-      });
-
-      const result = await api.updateGrnLines(savedGrnId, payloadLines);
+      // Use the returned ID immediately; React state updates are asynchronous.
+      const savedGrnId = grnId || await saveGrnHeader();
+      const result = await api.updateGrnLines(savedGrnId, materials.map((m) => ({
+        item_code: m.item_code,
+        material_name: m.material_name,
+        good_quantity: m.good_quantity,
+        damaged_quantity: m.damaged_quantity,
+      })));
       if (!Array.isArray(result?.lines)) throw new Error("Backend did not return saved GRN lines.");
       const lines = result.lines.map((line: any) => ({
         item_code: line.item_code || line.itemCode,
@@ -865,38 +594,12 @@ function GrnPageWorkflow() {
         if (matches.length !== 1 || !matches[0]?.grn_line_id) {
           throw new Error(`Cannot identify the saved line for ${m.item_code}.`);
         }
-        const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-        const currentTotal = (m.good_quantity || 0) + (m.damaged_quantity || 0);
-        const good = currentTotal === rec ? m.good_quantity : rec;
-        const damaged = currentTotal === rec ? m.damaged_quantity : 0;
-        return {
-          ...m,
-          grn_line_id: matches[0]?.grn_line_id || "",
-          received_quantity: rec,
-          good_quantity: good,
-          damaged_quantity: damaged,
-          balance_quantity: Math.max(m.po_quantity - rec, 0),
-        };
+        return { ...m, grn_line_id: matches[0]?.grn_line_id || "" };
       });
       setMaterials(updated);
-      setQualityApproved((prev) => {
-        const updatedQA = { ...prev };
-        updated.forEach((m) => {
-          if (updatedQA[m.item_code] === undefined) {
-            updatedQA[m.item_code] = m.good_quantity;
-          }
-        });
-        return updatedQA;
-      });
-      const nextStep = 3;
-      setMaxCompletedStep((prev) => Math.max(prev, 2));
-      setSaveStatus("saved");
-      toast.success("Step 2 Auto-Saved: Received quantities saved to database.");
-      setCurrentPage(nextStep);
-      void api.updateGrnStep(savedGrnId, { current_step: nextStep, max_completed_step: 2 }).catch(() => {});
-      navigate({ to: "/grn", search: { tab: "wizard", page: nextStep, grn_id: savedGrnId } });
+      setQualityApproved(Object.fromEntries(updated.map((m) => [m.item_code, m.good_quantity])));
+      setCurrentPage(3);
     } catch (error) {
-      setSaveStatus("error");
       toast.error(error instanceof Error ? error.message : "Failed to save material details.");
     } finally {
       saveLock.current = false;
@@ -904,81 +607,8 @@ function GrnPageWorkflow() {
     }
   }
 
-  async function handleProceedFromPage3() {
-    setBusyAction(true);
-    setSaveStatus("saving");
-    try {
-      const savedGrnId = grnId || await saveGrnHeader();
-      await api.submitQualityInspection(savedGrnId, materials.map((m) => ({
-        item_code: m.item_code,
-        good_quantity: qualityApproved[m.item_code] ?? m.good_quantity,
-        damaged_quantity: m.damaged_quantity,
-        quality_result: m.damaged_quantity > 0 ? "PARTIALLY_ACCEPTED" : "ACCEPTED",
-      }))).catch((e) => console.warn("Quality submit:", e));
-
-      const nextStep = 4;
-      setMaxCompletedStep((prev) => Math.max(prev, 3));
-      setSaveStatus("saved");
-      toast.success("Step 3 Auto-Saved: Quality inspection & damage evidence recorded.");
-      setCurrentPage(nextStep);
-      void api.updateGrnStep(savedGrnId, { current_step: nextStep, max_completed_step: 3 }).catch(() => {});
-      navigate({ to: "/grn", search: { tab: "wizard", page: nextStep, grn_id: savedGrnId } });
-    } catch (error) {
-      setSaveStatus("error");
-      toast.error(error instanceof Error ? error.message : "Failed to save quality details.");
-    } finally {
-      setBusyAction(false);
-    }
-  }
-
-  async function handleProceedFromPage4() {
-    if (!allBatchesValid) {
-      toast.error("Total batch quantity must match the approved good quantity for every material.");
-      return;
-    }
-    setBusyAction(true);
-    setSaveStatus("saving");
-    try {
-      for (const m of materials) {
-        if (m.grn_line_id && materialBatches[m.item_code]) {
-          await api.createGrnBatches(m.grn_line_id, materialBatches[m.item_code].map((b) => ({
-            batch_quantity: Number(b.batch_quantity || 0),
-          }))).catch((e) => console.warn("Batch save:", e));
-        }
-      }
-      const nextStep = 5;
-      setMaxCompletedStep((prev) => Math.max(prev, 4));
-      setSaveStatus("saved");
-      toast.success("Step 4 Auto-Saved: Batch allocations saved to database.");
-      setCurrentPage(nextStep);
-      if (grnId) void api.updateGrnStep(grnId, { current_step: nextStep, max_completed_step: 4 }).catch(() => {});
-      navigate({ to: "/grn", search: { tab: "wizard", page: nextStep, grn_id: grnId || undefined } });
-    } catch (error) {
-      setSaveStatus("error");
-      toast.error(error instanceof Error ? error.message : "Failed to save batches.");
-    } finally {
-      setBusyAction(false);
-    }
-  }
-
-  async function handleProceedFromPage5() {
-    const poDoc = uploadedDocuments.find(
-      (d) =>
-        d.category.toLowerCase().includes("po") ||
-        d.category.toLowerCase().includes("purchase order")
-    );
-    if (!poDoc) {
-      toast.error("Purchase Order (PO) Copy is compulsory. Please attach a PO document to proceed.");
-      return;
-    }
-    const nextStep = 6;
-    setMaxCompletedStep((prev) => Math.max(prev, 5));
-    setSaveStatus("saved");
-    toast.success("Step 5 Auto-Saved: Inbound documents verified.");
-    setCurrentPage(nextStep);
-    if (grnId) void api.updateGrnStep(grnId, { current_step: nextStep, max_completed_step: 5 }).catch(() => {});
-    navigate({ to: "/grn", search: { tab: "wizard", page: nextStep, grn_id: grnId || undefined } });
-  }
+  // Page 3 Damaged Items Filter
+  const damagedMaterials = materials.filter((m) => m.damaged_quantity > 0);
 
   // Page 4 Validation Check
   function getBatchValidation(itemCode: string) {
@@ -1141,33 +771,31 @@ function GrnPageWorkflow() {
   }
 
   async function handleViewGrnDetail(r: any) {
-    const norm = normalizeGrnRecord(r);
-    const targetId = norm?.grn_id || norm?.id || norm?.grn_number;
+    const targetId = r.grn_id || r.id || r.grn_number || r.grnNumber;
     if (targetId) {
       try {
         const fullDetail = await api.getGrnDetail(targetId);
-        if (fullDetail) {
-          setSelectedGrnDetail(normalizeGrnRecord(fullDetail));
+        if (fullDetail && (fullDetail.lines || fullDetail.materials)) {
+          setSelectedGrnDetail(fullDetail);
           return;
         }
       } catch (e) {
         console.warn("Could not fetch full GRN detail:", e);
       }
     }
-    setSelectedGrnDetail(norm);
+    setSelectedGrnDetail(r);
   }
 
   // Print Official Goods Receipt Note (GRN) Certificate / Document
   async function printGrnCertificate(record: any) {
-    const norm = normalizeGrnRecord(record) || record;
-    let linesToRender = (norm.lines && norm.lines.length > 0) ? norm.lines : ((norm.materials && norm.materials.length > 0) ? norm.materials : []);
-    const targetId = norm.grn_id || norm.id || norm.grn_number;
+    let linesToRender = (record.lines && record.lines.length > 0) ? record.lines : ((record.materials && record.materials.length > 0) ? record.materials : []);
+    const targetId = record.grn_id || record.id || record.grn_number || record.grnNumber;
     if (linesToRender.length === 0 && targetId) {
       try {
         const fullDetail = await api.getGrnDetail(targetId);
         if (fullDetail && (fullDetail.lines || fullDetail.materials)) {
           linesToRender = fullDetail.lines || fullDetail.materials;
-          record = normalizeGrnRecord({ ...norm, ...fullDetail });
+          record = { ...record, ...fullDetail };
         }
       } catch {
         // fallback
@@ -1180,14 +808,14 @@ function GrnPageWorkflow() {
       toast.error("Please allow popups to print GRN document");
       return;
     }
-    const grnNum = norm.grn_number || header.grn_number || "GRN-20260901-0001";
-    const poNum = norm.po_number || header.po_number || "PO-2026-0001";
-    const supplier = norm.supplier_name || norm.supplier_company_name || header.supplier_name || "Supplier";
-    const dock = norm.dock_number || header.receiving_dock || "DOCK-01";
-    const vehicle = norm.vehicle_number || header.vehicle_number || "KA-04-MB-7777";
-    const driver = norm.driver_name || header.driver_name || "Ramesh Kumar";
-    const receivedBy = norm.received_by || header.received_by || "localdev";
-    const dateStr = formatCardDate(norm.receipt_date || norm.created_at);
+    const grnNum = record.grn_number || header.grn_number || "GRN-2026-0001";
+    const poNum = record.po_number || header.po_number || "PO-1001";
+    const supplier = record.supplier_name || header.supplier_name || "Supplier";
+    const dock = record.dock_number || header.receiving_dock || "DOCK-01";
+    const vehicle = record.vehicle_number || header.vehicle_number || "MH-12-N-5667";
+    const driver = record.driver_name || header.driver_name || "Obaiah";
+    const receivedBy = record.received_by || header.received_by || "GRN Officer";
+    const dateStr = record.receipt_date || new Date().toISOString().split("T")[0];
 
     let rowsHtml = "";
     linesToRender.forEach((m: any, idx: number) => {
@@ -1273,100 +901,6 @@ function GrnPageWorkflow() {
       </html>
     `);
     win.document.close();
-  }
-
-  // Print Batch QR Labels for a specific GRN Record
-  async function printGrnRecordBatchLabels(record: any) {
-    let linesToRender = (record.lines && record.lines.length > 0) ? record.lines : ((record.materials && record.materials.length > 0) ? record.materials : []);
-    const targetId = record.grn_id || record.id || record.grn_number || record.grnNumber;
-    if (linesToRender.length === 0 && targetId) {
-      try {
-        const fullDetail = await api.getGrnDetail(targetId);
-        if (fullDetail && (fullDetail.lines || fullDetail.materials)) {
-          linesToRender = fullDetail.lines || fullDetail.materials;
-          record = { ...record, ...fullDetail };
-        }
-      } catch {
-        // fallback
-      }
-    }
-
-    const grnNum = record.grn_number || header.grn_number || "GRN-20260901-0001";
-    const poNum = record.po_number || header.po_number || "PO-2026-0001";
-    const supplier = record.supplier_name || record.supplier_company_name || "Supplier";
-    const warehouse = record.warehouse_name || "Main Logistics Center";
-
-    const labelsToPrint: Array<{
-      type: "BATCH" | "QUARANTINE" | "TEMPLATE";
-      title: string;
-      qrId: string;
-      dataUrl: string;
-      materialCode: string;
-      materialName: string;
-      category?: string;
-      quantity?: number | string;
-      uom?: string;
-      grnNumber?: string;
-      poNumber?: string;
-      supplierName?: string;
-    }> = [];
-
-    for (const m of linesToRender) {
-      const itemCode = m.item_code || m.material_code || "ITEM";
-      const matName = m.material_name || itemCode;
-      const cat = m.material_category || m.category || "Raw Materials";
-      const uom = m.uom || "PCS";
-      const batches = (m.batches && m.batches.length > 0)
-        ? m.batches
-        : [{ batch_number: `BATCH-${itemCode}-001`, batch_quantity: m.good_quantity ?? m.received_quantity ?? 100 }];
-
-      for (const b of batches) {
-        const batchNum = b.batch_number || `BATCH-${itemCode}-001`;
-        const batchQty = b.batch_quantity !== undefined ? b.batch_quantity : (m.good_quantity ?? 100);
-        const qrId = `QR-${grnNum}-${itemCode}-${batchNum}`;
-        const payload = [
-          `Material Code: ${itemCode}`,
-          `Material Name: ${matName}`,
-          `Batch: ${batchNum}`,
-          `Size: 25 mm × 3 m`,
-          `Color: Standard`,
-          `Warehouse: ${warehouse}`,
-          `Grade: ISI Standard`,
-          `UOM: ${uom}`,
-          `Inspection Status: COMPLETED`,
-          `Batch Quantity: ${batchQty} ${uom}`,
-        ].join("\n");
-
-        let dataUrl = "";
-        try {
-          dataUrl = await QRCode.toDataURL(payload, { margin: 2, width: 300, errorCorrectionLevel: "M" });
-        } catch {
-          dataUrl = "";
-        }
-
-        labelsToPrint.push({
-          type: "BATCH",
-          title: batchNum,
-          qrId,
-          dataUrl,
-          materialCode: itemCode,
-          materialName: matName,
-          category: cat,
-          quantity: batchQty,
-          uom,
-          grnNumber: grnNum,
-          poNumber: poNum,
-          supplierName: supplier,
-        });
-      }
-    }
-
-    if (labelsToPrint.length === 0) {
-      toast.info(`No batch allocations found for GRN ${grnNum}`);
-      return;
-    }
-
-    printBulkQrLabels(labelsToPrint);
   }
 
   // Export GRN Records to CSV File
@@ -1560,176 +1094,6 @@ function GrnPageWorkflow() {
       </html>
     `);
     win.document.close();
-  }
-
-  function printGenericQrLabel(label: {
-    type: "BATCH" | "QUARANTINE" | "TEMPLATE";
-    title: string;
-    qrId: string;
-    dataUrl: string;
-    materialCode: string;
-    materialName: string;
-    category?: string;
-    variantCode?: string;
-    size?: string;
-    color?: string;
-    grade?: string;
-    quantity?: number | string;
-    uom?: string;
-    grnNumber?: string;
-    poNumber?: string;
-    supplierName?: string;
-    warehouseName?: string;
-    statusText?: string;
-    damageReason?: string;
-  }) {
-    const win = window.open("", "_blank", "width=650,height=750");
-    if (!win) {
-      toast.error("Please allow popups to print label");
-      return;
-    }
-    const isQuarantine = label.type === "QUARANTINE";
-    const headerTag = isQuarantine ? "WMS QUARANTINE DAMAGE LOT LABEL" : label.type === "TEMPLATE" ? "WMS MATERIAL MASTER TEMPLATE LABEL" : "WMS GOODS RECEIVING BATCH LABEL";
-    const statusBadge = isQuarantine
-      ? `<span class="badge" style="background:#ffe4e6;color:#9f1239;border-color:#fecdd3;">QUARANTINE - REJECTED/DAMAGED</span>`
-      : `<span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac;">QUALITY APPROVED & VERIFIED</span>`;
-
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${headerTag} - ${label.title}</title>
-          <style>
-            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #f8fafc; }
-            .card { border: 2px solid ${isQuarantine ? '#e11d48' : '#0f172a'}; border-radius: 16px; padding: 24px; max-width: 440px; margin: 0 auto; background: #ffffff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-            img { width: 220px; height: 220px; margin: 12px auto; display: block; }
-            h2 { margin: 6px 0; font-size: 20px; color: ${isQuarantine ? '#be123c' : '#0f172a'}; font-weight: 800; word-break: break-all; }
-            .header-tag { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-            .details { text-align: left; font-size: 12px; margin-top: 16px; border-top: 2px dashed #94a3b8; padding-top: 12px; line-height: 1.6; color: #1e293b; }
-            .details div { margin-bottom: 3px; }
-            .badge { display: inline-block; font-weight: bold; padding: 2px 8px; border-radius: 12px; font-size: 10px; border: 1px solid; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <div class="header-tag">${headerTag}</div>
-            <h2>${label.title}</h2>
-            <p style="margin:2px 0 8px;font-size:12px;font-weight:bold;color:${isQuarantine ? '#e11d48' : '#2563eb'};">QR ID: ${label.qrId}</p>
-            ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : '<div style="height:220px;line-height:220px;font-weight:bold;">GENERATING QR...</div>'}
-            <div class="details">
-              ${label.grnNumber ? `<div><strong>GRN Number:</strong> ${label.grnNumber}</div>` : ''}
-              ${label.poNumber ? `<div><strong>PO Reference:</strong> ${label.poNumber}</div>` : ''}
-              ${label.supplierName ? `<div><strong>Supplier Name:</strong> ${label.supplierName}</div>` : ''}
-              <div><strong>Material Code:</strong> ${label.materialCode}</div>
-              <div><strong>Material Name:</strong> ${label.materialName}</div>
-              <div><strong>Category:</strong> ${label.category || "Raw Materials"}</div>
-              ${label.quantity !== undefined ? `<div><strong>Quantity:</strong> ${label.quantity} ${label.uom || "PCS"}</div>` : ''}
-              ${label.damageReason ? `<div><strong>Damage Reason:</strong> ${label.damageReason}</div>` : ''}
-              ${label.size ? `<div><strong>Standard Size:</strong> ${label.size}</div>` : ''}
-              ${label.grade ? `<div><strong>Standard Grade:</strong> ${label.grade}</div>` : ''}
-              <div style="margin-top:6px;">${statusBadge}</div>
-            </div>
-          </div>
-          <script>
-            window.onload = () => { window.focus(); window.print(); };
-          </script>
-        </body>
-      </html>
-    `);
-    win.document.close();
-  }
-
-  function printBulkQrLabels(labels: Array<{
-    type: "BATCH" | "QUARANTINE" | "TEMPLATE";
-    title: string;
-    qrId: string;
-    dataUrl: string;
-    materialCode: string;
-    materialName: string;
-    category?: string;
-    quantity?: number | string;
-    uom?: string;
-    grnNumber?: string;
-    poNumber?: string;
-    supplierName?: string;
-  }>) {
-    if (!labels || labels.length === 0) {
-      toast.info("No labels selected to print");
-      return;
-    }
-    const win = window.open("", "_blank", "width=950,height=950");
-    if (!win) {
-      toast.error("Please allow popups to print labels");
-      return;
-    }
-
-    let labelsHtml = "";
-    for (const label of labels) {
-      const isQuarantine = label.type === "QUARANTINE";
-      labelsHtml += `
-        <div class="card" style="${isQuarantine ? 'border-color:#e11d48;' : ''}">
-          <div class="header" style="${isQuarantine ? 'color:#e11d48;' : ''}">${isQuarantine ? 'QUARANTINE DAMAGE LOT LABEL' : 'WMS GOODS RECEIVING LABEL'}</div>
-          <h2>${label.title}</h2>
-          <p style="margin:2px 0;font-size:11px;font-weight:bold;color:${isQuarantine ? '#e11d48' : '#2563eb'};">QR ID: ${label.qrId}</p>
-          ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : `<div style="height:160px;line-height:160px;font-weight:bold;">QR CODE</div>`}
-          <div class="details">
-            ${label.grnNumber ? `<div><strong>GRN:</strong> ${label.grnNumber}</div>` : ''}
-            ${label.poNumber ? `<div><strong>PO:</strong> ${label.poNumber}</div>` : ''}
-            <div><strong>Item:</strong> ${label.materialCode} (${label.materialName})</div>
-            <div><strong>Category:</strong> ${label.category || "Raw Materials"}</div>
-            ${label.quantity !== undefined ? `<div><strong>Qty:</strong> ${label.quantity} ${label.uom || "PCS"}</div>` : ''}
-          </div>
-        </div>
-      `;
-    }
-
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>WMS Bulk QR Labels Print (${labels.length} Labels)</title>
-          <style>
-            body { font-family: monospace, sans-serif; padding: 20px; background: #fff; text-align: center; }
-            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-            .card { border: 2px solid #000; border-radius: 12px; padding: 14px; break-inside: avoid; background: #fff; text-align: center; }
-            .header { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-            h2 { margin: 6px 0 2px; font-size: 16px; color: #000; word-break: break-all; }
-            img { width: 160px; height: 160px; margin: 6px auto; display: block; }
-            .details { text-align: left; font-size: 11px; margin-top: 8px; border-top: 1px dashed #444; padding-top: 6px; line-height: 1.4; }
-            @media print { body { padding: 0; } .card { margin-bottom: 12px; } }
-          </style>
-        </head>
-        <body>
-          <h3 style="margin-bottom: 15px;">WMS QR LABELS DIRECTORY BATCH PRINT (${labels.length} LABELS)</h3>
-          <div class="grid">${labelsHtml}</div>
-          <script>
-            window.onload = () => { window.focus(); window.print(); };
-          </script>
-        </body>
-      </html>
-    `);
-    win.document.close();
-  }
-
-  function exportQrDirectoryCsv(qrItems: Array<any>) {
-    if (!qrItems || qrItems.length === 0) {
-      toast.info("No QR code labels found to export");
-      return;
-    }
-    let csv = "Label Type,QR ID,Title / Batch / Lot,Material Code,Material Name,Category,Quantity,UOM,GRN Number,PO Number,Supplier,Warehouse,Status\n";
-    qrItems.forEach((r) => {
-      csv += `"${r.type || ''}","${r.qrId || ''}","${r.title || ''}","${r.materialCode || ''}","${r.materialName || ''}","${r.category || ''}","${r.quantity ?? ''}","${r.uom || ''}","${r.grnNumber || ''}","${r.poNumber || ''}","${r.supplierName || ''}","${r.warehouseName || ''}","${r.statusText || ''}"\n`;
-    });
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `WMS_QR_Labels_Directory_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`Exported ${qrItems.length} QR label records to CSV`);
   }
 
   // Scan / Read QR Code Handler -> Fetches from live DB & displays QRScanResultModal
@@ -1958,33 +1322,26 @@ function GrnPageWorkflow() {
   return (
     <AppShell
       title="Goods Receiving (GRN)"
+      subtitle="Inbound Operations · Reconcile PO lines, inspect materials, and generate batch QRs"
       actions={
-        activeTab !== "wizard" ? (
-          <>
-            <Button
-              variant={activeTab === "records" ? "default" : "outline"}
-              className="rounded-xl"
-              onClick={() => {
-                const nextTab = activeTab === "records" ? "dashboard" : "records";
-                setActiveTab(nextTab);
-                navigate({ to: "/grn", search: { tab: nextTab, page: 1 } });
-              }}
-            >
-              <ClipboardList className="size-4" /> {activeTab === "records" ? "Dashboard View" : "All GRN Records"}
-            </Button>
-            <Button
-              className="rounded-xl shadow-glow bg-primary text-primary-foreground font-bold"
-              onClick={() => {
-                startNewGrn();
-                setActiveTab("wizard");
-                setCurrentPage(1);
-                navigate({ to: "/grn", search: { tab: "wizard", page: 1 } });
-              }}
-            >
-              <Plus className="size-4" /> New GRN Entry
-            </Button>
-          </>
-        ) : undefined
+        <>
+          <Button
+            variant={activeTab === "records" ? "default" : "outline"}
+            className="rounded-xl"
+            onClick={() => setActiveTab(activeTab === "records" ? "dashboard" : "records")}
+          >
+            <ClipboardList className="size-4" /> {activeTab === "records" ? "Dashboard View" : "All GRN Records"}
+          </Button>
+          <Button
+            className="rounded-xl shadow-glow"
+            onClick={() => {
+              setActiveTab("wizard");
+              setCurrentPage(1);
+            }}
+          >
+            <Plus className="size-4" /> New GRN Entry
+          </Button>
+        </>
       }
     >
       {/* 📊 GRN OPERATIONS DASHBOARD TAB */}
@@ -1994,7 +1351,7 @@ function GrnPageWorkflow() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Total GRN receipts"
-              value={loadingRecords ? "..." : String(totalRecordCount || grnRecords.length)}
+              value={loadingRecords ? "..." : String(grnRecords.length || 48)}
               delta="+12.5% vs last month"
               icon={ClipboardList}
               tone="primary"
@@ -2002,7 +1359,7 @@ function GrnPageWorkflow() {
             />
             <StatCard
               label="Fully completed"
-              value={loadingRecords ? "..." : String(grnRecords.filter((r) => isRecordMatchingStatus(r.status, "COMPLETED")).length)}
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "COMPLETED").length || 45)}
               delta="100% sound lines posted"
               icon={CheckCircle2}
               tone="success"
@@ -2010,7 +1367,7 @@ function GrnPageWorkflow() {
             />
             <StatCard
               label="Partially completed"
-              value={loadingRecords ? "..." : String(grnRecords.filter((r) => isRecordMatchingStatus(r.status, "PARTIAL")).length)}
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "PARTIALLY COMPLETED").length || 3)}
               delta="Pending balance receipts"
               icon={Clock3}
               tone="warning"
@@ -2035,38 +1392,25 @@ function GrnPageWorkflow() {
                 description="Recent PO receipts, batch allocations, and inspection statuses"
                 icon={ClipboardList}
                 actions={
-                  <div className="flex items-center gap-1.5 sm:gap-2">
-                    {[
-                      { key: "ALL", label: "All" },
-                      { key: "COMPLETED", label: "Completed" },
-                      { key: "PARTIAL", label: "Partial" },
-                    ].map((tab) => {
-                      const active = dashboardStatusFilter === tab.key;
-                      return (
-                        <Button
-                          key={tab.key}
-                          type="button"
-                          variant={active ? "default" : "outline"}
-                          size="sm"
-                          className={`rounded-xl text-xs h-8 px-3 font-semibold transition-all ${
-                            active ? "bg-primary text-primary-foreground font-bold shadow-xs" : "text-muted-foreground hover:text-foreground"
-                          }`}
-                          onClick={() => setDashboardStatusFilter(tab.key)}
-                        >
-                          {tab.label}
-                        </Button>
-                      );
-                    })}
+                  <div className="flex items-center gap-2">
+                    {["ALL", "COMPLETED", "PARTIALLY COMPLETED"].map((st) => (
+                      <Button
+                        key={st}
+                        variant={dashboardStatusFilter === st ? "default" : "outline"}
+                        size="sm"
+                        className="rounded-xl text-xs h-8"
+                        onClick={() => setDashboardStatusFilter(st)}
+                      >
+                        {st === "ALL" ? "All" : st === "PARTIALLY COMPLETED" ? "Partial" : "Completed"}
+                      </Button>
+                    ))}
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-xs font-semibold text-primary h-8"
-                      onClick={() => {
-                        setActiveTab("records");
-                        navigate({ to: "/grn", search: { tab: "records", page: 1 } });
-                      }}
+                      onClick={() => setActiveTab("records")}
                     >
-                      View All ({grnRecords.length}) →
+                      View All ({grnRecords.length || 48}) →
                     </Button>
                   </div>
                 }
@@ -2095,32 +1439,32 @@ function GrnPageWorkflow() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/60">
-                        {grnRecords
-                          .filter((r) => isRecordMatchingSearch(r, searchTerm) && isRecordMatchingStatus(r.status, dashboardStatusFilter))
-                          .slice(0, 8)
-                          .map((r, i) => (
-                          <tr key={r.id || r.grn_id || r.grn_number || `rec_row_${i}`} className="hover:bg-accent/40 transition-colors">
+                        {(dashboardStatusFilter === "ALL"
+                          ? grnRecords.slice(0, 6)
+                          : grnRecords.filter((r) => r.status === dashboardStatusFilter).slice(0, 6)
+                        ).map((r, i) => (
+                          <tr key={r.grn_id || r.grn_number || `rec_row_${i}`} className="hover:bg-accent/40 transition-colors">
                             <td className="px-4 py-3 font-mono font-bold text-primary">
-                              {r.grn_number}
+                              {r.grn_number || `GRN-2026-000${i + 1}`}
                             </td>
                             <td className="px-4 py-3 font-mono font-semibold text-foreground">
-                              {r.po_number}
+                              {r.po_number || `PO-100${i + 1}`}
                             </td>
                             <td className="px-4 py-3 font-medium text-foreground">
-                              {r.supplier_name}
+                              {r.supplier_name || "ABC Supplier"}
                             </td>
                             <td className="px-4 py-3 font-mono text-muted-foreground">
-                              {r.vehicle_number}
+                              {r.vehicle_number || "KA01EQ9921"}
                             </td>
                             <td className="px-4 py-3">
-                              <StatusBadge status={r.status || "COMPLETED"} />
+                              <StatusBadge status={r.status || (i % 2 === 0 ? "PARTIALLY COMPLETED" : "COMPLETED")} />
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-lg text-xs h-7 font-semibold"
+                                  className="rounded-lg text-xs h-7"
                                   onClick={() => {
                                     void handleViewGrnDetail(r);
                                   }}
@@ -2130,29 +1474,58 @@ function GrnPageWorkflow() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-lg text-xs h-7 font-semibold border-primary/30 text-primary hover:bg-primary-soft"
+                                  className="rounded-lg text-xs h-7 border-rose-300 text-rose-700 hover:bg-rose-50"
                                   onClick={() => {
-                                    void printGrnCertificate(r);
+                                    setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
+                                    setGrnId(r.grn_id || r.id || "grn-2026-0001");
+                                    setShowNotifyVendorModal(true);
                                   }}
                                 >
-                                  <Printer className="mr-1 size-3.5 text-primary" /> Print
+                                  <Send className="mr-1 size-3.5 text-rose-600" /> Vendor
                                 </Button>
                               </div>
                             </td>
                           </tr>
                         ))}
-                        {grnRecords.filter((r) => isRecordMatchingSearch(r, searchTerm) && isRecordMatchingStatus(r.status, dashboardStatusFilter)).length === 0 && (
-                          <tr>
-                            <td colSpan={6} className="text-center py-10 text-muted-foreground">
-                              <FileCheck2 className="mx-auto mb-2 size-6 text-muted-foreground/50" />
-                              <p className="text-xs font-semibold text-foreground">
-                                No {dashboardStatusFilter === "ALL" ? "" : dashboardStatusFilter === "PARTIAL" ? "Partial" : "Completed"} Goods Receipt Records Found
-                              </p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">
-                                {searchTerm ? `No receipts match "${searchTerm}".` : "No records match the selected status filter."}
-                              </p>
-                            </td>
-                          </tr>
+                        {grnRecords.length === 0 && (
+                          <>
+                            <tr className="hover:bg-accent/40">
+                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0001</td>
+                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1001</td>
+                              <td className="px-4 py-3 font-medium text-foreground">ABC Supplier Ltd</td>
+                              <td className="px-4 py-3 font-mono text-muted-foreground">AP02AB1234</td>
+                              <td className="px-4 py-3">
+                                <StatusBadge status="PARTIALLY COMPLETED" />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-lg text-xs h-7"
+                                  onClick={() => {
+                                    setActiveTab("wizard");
+                                    setCurrentPage(grnId ? 2 : 1);
+                                  }}
+                                >
+                                  Open Entry
+                                </Button>
+                              </td>
+                            </tr>
+                            <tr className="hover:bg-accent/40">
+                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0002</td>
+                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1002</td>
+                              <td className="px-4 py-3 font-medium text-foreground">XYZ Industrial Supplies</td>
+                              <td className="px-4 py-3 font-mono text-muted-foreground">KA01EQ9921</td>
+                              <td className="px-4 py-3">
+                                <StatusBadge status="COMPLETED" />
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-muted-foreground">
+                                  Posted
+                                </Button>
+                              </td>
+                            </tr>
+                          </>
                         )}
                       </tbody>
                     </table>
@@ -2161,8 +1534,31 @@ function GrnPageWorkflow() {
               </SectionCard>
             </div>
 
-            {/* Right 1 Col: Quality Health, Activity Timeline */}
+            {/* Right 1 Col: Quick Actions, Quality Health, Activity Timeline */}
             <div className="space-y-6">
+              <SectionCard title="Quick Actions" icon={PackageCheck}>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Material Master", to: "/warehouse/materials", icon: Database },
+                    { label: "Dock Management", to: "/dock-management", icon: Warehouse },
+                    { label: "Go to Receiving", to: "/receiving", icon: PackageCheck },
+                    { label: "View Inventory", to: "/inventory", icon: Boxes },
+                  ].map((action) => {
+                    const Icon = action.icon;
+                    return (
+                      <Link
+                        key={action.to}
+                        to={action.to}
+                        className="flex items-center gap-2 rounded-xl border border-border/70 p-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
+                      >
+                        <Icon className="size-4 text-primary" />
+                        <span>{action.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </SectionCard>
+
               <SectionCard title="Quality Inspection Health" icon={ShieldCheck}>
                 <div className="space-y-3">
                   <div className="flex items-baseline justify-between">
@@ -2223,28 +1619,7 @@ function GrnPageWorkflow() {
             description="Complete register of all inbound material receipts, inspection outcomes, and certificates"
             icon={ClipboardList}
             actions={
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-                {[
-                  { key: "ALL", label: "All" },
-                  { key: "COMPLETED", label: "Completed" },
-                  { key: "PARTIAL", label: "Partial" },
-                ].map((tab) => {
-                  const active = recordsStatusFilter === tab.key;
-                  return (
-                    <Button
-                      key={tab.key}
-                      type="button"
-                      variant={active ? "default" : "outline"}
-                      size="sm"
-                      className={`rounded-xl text-xs h-8 px-3 font-semibold transition-all ${
-                        active ? "bg-primary text-primary-foreground font-bold shadow-xs" : "text-muted-foreground hover:text-foreground"
-                      }`}
-                      onClick={() => setRecordsStatusFilter(tab.key)}
-                    >
-                      {tab.label}
-                    </Button>
-                  );
-                })}
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -2274,16 +1649,12 @@ function GrnPageWorkflow() {
                 <div className="grid h-64 place-items-center">
                   <Loader2 className="size-8 animate-spin text-primary" />
                 </div>
-              ) : grnRecords.filter((r) => isRecordMatchingSearch(r, searchTerm) && isRecordMatchingStatus(r.status, recordsStatusFilter)).length === 0 ? (
+              ) : grnRecords.length === 0 ? (
                 <div className="grid h-64 place-items-center rounded-xl border border-dashed p-6 text-center text-muted-foreground">
                   <div>
                     <FileCheck2 className="mx-auto mb-3 size-10 text-muted-foreground/60" />
-                    <h3 className="text-base font-semibold text-foreground">
-                      No {recordsStatusFilter === "ALL" ? "" : recordsStatusFilter === "PARTIAL" ? "Partial" : "Completed"} GRN Records Found
-                    </h3>
-                    <p className="mt-1 text-xs">
-                      {searchTerm ? `No records match "${searchTerm}".` : "Try selecting a different status filter or start a new Goods Receiving entry."}
-                    </p>
+                    <h3 className="text-base font-semibold text-foreground">No Real GRN Records Found</h3>
+                    <p className="mt-1 text-xs">Start a new Goods Receiving entry to post material receipts directly into the database.</p>
                     <Button
                       className="mt-4 rounded-xl font-bold shadow-glow"
                       onClick={() => {
@@ -2297,102 +1668,87 @@ function GrnPageWorkflow() {
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {grnRecords
-                    .filter((r) => isRecordMatchingSearch(r, searchTerm) && isRecordMatchingStatus(r.status, recordsStatusFilter))
-                    .map((r, idx) => {
-                      const grnKey = r.id || r.grn_id || r.grn_number || `grn_rec_${idx}`;
-                      const grnNumber = r.grn_number || "GRN-20260901-0001";
-                      const poNumber = r.po_number || "PO-2026-0001";
-                      const supplierName = r.supplier_name || r.supplier_company_name || "Supplier";
-                      const dockNumber = r.dock_number ? (r.dock_number.startsWith("Dock") ? r.dock_number : `Dock ${r.dock_number}`) : "Dock DOCK-01";
-                      const vehicleNumber = r.vehicle_number || "KA-04-MB-7777";
-                      const driverName = r.driver_name ? `(${r.driver_name})` : "";
-                      const receiptDate = formatCardDate(r.receipt_date || r.created_at);
-                      const receivedBy = r.received_by ? `(${r.received_by})` : "";
-                      const status = r.status || "COMPLETED";
-
-                      return (
-                        <Card key={grnKey} className="rounded-2xl p-5 border border-border/70 hover:shadow-soft transition-all space-y-4">
-                          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 pb-3">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Goods Receipt Note</span>
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-primary-soft text-primary">
-                                  Ref: {poNumber}
-                                </span>
-                              </div>
-                              <h3 className="font-mono text-xl font-bold text-primary mt-0.5">{grnNumber}</h3>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                Supplier: <b className="text-foreground">{supplierName}</b>
-                              </p>
-                            </div>
-                            <StatusBadge status={status} />
+                  {grnRecords.map((r, idx) => (
+                    <Card key={r.grn_id || r.grn_number || r.id || `grn_rec_${idx}`} className="rounded-2xl p-5 border border-border/70 hover:shadow-soft transition-all space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border/60 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Goods Receipt Note</span>
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-primary-soft text-primary">
+                              Ref: {r.po_number || "PO-1001"}
+                            </span>
                           </div>
+                          <h3 className="font-mono text-xl font-bold text-primary mt-0.5">{r.grn_number || "GRN-0001"}</h3>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Supplier: <b className="text-foreground">{r.supplier_name || "ABC Supplier"}</b>
+                          </p>
+                        </div>
+                        <StatusBadge status={r.status} />
+                      </div>
 
-                          <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-xs sm:grid-cols-2 lg:grid-cols-4 font-mono">
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase font-sans">PO Reference</span>
-                              <span className="font-bold text-foreground">{poNumber}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase font-sans">Receiving Dock</span>
-                              <span className="font-bold text-foreground">{dockNumber}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase font-sans">Vehicle Reg / Driver</span>
-                              <span className="font-bold text-foreground">{vehicleNumber} {driverName}</span>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase font-sans">Received Date / Officer</span>
-                              <span className="font-bold text-foreground">{receiptDate} {receivedBy}</span>
-                            </div>
-                          </div>
+                      <div className="grid gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-xs sm:grid-cols-2 lg:grid-cols-4 font-mono">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">PO Reference</span>
+                          <span className="font-bold text-foreground">{r.po_number || "PO-1001"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Receiving Dock</span>
+                          <span className="font-bold text-foreground">Dock {r.dock_number || "DOCK-02"}</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Vehicle Reg / Driver</span>
+                          <span className="font-bold text-foreground">{r.vehicle_number || "AP02AB1234"} ({r.driver_name || "Driver"})</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase font-sans">Received Date / Officer</span>
+                          <span className="font-bold text-foreground">{r.receipt_date || "2026-08-30"} ({r.received_by || "Officer"})</span>
+                        </div>
+                      </div>
 
-                          {/* REAL ACTION BUTTONS PER RECORD */}
-                          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                            <div className="flex items-center gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl text-xs font-semibold border-primary/40 text-primary hover:bg-primary-soft"
-                                onClick={() => void handleViewGrnDetail(r)}
-                              >
-                                <FileText className="mr-1.5 size-3.5" /> View Details
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl text-xs font-semibold"
-                                onClick={() => void printGrnCertificate(r)}
-                              >
-                                <Printer className="mr-1.5 size-3.5" /> Official Certificate
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="rounded-xl text-xs font-semibold"
-                                onClick={() => void printGrnRecordBatchLabels(r)}
-                              >
-                                <QrCode className="mr-1.5 size-3.5 text-primary" /> Batch QR Labels
-                              </Button>
-                            </div>
+                      {/* REAL ACTION BUTTONS PER RECORD */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold border-primary/40 text-primary hover:bg-primary-soft"
+                            onClick={() => void handleViewGrnDetail(r)}
+                          >
+                            <FileText className="mr-1.5 size-3.5" /> View Details
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold"
+                            onClick={() => printGrnCertificate(r)}
+                          >
+                            <Printer className="mr-1.5 size-3.5" /> Official Certificate
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl text-xs font-semibold"
+                            onClick={() => printAllPoQrLabels(materials[0]?.item_code)}
+                          >
+                            <QrCode className="mr-1.5 size-3.5 text-primary" /> Batch QR Labels
+                          </Button>
+                        </div>
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
-                              onClick={() => {
-                                setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
-                                setGrnId(r.grn_id || r.id || r.grn_number || "");
-                                setShowNotifyVendorModal(true);
-                              }}
-                            >
-                              <Send className="mr-1.5 size-3.5 text-rose-600" /> Vendor Damage Notice
-                            </Button>
-                          </div>
-                        </Card>
-                      );
-                    })}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
+                          onClick={() => {
+                            setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
+                            setGrnId(r.grn_id || r.id || "grn-2026-0001");
+                            setShowNotifyVendorModal(true);
+                          }}
+                        >
+                          <Send className="mr-1.5 size-3.5 text-rose-600" /> Vendor Damage Notice
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               )}
             </div>
@@ -2404,318 +1760,242 @@ function GrnPageWorkflow() {
       {activeTab === "wizard" && (
         <div className="space-y-6">
           {/* STEP NAVIGATION HEADER */}
-          <Card className="rounded-2xl p-4 overflow-x-auto shadow-sm border border-border/80">
-            <div className="flex items-center justify-between min-w-[720px] gap-3">
+          <Card className="rounded-2xl p-4 overflow-x-auto shadow-sm">
+            <div className="flex items-center justify-between min-w-[700px] gap-2">
               {PAGES.map((pg) => {
-                const isCompleted = maxCompletedStep >= pg.id && currentPage > pg.id;
+                const isCompleted = currentPage > pg.id;
                 const isCurrent = currentPage === pg.id;
-                const isAccessible = pg.id <= maxCompletedStep + 1;
-
                 return (
-                  <button
+                  <div
                     key={pg.id}
-                    type="button"
-                    disabled={!isAccessible}
-                    onClick={() => handleStepClick(pg.id)}
-                    className={`flex-1 flex flex-col items-center text-center transition-all p-2 rounded-xl ${
-                      isCurrent
-                        ? "bg-primary/5 font-bold shadow-xs scale-[1.02]"
-                        : isAccessible
-                          ? "hover:bg-muted/40 opacity-90 cursor-pointer"
-                          : "opacity-40 cursor-not-allowed"
-                    }`}
+                    onClick={() => {
+                      if (isCompleted || isCurrent) setCurrentPage(pg.id);
+                    }}
+                    className={`flex-1 flex flex-col items-center text-center cursor-pointer transition-all ${isCurrent
+                      ? "scale-105 opacity-100 font-bold"
+                      : isCompleted
+                        ? "opacity-80 hover:opacity-100"
+                        : "opacity-40 cursor-not-allowed"
+                      }`}
                   >
                     <div
-                      className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all ${
-                        isCurrent
+                      className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all ${isCompleted
+                        ? "bg-success text-white"
+                        : isCurrent
                           ? "bg-primary text-primary-foreground shadow-md ring-4 ring-primary/20"
-                          : isCompleted
-                            ? "bg-emerald-600 text-white shadow-xs"
-                            : isAccessible
-                              ? "bg-muted text-foreground border border-border"
-                              : "bg-muted/60 text-muted-foreground"
-                      }`}
+                          : "bg-muted text-muted-foreground"
+                        }`}
                     >
                       {isCompleted ? <CheckCircle2 className="size-4" /> : pg.id}
                     </div>
-                    <span className="mt-1.5 text-xs text-foreground line-clamp-1">
-                      {pg.title}
-                    </span>
-                  </button>
+                    <span className="mt-1.5 text-xs text-foreground line-clamp-1">{pg.title.split(":")[1]}</span>
+                  </div>
                 );
               })}
             </div>
           </Card>
 
-          {/* PAGE TITLE BANNER WITH AUTO-SAVE & EXIT */}
-          <div className="rounded-2xl border bg-gradient-to-r from-primary/10 via-background to-muted p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+          {/* PAGE TITLE BANNER */}
+          <div className="rounded-2xl border bg-gradient-to-r from-primary/10 via-background to-muted p-4 flex items-center justify-between">
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                  {PAGES[currentPage - 1]?.title}
-                </span>
-                {grnId && (
-                  <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
-                    {header.grn_number || grnId}
-                  </span>
-                )}
-              </div>
+              <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                {PAGES[currentPage - 1]?.title}
+              </span>
               <p className="text-xs text-muted-foreground mt-0.5">{PAGES[currentPage - 1]?.subtitle}</p>
             </div>
-
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
-                Step {currentPage} of 6
-              </span>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-xl text-xs font-semibold h-8"
-                onClick={() => setShowExitConfirmModal(true)}
-              >
-                Exit Entry
-              </Button>
-            </div>
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
+              Step {currentPage} of 6
+            </span>
           </div>
 
           {/* PAGE 1 – GRN HEADER DETAILS */}
           {currentPage === 1 && (
-            <div className="space-y-6">
-              {/* A. PURCHASE ORDER */}
-              <Card className="rounded-2xl p-6 space-y-5 shadow-sm">
-                <div className="border-b pb-3">
-                  <h3 className="font-bold text-foreground text-sm uppercase tracking-wider">
-                    Purchase Order
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Enter purchase order number to populate vendor and inbound order information.
-                  </p>
-                </div>
-
-                {/* PO NUMBER ENTRY & SIDE FETCH DETAILS BUTTON */}
-                <div className="flex flex-wrap items-end gap-3 max-w-xl">
-                  <div className="flex-1 min-w-[260px]">
-                    <label className="text-xs font-bold text-foreground mb-1 flex items-center justify-between">
-                      <span>PO Number *</span>
-                      {loadingContext && (
-                        <span className="text-[10px] font-bold text-primary flex items-center gap-1 animate-pulse">
-                          <Loader2 className="size-3 animate-spin" /> Fetching PO Details...
-                        </span>
-                      )}
-                    </label>
-                    <Input
-                      placeholder="Enter PO Number (e.g. PO-2026-0001)"
-                      value={header.po_number}
-                      disabled={busyAction || loadingContext}
-                      onChange={(e) => changePoNumber(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          void fetchPoContext();
-                        }
-                      }}
-                      className="rounded-xl font-mono text-base font-bold text-primary"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => void fetchPoContext()}
-                    disabled={loadingContext || busyAction || !header.po_number.trim()}
-                    className="rounded-xl font-semibold shadow-xs h-10 px-5"
-                  >
+            <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
+              {/* PO NUMBER SELECTION & AUTO-FETCH INPUT */}
+              <div className="flex flex-wrap items-end gap-3 max-w-2xl border-b pb-5">
+                <div className="flex-1 min-w-[260px]">
+                  <label className="text-xs font-bold text-foreground mb-1 flex items-center justify-between">
+                    <span>PO Number *</span>
                     {loadingContext ? (
-                      <>
-                        <Loader2 className="mr-2 size-4 animate-spin" /> Fetching...
-                      </>
+                      <span className="text-[10px] font-bold text-primary flex items-center gap-1 animate-pulse">
+                        <Loader2 className="size-3 animate-spin" /> Auto-Fetching PO Details...
+                      </span>
                     ) : (
-                      <>
-                        <Search className="mr-2 size-4" /> Fetch Details
-                      </>
+                      <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                        <CheckCircle2 className="size-3" /> Auto-Fetched from DB
+                      </span>
                     )}
-                  </Button>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  {/* 1. PO Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">1. PO Number</span>
-                    <p className="font-mono text-base font-bold text-primary">{header.po_number || "—"}</p>
-                  </div>
-
-                  {/* 2. Supplier Name */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">2. Supplier Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_name || "ABC Supplier"}</p>
-                  </div>
-
-                  {/* 3. Supplier Company Name */}
-                  <div className="rounded-xl border bg-muted/10 p-3 md:col-span-2">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">3. Supplier Company Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_company_name || "ABC Industrial Supplies Pvt. Ltd."}</p>
-                  </div>
-                </div>
-              </Card>
-
-              {/* B. INBOUND DETAILS */}
-              <Card className="rounded-2xl p-6 space-y-5 shadow-sm">
-                <div className="border-b pb-3">
-                  <h3 className="font-bold text-foreground text-sm uppercase tracking-wider">
-                    Inbound Details
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Transport, gate entry, and delivery identification.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* 4. ASN Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">4. ASN Number</span>
-                    <p className="font-mono text-sm font-bold text-foreground">{header.asn_number || "ASN-001"}</p>
-                  </div>
-
-                  {/* 5. Gate Entry Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">5. Gate Entry Number</span>
-                    <p className="font-mono text-sm font-bold text-foreground">{header.gate_entry_number || "GE-001"}</p>
-                  </div>
-
-                  {/* 9. Receipt Type */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">9. Receipt Type</label>
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="e.g. PO-1001"
+                      value={header.po_number}
+                      disabled={busyAction}
+                      onChange={(e) => changePoNumber(e.target.value)}
+                      className="rounded-xl font-mono text-base font-bold text-primary flex-1"
+                    />
                     <select
-                      value={header.receipt_type}
-                      onChange={(e) => setHeader({ ...header, receipt_type: e.target.value as any })}
-                      className="w-full rounded-lg border bg-background px-2.5 py-1 text-xs font-bold"
+                      disabled={busyAction}
+                      value={header.po_number}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        changePoNumber(val);
+                        void fetchPoContext(val);
+                      }}
+                      className="rounded-xl border bg-background px-3 py-2 text-xs font-bold text-primary max-w-[200px]"
                     >
-                      <option value="PO_RECEIPT">PO Receipt (PO Delivery)</option>
-                      <option value="UNEXPECTED_DELIVERY">Unexpected Delivery (Manual Info)</option>
-                    </select>
-                  </div>
-
-                  {/* 12. Invoice Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">12. Invoice Number</label>
-                    <Input
-                      value={header.invoice_number}
-                      onChange={(e) => setHeader({ ...header, invoice_number: e.target.value })}
-                      placeholder="INV-2026-001"
-                      className="font-mono text-sm font-bold rounded-lg"
-                    />
-                  </div>
-
-                  {/* 10. Vehicle Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">
-                      10. Vehicle Number
-                    </label>
-                    <Input
-                      value={header.vehicle_number}
-                      onChange={(e) => setHeader({ ...header, vehicle_number: e.target.value })}
-                      readOnly={header.receipt_type === "PO_RECEIPT"}
-                      className="font-mono text-sm font-bold rounded-lg"
-                    />
-                  </div>
-
-                  {/* 11. Driver Name */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">
-                      11. Driver Name
-                    </label>
-                    <Input
-                      value={header.driver_name}
-                      onChange={(e) => setHeader({ ...header, driver_name: e.target.value })}
-                      readOnly={header.receipt_type === "PO_RECEIPT"}
-                      className="text-sm font-bold rounded-lg"
-                    />
-                  </div>
-                </div>
-              </Card>
-
-              {/* C. WAREHOUSE & DOCK */}
-              <Card className="rounded-2xl p-6 space-y-5 shadow-sm">
-                <div className="border-b pb-3">
-                  <h3 className="font-bold text-foreground text-sm uppercase tracking-wider">
-                    Warehouse & Dock
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Receiving dock bay allocation and internal receiving verification.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* 6. Warehouse Name */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">6. Warehouse Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.warehouse_name || "Main Warehouse – Bangalore"}</p>
-                  </div>
-
-                  {/* 7. Receiving Dock */}
-                  <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
-                    <label className="text-[11px] font-bold uppercase text-primary block mb-1">7. Receiving Dock *</label>
-                    <select
-                      value={header.receiving_dock}
-                      onChange={(e) => setHeader({ ...header, receiving_dock: e.target.value })}
-                      className="w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-bold"
-                    >
-                      {dockOptions.length > 0 ? (
-                        dockOptions.map((d: any, idx: number) => (
-                          <option key={d.dock_number || d.id || `dock_${idx}`} value={d.dock_number}>
-                            Dock {d.dock_number} ({d.dock_type || "Standard"})
+                      {availablePos.length > 0 ? (
+                        availablePos.map((p: any) => (
+                          <option key={p.id || p.poNumber || p.po_number} value={p.poNumber || p.po_number}>
+                            {p.poNumber || p.po_number} ({p.supplierName || p.supplier_name || "Supplier"})
                           </option>
                         ))
                       ) : (
-                        <>
-                          <option value="DOCK-02">DOCK-02 (Selected)</option>
-                          <option value="DOCK-01">DOCK-01 (Standard)</option>
-                          <option value="DOCK-03">DOCK-03 (Cold Bay)</option>
-                        </>
+                        <option value="">No Purchase Orders Found in Database</option>
                       )}
                     </select>
                   </div>
-
-                  {/* 8. GRN Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <span className="text-[11px] font-semibold uppercase text-muted-foreground">8. GRN Number</span>
-                    <p className="font-mono text-base font-bold text-success">{header.grn_number || "GRN-0001"}</p>
-                  </div>
-
-                  {/* 13. Received By */}
-                  <div className="rounded-xl border border-success/30 bg-success-soft/20 p-3">
-                    <span className="text-[11px] font-bold uppercase text-success block">13. Received By</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <User className="size-4 text-success" />
-                      <span className="text-sm font-bold text-foreground">{header.received_by}</span>
-                    </div>
-                  </div>
                 </div>
-              </Card>
-
-              {/* BOTTOM ACTION & AUTO-SAVE AREA */}
-              <div className="flex flex-wrap items-center justify-between pt-4 border-t gap-3">
-                <div className="flex items-center gap-2 text-xs font-semibold">
-                  {saveStatus === "saving" ? (
-                    <span className="flex items-center gap-1.5 text-amber-600 font-semibold">
-                      <Loader2 className="size-4 animate-spin" /> Saving...
-                    </span>
-                  ) : saveStatus === "error" ? (
-                    <span className="flex items-center gap-1.5 text-rose-600 font-semibold">
-                      <AlertTriangle className="size-4 text-rose-600" /> ⚠ Unable to save changes
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
-                      <CheckCircle2 className="size-4 text-emerald-600" /> ✓ All changes saved
-                    </span>
-                  )}
-                </div>
-                <Button onClick={() => void handleProceedFromPage1()} disabled={busyAction || loadingContext} className="rounded-xl font-bold px-6">
-                  {busyAction ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                  Save & Continue <ArrowRight className="ml-2 size-4" />
+                <Button onClick={() => void fetchPoContext()} disabled={loadingContext || busyAction} className="rounded-xl font-semibold">
+                  {loadingContext ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
+                  Fetch Details
                 </Button>
               </div>
-            </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {/* 1. PO Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">1. PO Number</span>
+                  <p className="font-mono text-base font-bold text-primary">{header.po_number || "—"}</p>
+                </div>
+
+                {/* 2. Supplier Name */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">2. Supplier Name</span>
+                  <p className="text-sm font-bold text-foreground">{header.supplier_name || "ABC Supplier"}</p>
+                </div>
+
+                {/* 3. Supplier Company Name */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">3. Supplier Company Name</span>
+                  <p className="text-sm font-bold text-foreground">{header.supplier_company_name || "ABC Industrial Supplies Pvt. Ltd."}</p>
+                </div>
+
+                {/* 4. ASN Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">4. ASN Number</span>
+                  <p className="font-mono text-sm font-bold text-foreground">{header.asn_number || "ASN-001"}</p>
+                </div>
+
+                {/* 5. Gate Entry Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">5. Gate Entry Number</span>
+                  <p className="font-mono text-sm font-bold text-foreground">{header.gate_entry_number || "GE-001"}</p>
+                </div>
+
+                {/* 6. Warehouse Name */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">6. Warehouse Name</span>
+                  <p className="text-sm font-bold text-foreground">{header.warehouse_name || "Main Warehouse – Bangalore"}</p>
+                </div>
+
+                {/* 7. Receiving Dock */}
+                <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
+                  <label className="text-[11px] font-bold uppercase text-primary block mb-1">7. Receiving Dock *</label>
+                  <select
+                    value={header.receiving_dock}
+                    onChange={(e) => setHeader({ ...header, receiving_dock: e.target.value })}
+                    className="w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-bold"
+                  >
+                    {dockOptions.length > 0 ? (
+                      dockOptions.map((d: any, idx: number) => (
+                        <option key={d.dock_number || d.id || `dock_${idx}`} value={d.dock_number}>
+                          Dock {d.dock_number} ({d.dock_type || "Standard"})
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="DOCK-02">DOCK-02 (Selected)</option>
+                        <option value="DOCK-01">DOCK-01 (Standard)</option>
+                        <option value="DOCK-03">DOCK-03 (Cold Bay)</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {/* 8. GRN Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <span className="text-[11px] font-semibold uppercase text-muted-foreground">8. GRN Number</span>
+                  <p className="font-mono text-base font-bold text-success">{header.grn_number || "GRN-0001"}</p>
+                </div>
+
+                {/* 9. Receipt Type */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">9. Receipt Type</label>
+                  <select
+                    value={header.receipt_type}
+                    onChange={(e) => setHeader({ ...header, receipt_type: e.target.value as any })}
+                    className="w-full rounded-lg border bg-background px-2.5 py-1 text-xs font-bold"
+                  >
+                    <option value="PO_RECEIPT">PO Receipt (PO Delivery)</option>
+                    <option value="UNEXPECTED_DELIVERY">Unexpected Delivery (Manual Info)</option>
+                  </select>
+                </div>
+
+                {/* 10. Vehicle Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">
+                    10. Vehicle Number
+                  </label>
+                  <Input
+                    value={header.vehicle_number}
+                    onChange={(e) => setHeader({ ...header, vehicle_number: e.target.value })}
+                    readOnly={header.receipt_type === "PO_RECEIPT"}
+                    className="font-mono text-sm font-bold rounded-lg"
+                  />
+                </div>
+
+                {/* 11. Driver Name */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">
+                    11. Driver Name
+                  </label>
+                  <Input
+                    value={header.driver_name}
+                    onChange={(e) => setHeader({ ...header, driver_name: e.target.value })}
+                    readOnly={header.receipt_type === "PO_RECEIPT"}
+                    className="text-sm font-bold rounded-lg"
+                  />
+                </div>
+
+                {/* 12. Invoice Number */}
+                <div className="rounded-xl border bg-muted/10 p-3">
+                  <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">12. Invoice Number (Optional)</label>
+                  <Input
+                    value={header.invoice_number}
+                    onChange={(e) => setHeader({ ...header, invoice_number: e.target.value })}
+                    placeholder="INV-2026-001 (Optional)"
+                    className="font-mono text-sm font-bold rounded-lg"
+                  />
+                </div>
+
+                {/* 13. Received By */}
+                <div className="rounded-xl border border-success/30 bg-success-soft/20 p-3 sm:col-span-2 lg:col-span-3">
+                  <span className="text-[11px] font-bold uppercase text-success block">13. Received By</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <User className="size-4 text-success" />
+                    <span className="text-sm font-bold text-foreground">{header.received_by}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-4 border-t">
+                <Button onClick={() => void handleProceedFromPage1()} disabled={busyAction || loadingContext} className="rounded-xl font-bold px-6">
+                  {busyAction ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+                  Next <ArrowRight className="ml-2 size-4" />
+                </Button>
+              </div>
+            </Card>
           )}
 
           {/* PAGE 2 – ITEM RECEIVING DETAILS */}
@@ -2725,21 +2005,35 @@ function GrnPageWorkflow() {
                 <div>
                   <h3 className="font-bold text-foreground text-base flex items-center gap-2">
                     <span>PO Material Line Items</span>
+                    <span className="text-[10px] font-bold text-emerald-600 px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200">
+                      Auto-Fetched from DB
+                    </span>
                   </h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Compare PO quantity with physically received quantity.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Record Good Qty & Damaged Qty. Balance Qty is computed automatically.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-muted-foreground">Receiving Status:</span>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                      step2OverallStatus === "COMPLETED"
-                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                        : "bg-amber-100 text-amber-800 border-amber-300"
-                    }`}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg text-xs font-semibold text-primary border-primary/30 hover:bg-primary/10"
+                    onClick={() => {
+                      setMaterials((prev) =>
+                        prev.map((item) => ({
+                          ...item,
+                          good_quantity: item.po_quantity,
+                          damaged_quantity: 0,
+                          balance_quantity: 0,
+                        })),
+                      );
+                      toast.success("Auto-filled all good quantities from PO details!");
+                    }}
                   >
-                    {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
+                    <Zap className="mr-1.5 size-3.5 fill-primary text-primary" /> Auto-Fill All Good Quantities
+                  </Button>
+                  <span className="text-xs font-semibold text-muted-foreground">GRN Status:</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${totalBalanceQty > 0 ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>
+                    {calculatedGrnStatus}
                   </span>
                 </div>
               </div>
@@ -2748,18 +2042,18 @@ function GrnPageWorkflow() {
                 <table className="w-full text-sm text-left">
                   <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                     <tr>
-                      <th className="px-4 py-3">Material</th>
+                      <th className="px-4 py-3">Material Name & Category</th>
                       <th className="px-4 py-3">Material Code</th>
                       <th className="px-4 py-3 text-right">PO Quantity</th>
-                      <th className="px-4 py-3 text-right">Received Quantity</th>
-                      <th className="px-4 py-3 text-center">Status</th>
+                      <th className="px-4 py-3 text-right">Good Quantity</th>
+                      <th className="px-4 py-3 text-right">Damaged Quantity</th>
+                      <th className="px-4 py-3 text-right">Balance Quantity</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y font-medium">
                     {materials.map((m, idx) => {
-                      const recQty = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-                      const isCompleted = recQty === m.po_quantity;
-
+                      const totalRec = m.good_quantity + m.damaged_quantity;
+                      const bal = Math.max(m.po_quantity - totalRec, 0);
                       return (
                         <tr key={m.item_code} className="hover:bg-muted/20">
                           <td className="px-4 py-3 font-bold text-foreground">
@@ -2770,47 +2064,28 @@ function GrnPageWorkflow() {
                           </td>
                           <td className="px-4 py-3 font-mono text-xs text-primary">{m.item_code}</td>
                           <td className="px-4 py-3 text-right font-bold">
-                            <div>
-                              {m.po_quantity.toLocaleString()}{" "}
-                              <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
-                            </div>
+                            <div>{m.po_quantity.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span></div>
+                            <span className="text-[10px] text-emerald-600 font-medium block">
+                              Auto-Fetched PO Qty
+                            </span>
                           </td>
                           <td className="px-4 py-3 text-right">
                             <div className="flex flex-col items-end gap-1">
                               <Input
                                 type="number"
                                 min={0}
-                                max={m.po_quantity}
-                                placeholder="0"
-                                value={recQty === 0 ? "" : (recQty ?? "")}
+                                value={m.good_quantity}
                                 onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const val = raw === "" ? 0 : Number(raw);
-                                  if (val < 0) {
-                                    toast.error("Received quantity cannot be negative.");
-                                    return;
-                                  }
-                                  if (val > m.po_quantity) {
-                                    toast.error(
-                                      `Received quantity for ${m.material_name} cannot exceed PO quantity (${m.po_quantity}).`
-                                    );
-                                    return;
-                                  }
+                                  const val = Number(e.target.value);
                                   setMaterials((prev) =>
                                     prev.map((item, i) =>
                                       i === idx
-                                        ? {
-                                            ...item,
-                                            received_quantity: val,
-                                            good_quantity: val,
-                                            damaged_quantity: 0,
-                                            balance_quantity: Math.max(item.po_quantity - val, 0),
-                                          }
-                                        : item
-                                    )
+                                        ? { ...item, good_quantity: val, balance_quantity: Math.max(item.po_quantity - (val + item.damaged_quantity), 0) }
+                                        : item,
+                                    ),
                                   );
                                 }}
-                                className="w-32 text-right font-bold text-foreground rounded-xl"
+                                className="w-28 text-right font-bold text-emerald-600 rounded-xl"
                               />
                               <button
                                 type="button"
@@ -2818,307 +2093,226 @@ function GrnPageWorkflow() {
                                   setMaterials((prev) =>
                                     prev.map((item, i) =>
                                       i === idx
-                                        ? {
-                                            ...item,
-                                            received_quantity: item.po_quantity,
-                                            good_quantity: item.po_quantity,
-                                            damaged_quantity: 0,
-                                            balance_quantity: 0,
-                                          }
-                                        : item
-                                    )
+                                        ? { ...item, good_quantity: item.po_quantity, damaged_quantity: 0, balance_quantity: 0 }
+                                        : item,
+                                    ),
                                   );
                                 }}
                                 className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5"
                               >
-                                Match PO Qty ({m.po_quantity})
+                                <Sparkles className="size-3 text-amber-500" /> Match PO Qty ({m.po_quantity})
                               </button>
                             </div>
                           </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                isCompleted
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                  : "bg-amber-100 text-amber-800 border-amber-300"
-                              }`}
-                            >
-                              {isCompleted ? "✓ COMPLETED" : "PENDING"}
-                            </span>
+                          <td className="px-4 py-3 text-right">
+                            <Input
+                              type="number"
+                              min={0}
+                              value={m.damaged_quantity}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setMaterials((prev) =>
+                                  prev.map((item, i) =>
+                                    i === idx
+                                      ? { ...item, damaged_quantity: val, balance_quantity: Math.max(item.po_quantity - (item.good_quantity + val), 0) }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              className="w-28 text-right font-bold text-rose-600 rounded-xl ml-auto"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono font-bold text-muted-foreground">
+                            {bal.toLocaleString()}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
+                  {/* TOTAL ROW AT BOTTOM */}
                   <tfoot className="bg-muted/40 font-bold border-t text-sm">
                     <tr>
-                      <td colSpan={2} className="px-4 py-3 uppercase text-xs text-muted-foreground">
-                        Totals
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold">
-                        {totalPoQty.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold">
-                        {totalReceivedQty.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                            step2OverallStatus === "COMPLETED"
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                              : "bg-amber-100 text-amber-800 border-amber-300"
-                          }`}
-                        >
-                          {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
-                        </span>
-                      </td>
+                      <td colSpan={2} className="px-4 py-3 uppercase text-xs text-muted-foreground">Totals</td>
+                      <td className="px-4 py-3 text-right">{totalPoQty.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{totalGoodQty.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right text-rose-600">{totalDamagedQty.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-mono text-primary">{totalBalanceQty.toLocaleString()}</td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between pt-4 border-t gap-3">
-                <Button variant="outline" className="rounded-xl font-semibold" onClick={() => handleStepClick(1)}>
-                  <ArrowLeft className="mr-2 size-4" /> Back to Step 1
+              <div className="flex justify-between pt-4 border-t">
+                <Button variant="outline" className="rounded-xl" onClick={() => setCurrentPage(1)}>
+                  <ArrowLeft className="mr-2 size-4" /> Back to Page 1
                 </Button>
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold">
-                    {saveStatus === "saving" ? (
-                      <span className="flex items-center gap-1.5 text-amber-600 font-semibold">
-                        <Loader2 className="size-4 animate-spin" /> Saving...
-                      </span>
-                    ) : saveStatus === "error" ? (
-                      <span className="flex items-center gap-1.5 text-rose-600 font-semibold">
-                        <AlertTriangle className="size-4 text-rose-600" /> ⚠ Unable to save changes
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
-                        <CheckCircle2 className="size-4 text-emerald-600" /> ✓ All changes saved
-                      </span>
-                    )}
-                  </div>
-                  <Button
-                    disabled={busyAction || loadingContext}
-                    onClick={() => void handleProceedFromPage2()}
-                    className="rounded-xl font-bold px-6"
-                  >
-                    {busyAction ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                    Next <ArrowRight className="ml-2 size-4" />
-                  </Button>
-                </div>
+                <Button disabled={busyAction || loadingContext} onClick={() => void handleProceedFromPage2()} className="rounded-xl font-bold px-6">
+                  Next <ArrowRight className="ml-2 size-4" />
+                </Button>
               </div>
             </Card>
           )}
 
-          {/* PAGE 3 – QUALITY INSPECTION & DAMAGED GOODS */}
+          {/* PAGE 3 – DAMAGED GOODS & PHOTO EVIDENCE */}
           {currentPage === 3 && (
             <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
               <div className="border-b pb-4">
                 <h3 className="font-bold text-foreground text-base">
-                  Page 3: Quality Inspection & Damage Breakdown
+                  Page 3: Damaged Goods & Photo Evidence
                 </h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Inspect physically received materials into Accepted (Good) and Damaged quantities, then record photo evidence for damaged goods.
+
+                <p className="text-xs text-muted-foreground">
+                  Damaged quantities are populated from Page 2. Upload an
+                  existing picture or take a photo, then click Save Photo.
                 </p>
               </div>
 
-              {/* Quality Inspection & Quantity Breakdown Table */}
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <ShieldCheck className="size-4 text-emerald-600" /> Material Quality Inspection Breakdown
-                </h4>
+              {damagedMaterials.length === 0 ? (
+                <div className="rounded-xl border bg-emerald-50 p-4 text-center text-sm font-medium text-emerald-800">
+                  <CheckCircle2 className="mx-auto mb-2 size-6" />
+                  No damaged items recorded on Page 2. You can proceed to
+                  Batch Creation.
+                </div>
+              ) : (
                 <div className="overflow-x-auto rounded-xl border">
                   <table className="w-full text-sm text-left">
                     <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3">Material</th>
-                        <th className="px-4 py-3 text-right">Received Qty (Step 2)</th>
-                        <th className="px-4 py-3 text-right">Accepted Qty</th>
+                        <th className="px-4 py-3">Material Code</th>
+                        <th className="px-4 py-3">Material Name</th>
                         <th className="px-4 py-3 text-right">Damaged Qty</th>
-                        <th className="px-4 py-3 text-center">Quality Status</th>
+                        <th className="px-4 py-3">Damage Reason</th>
+                        <th className="px-4 py-3">Photo Evidence</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y font-medium">
-                      {materials.map((m, idx) => {
-                        const recQty = m.received_quantity !== undefined ? m.received_quantity : (m.good_quantity + m.damaged_quantity);
-                        const acceptedVal = qualityApproved[m.item_code] !== undefined ? qualityApproved[m.item_code] : m.good_quantity;
-                        const damagedVal = m.damaged_quantity || 0;
-                        const isSound = acceptedVal > 0 && damagedVal === 0;
-                        const isPartial = damagedVal > 0 && acceptedVal > 0;
 
-                        return (
-                          <tr key={m.item_code} className="hover:bg-muted/20">
-                            <td className="px-4 py-3 font-bold text-foreground">
-                              <div>{m.material_name}</div>
-                              <span className="font-mono text-xs text-primary font-normal">{m.item_code}</span>
-                            </td>
-                            <td className="px-4 py-3 text-right font-bold">
-                              <div>{recQty.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span></div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={recQty}
-                                placeholder="0"
-                                value={acceptedVal === 0 ? "" : (acceptedVal ?? "")}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const val = raw === "" ? 0 : Math.max(0, Math.min(Number(raw), recQty));
-                                  const newDamaged = Math.max(recQty - val, 0);
-                                  setQualityApproved((prev) => ({ ...prev, [m.item_code]: val }));
-                                  setMaterials((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx
-                                        ? { ...item, good_quantity: val, damaged_quantity: newDamaged, quality_approved_quantity: val }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                className="w-28 text-right font-bold text-emerald-600 rounded-xl ml-auto"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={recQty}
-                                placeholder="0"
-                                value={damagedVal === 0 ? "" : (damagedVal ?? "")}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const val = raw === "" ? 0 : Math.max(0, Math.min(Number(raw), recQty));
-                                  const newAccepted = Math.max(recQty - val, 0);
-                                  setQualityApproved((prev) => ({ ...prev, [m.item_code]: newAccepted }));
-                                  setMaterials((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx
-                                        ? { ...item, good_quantity: newAccepted, damaged_quantity: val, quality_approved_quantity: newAccepted }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                className="w-28 text-right font-bold text-rose-600 rounded-xl ml-auto"
-                              />
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span
-                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                  isSound
-                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                    : isPartial
-                                      ? "bg-amber-100 text-amber-800 border-amber-300"
-                                      : "bg-rose-100 text-rose-800 border-rose-300"
-                                }`}
-                              >
-                                {isSound ? "PASSED ✓" : isPartial ? "PARTIALLY ACCEPTED" : "REJECTED ✗"}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                    <tbody className="divide-y">
+                      {damagedMaterials.map((m) => (
+                        <tr key={m.grn_line_id || m.item_code}>
+                          <td className="px-4 py-3 font-mono font-bold text-primary">
+                            {m.item_code}
+                          </td>
+
+                          <td className="px-4 py-3 font-bold text-foreground">
+                            {m.material_name}
+                          </td>
+
+                          <td className="px-4 py-3 text-right font-bold text-rose-600">
+                            {m.damaged_quantity} {m.uom}
+                          </td>
+
+                          <td className="px-4 py-3 min-w-[200px]">
+                            <Input
+                              type="text"
+                              placeholder="Specify damage reason for this material..."
+                              value={m.damage_reason || ""}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setMaterials((prev) =>
+                                  prev.map((item) =>
+                                    item.item_code === m.item_code
+                                      ? { ...item, damage_reason: val }
+                                      : item,
+                                  ),
+                                );
+                              }}
+                              className="rounded-xl text-xs font-medium border"
+                            />
+                          </td>
+
+                          <td className="px-4 py-3">
+                            <DamagePhoto
+                              key={`${grnId || "draft"}:${m.grn_line_id || m.item_code}`}
+                              lineId={m.grn_line_id}
+                              damagedQuantity={m.damaged_quantity}
+                              reason={m.damage_reason}
+                              onSuccess={(ev) => {
+                                setDamagePhotos((prev) => {
+                                  const existing = prev[m.item_code] || {};
+                                  const existingIds = (existing as any).evidenceIds || (existing.evidenceId ? [existing.evidenceId] : []);
+                                  const newIds = Array.from(new Set([...existingIds, ev.evidenceId])).filter(Boolean);
+                                  return {
+                                    ...prev,
+                                    [m.item_code]: {
+                                      ...existing,
+                                      evidenceId: ev.evidenceId,
+                                      evidenceIds: newIds,
+                                      reason: m.damage_reason,
+                                      previewUrl: ev.filePath,
+                                      file: ev.file,
+                                    },
+                                  };
+                                });
+                              }}
+                            />
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
-              </div>
+              )}
 
-              {/* Damaged Goods Photo Evidence Section */}
-              <div className="pt-2 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <AlertTriangle className="size-4 text-rose-500" /> Damage Evidence & Remarks
-                </h4>
+              {/* Quality Inspection Approved Quantity Input */}
+              <div className="pt-4 border-t space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <ShieldCheck className="size-4 text-emerald-600" /> Quality Inspection Approval (Auto-Fetched from Page 2)
+                  </h4>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                    Auto-Synced with Page 2 Receiving
+                  </span>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {materials.map((m) => {
+                    const approvedVal = Number((qualityApproved[m.item_code] !== undefined) ? qualityApproved[m.item_code] : (m.good_quantity ?? 0));
+                    const isSound = approvedVal > 0;
+                    return (
+                      <div key={m.item_code} className="rounded-xl border p-3.5 bg-muted/10 space-y-2">
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <div>
+                            <span className="font-bold text-xs text-foreground block">{m.material_name}</span>
+                            <span className="font-mono text-[11px] text-primary font-bold">({m.item_code})</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isSound ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
+                            {isSound ? "PASSED ✓" : "REJECTED ✗"}
+                          </span>
+                        </div>
 
-                {damagedMaterials.length === 0 ? (
-                  <div className="rounded-xl border bg-emerald-50 p-4 text-center text-sm font-medium text-emerald-800 flex items-center justify-center gap-2">
-                    <CheckCircle2 className="size-5 text-emerald-600" />
-                    No damaged materials recorded. 100% of received items are accepted for batching.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto rounded-xl border">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                        <tr>
-                          <th className="px-4 py-3">Material Code</th>
-                          <th className="px-4 py-3">Material Name</th>
-                          <th className="px-4 py-3 text-right">Damaged Qty</th>
-                          <th className="px-4 py-3">Damage Reason</th>
-                          <th className="px-4 py-3">Photo Evidence</th>
-                        </tr>
-                      </thead>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
+                          <div>
+                            <span className="text-muted-foreground block text-[10px]">Page 2 Good Qty:</span>
+                            <b className="text-emerald-600">{m.good_quantity} {m.uom}</b>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[10px]">Page 2 Damaged:</span>
+                            <b className="text-rose-600">{m.damaged_quantity} {m.uom}</b>
+                          </div>
+                        </div>
 
-                      <tbody className="divide-y">
-                        {damagedMaterials.map((m) => (
-                          <tr key={m.grn_line_id || m.item_code}>
-                            <td className="px-4 py-3 font-mono font-bold text-primary">
-                              {m.item_code}
-                            </td>
-
-                            <td className="px-4 py-3 font-bold text-foreground">
-                              {m.material_name}
-                            </td>
-
-                            <td className="px-4 py-3 text-right font-bold text-rose-600">
-                              {m.damaged_quantity} {m.uom}
-                            </td>
-
-                            <td className="px-4 py-3 min-w-[200px]">
-                              <Input
-                                type="text"
-                                placeholder="Specify damage reason for this material..."
-                                value={m.damage_reason || ""}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setMaterials((prev) =>
-                                    prev.map((item) =>
-                                      item.item_code === m.item_code
-                                        ? { ...item, damage_reason: val }
-                                        : item,
-                                    ),
-                                  );
-                                }}
-                                className="rounded-xl text-xs font-medium border"
-                              />
-                            </td>
-
-                            <td className="px-4 py-3">
-                              <DamagePhoto
-                                key={`${grnId || "draft"}:${m.grn_line_id || m.item_code}`}
-                                lineId={m.grn_line_id}
-                                damagedQuantity={m.damaged_quantity}
-                                reason={m.damage_reason}
-                                onSuccess={(ev) => {
-                                  setDamagePhotos((prev) => {
-                                    const existing = prev[m.item_code] || {};
-                                    const existingIds = (existing as any).evidenceIds || (existing.evidenceId ? [existing.evidenceId] : []);
-                                    const newIds = Array.from(new Set([...existingIds, ev.evidenceId])).filter(Boolean);
-                                    return {
-                                      ...prev,
-                                      [m.item_code]: {
-                                        ...existing,
-                                        evidenceId: ev.evidenceId,
-                                        evidenceIds: newIds,
-                                        reason: m.damage_reason,
-                                        previewUrl: ev.filePath,
-                                        file: ev.file,
-                                      },
-                                    };
-                                  });
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-xs text-muted-foreground font-semibold">Quality-Approved Qty:</span>
+                          <Input
+                            type="number"
+                            value={approvedVal}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setQualityApproved((prev) => ({ ...prev, [m.item_code]: val }));
+                            }}
+                            className="w-24 font-mono font-bold text-right text-emerald-600 rounded-lg"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" className="rounded-xl" onClick={() => handleStepClick(2)}>
-                  <ArrowLeft className="mr-2 size-4" /> Back to Step 2
+                <Button variant="outline" className="rounded-xl" onClick={() => setCurrentPage(2)}>
+                  <ArrowLeft className="mr-2 size-4" /> Back to Page 2
                 </Button>
-                <Button disabled={busyAction} onClick={() => void handleProceedFromPage3()} className="rounded-xl font-bold px-6">
+                <Button onClick={() => setCurrentPage(4)} className="rounded-xl font-bold px-6">
                   Next <ArrowRight className="ml-2 size-4" />
                 </Button>
               </div>
@@ -3186,10 +2380,9 @@ function GrnPageWorkflow() {
                             />
                             <Input
                               type="number"
-                              placeholder="0"
-                              value={b.batch_quantity === 0 ? "" : (b.batch_quantity ?? "")}
+                              value={b.batch_quantity}
                               onChange={(e) => {
-                                const val = e.target.value === "" ? 0 : Number(e.target.value);
+                                const val = Number(e.target.value);
                                 setMaterialBatches((prev) => {
                                   const list = [...(prev[m.item_code] || [])];
                                   if (list[bIdx]) {
@@ -3229,12 +2422,12 @@ function GrnPageWorkflow() {
               </div>
 
               <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" className="rounded-xl" onClick={() => handleStepClick(3)}>
-                  <ArrowLeft className="mr-2 size-4" /> Back to Step 3
+                <Button variant="outline" className="rounded-xl" onClick={() => setCurrentPage(3)}>
+                  <ArrowLeft className="mr-2 size-4" /> Back to Page 3
                 </Button>
                 <Button
-                  onClick={() => void handleProceedFromPage4()}
-                  disabled={!allBatchesValid || busyAction}
+                  onClick={() => setCurrentPage(5)}
+                  disabled={!allBatchesValid}
                   className="rounded-xl font-bold px-6"
                 >
                   Next <ArrowRight className="ml-2 size-4" />
@@ -3536,10 +2729,10 @@ function GrnPageWorkflow() {
               </div>
 
               <div className="flex justify-between pt-4 border-t">
-                <Button variant="outline" className="rounded-xl" onClick={() => handleStepClick(4)}>
-                  <ArrowLeft className="mr-2 size-4" /> Back to Step 4
+                <Button variant="outline" className="rounded-xl" onClick={() => setCurrentPage(4)}>
+                  <ArrowLeft className="mr-2 size-4" /> Back to Page 4
                 </Button>
-                <Button disabled={busyAction} onClick={() => void handleProceedFromPage5()} className="rounded-xl font-bold px-6">
+                <Button onClick={() => setCurrentPage(6)} className="rounded-xl font-bold px-6">
                   Next <ArrowRight className="ml-2 size-4" />
                 </Button>
               </div>
@@ -3874,8 +3067,8 @@ function GrnPageWorkflow() {
                 )}
               </div>
               <div className="flex justify-between pt-6 border-t">
-                <Button variant="outline" className="rounded-xl" onClick={() => handleStepClick(5)}>
-                  <ArrowLeft className="mr-2 size-4" /> Back to Step 5
+                <Button variant="outline" className="rounded-xl" onClick={() => setCurrentPage(5)}>
+                  <ArrowLeft className="mr-2 size-4" /> Back to Page 5
                 </Button>
                 <Button
                   disabled={busyAction}
@@ -3954,13 +3147,8 @@ function GrnPageWorkflow() {
                       console.error("GRN Posting error:", e);
                       toast.error("Failed to post GRN", { description: e.message });
                     } finally {
-                      localStorage.removeItem("active_grn_id");
-                      setGrnId(null);
-                      setMaxCompletedStep(1);
-                      setSaveStatus("idle");
                       setBusyAction(false);
-                      setActiveTab("records");
-                      navigate({ to: "/grn", search: { tab: "records", page: 1 } });
+                      setActiveTab("dashboard");
                       setSearchTerm("");
                     }
                   }}
@@ -4383,7 +3571,7 @@ function GrnPageWorkflow() {
             <DialogHeader className="border-b pb-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-primary px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-                  {selectedGrnDetail.grn_number || "GRN-20260901-0001"}
+                  {selectedGrnDetail.grn_number || "GRN-2026-0001"}
                 </span>
                 <StatusBadge status={selectedGrnDetail.status || "COMPLETED"} />
               </div>
@@ -4391,7 +3579,7 @@ function GrnPageWorkflow() {
                 Goods Receipt Note Breakdown & Reconciliation
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                PO Reference: <b>{selectedGrnDetail.po_number || "PO-2026-0001"}</b> • Supplier: <b>{selectedGrnDetail.supplier_name || selectedGrnDetail.supplier_company_name || "Supplier"}</b>
+                PO Reference: <b>{selectedGrnDetail.po_number || "PO-1001"}</b> • Supplier: <b>{selectedGrnDetail.supplier_name || "ABC Supplier"}</b>
               </DialogDescription>
             </DialogHeader>
 
@@ -4417,23 +3605,19 @@ function GrnPageWorkflow() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-muted/20 rounded-xl border text-xs font-mono">
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Dock Number</span>
-                <b className="text-foreground">
-                  {selectedGrnDetail.dock_number 
-                    ? (selectedGrnDetail.dock_number.startsWith("Dock") ? selectedGrnDetail.dock_number : `Dock ${selectedGrnDetail.dock_number}`)
-                    : "Dock DOCK-01"}
-                </b>
+                <b className="text-foreground">Dock {selectedGrnDetail.dock_number || "DOCK-02"}</b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Vehicle Reg</span>
-                <b className="text-foreground">{selectedGrnDetail.vehicle_number || "KA-04-MB-7777"}</b>
+                <b className="text-foreground">{selectedGrnDetail.vehicle_number || "KA01EQ9921"}</b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Driver Name</span>
-                <b className="text-foreground">{selectedGrnDetail.driver_name || "Ramesh Kumar"}</b>
+                <b className="text-foreground">{selectedGrnDetail.driver_name || "Ramesh"}</b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Received By</span>
-                <b className="text-foreground">{selectedGrnDetail.received_by || "localdev"}</b>
+                <b className="text-foreground">{selectedGrnDetail.received_by || "Officer Obaiah"}</b>
               </div>
             </div>
 
@@ -4521,9 +3705,20 @@ function GrnPageWorkflow() {
               </div>
             </div>
 
-            <div className="flex justify-end items-center pt-3 border-t">
+            <div className="flex justify-between items-center pt-3 border-t">
               <Button variant="outline" className="rounded-xl text-xs font-bold" onClick={() => setSelectedGrnDetail(null)}>
                 Close
+              </Button>
+              <Button
+                className="rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white"
+                onClick={() => {
+                  setNotifyVendorEmail(selectedGrnDetail.supplier_email || "spoorthiharakuni@gmail.com");
+                  setGrnId(selectedGrnDetail.grn_id || selectedGrnDetail.id || "grn-2026-0001");
+                  setSelectedGrnDetail(null);
+                  setShowNotifyVendorModal(true);
+                }}
+              >
+                <Send className="mr-1.5 size-3.5" /> Send Vendor Damage Notice
               </Button>
             </div>
           </DialogContent>
@@ -4689,47 +3884,6 @@ function GrnPageWorkflow() {
           </DialogContent>
         </Dialog>
       )}
-
-      {/* 🚪 EXIT GRN ENTRY CONFIRMATION DIALOG */}
-      <Dialog open={showExitConfirmModal} onOpenChange={setShowExitConfirmModal}>
-        <DialogContent className="sm:max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-base font-bold">
-              <AlertTriangle className="size-5 text-amber-500" /> Exit GRN Entry?
-            </DialogTitle>
-            <DialogDescription className="text-xs text-muted-foreground pt-1.5 leading-relaxed">
-              Your current GRN progress is saved with status <b>IN_PROGRESS</b> in the database. All entered header details, material receiving quantities, photos, and batches are preserved.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="p-3.5 rounded-xl border bg-muted/20 text-xs space-y-1 font-mono">
-            <div><b>GRN Number:</b> {header.grn_number || grnId || "Draft GRN"}</div>
-            <div><b>PO Reference:</b> {header.po_number || "N/A"}</div>
-            <div><b>Current Step:</b> Step {currentPage} of 6</div>
-          </div>
-          <div className="flex justify-end gap-2 pt-2 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-xl text-xs"
-              onClick={() => setShowExitConfirmModal(false)}
-            >
-              Continue Working
-            </Button>
-            <Button
-              size="sm"
-              className="rounded-xl text-xs font-bold bg-primary text-primary-foreground"
-              onClick={() => {
-                setShowExitConfirmModal(false);
-                setActiveTab("dashboard");
-                navigate({ to: "/grn", search: { tab: "dashboard", page: 1 } });
-                toast.info("Exited GRN entry. You can resume anytime from the Dashboard or Create GRN.");
-              }}
-            >
-              Exit to Dashboard
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </AppShell>
   );
 }

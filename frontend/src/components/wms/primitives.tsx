@@ -46,7 +46,7 @@ export function StatCard({
           {delta || "No additional detail"}
         </p>
       </Card>
-  );
+    );
 
   if (to) {
     return (
@@ -57,7 +57,7 @@ export function StatCard({
   }
   return <div className="group block h-full">{cardContent}</div>;
 }
-export function Field({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
+export function Field({ label, value, mono, icon: Icon }: { label: string; value: ReactNode; mono?: boolean; icon?: LucideIcon }) {
   return (
     <div className="min-w-0">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

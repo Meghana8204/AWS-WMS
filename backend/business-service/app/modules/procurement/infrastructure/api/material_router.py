@@ -137,7 +137,7 @@ def extract_variant_sequence(code: Optional[str]) -> Optional[int]:
     if not code or not isinstance(code, str):
         return None
     code_str = code.strip()
-    match = re.search(r"[-_]?[vV](?:ar)?[-_]?(\d+)$", code_str, re.IGNORECASE)
+    match = re.search(r"[-_]?[vVsS](?:ar|pec)?[-_]?(\d+)$", code_str, re.IGNORECASE)
     if match:
         try:
             return int(match.group(1))
@@ -823,10 +823,7 @@ async def delete_material_variant(
     # 6. GRNs
     grn_cnt_res = await uow.session.execute(
         select(func.count(GrnLineModel.id)).where(
-            or_(
-                GrnLineModel.material_variant_id == var_uuid,
-                GrnLineModel.variant_code == variant.variant_code
-            )
+            GrnLineModel.item_code == variant.variant_code
         )
     )
     grn_cnt = grn_cnt_res.scalar() or 0

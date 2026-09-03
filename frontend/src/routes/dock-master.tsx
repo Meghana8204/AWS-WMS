@@ -92,7 +92,7 @@ function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: 
   };
 }
 
-export function DockMaster() {
+function DockMaster() {
   const [docks, setDocks] = useState<Dock[]>([]);
   const [metrics, setMetrics] = useState<{
     total_docks: number;

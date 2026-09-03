@@ -301,6 +301,9 @@ async def lifespan(app: FastAPI):
             try:
                 await run_ddl(f"ALTER TABLE rfq ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
+        try:
+            await run_ddl("UPDATE rfq SET rfq_date = CURRENT_DATE WHERE rfq_date IS NULL")
+        except Exception: pass
         logger.debug("Ensured columns exist on rfq")
 
         # Ensure quotation has missing columns
@@ -435,7 +438,24 @@ async def lifespan(app: FastAPI):
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            logger.debug("Ensured notification table exists")
+            for col, col_type in [
+                ("dock_code", "VARCHAR(32)"),
+                ("dock_name", "VARCHAR(128)"),
+                ("dock_location", "VARCHAR(128)"),
+                ("dock_type", "VARCHAR(64)"),
+                ("warehouse_name", "VARCHAR(128)"),
+                ("allocation_time", "TIMESTAMP"),
+                ("gate_pass_number", "VARCHAR(64)"),
+                ("vehicle_number", "VARCHAR(64)"),
+                ("driver_name", "VARCHAR(128)"),
+                ("driver_phone", "VARCHAR(32)"),
+                ("asn_number", "VARCHAR(64)"),
+                ("po_number", "VARCHAR(64)"),
+            ]:
+                try:
+                    await run_ddl(f"ALTER TABLE notification ADD COLUMN IF NOT EXISTS {col} {col_type}")
+                except Exception: pass
+            logger.debug("Ensured notification table and columns exist")
         except Exception as e:
             logger.warning(f"Failed to create notification table: {e}")
 
@@ -546,6 +566,39 @@ async def lifespan(app: FastAPI):
             logger.debug("Ensured material_stock table exists")
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_lot (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    damage_lot_number VARCHAR(64) NOT NULL UNIQUE,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32),
+                    reason TEXT,
+                    qa_status VARCHAR(32) DEFAULT 'REJECTED',
+                    quarantine_location VARCHAR(64) DEFAULT 'QUARANTINE-ZONE-A',
+                    status VARCHAR(32) NOT NULL DEFAULT 'DAMAGED',
+                    created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_qr (
+                    id UUID PRIMARY KEY,
+                    damage_lot_id UUID NOT NULL UNIQUE REFERENCES grn_damage_lot(id) ON DELETE CASCADE,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    grn_number VARCHAR(64) NOT NULL,
+                    item_code VARCHAR(64) NOT NULL,
+                    qr_code VARCHAR(128) NOT NULL UNIQUE,
+                    qr_payload TEXT NOT NULL,
+                    generated_by VARCHAR(128),
+                    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            logger.debug("Ensured grn_damage_lot and grn_damage_qr tables exist")
+        except Exception as e:
+            logger.warning(f"Failed to create grn_damage_lot/grn_damage_qr tables: {e}")
 
         # Create arrival_notification table
         try:
@@ -901,6 +954,108 @@ async def lifespan(app: FastAPI):
             try:
                 await run_ddl(f"ALTER TABLE putaway_movement ADD COLUMN IF NOT EXISTS {column} {column_type}")
             except Exception: pass
+
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn (
+                    id UUID PRIMARY KEY,
+                    po_id UUID UNIQUE,
+                    po_number VARCHAR(64) UNIQUE,
+                    grn_number VARCHAR(64) UNIQUE,
+                    asn_id UUID,
+                    asn_number VARCHAR(64),
+                    gate_entry_id UUID,
+                    gate_entry_number VARCHAR(64),
+                    supplier_name VARCHAR(255),
+                    supplier_company_name VARCHAR(255),
+                    warehouse_id VARCHAR(64),
+                    warehouse_name VARCHAR(255),
+                    dock_number VARCHAR(32),
+                    vehicle_number VARCHAR(64),
+                    driver_name VARCHAR(128),
+                    invoice_number VARCHAR(128),
+                    receipt_type VARCHAR(32) NOT NULL DEFAULT 'PO_RECEIPT',
+                    receipt_date TIMESTAMP WITH TIME ZONE,
+                    received_by VARCHAR(128),
+                    status VARCHAR(32) NOT NULL DEFAULT 'DRAFT',
+                    posted_by VARCHAR(128),
+                    posted_at TIMESTAMP WITH TIME ZONE,
+                    verification_notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_line (
+                    id UUID PRIMARY KEY,
+                    grn_id UUID NOT NULL REFERENCES grn(id) ON DELETE CASCADE,
+                    item_code VARCHAR(64) NOT NULL,
+                    material_name VARCHAR(256),
+                    material_category VARCHAR(128),
+                    uom VARCHAR(32),
+                    ordered_quantity NUMERIC(18, 4),
+                    received_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    good_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    accepted_quantity NUMERIC(18, 4),
+                    rejected_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    quality_approved_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    balance_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    quality_result VARCHAR(32)
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_damage_evidence (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    damaged_quantity NUMERIC(18, 4) NOT NULL,
+                    reason TEXT,
+                    remarks TEXT,
+                    file_name VARCHAR(255) NOT NULL,
+                    file_path VARCHAR(512) NOT NULL,
+                    uploaded_by VARCHAR(128) NOT NULL,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_batch (
+                    id UUID PRIMARY KEY,
+                    grn_line_id UUID NOT NULL REFERENCES grn_line(id) ON DELETE CASCADE,
+                    batch_number VARCHAR(64) UNIQUE NOT NULL,
+                    batch_quantity NUMERIC(18, 4) NOT NULL,
+                    created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_document (
+                    id UUID PRIMARY KEY,
+                    grn_id UUID NOT NULL REFERENCES grn(id) ON DELETE CASCADE,
+                    document_type VARCHAR(64) NOT NULL,
+                    file_name VARCHAR(255) NOT NULL,
+                    file_path VARCHAR(512) NOT NULL,
+                    uploaded_by VARCHAR(128) NOT NULL,
+                    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS grn_batch_qr (
+                    id UUID PRIMARY KEY,
+                    item_code VARCHAR(64) UNIQUE NOT NULL,
+                    qr_code VARCHAR(128) UNIQUE NOT NULL,
+                    qr_payload TEXT NOT NULL,
+                    batch_id UUID REFERENCES grn_batch(id) ON DELETE SET NULL,
+                    generated_by VARCHAR(128),
+                    generated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS item_code VARCHAR(64);")
+            await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS qr_payload TEXT;")
+            await run_ddl("ALTER TABLE grn_batch_qr ALTER COLUMN batch_id DROP NOT NULL;")
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS uq_grn_batch_qr_item_code ON grn_batch_qr (item_code);")
+            logger.debug("Ensured GRN module tables exist")
+        except Exception as e:
+            logger.warning(f"Failed to create GRN module tables: {e}")
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 
@@ -972,23 +1127,24 @@ def create_app() -> FastAPI:
     else:
         origins = list(raw_origins)
 
-    # Always ensure common local dev origins are present for ease of use
-    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
+    for o in [
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:8082",
+        "http://127.0.0.1:8082",
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]:
         if o not in origins:
             origins.append(o)
 
-    # Register request context first so CORS wraps normal application responses.
-    # Top-level exception responses are covered in the centralized error handler.
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-        allow_origin_regex=(
-            r"^https?://(?:localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|"
-            r"192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}):8080$"
-            if settings.environment.lower() in ("local", "test", "development")
-            else None
-        ),
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|.*\.loca\.lt)(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

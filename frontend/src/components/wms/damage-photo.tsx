@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Camera, CheckCircle2, Loader2, RefreshCw, X } from "lucide-react";
 
 type Props = {
     lineId?: string;
@@ -24,59 +23,68 @@ export function DamagePhoto(props: Props) {
 function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const mounted = useRef(false);
-    const streamRef = useRef<MediaStream | null>(null);
-    const actionLock = useRef(false);
+    const uploadLock = useRef(false);
+    const captureLock = useRef(false);
 
     const [cameraOpen, setCameraOpen] = useState(false);
     const [ready, setReady] = useState(false);
+    const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState("");
-    const [saving, setSaving] = useState(false);
+    const [uploading, setUploading] = useState(false);
+    const [capturing, setCapturing] = useState(false);
     const [saved, setSaved] = useState(false);
     const [error, setError] = useState("");
 
     const validLine = Boolean(lineId?.trim());
-    const validQuantity = Number.isFinite(damagedQuantity) && damagedQuantity > 0;
+    const validQuantity =
+        Number.isFinite(damagedQuantity) && damagedQuantity > 0;
 
     useEffect(() => {
         mounted.current = true;
+
         return () => {
             mounted.current = false;
-            stopStream();
         };
     }, []);
 
-    function stopStream() {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach((track) => track.stop());
-            streamRef.current = null;
-        }
-        if (videoRef.current) {
-            videoRef.current.srcObject = null;
-        }
-    }
-
     function report(message: string) {
         if (!mounted.current) return;
+
         setError(message);
         toast.error(message);
     }
 
     useEffect(() => {
-        if (!cameraOpen) {
-            stopStream();
+        if (!file) {
+            setPreview("");
             return;
         }
 
+        const url = URL.createObjectURL(file);
+        setPreview(url);
+
+        return () => URL.revokeObjectURL(url);
+    }, [file]);
+
+    useEffect(() => {
+        if (!cameraOpen) return;
+
         let cancelled = false;
+        let stream: MediaStream | undefined;
+        const video = videoRef.current;
 
         async function openCamera() {
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
-                    throw new Error("Camera requires HTTPS or localhost.");
+                    throw new Error(
+                        "Camera requires HTTPS or localhost. Use Upload Photo instead."
+                    );
                 }
 
                 const opened = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: { ideal: "environment" } },
+                    video: {
+                        facingMode: { ideal: "environment" },
+                    },
                     audio: false,
                 });
 
@@ -85,28 +93,35 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
                     return;
                 }
 
-                streamRef.current = opened;
-                if (videoRef.current) {
-                    videoRef.current.srcObject = opened;
-                    await videoRef.current.play();
+                stream = opened;
+
+                if (!video) {
+                    throw new Error("Camera preview is unavailable.");
                 }
+
+                video.srcObject = stream;
+                await video.play();
             } catch (cause) {
+                stream?.getTracks().forEach((track) => track.stop());
+
                 if (cancelled) return;
-                stopStream();
+
                 setCameraOpen(false);
                 setReady(false);
 
                 const name = cause instanceof Error ? cause.name : "";
+
                 const message =
                     name === "NotAllowedError"
                         ? "Camera permission denied. Allow camera access in your browser."
                         : name === "NotFoundError"
-                            ? "No camera device found on this system."
+                            ? "No camera found. Use Upload Photo instead."
                             : name === "NotReadableError"
-                                ? "Camera is in use by another application."
+                                ? "Camera is unavailable or used by another application."
                                 : cause instanceof Error
                                     ? cause.message
                                     : "Unable to open camera.";
+
                 report(message);
             }
         }
@@ -115,16 +130,121 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
 
         return () => {
             cancelled = true;
-            stopStream();
+            stream?.getTracks().forEach((track) => track.stop());
+
+            if (video) {
+                video.srcObject = null;
+            }
         };
     }, [cameraOpen]);
 
-    async function captureAndSave() {
-        const video = videoRef.current;
-        if (actionLock.current || saving) return;
+    function choose(selected: File): boolean {
+        const allowedTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+        ];
 
-        if (!validLine) {
-            report("Save the material details on Page 2 first.");
+        if (!allowedTypes.includes(selected.type)) {
+            report("Choose a JPG, PNG or WebP photo.");
+            return false;
+        }
+
+        if (
+            selected.size === 0 ||
+            selected.size > 5 * 1024 * 1024
+        ) {
+            report("Choose a non-empty photo of at most 5 MB.");
+            return false;
+        }
+
+        setFile(selected);
+        setSaved(false);
+        setError("");
+
+        return true;
+    }
+
+    async function capture() {
+        const video = videoRef.current;
+
+        if (captureLock.current) return;
+
+        if (!video || !video.videoWidth || !video.videoHeight) {
+            report("Wait for the camera preview, then try again.");
+            return;
+        }
+
+        captureLock.current = true;
+        setCapturing(true);
+
+        try {
+            const canvas = document.createElement("canvas");
+
+            const scale = Math.min(
+                1,
+                1600 / Math.max(video.videoWidth, video.videoHeight)
+            );
+
+            canvas.width = Math.round(video.videoWidth * scale);
+            canvas.height = Math.round(video.videoHeight * scale);
+
+            const context = canvas.getContext("2d");
+
+            if (!context) {
+                throw new Error("Cannot capture a camera frame.");
+            }
+
+            context.drawImage(
+                video,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            const blob = await new Promise<Blob | null>((resolve) => {
+                canvas.toBlob(resolve, "image/jpeg", 0.85);
+            });
+
+            if (!mounted.current) return;
+
+            if (!blob) {
+                throw new Error("Photo capture failed. Please try again.");
+            }
+
+            const capturedFile = new File(
+                [blob],
+                `damage-${Date.now()}.jpg`,
+                { type: "image/jpeg" }
+            );
+
+            if (choose(capturedFile)) {
+                setCameraOpen(false);
+                setReady(false);
+            }
+        } catch (cause) {
+            report(
+                cause instanceof Error
+                    ? cause.message
+                    : "Photo capture failed."
+            );
+        } finally {
+            captureLock.current = false;
+
+            if (mounted.current) {
+                setCapturing(false);
+            }
+        }
+    }
+
+    async function upload() {
+        if (uploadLock.current || saved) return;
+
+        if (!lineId?.trim()) {
+            report(
+                "Return to Page 2 and click Next to save the material first."
+            );
             return;
         }
 
@@ -133,185 +253,202 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
             return;
         }
 
-        if (!video || !video.videoWidth || !video.videoHeight) {
-            report("Waiting for camera stream...");
+        if (!file) {
+            report("Choose or capture a photo first.");
             return;
         }
 
-        actionLock.current = true;
-        setSaving(true);
+        uploadLock.current = true;
+        setUploading(true);
         setError("");
 
         try {
-            const canvas = document.createElement("canvas");
-            const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
-            canvas.width = Math.round(video.videoWidth * scale);
-            canvas.height = Math.round(video.videoHeight * scale);
-
-            const context = canvas.getContext("2d");
-            if (!context) {
-                throw new Error("Cannot capture camera frame.");
-            }
-
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            const blob = await new Promise<Blob | null>((resolve) => {
-                canvas.toBlob(resolve, "image/jpeg", 0.85);
-            });
-
-            if (!blob) {
-                throw new Error("Photo capture failed. Please try again.");
-            }
-
-            const capturedFile = new File([blob], `damage-${Date.now()}.jpg`, { type: "image/jpeg" });
-            const localPreview = URL.createObjectURL(blob);
-
-            // Upload directly to server
             const data = new FormData();
-            data.append("file", capturedFile);
-            data.append("damaged_quantity", String(damagedQuantity));
+
+            data.append("file", file);
+            data.append(
+                "damaged_quantity",
+                String(damagedQuantity)
+            );
             if (reason) {
                 data.append("reason", reason);
             }
 
-            const result = await api.uploadDamageEvidence(lineId!.trim(), data);
+            const result = await api.uploadDamageEvidence(
+                lineId.trim(),
+                data
+            );
 
             if (!mounted.current) return;
 
-            const evidenceId = result?.evidenceId || result?.evidence_id;
+            // Support the backend's camelCase response.
+            const evidenceId =
+                result?.evidenceId || result?.evidence_id;
+
             if (!evidenceId) {
-                throw new Error("Server returned no evidence ID. Upload could not be confirmed.");
+                throw new Error(
+                    "Server returned no evidence ID. Upload could not be confirmed."
+                );
             }
 
-            setPreview(localPreview);
             setSaved(true);
-            setCameraOpen(false);
-            setReady(false);
-            stopStream();
-
-            toast.success("Damage photo captured and saved successfully.");
+            toast.success("Damage photo saved.");
             onSuccess?.({
                 evidenceId: String(evidenceId),
-                fileName: capturedFile.name,
-                filePath: result?.file_path || result?.filePath || localPreview,
-                file: capturedFile,
+                fileName: file.name,
+                filePath: result?.file_path || result?.filePath || "",
+                file,
             });
         } catch (cause) {
-            report(cause instanceof Error ? cause.message : "Failed to save photo. Please retry.");
+            report(
+                cause instanceof Error
+                    ? cause.message
+                    : "Upload failed. Please retry."
+            );
         } finally {
-            actionLock.current = false;
+            uploadLock.current = false;
+
             if (mounted.current) {
-                setSaving(false);
+                setUploading(false);
             }
         }
     }
 
     return (
-        <div className="space-y-2 min-w-[200px]">
-            {/* 1. Camera View Mode */}
-            {cameraOpen ? (
-                <div className="space-y-2 p-2 rounded-xl border bg-black/5 dark:bg-black/40">
-                    <video
-                        ref={videoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        onCanPlay={() => setReady(true)}
-                        className="w-56 h-40 rounded-lg bg-black object-cover shadow-inner"
-                    />
+        <div
+            className="min-w-[260px] space-y-3"
+            aria-busy={uploading}
+        >
+            <label className="block text-xs font-semibold">
+                Upload Photo
 
-                    <div className="flex items-center gap-2">
-                        <Button
-                            type="button"
-                            size="sm"
-                            disabled={!ready || saving}
-                            onClick={() => void captureAndSave()}
-                            className="flex-1 rounded-lg text-xs font-bold bg-primary text-primary-foreground"
-                        >
-                            {saving ? (
-                                <>
-                                    <Loader2 className="mr-1.5 size-3.5 animate-spin" /> Saving...
-                                </>
-                            ) : (
-                                <>
-                                    <Camera className="mr-1.5 size-3.5" /> Save Photo
-                                </>
-                            )}
-                        </Button>
+                <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={uploading || cameraOpen || capturing}
+                    className="mt-1 block w-full text-xs"
+                    onChange={(event) => {
+                        const selected = event.currentTarget.files?.[0];
 
-                        <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={saving}
-                            onClick={() => {
-                                setCameraOpen(false);
-                                setReady(false);
-                                stopStream();
-                            }}
-                            className="rounded-lg text-xs px-2"
-                        >
-                            <X className="size-3.5" />
-                        </Button>
-                    </div>
-                </div>
-            ) : saved && preview ? (
-                /* 2. Photo Saved Preview Mode */
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <img
-                            src={preview}
-                            alt="Captured Damage Evidence"
-                            className="h-16 w-20 rounded-lg border object-cover shadow-xs"
-                        />
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white shadow-xs">
-                            <CheckCircle2 className="size-3" />
-                        </span>
-                    </div>
+                        if (selected) {
+                            choose(selected);
+                        }
 
-                    <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                            <CheckCircle2 className="size-3" /> Photo Saved
-                        </span>
-                        <div>
-                            <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-[11px] text-muted-foreground hover:text-primary px-1 font-medium"
-                                onClick={() => {
-                                    setError("");
-                                    setReady(false);
-                                    setCameraOpen(true);
-                                }}
-                            >
-                                <RefreshCw className="mr-1 size-3" /> Retake
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                /* 3. Initial Open Camera Button */
+                        event.currentTarget.value = "";
+                    }}
+                />
+            </label>
+
+            {!cameraOpen && (
                 <Button
                     type="button"
                     variant="outline"
-                    size="sm"
-                    className="rounded-xl text-xs font-semibold h-9 px-3 gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                    disabled={uploading || capturing}
                     onClick={() => {
                         setError("");
                         setReady(false);
                         setCameraOpen(true);
                     }}
                 >
-                    <Camera className="size-4" /> Open Camera
+                    Open Camera
                 </Button>
             )}
 
+            {cameraOpen && (
+                <div className="space-y-2">
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        onCanPlay={() => setReady(true)}
+                        className="w-64 rounded-lg bg-black"
+                    />
+
+                    <div className="flex gap-2">
+                        <Button
+                            type="button"
+                            disabled={!ready || capturing}
+                            onClick={() => void capture()}
+                        >
+                            {capturing ? "Capturing..." : "Take Photo"}
+                        </Button>
+
+                        <Button
+                            type="button"
+                            variant="outline"
+                            disabled={capturing}
+                            onClick={() => {
+                                setCameraOpen(false);
+                                setReady(false);
+                            }}
+                        >
+                            Close Camera
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {preview && (
+                <img
+                    src={preview}
+                    alt="Selected damage evidence"
+                    className="h-28 w-40 rounded-lg border object-contain"
+                />
+            )}
+
+            {file && (
+                <Button
+                    type="button"
+                    disabled={
+                        uploading ||
+                        saved ||
+                        cameraOpen ||
+                        capturing ||
+                        !validLine ||
+                        !validQuantity
+                    }
+                    onClick={() => void upload()}
+                >
+                    {uploading
+                        ? "Uploading..."
+                        : saved
+                            ? "Photo Saved"
+                            : "Save Photo"}
+                </Button>
+            )}
+
+            {!validLine && (
+                <p className="text-xs text-red-600">
+                    Return to Page 2 and click Next to save material details.
+                </p>
+            )}
+
+            {!validQuantity && (
+                <p className="text-xs text-red-600">
+                    Damaged quantity must be greater than zero.
+                </p>
+            )}
+
             {error && (
-                <p role="alert" className="text-[11px] text-rose-600 font-medium">
+                <p
+                    role="alert"
+                    className="text-xs text-red-600 break-words"
+                >
                     {error}
                 </p>
             )}
+
+            {saved && (
+                <p role="status" className="text-xs text-green-700">
+                    Photo saved successfully.
+                </p>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+                JPG, PNG or WebP, up to 5 MB. Wait for Photo Saved
+                before leaving this page.
+            </p>
         </div>
     );
 }

@@ -597,6 +597,19 @@ class NotificationModel(Base):
     is_read: Mapped[bool] = mapped_column(default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
+    dock_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    dock_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    dock_location: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    dock_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    warehouse_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    allocation_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    gate_pass_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    vehicle_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    driver_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    driver_phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    asn_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
 
 class SupplierUserModel(Base):
     __tablename__ = "supplier_user"

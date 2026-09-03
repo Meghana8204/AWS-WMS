@@ -87,6 +87,7 @@ export function getSafeRedirectPath(redirectPath: unknown): string | null {
 }
 
 export function getDefaultRouteForUser(user = getUserInfo()): string {
+  if (user?.roles.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer") return "/grn";
   if (user?.roles.includes("FINANCE")) return "/finance-dashboard";
   if (user?.roles.includes("PROCUREMENT")) return "/procurement-dashboard";
   if (user?.roles.includes("GATE_SECURITY")) return "/gate-entry";
@@ -111,10 +112,7 @@ export function requireRole(roles: string[] | string) {
   if (typeof window === "undefined") return;
   requireAuth();
   if (!hasRole(roles)) {
-    // If they are authenticated but don't have the role, send them to their primary dashboard
     const user = getUserInfo();
-    const primaryRole = user?.roles[0];
-
     throw redirect({ to: getDefaultRouteForUser(user) as any });
   }
 }

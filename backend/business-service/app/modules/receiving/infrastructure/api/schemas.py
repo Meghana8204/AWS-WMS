@@ -253,10 +253,6 @@ class GrnHeaderResponse(ApiModel):
 
     verification_notes: str | None = None
 
-    current_step: int = 2
-    max_completed_step: int = 1
-    completed_steps: list[int] = Field(default_factory=lambda: [1])
-
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -278,9 +274,8 @@ class GrnLineReceivingRequest(ApiModel):
 
     item_code: str = Field(min_length=1, max_length=64)
 
-    received_quantity: NonNegativeQuantity | None = None
-    good_quantity: NonNegativeQuantity | None = Decimal("0")
-    damaged_quantity: NonNegativeQuantity | None = Decimal("0")
+    good_quantity: NonNegativeQuantity = Decimal("0")
+    damaged_quantity: NonNegativeQuantity = Decimal("0")
 
     @field_validator("item_code")
     @classmethod
@@ -340,9 +335,6 @@ class UpdateGrnLinesResponse(ApiModel):
     grn_id: str
     grn_number: str | None = None
     status: str
-    current_step: int = 3
-    max_completed_step: int = 2
-    completed_steps: list[int] = Field(default_factory=lambda: [1, 2])
     lines: list[GrnLineResponse]
 
 
@@ -415,9 +407,6 @@ class QualityInspectionLineResponse(ApiModel):
 class QualityInspectionResponse(ApiModel):
     grn_id: str
     status: str
-    current_step: int = 4
-    max_completed_step: int = 3
-    completed_steps: list[int] = Field(default_factory=lambda: [1, 2, 3])
     lines: list[QualityInspectionLineResponse]
 
 
@@ -633,10 +622,6 @@ class GrnDetailResponse(ApiModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    current_step: int = 1
-    max_completed_step: int = 0
-    completed_steps: list[int] = Field(default_factory=list)
-
     lines: list[GrnLineResponse] = Field(default_factory=list)
     documents: list[GrnDocumentResponse] = Field(default_factory=list)
 
@@ -651,45 +636,20 @@ class GrnSummaryResponse(ApiModel):
 
     po_number: str | None = None
     supplier_name: str | None = None
-    supplier_company_name: str | None = None
-    supplier_email: str | None = None
 
     receipt_type: str
     status: str
 
     warehouse_name: str | None = None
     dock_number: str | None = None
-    vehicle_number: str | None = None
-    driver_name: str | None = None
 
     receipt_date: datetime | None = None
     received_by: str | None = None
-
-    current_step: int = 1
-    max_completed_step: int = 0
 
 
 class GrnListResponse(ApiModel):
     items: list[GrnSummaryResponse] = Field(default_factory=list)
     total: int = 0
-
-
-# ============================================================================
-# WIZARD STEP UPDATE REQUEST & RESPONSE
-# ============================================================================
-
-class UpdateGrnStepRequest(ApiModel):
-    current_step: int = Field(ge=1, le=6)
-    max_completed_step: int | None = Field(default=None, ge=0, le=6)
-
-
-class UpdateGrnStepResponse(ApiModel):
-    grn_id: str
-    grn_number: str | None = None
-    status: str
-    current_step: int
-    max_completed_step: int
-    completed_steps: list[int]
 
 
 # ============================================================================
