@@ -42,10 +42,12 @@ from app.modules.receiving.infrastructure.api.schemas import (
     GrnDetailResponse,
     GrnDocumentResponse,
     GrnHeaderResponse,
+    GrnHistoryItemResponse,
     GrnLineResponse,
     GrnListResponse,
     GrnResponse,
     GrnSummaryResponse,
+    PoProgressResponse,
     QrScanLookupResponse,
     QualityInspectionRequest,
     QualityInspectionResponse,
@@ -140,6 +142,14 @@ async def get_grn_context(
             status_code=422,
             detail="Either po_id or po_number is required",
         )
+
+    if normalized_po_number:
+        clean_po = normalized_po_number.upper().strip()
+        if clean_po.startswith("PROP") or clean_po.startswith("RFQ") or clean_po.startswith("PR-"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid PO Code '{normalized_po_number}': Only official Purchase Order numbers (e.g. PO-2026-0001) are accepted in GRN. Proposal codes cannot be used.",
+            )
 
     repo = SqlAlchemyGrnRepository(uow.session)
     use_case = GetGrnContextUseCase(repo)
@@ -252,12 +262,49 @@ async def get_grn_context(
                 material_name=line.material_name,
                 material_category=line.material_category,
                 uom=line.uom,
+                variant_code=line.variant_code,
+                size=line.size,
+                color=line.color,
+                grade=line.grade,
                 ordered_quantity=line.ordered_quantity,
+                cumulative_received_quantity=line.cumulative_received_quantity,
+                cumulative_accepted_quantity=line.cumulative_accepted_quantity,
+                cumulative_rejected_quantity=line.cumulative_rejected_quantity,
                 received_quantity=line.received_quantity,
+                good_quantity=line.good_quantity,
+                damaged_quantity=line.damaged_quantity,
+                rejected_quantity=line.rejected_quantity,
+                quality_approved_quantity=line.quality_approved_quantity,
                 balance_quantity=line.balance_quantity,
             )
             for line in context.lines
         ],
+        grn_history=[
+            GrnHistoryItemResponse(
+                grn_id=gh.grn_id,
+                grn_number=gh.grn_number,
+                receipt_date=gh.receipt_date,
+                vehicle_number=gh.vehicle_number,
+                driver_name=gh.driver_name,
+                dock_number=gh.dock_number,
+                received_quantity=gh.received_quantity,
+                accepted_quantity=gh.accepted_quantity,
+                rejected_quantity=gh.rejected_quantity,
+                cumulative_received=gh.cumulative_received,
+                balance_quantity=gh.balance_quantity,
+                status=gh.status,
+            )
+            for gh in context.grn_history
+        ],
+        po_progress=PoProgressResponse(
+            po_quantity=context.po_total_ordered,
+            cumulative_received=context.po_total_received,
+            cumulative_accepted=context.po_total_accepted,
+            cumulative_rejected=context.po_total_rejected,
+            balance_quantity=context.po_total_balance,
+            percentage_received=context.po_progress_percent,
+            po_status=context.po_status,
+        ),
     )
 
 
@@ -272,6 +319,14 @@ async def create_grn_header(
     user: CurrentUser = Depends(get_current_user),
     _perm=Depends(require_permission("receiving:write")),
 ) -> GrnHeaderResponse:
+    if request.receipt_type == "PO_RECEIPT" and request.po_number:
+        clean_po = request.po_number.upper().strip()
+        if clean_po.startswith("PROP") or clean_po.startswith("RFQ") or clean_po.startswith("PR-"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid PO Code '{request.po_number}': Only official Purchase Order numbers (e.g. PO-2026-0001) are accepted in GRN. Proposal codes cannot be used.",
+            )
+
     repo = SqlAlchemyGrnRepository(uow.session)
     grn = await repo.create_or_update_grn_header(
         receipt_type=request.receipt_type,
@@ -328,6 +383,56 @@ async def update_grn_lines(
     _user=Depends(require_permission("receiving:write")),
 ) -> UpdateGrnLinesResponse:
     repo = SqlAlchemyGrnRepository(uow.session)
+
+    # Over-receipt prevention validation against PO balance
+    if not request.allow_over_receipt:
+        grn_detail = await repo.get_grn_detail_by_id(grn_id)
+        if grn_detail:
+            po_snap = None
+            if grn_detail.po_id:
+                try:
+                    po_snap = await repo.find_purchase_order(PurchaseOrderId.of(grn_detail.po_id))
+                except Exception:
+                    po_snap = None
+            if not po_snap and grn_detail.po_number:
+                po_snap = await repo.find_purchase_order_by_number(grn_detail.po_number)
+
+            if po_snap and po_snap.lines:
+                this_grn_lines = {l.item_code: l for l in grn_detail.lines}
+                po_line_map = {l.item_code: l for l in po_snap.lines}
+
+                for req_line in request.lines:
+                    po_line = po_line_map.get(req_line.item_code)
+                    if po_line:
+                        po_ordered = Decimal(str(po_line.ordered_quantity))
+                        cum_acc = Decimal(str(getattr(po_line, "cumulative_accepted_quantity", 0) or 0))
+                        this_line = this_grn_lines.get(req_line.item_code)
+                        this_prev_acc = Decimal(str(this_line.good_quantity or this_line.quality_approved_quantity or 0)) if this_line else Decimal("0")
+                        other_acc = max(Decimal("0"), cum_acc - this_prev_acc)
+                        allowed_bal = max(Decimal("0"), po_ordered - other_acc)
+
+                        good = Decimal(str(req_line.good_quantity))
+                        dmg = Decimal(str(req_line.damaged_quantity))
+                        tot = good + dmg
+                        if tot > allowed_bal:
+                            raise HTTPException(
+                                status_code=422,
+                                detail=f"Over-receipt blocked: Total quantity received ({tot}) exceeds available PO balance ({allowed_bal}) for material '{req_line.item_code}'. Enable 'Over-Receipt with Approval' to override.",
+                            )
+            elif grn_detail.lines:
+                for req_line in request.lines:
+                    matching = next((l for l in grn_detail.lines if l.item_code == req_line.item_code), None)
+                    if matching and matching.ordered_quantity:
+                        allowed_bal = Decimal(str(matching.ordered_quantity))
+                        good = Decimal(str(req_line.good_quantity))
+                        dmg = Decimal(str(req_line.damaged_quantity))
+                        tot = good + dmg
+                        if tot > allowed_bal:
+                            raise HTTPException(
+                                status_code=422,
+                                detail=f"Over-receipt blocked: Total quantity received ({tot}) exceeds ordered quantity ({allowed_bal}) for material '{req_line.item_code}'. Enable 'Over-Receipt with Approval' to override.",
+                            )
+
     grn = await repo.update_grn_lines(
         grn_id=uuid.UUID(grn_id),
         lines_data=[line.model_dump() for line in request.lines],
@@ -687,21 +792,39 @@ async def notify_vendor_damage(
 
     if body.damage_items:
         for item in body.damage_items:
-            count_damaged += 1
-            code = (item.item_code or "").strip() or "ITEM"
-            name = (item.material_name or "").strip() or "Material"
-            try:
-                qty = Decimal(str(item.damaged_quantity)) if item.damaged_quantity is not None else Decimal("0")
-            except Exception:
-                qty = Decimal("0")
-            total_damaged_qty += qty
+            raw_code = (item.item_code or "").strip()
+            raw_name = (item.material_name or "").strip()
 
-            line_obj = grn_lines_by_code.get(code)
+            if raw_code in ("", "undefined", "null", "ITEM") and grn and grn.lines:
+                matched_line = grn.lines[0]
+                raw_code = matched_line.item_code
+                if not raw_name or raw_name in ("undefined", "null", "Material"):
+                    raw_name = matched_line.material_name or "Material"
+
+            line_obj = grn_lines_by_code.get(raw_code)
+            if line_obj and (not raw_name or raw_name in ("undefined", "null", "Material")):
+                raw_name = line_obj.material_name or raw_name
+
+            try:
+                raw_qty = Decimal(str(item.damaged_quantity)) if (item.damaged_quantity is not None and str(item.damaged_quantity) not in ("undefined", "null")) else None
+            except Exception:
+                raw_qty = None
+
+            if raw_qty is None or raw_qty <= 0:
+                if line_obj:
+                    raw_qty = line_obj.damaged_quantity if (line_obj.damaged_quantity or 0) > 0 else ((line_obj.rejected_quantity or 0) if (line_obj.rejected_quantity or 0) > 0 else Decimal("1.0"))
+                else:
+                    raw_qty = Decimal("1.0")
+
+            count_damaged += 1
+            total_damaged_qty += raw_qty
+
             line_reason = _get_line_damage_reason(line_obj, item.reason)
+            uom_str = item.uom if (item.uom and item.uom not in ("undefined", "null")) else (getattr(line_obj, "uom", None) or "PCS")
 
             items_for_render.append({
-                "material": f"{code} ({name})",
-                "quantity": f"{qty} {item.uom or 'PCS'}",
+                "material": f"{raw_code} ({raw_name or 'Material'})",
+                "quantity": f"{raw_qty} {uom_str}",
                 "delivery": line_reason,
             })
 
@@ -718,7 +841,7 @@ async def notify_vendor_damage(
                 continue
 
             count_damaged += 1
-            dmg_qty = line.damaged_quantity if (line.damaged_quantity or 0) > 0 else ((line.rejected_quantity or 0) if (line.rejected_quantity or 0) > 0 else Decimal(0))
+            dmg_qty = line.damaged_quantity if (line.damaged_quantity or 0) > 0 else ((line.rejected_quantity or 0) if (line.rejected_quantity or 0) > 0 else Decimal(1))
             total_damaged_qty += dmg_qty
             line_reason = _get_line_damage_reason(line, None)
 
@@ -728,10 +851,17 @@ async def notify_vendor_damage(
                 "delivery": line_reason,
             })
 
-    if not items_for_render:
+    if not items_for_render and grn and getattr(grn, "lines", None) and grn.lines:
+        first_line = grn.lines[0]
+        items_for_render.append({
+            "material": f"{first_line.item_code} ({first_line.material_name or 'Material'})",
+            "quantity": f"{first_line.damaged_quantity or first_line.rejected_quantity or Decimal(1)} {first_line.uom or 'PCS'}",
+            "delivery": _get_line_damage_reason(first_line, None),
+        })
+    elif not items_for_render:
         items_for_render.append({
             "material": f"GRN Item ({grn_number})",
-            "quantity": "0 PCS",
+            "quantity": "1.0 PCS",
             "delivery": _clean_damage_reason(None),
         })
 
@@ -835,7 +965,7 @@ async def notify_vendor_damage(
         user_role="PROCUREMENT",
         title="Damaged / Rejected Goods Detected",
         message=procurement_msg,
-        link="/notifications",
+        link=f"/notifications?grn_id={grn_uuid}&po_number={po_number}",
         is_read=False,
         created_at=datetime.now(),
         po_number=po_number,

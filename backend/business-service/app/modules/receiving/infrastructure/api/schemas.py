@@ -101,6 +101,31 @@ class DockOptionResponse(ApiModel):
     status: str | None = None
 
 
+class GrnHistoryItemResponse(ApiModel):
+    grn_id: str
+    grn_number: str
+    receipt_date: datetime | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
+    dock_number: str | None = None
+    received_quantity: Decimal = Decimal("0")
+    accepted_quantity: Decimal = Decimal("0")
+    rejected_quantity: Decimal = Decimal("0")
+    cumulative_received: Decimal = Decimal("0")
+    balance_quantity: Decimal = Decimal("0")
+    status: str = "COMPLETED"
+
+
+class PoProgressResponse(ApiModel):
+    po_quantity: Decimal = Decimal("0")
+    cumulative_received: Decimal = Decimal("0")
+    cumulative_accepted: Decimal = Decimal("0")
+    cumulative_rejected: Decimal = Decimal("0")
+    balance_quantity: Decimal = Decimal("0")
+    percentage_received: Decimal = Decimal("0")
+    po_status: str = "OPEN"
+
+
 class GrnContextLineResponse(ApiModel):
     item_code: str
     material_name: str | None = None
@@ -112,6 +137,9 @@ class GrnContextLineResponse(ApiModel):
     grade: str | None = None
 
     ordered_quantity: Decimal | None = None
+    cumulative_received_quantity: Decimal = Decimal("0")
+    cumulative_accepted_quantity: Decimal = Decimal("0")
+    cumulative_rejected_quantity: Decimal = Decimal("0")
     received_quantity: Decimal = Decimal("0")
     good_quantity: Decimal = Decimal("0")
     damaged_quantity: Decimal = Decimal("0")
@@ -162,6 +190,8 @@ class GrnContextResponse(ApiModel):
     prefilled_dock_number: str | None = None
     field_sources: dict | None = None
     lines: list[GrnContextLineResponse] = Field(default_factory=list)
+    grn_history: list[GrnHistoryItemResponse] = Field(default_factory=list)
+    po_progress: PoProgressResponse | None = None
 
 
 class CreateGrnHeaderRequest(ApiModel):
@@ -280,6 +310,8 @@ class GrnLineReceivingRequest(ApiModel):
 
     good_quantity: NonNegativeQuantity = Decimal("0")
     damaged_quantity: NonNegativeQuantity = Decimal("0")
+    allow_over_receipt: bool = False
+    over_receipt_reason: str | None = None
 
     @field_validator("item_code")
     @classmethod
@@ -294,6 +326,8 @@ class GrnLineReceivingRequest(ApiModel):
 
 class UpdateGrnLinesRequest(ApiModel):
     lines: list[GrnLineReceivingRequest] = Field(min_length=1)
+    allow_over_receipt: bool = False
+    over_receipt_reason: str | None = None
 
 
 class DamageEvidenceResponse(ApiModel):

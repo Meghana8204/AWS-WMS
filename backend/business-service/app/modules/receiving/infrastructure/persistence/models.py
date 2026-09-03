@@ -83,14 +83,14 @@ class GrnModel(Base):
     po_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID,
         nullable=True,
-        unique=True,
+        unique=False,
         index=True,
     )
 
     po_number: Mapped[Optional[str]] = mapped_column(
         String(64),
         nullable=True,
-        unique=True,
+        unique=False,
         index=True,
     )
 

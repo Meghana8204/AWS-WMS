@@ -347,7 +347,7 @@ function ArrivalDetails({
           <Detail label="Arrival time" value={new Date(arrival.arrival_time).toLocaleString()} />
         </dl>
       </div>
-      <div className="grid gap-5 lg:grid-cols-3">
+      <div className="grid gap-5 md:grid-cols-2">
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Boxes className="size-4 text-primary" /> Gate entry information
@@ -392,89 +392,6 @@ function ArrivalDetails({
               </div>
             ))}
           </div>
-        </div>
-        <div>
-          <h3 className="mb-3 flex items-center gap-2 font-semibold">
-            <Warehouse className="size-4 text-primary" /> Dock movement
-          </h3>
-          {arrival.status === "AT_DOCK" ? (
-            <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-              <p className="font-semibold">Vehicle arrived at {arrival.assigned_dock_id}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Checked in by {arrival.dock_checked_in_by || "—"}
-                <br />
-                {arrival.dock_arrival_at ? new Date(arrival.dock_arrival_at).toLocaleString() : "—"}
-                <br />
-                Dock status: OCCUPIED
-              </p>
-            </div>
-          ) : arrival.status === "MOVING_TO_DOCK" ? (
-            <div className="rounded-xl border border-primary/30 bg-primary-soft p-4">
-              <p className="font-semibold">Vehicle moving to {arrival.assigned_dock_id}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Instructed by {arrival.movement_started_by || "—"}
-                <br />
-                {arrival.movement_started_at
-                  ? new Date(arrival.movement_started_at).toLocaleString()
-                  : "—"}
-              </p>
-              <Button className="mt-3 w-full rounded-xl" disabled={busy} onClick={onCheckIn}>
-                {busy ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Warehouse className="size-4" />
-                )}{" "}
-                Vehicle arrived
-              </Button>
-            </div>
-          ) : arrival.status === "DOCK_ASSIGNED" ? (
-            <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-              <p className="font-semibold">Assigned to {arrival.assigned_dock_id}</p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                By {arrival.assigned_by || "—"}
-                <br />
-                {arrival.assigned_at ? new Date(arrival.assigned_at).toLocaleString() : "—"}
-              </p>
-              <Button className="mt-3 w-full rounded-xl" disabled={busy} onClick={onMove}>
-                {busy ? <Loader2 className="size-4 animate-spin" /> : <Truck className="size-4" />}{" "}
-                Instruct vehicle to move
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                {docks.map((d) => (
-                  <label
-                    key={d.id}
-                    className={`flex items-center gap-3 rounded-xl border p-3 text-sm ${d.status === "AVAILABLE" ? "cursor-pointer bg-card" : "cursor-not-allowed opacity-50"}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected === d.id}
-                      disabled={d.status !== "AVAILABLE"}
-                      onChange={() => onSelect(selected === d.id ? "" : d.id)}
-                    />
-                    <span className="font-mono font-semibold">{d.id}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {d.zone} · {d.status}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <Button
-                className="mt-3 w-full rounded-xl"
-                disabled={!selected || busy}
-                onClick={onAssign}
-              >
-                {busy ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <ArrowRight className="size-4" />
-                )}{" "}
-                Assign dock
-              </Button>
-            </>
-          )}
         </div>
       </div>
     </div>

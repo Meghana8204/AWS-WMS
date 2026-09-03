@@ -1209,11 +1209,15 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
-  async updateGrnLines(grnId: string, lines: any[]): Promise<any> {
+  async updateGrnLines(grnId: string, lines: any[], allowOverReceipt = false, overReceiptReason?: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/lines`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines }),
+      body: JSON.stringify({
+        lines,
+        allow_over_receipt: allowOverReceipt,
+        over_receipt_reason: overReceiptReason,
+      }),
     });
   },
   async uploadDamageEvidence(grnLineId: string, formData: FormData): Promise<any> {

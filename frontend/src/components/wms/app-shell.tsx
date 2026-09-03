@@ -34,14 +34,9 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 const grnNav = [
-  { label: "GRN Operations Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
-  { label: "GRN Records History", to: "/grn?tab=records", icon: ClipboardList },
-  { label: "Header Details & Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
-  { label: "Material Receiving", to: "/grn?tab=wizard&page=2", icon: PackageCheck },
-  { label: "Quality & Photos", to: "/grn?tab=wizard&page=3", icon: AlertTriangle },
-  { label: "Batch Allocation", to: "/grn?tab=wizard&page=4", icon: Boxes },
-  { label: "Documents & Posting", to: "/grn?tab=wizard&page=5", icon: FileText },
-  { label: "Batch QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
+  { label: "GRN Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
+  { label: "Header Details Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
+  { label: "GRN History", to: "/grn?tab=records", icon: ClipboardList },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
 ];
 const warehouseNav = [
@@ -291,9 +286,15 @@ export function AppShell({
               <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
             ))}
           {nav.map((item) => {
-            const active = item.to.includes("?")
-              ? fullHref === item.to || (searchStr ? fullHref.startsWith(item.to) : item.to === "/grn?tab=dashboard")
-              : path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
+            const active = item.to.startsWith("/grn?")
+              ? item.to.includes("tab=wizard")
+                ? path === "/grn" && searchStr.includes("tab=wizard")
+                : item.to.includes("tab=records")
+                  ? path === "/grn" && searchStr.includes("tab=records")
+                  : path === "/grn" && (searchStr.includes("tab=dashboard") || !searchStr || searchStr === "?")
+              : item.to.includes("?")
+                ? fullHref === item.to || (searchStr ? fullHref.startsWith(item.to) : false)
+                : path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
             return (
               <Link
                 key={item.to}
@@ -360,12 +361,12 @@ export function AppShell({
                 className="h-10 w-full rounded-xl border border-border bg-muted/60 pl-9 pr-16 text-sm outline-none transition-shadow placeholder:text-muted-foreground focus:bg-card focus:ring-2 focus:ring-ring/40"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                onFocus={() => searchTerm.length >= 2 && setShowSearch(true)}
               />
-              <kbd className="absolute right-3 hidden rounded-md border border-border bg-card px-1.5 py-0.5 text-[10px] text-muted-foreground lg:block">
-                {isSearching ? <Loader2 className="size-3 animate-spin" /> : "⌘K"}
-              </kbd>
-
+              {isSearching && (
+                <div className="absolute right-3 flex items-center">
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                </div>
+              )}
               {showSearch && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setShowSearch(false)} />
@@ -413,30 +414,34 @@ export function AppShell({
               )}
             </div>
 
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-2">
               <button
                 suppressHydrationWarning
-                onClick={() => setDark((d) => !d)}
-                aria-label="Toggle dark mode"
-                className="grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                onClick={() => setDark((v) => !v)}
+                aria-label="Toggle theme"
+                className="grid size-10 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-accent"
               >
-                {dark ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
+                {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
               </button>
-              <Link
-                to="/notifications"
-                aria-label="Notifications"
-                className="relative grid size-10 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Bell className="size-[18px]" />
-                {unreadNotifications > 0 && (
-                  <span className="absolute right-2 top-2 grid size-4 place-items-center rounded-full bg-destructive text-[9px] font-bold text-white animate-pulse-ring">
-                    {unreadNotifications}
-                  </span>
-                )}
-              </Link>
-              <div className="group relative ml-1 flex items-center gap-2.5 rounded-xl border border-border bg-card py-1.5 pl-1.5 pr-3 transition-colors hover:bg-accent/50">
-                <span className="grid size-8 place-items-center rounded-lg bg-primary text-xs font-semibold text-primary-foreground">
-                  {user?.username?.substring(0, 2).toUpperCase() || "AO"}
+
+              <div className="relative">
+                <Link
+                  to="/notifications"
+                  className="relative grid size-10 place-items-center rounded-xl border border-border bg-card text-foreground transition-colors hover:bg-accent"
+                  aria-label="Notifications"
+                >
+                  <Bell className="size-4" />
+                  {unreadNotifications > 0 && (
+                    <span className="absolute -right-1 -top-1 grid min-w-5 h-5 place-items-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground ring-2 ring-background">
+                      {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                    </span>
+                  )}
+                </Link>
+              </div>
+
+              <div className="ml-2 flex items-center gap-3 border-l border-border pl-4">
+                <span className="grid size-9 place-items-center rounded-full bg-primary-soft font-semibold text-primary">
+                  {user?.username ? user.username.charAt(0).toUpperCase() : "U"}
                 </span>
                 <div className="hidden leading-tight lg:block">
                   <p className="text-xs font-semibold">{user?.username || "Admin Officer"}</p>
@@ -478,7 +483,15 @@ export function AppShell({
 
         <nav className="sticky bottom-0 z-30 grid grid-cols-5 border-t border-border glass-strong md:hidden">
           {nav.slice(0, 5).map((item) => {
-            const active = path === item.to;
+            const active = item.to.startsWith("/grn?")
+              ? item.to.includes("tab=wizard")
+                ? path === "/grn" && searchStr.includes("tab=wizard")
+                : item.to.includes("tab=records")
+                  ? path === "/grn" && searchStr.includes("tab=records")
+                  : path === "/grn" && (searchStr.includes("tab=dashboard") || !searchStr || searchStr === "?")
+              : item.to.includes("?")
+                ? fullHref === item.to || (searchStr ? fullHref.startsWith(item.to) : false)
+                : path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
             return (
               <Link
                 key={item.to}
@@ -683,7 +696,7 @@ export function DockAllocationNotificationCard({ notification }: { notification:
   return (
     <div className="relative overflow-hidden rounded-2xl border border-teal-500/30 bg-teal-500/5 p-5 shadow-sm space-y-4 font-sans text-foreground">
       <div className="absolute left-0 top-0 h-full w-1 bg-teal-600 dark:bg-teal-400" />
-      
+
       {/* Header */}
       <div className="flex items-center justify-between border-b border-teal-500/20 pb-3">
         <div className="flex items-center gap-2.5">

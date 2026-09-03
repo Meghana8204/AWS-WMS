@@ -31,6 +31,7 @@ from app.modules.receiving.application.repository import (
     AsnSnapshot,
     GateEntrySnapshot,
     GrnHeaderSnapshot,
+    GrnHistorySnapshot,
     GrnRepository,
     PurchaseOrderSnapshot,
     WarehouseDockSnapshot,
@@ -60,10 +61,14 @@ class GrnContextLine:
     color: str | None = None
     grade: str | None = None
 
-    # Quantity already physically received on the existing GRN.
-    # Exact good/damaged/quality splits will come from richer line
-    # persistence methods in the next write-workflow step.
+    cumulative_received_quantity: Decimal = Decimal("0")
+    cumulative_accepted_quantity: Decimal = Decimal("0")
+    cumulative_rejected_quantity: Decimal = Decimal("0")
     received_quantity: Decimal = Decimal("0")
+    good_quantity: Decimal = Decimal("0")
+    damaged_quantity: Decimal = Decimal("0")
+    rejected_quantity: Decimal = Decimal("0")
+    quality_approved_quantity: Decimal = Decimal("0")
     balance_quantity: Decimal = Decimal("0")
 
 
@@ -97,6 +102,14 @@ class GrnContextResult:
     )
 
     lines: tuple[GrnContextLine, ...] = field(default_factory=tuple)
+    grn_history: tuple[GrnHistorySnapshot, ...] = field(default_factory=tuple)
+    po_status: str = "OPEN"
+    po_total_ordered: Decimal = Decimal("0")
+    po_total_received: Decimal = Decimal("0")
+    po_total_accepted: Decimal = Decimal("0")
+    po_total_rejected: Decimal = Decimal("0")
+    po_total_balance: Decimal = Decimal("0")
+    po_progress_percent: Decimal = Decimal("0")
 
 
 # ============================================================================
@@ -289,39 +302,34 @@ class GetGrnContextUseCase:
             )
 
         # ------------------------------------------------------------
-        # 7. CUMULATIVE RECEIVED QUANTITIES
+        # 7. LOAD RUNNING GRN HISTORY AND CUMULATIVE QUANTITIES
         # ------------------------------------------------------------
 
-        received_by_item: dict[str, Decimal] = {}
-
-        if existing_grn is not None:
-            existing_aggregate = await self._grn_repository.find_by_id(
-                GrnId.of(existing_grn.id)
-            )
-
-            if existing_aggregate is not None:
-                for line in existing_aggregate.lines:
-                    received_by_item[line.item_code] = (
-                        received_by_item.get(
-                            line.item_code,
-                            Decimal("0"),
-                        )
-                        + Decimal(line.received_quantity)
-                    )
+        grn_history = await self._grn_repository.list_grns_for_po(
+            po_id=str(po.id.value),
+            po_number=po.po_number,
+        )
 
         context_lines: list[GrnContextLine] = []
 
-        for line in po.lines:
-            ordered = Decimal(line.ordered_quantity)
-            received = received_by_item.get(
-                line.item_code,
-                Decimal("0"),
-            )
+        total_ordered = Decimal("0")
+        total_rec = Decimal("0")
+        total_acc = Decimal("0")
+        total_rej = Decimal("0")
+        total_bal = Decimal("0")
 
-            balance = max(
-                ordered - received,
-                Decimal("0"),
-            )
+        for line in po.lines:
+            ordered = Decimal(str(line.ordered_quantity))
+            cum_rec = Decimal(str(getattr(line, "cumulative_received_quantity", 0) or 0))
+            cum_acc = Decimal(str(getattr(line, "cumulative_accepted_quantity", 0) or 0))
+            cum_rej = Decimal(str(getattr(line, "cumulative_rejected_quantity", 0) or 0))
+            bal = Decimal(str(getattr(line, "balance_quantity", ordered) or ordered))
+
+            total_ordered += ordered
+            total_rec += cum_rec
+            total_acc += cum_acc
+            total_rej += cum_rej
+            total_bal += bal
 
             context_lines.append(
                 GrnContextLine(
@@ -334,10 +342,20 @@ class GetGrnContextUseCase:
                     size=getattr(line, "size", None),
                     color=getattr(line, "color", None),
                     grade=getattr(line, "grade", None),
-                    received_quantity=received,
-                    balance_quantity=balance,
+                    cumulative_received_quantity=cum_rec,
+                    cumulative_accepted_quantity=cum_acc,
+                    cumulative_rejected_quantity=cum_rej,
+                    received_quantity=Decimal("0"),
+                    good_quantity=bal,  # Default suggested good qty is current balance
+                    damaged_quantity=Decimal("0"),
+                    rejected_quantity=Decimal("0"),
+                    quality_approved_quantity=bal,
+                    balance_quantity=bal,
                 )
             )
+
+        progress_pct = (total_acc / total_ordered * Decimal("100")) if total_ordered > Decimal("0") else Decimal("0")
+        po_status = "COMPLETED" if total_bal == Decimal("0") and total_ordered > Decimal("0") else ("PARTIALLY_RECEIVED" if total_acc > Decimal("0") else "OPEN")
 
         # ------------------------------------------------------------
         # 8. BUILD RESULT
@@ -371,6 +389,14 @@ class GetGrnContextUseCase:
             existing_grn=existing_grn,
             dock_options=tuple(dock_options),
             lines=tuple(context_lines),
+            grn_history=tuple(grn_history),
+            po_status=po_status,
+            po_total_ordered=total_ordered,
+            po_total_received=total_rec,
+            po_total_accepted=total_acc,
+            po_total_rejected=total_rej,
+            po_total_balance=total_bal,
+            po_progress_percent=progress_pct,
         )
 
     async def _find_po(

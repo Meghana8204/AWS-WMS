@@ -46,6 +46,26 @@ class PurchaseOrderLineSnapshot:
     size: str | None = None
     color: str | None = None
     grade: str | None = None
+    cumulative_received_quantity: Decimal = Decimal("0")
+    cumulative_accepted_quantity: Decimal = Decimal("0")
+    cumulative_rejected_quantity: Decimal = Decimal("0")
+    balance_quantity: Decimal = Decimal("0")
+
+
+@dataclass(frozen=True)
+class GrnHistorySnapshot:
+    grn_id: str
+    grn_number: str
+    receipt_date: datetime | None
+    vehicle_number: str | None
+    driver_name: str | None
+    dock_number: str | None
+    received_quantity: Decimal
+    accepted_quantity: Decimal
+    rejected_quantity: Decimal
+    cumulative_received: Decimal
+    balance_quantity: Decimal
+    status: str
 
 
 @dataclass(frozen=True)
@@ -278,7 +298,18 @@ class GrnRepository(Protocol):
         po_number: str | None = None,
     ) -> Optional[GrnHeaderSnapshot]:
         """
-        Used to enforce/reuse the existing one-PO-one-GRN record.
+        Used to lookup latest/existing GRN header for a PO.
+        """
+        ...
+
+    async def list_grns_for_po(
+        self,
+        *,
+        po_id: str | None = None,
+        po_number: str | None = None,
+    ) -> list[GrnHistorySnapshot]:
+        """
+        Return chronological history of all partial receipts / GRNs for the PO.
         """
         ...
 

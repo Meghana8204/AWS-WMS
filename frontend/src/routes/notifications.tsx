@@ -15,41 +15,86 @@ export const Route = createFileRoute("/notifications")({
   component: Notifications,
 });
 
-function parseDamageNotificationMessage(msg?: string) {
-  if (!msg) return { grnNumber: "", poNumber: "", supplierName: "", warehouseName: "", reportedBy: "", customRemarks: "", items: [] };
+function parseDamageNotificationMessage(msg?: string, notifObj?: any) {
+  if (!msg) {
+    return {
+      grnNumber: notifObj?.grn_number || notifObj?.grnNumber || "",
+      poNumber: notifObj?.po_number || notifObj?.poNumber || "",
+      supplierName: notifObj?.supplier_name || notifObj?.supplierName || "Supplier",
+      warehouseName: notifObj?.warehouse_name || notifObj?.warehouseName || "Main Warehouse",
+      reportedBy: "GRN Quality Inspector",
+      customRemarks: "",
+      items: [],
+    };
+  }
 
-  const grnMatch = msg.match(/GRN:\s*([^\s|\n]+)/i) || msg.match(/for GRN\s+([^\s|\n]+)/i);
-  const poMatch = msg.match(/PO:\s*([^\s|\n]+)/i) || msg.match(/against PO\s+([^\s|\.\n]+)/i);
-  const supplierMatch = msg.match(/Supplier:\s*([^|\n]+)/i);
-  const warehouseMatch = msg.match(/Warehouse:\s*([^|\n]+)/i);
-  const remarksMatch = msg.match(/Inspector Remarks:\s*([^\n]+)/i);
+  const grnMatch =
+    msg.match(/GRN:\s*([^\s|\n]+)/i) ||
+    msg.match(/for GRN\s+([^\s|\n]+)/i) ||
+    msg.match(/GRN Number\s*[:\n]\s*([^\s|\n]+)/i) ||
+    msg.match(/Ref:\s*(GRN-[A-Za-z0-9-]+)/i) ||
+    msg.match(/(GRN-[A-Za-z0-9-]+)/i);
 
-  const items: { material: string; quantity: string; reason: string }[] = [];
+  const poMatch =
+    msg.match(/PO:\s*([^\s|\n]+)/i) ||
+    msg.match(/against PO\s+([^\s|\.\n]+)/i) ||
+    msg.match(/PO Reference\s*[:\n]\s*([^\s|\n]+)/i) ||
+    msg.match(/(PO-[A-Za-z0-9-]+)/i);
+
+  const supplierMatch =
+    msg.match(/Supplier:\s*([^|\n]+)/i) ||
+    msg.match(/Supplier Name\s*[:\n]\s*([^|\n]+)/i);
+
+  const warehouseMatch =
+    msg.match(/Warehouse:\s*([^|\n]+)/i) ||
+    msg.match(/Warehouse Name\s*[:\n]\s*([^|\n]+)/i);
+
+  const remarksMatch =
+    msg.match(/Inspector Remarks:\s*([^\n]+)/i) ||
+    msg.match(/Remarks:\s*([^\n]+)/i);
+
+  const items: { material: string; quantity: string; reason: string; itemCode?: string }[] = [];
   const lines = msg.split("\n");
   let inItems = false;
   for (const line of lines) {
-    if (line.toLowerCase().includes("damaged items:")) {
+    const trimmed = line.trim();
+    if (trimmed.toLowerCase().includes("damaged items:") || trimmed.toLowerCase().includes("damaged materials") || trimmed.toLowerCase().includes("flagged")) {
       inItems = true;
       continue;
     }
-    if (inItems && line.trim().startsWith("•")) {
-      const cleanLine = line.trim().replace(/^•\s*/, "");
+    if (inItems && (trimmed.startsWith("•") || trimmed.startsWith("-") || trimmed.startsWith("*") || /^\d+\./.test(trimmed))) {
+      const cleanLine = trimmed.replace(/^[•\-*]|\d+\.\s*/, "").trim();
       const parts = cleanLine.split("|").map((p) => p.trim());
-      const mat = parts[0] || "Material Item";
-      const qty = parts.find((p) => p.toLowerCase().startsWith("qty:"))?.replace(/^qty:\s*/i, "") || "Recorded Qty";
-      const rsn = parts.find((p) => p.toLowerCase().startsWith("reason:"))?.replace(/^reason:\s*/i, "") || (remarksMatch && remarksMatch[1] ? remarksMatch[1] : "Damaged / Rejected");
-      items.push({ material: mat, quantity: qty, reason: rsn });
+      let mat = parts[0] || "Material Item";
+      if (mat.includes("undefined") || mat.includes("null")) {
+        mat = "Damaged Material Item";
+      }
+      let qty = parts.find((p) => p.toLowerCase().startsWith("qty:") || p.toLowerCase().startsWith("damaged:"))
+        ?.replace(/^(qty|damaged):\s*/i, "") || "1.0 Units";
+      if (qty.includes("undefined") || qty.includes("null")) {
+        qty = "1.0 Units";
+      }
+      const rsn = parts.find((p) => p.toLowerCase().startsWith("reason:"))
+        ?.replace(/^reason:\s*/i, "") || (remarksMatch && remarksMatch[1] ? remarksMatch[1] : "Damaged / Rejected");
+      
+      const codeMatch = mat.match(/(MAT-[A-Za-z0-9-]+)/i);
+      items.push({ material: mat, quantity: qty, reason: rsn, itemCode: codeMatch ? codeMatch[1] : undefined });
     }
   }
 
+  const grnNumber = notifObj?.grn_number || notifObj?.grnNumber || (grnMatch && grnMatch[1] ? grnMatch[1] : (notifObj?.link?.match(/grn_id=([^&]+)/)?.[1] || ""));
+  const poNumber = notifObj?.po_number || notifObj?.poNumber || (poMatch && poMatch[1] ? poMatch[1] : "");
+  const supplierName = notifObj?.supplier_name || notifObj?.supplierName || (supplierMatch && supplierMatch[1] ? supplierMatch[1].trim() : "Supplier");
+  const warehouseName = notifObj?.warehouse_name || notifObj?.warehouseName || (warehouseMatch && warehouseMatch[1] ? warehouseMatch[1].trim() : "Main Warehouse");
+
   return {
-    grnNumber: grnMatch && grnMatch[1] ? grnMatch[1] : "GRN-2026-0001",
-    poNumber: poMatch && poMatch[1] ? poMatch[1] : "PO-1001",
-    supplierName: supplierMatch && supplierMatch[1] ? supplierMatch[1].trim() : "Supplier",
-    warehouseName: warehouseMatch && warehouseMatch[1] ? warehouseMatch[1].trim() : "Main Warehouse",
+    grnNumber,
+    poNumber,
+    supplierName,
+    warehouseName,
     reportedBy: "GRN Quality Inspector",
     customRemarks: remarksMatch && remarksMatch[1] ? remarksMatch[1].trim() : "",
-    items: items.length > 0 ? items : [{ material: "Damaged Material Item", quantity: "Recorded Qty", reason: "Damaged during receiving inspection" }],
+    items: items.length > 0 ? items : [{ material: "Damaged Material Item", quantity: "1.0 Units", reason: "Damaged during receiving inspection" }],
   };
 }
 
@@ -102,6 +147,7 @@ function Notifications() {
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
   const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null);
   const [damageGrnData, setDamageGrnData] = useState<any | null>(null);
+  const [poDamageRecord, setPoDamageRecord] = useState<any | null>(null);
   const [damageLoading, setDamageLoading] = useState(false);
 
   // Modal State for GRN & Quality Notification Details
@@ -131,28 +177,49 @@ function Notifications() {
     };
   }, []);
 
-  // Fetch full GRN damage data when damage notification is selected
+  // Fetch full GRN damage data and PO damaged goods when damage notification is selected
   useEffect(() => {
     if (!selectedDamageNotif) {
       setDamageGrnData(null);
+      setPoDamageRecord(null);
       return;
     }
     let isMounted = true;
     const loadDamageData = async () => {
       try {
         setDamageLoading(true);
-        const parsed = parseDamageNotificationMessage(selectedDamageNotif.message);
-        let targetId = parsed.grnNumber;
+        const parsed = parseDamageNotificationMessage(selectedDamageNotif.message, selectedDamageNotif);
+        let targetGrnId = selectedDamageNotif.grn_id || selectedDamageNotif.grn_number || parsed.grnNumber;
         if (selectedDamageNotif.link) {
           const match = selectedDamageNotif.link.match(/grn_id=([^&]+)/);
-          if (match && match[1]) targetId = match[1];
+          if (match && match[1]) targetGrnId = match[1];
         }
-        if (targetId) {
-          const data = await api.getGrn(targetId);
-          if (isMounted) setDamageGrnData(data);
+        const targetPoNumber = selectedDamageNotif.po_number || selectedDamageNotif.poNumber || parsed.poNumber;
+
+        let grnData: any = null;
+        if (targetGrnId) {
+          try {
+            grnData = await api.getGrn(targetGrnId);
+          } catch (e) {
+            console.warn("Could not fetch GRN details for damage photos", e);
+          }
+        }
+
+        let poDmg: any = null;
+        if (targetPoNumber) {
+          try {
+            poDmg = await api.getPoDamagedGoods(targetPoNumber);
+          } catch (e) {
+            console.warn("Could not fetch PO damaged goods for", targetPoNumber, e);
+          }
+        }
+
+        if (isMounted) {
+          setDamageGrnData(grnData);
+          setPoDamageRecord(poDmg);
         }
       } catch (err) {
-        console.warn("Could not fetch full GRN details for damage photos", err);
+        console.warn("Could not fetch full damage details", err);
       } finally {
         if (isMounted) setDamageLoading(false);
       }
@@ -237,27 +304,84 @@ function Notifications() {
   };
 
   const damageDetails = selectedDamageNotif
-    ? parseDamageNotificationMessage(selectedDamageNotif.message)
+    ? parseDamageNotificationMessage(selectedDamageNotif.message, selectedDamageNotif)
     : null;
 
   const grnDetails = selectedGrnNotif
     ? parseGrnNotificationDetails(selectedGrnNotif)
     : null;
 
-  const getPhotosForMaterial = (matString: string) => {
-    if (!damageGrnData?.lines) return [];
-    const cleanMat = matString.toLowerCase();
-    const matchedLine = damageGrnData.lines.find((l: any) => {
-      const code = (l.itemCode || l.item_code || "").toLowerCase();
-      const name = (l.materialName || l.material_name || "").toLowerCase();
-      return (code && cleanMat.includes(code)) || (name && cleanMat.includes(name));
-    });
-    const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence;
-    if (Array.isArray(lineEvidence) && lineEvidence.length > 0) return lineEvidence;
-    if (damageGrnData.lines.length === 1) {
-      const ev = damageGrnData.lines[0]?.damageEvidence || damageGrnData.lines[0]?.damage_evidence;
-      if (Array.isArray(ev) && ev.length > 0) return ev;
+  const getPhotosForMaterial = (matString: string, itemCode?: string) => {
+    const cleanMat = (matString || "").toLowerCase();
+    const cleanCode = (itemCode || "").toLowerCase();
+
+    // 1. First check GRN lines damage_evidence matching code or name
+    if (damageGrnData?.lines && Array.isArray(damageGrnData.lines)) {
+      const matchedLine = damageGrnData.lines.find((l: any) => {
+        const code = (l.itemCode || l.item_code || "").toLowerCase();
+        const name = (l.materialName || l.material_name || "").toLowerCase();
+        return (
+          (cleanCode && code && (code === cleanCode || cleanCode.includes(code) || code.includes(cleanCode))) ||
+          (code && cleanMat.includes(code)) ||
+          (name && cleanMat.includes(name))
+        );
+      });
+      const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence;
+      if (Array.isArray(lineEvidence) && lineEvidence.length > 0) {
+        return lineEvidence.map((ev: any) => ({
+          evidenceId: ev.evidenceId || ev.evidence_id || ev.id,
+          fileName: ev.fileName || ev.file_name || "damage_photo.jpg",
+          filePath: ev.filePath || ev.file_path || ev.url || "",
+        }));
+      }
     }
+
+    // 2. Check PO Damaged Goods record materials
+    const poMaterials = poDamageRecord?.materials || damageGrnData?.materials;
+    if (Array.isArray(poMaterials)) {
+      const matchedMat = poMaterials.find((m: any) => {
+        const code = (m.item_code || m.itemCode || "").toLowerCase();
+        const name = (m.material_name || m.materialName || "").toLowerCase();
+        return (
+          (cleanCode && code && (code === cleanCode || cleanCode.includes(code) || code.includes(cleanCode))) ||
+          (code && cleanMat.includes(code)) ||
+          (name && cleanMat.includes(name))
+        );
+      });
+      if (matchedMat?.photos && Array.isArray(matchedMat.photos) && matchedMat.photos.length > 0) {
+        return matchedMat.photos.map((p: any) => ({
+          evidenceId: p.id,
+          fileName: p.file_name || "damage_photo.jpg",
+          filePath: p.url,
+        }));
+      }
+    }
+
+    // 3. Global fallback: Check all evidence photos on the GRN or PO
+    if (damageGrnData?.lines && Array.isArray(damageGrnData.lines)) {
+      const allEv = damageGrnData.lines.flatMap(
+        (l: any) => l.damageEvidence || l.damage_evidence || []
+      );
+      if (allEv.length > 0) {
+        return allEv.map((e: any) => ({
+          evidenceId: e.evidenceId || e.evidence_id || e.id,
+          fileName: e.fileName || e.file_name || "damage_photo.jpg",
+          filePath: e.filePath || e.file_path || e.url || "",
+        }));
+      }
+    }
+
+    if (poDamageRecord?.materials && Array.isArray(poDamageRecord.materials)) {
+      const allPoPhotos = poDamageRecord.materials.flatMap((m: any) => m.photos || []);
+      if (allPoPhotos.length > 0) {
+        return allPoPhotos.map((p: any) => ({
+          evidenceId: p.id,
+          fileName: p.file_name || "damage_photo.jpg",
+          filePath: p.url,
+        }));
+      }
+    }
+
     return [];
   };
 
@@ -500,96 +624,175 @@ function Notifications() {
             </h4>
 
             <div className="space-y-4">
-              {damageDetails?.items.map((item, idx) => {
-                const linePhotos = getPhotosForMaterial(item.material);
+              {(() => {
+                let richMaterials: any[] | null = null;
 
-                return (
-                  <div
-                    key={idx}
-                    className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-3 shadow-xs"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
-                      <div>
-                        <span className="font-bold text-foreground text-sm block">
-                          {item.material}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Reason: <b className="text-rose-700 dark:text-rose-400 font-semibold">{item.reason}</b>
+                // Priority 1: Check full GRN Lines from backend API
+                if (damageGrnData?.lines && Array.isArray(damageGrnData.lines) && damageGrnData.lines.length > 0) {
+                  const filteredLines = damageGrnData.lines.filter(
+                    (l: any) =>
+                      (l.damaged_quantity && Number(l.damaged_quantity) > 0) ||
+                      (l.damagedQuantity && Number(l.damagedQuantity) > 0) ||
+                      (l.rejected_quantity && Number(l.rejected_quantity) > 0) ||
+                      (l.rejectedQuantity && Number(l.rejectedQuantity) > 0) ||
+                      (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0) ||
+                      (Array.isArray(l.damageEvidence) && l.damageEvidence.length > 0) ||
+                      l.quality_result === "REJECTED" ||
+                      l.qualityResult === "REJECTED"
+                  );
+                  const linesToUse = filteredLines.length > 0 ? filteredLines : damageGrnData.lines;
+                  richMaterials = linesToUse.map((l: any) => {
+                    const code = l.item_code || l.itemCode || "MAT";
+                    const name = l.material_name || l.materialName || "Material";
+                    const qty = Number(
+                      l.damaged_quantity ?? l.damagedQuantity ?? l.rejected_quantity ?? l.rejectedQuantity ?? 1
+                    );
+                    const uom = l.uom || "PCS";
+                    const reason =
+                      l.damage_evidence?.[0]?.reason ||
+                      l.damageEvidence?.[0]?.reason ||
+                      l.reason ||
+                      "Damaged during receiving inspection";
+                    return {
+                      material: `${code} (${name})`,
+                      quantity: `${qty > 0 ? qty : 1.0} ${uom}`,
+                      reason,
+                      itemCode: code,
+                    };
+                  });
+                }
+
+                // Priority 2: Check PO Damaged Goods Record
+                if (
+                  (!richMaterials || richMaterials.length === 0) &&
+                  poDamageRecord?.materials &&
+                  Array.isArray(poDamageRecord.materials) &&
+                  poDamageRecord.materials.length > 0
+                ) {
+                  richMaterials = poDamageRecord.materials.map((m: any) => {
+                    const code = m.item_code || m.itemCode || "MAT";
+                    const name = m.material_name || m.materialName || "Material";
+                    const qty = Number(m.damaged_quantity ?? m.quantity ?? 1);
+                    const uom = m.uom || "PCS";
+                    return {
+                      material: `${code} (${name})`,
+                      quantity: `${qty > 0 ? qty : 1.0} ${uom}`,
+                      reason: m.reason || "Damaged during receiving inspection",
+                      itemCode: code,
+                    };
+                  });
+                }
+
+                // Priority 3: Parsed message items sanitized
+                let rawList = (richMaterials && richMaterials.length > 0) ? richMaterials : (damageDetails?.items || []);
+                const itemsToRender = rawList.map((it: any) => {
+                  let mat = it.material || "Damaged Material";
+                  if (mat.includes("undefined") || mat.includes("null")) {
+                    mat = "Damaged Goods Item";
+                  }
+                  let qty = it.quantity || "1.0 PCS";
+                  if (qty.includes("undefined") || qty.includes("null")) {
+                    qty = "1.0 PCS";
+                  }
+                  return {
+                    ...it,
+                    material: mat,
+                    quantity: qty,
+                    reason: it.reason || "Damaged during receiving inspection",
+                  };
+                });
+
+                return itemsToRender.map((item: any, idx: number) => {
+                  const linePhotos = getPhotosForMaterial(item.material, item.itemCode);
+
+                  return (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-3 shadow-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                        <div>
+                          <span className="font-bold text-foreground text-sm block">
+                            {item.material}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            Reason: <b className="text-rose-700 dark:text-rose-400 font-semibold">{item.reason}</b>
+                          </span>
+                        </div>
+                        <span className="font-mono text-xs font-black text-rose-600 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
+                          Damaged: {item.quantity}
                         </span>
                       </div>
-                      <span className="font-mono text-xs font-black text-rose-600 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-                        Damaged: {item.quantity}
-                      </span>
-                    </div>
 
-                    {/* PHOTO EVIDENCE (PICS) GALLERY */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                          <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
-                        </span>
-                        {linePhotos.length > 0 && (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                            ✓ {linePhotos.length} Photo(s) Attached
+                      {/* PHOTO EVIDENCE (PICS) GALLERY */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                            <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
                           </span>
+                          {linePhotos.length > 0 && (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                              ✓ {linePhotos.length} Photo(s) Attached
+                            </span>
+                          )}
+                        </div>
+
+                        {damageLoading ? (
+                          <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
+                            <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
+                            <span className="text-xs text-muted-foreground font-medium">
+                              Loading damage photos...
+                            </span>
+                          </div>
+                        ) : linePhotos.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                            {linePhotos.map((photo: any, pIdx: number) => {
+                              const filePath = photo.filePath || photo.file_path || "";
+                              const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
+                              const fullUrl = filePath.startsWith("http") || filePath.startsWith("data:")
+                                ? filePath
+                                : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
+
+                              return (
+                                <div
+                                  key={photo.evidenceId || photo.evidence_id || pIdx}
+                                  className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
+                                  onClick={() => setEnlargedPhoto(fullUrl)}
+                                >
+                                  <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
+                                    <img
+                                      src={fullUrl}
+                                      alt={fileName}
+                                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                      onError={(e) => {
+                                        // Fallback on missing or invalid image path
+                                        const target = e.target as HTMLImageElement;
+                                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
+                                    <Eye className="size-5 text-rose-200" />
+                                    <span className="text-[10px] font-bold">View Full Picture</span>
+                                  </div>
+                                  <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
+                                    {fileName}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-xl border border-dashed text-xs text-muted-foreground">
+                            <Camera className="size-4 text-muted-foreground/50 shrink-0" />
+                            <span>No photo evidence uploaded for this material during receiving inspection.</span>
+                          </div>
                         )}
                       </div>
-
-                      {damageLoading ? (
-                        <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
-                          <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
-                          <span className="text-xs text-muted-foreground font-medium">
-                            Loading damage photos...
-                          </span>
-                        </div>
-                      ) : linePhotos.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                          {linePhotos.map((photo: any, pIdx: number) => {
-                            const filePath = photo.filePath || photo.file_path || "";
-                            const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
-                            const fullUrl = filePath.startsWith("http")
-                              ? filePath
-                              : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
-
-                            return (
-                              <div
-                                key={photo.evidenceId || photo.evidence_id || pIdx}
-                                className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
-                                onClick={() => setEnlargedPhoto(fullUrl)}
-                              >
-                                <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
-                                  <img
-                                    src={fullUrl}
-                                    alt={fileName}
-                                    className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    onError={(e) => {
-                                      // Fallback on missing or invalid image path
-                                      const target = e.target as HTMLImageElement;
-                                      target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
-                                    }}
-                                  />
-                                </div>
-                                <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
-                                  <Eye className="size-5 text-rose-200" />
-                                  <span className="text-[10px] font-bold">View Full Picture</span>
-                                </div>
-                                <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
-                                  {fileName}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 p-3 bg-muted/20 rounded-xl border border-dashed text-xs text-muted-foreground">
-                          <Camera className="size-4 text-muted-foreground/50 shrink-0" />
-                          <span>No photo evidence uploaded for this material during receiving inspection.</span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
             </div>
           </div>
 
@@ -597,7 +800,7 @@ function Notifications() {
           <DialogFooter className="pt-4 border-t flex justify-end">
             <Button
               variant="outline"
-              className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted"
+              className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted text-xs"
               onClick={() => setShowDamageModal(false)}
             >
               Close

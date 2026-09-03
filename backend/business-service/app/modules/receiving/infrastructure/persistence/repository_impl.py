@@ -23,7 +23,7 @@ from typing import Optional
 import uuid
 
 from datetime import datetime, timezone
-from sqlalchemy import or_, select, text
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -48,6 +48,7 @@ from app.modules.receiving.application.repository import (
     AsnSnapshot,
     GateEntrySnapshot,
     GrnHeaderSnapshot,
+    GrnHistorySnapshot,
     GrnRepository,
     PurchaseOrderLineSnapshot,
     PurchaseOrderSnapshot,
@@ -169,16 +170,43 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         line_snapshots: list[PurchaseOrderLineSnapshot] = []
 
+        # Aggregate cumulative quantities from all past GRNs linked to this PO
+        cum_received_by_item: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        cum_accepted_by_item: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        cum_rejected_by_item: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+
+        grn_res = await self._session.execute(
+            select(GrnModel)
+            .options(selectinload(GrnModel.lines))
+            .where(
+                and_(
+                    or_(GrnModel.po_id == entity.id, GrnModel.po_number == entity.po_number),
+                    GrnModel.status.in_(["COMPLETED", "CONFIRMED"]),
+                )
+            )
+        )
+        existing_grns = grn_res.scalars().all()
+        for g in existing_grns:
+            for gl in g.lines:
+                good = Decimal(str(gl.good_quantity or gl.quality_approved_quantity or gl.received_quantity or 0))
+                dmg = Decimal(str(gl.damaged_quantity or gl.rejected_quantity or 0))
+                tot = good + dmg
+                if tot == Decimal("0") and gl.received_quantity:
+                    tot = Decimal(str(gl.received_quantity))
+                    good = tot
+                cum_received_by_item[gl.item_code] += tot
+                cum_accepted_by_item[gl.item_code] += good
+                cum_rejected_by_item[gl.item_code] += dmg
+
         for item in entity.items:
             quantity = Decimal(item.quantity)
-
             ordered_by_item[item.material_code] += quantity
 
             material_category = getattr(item, 'category', None)
             if not material_category:
                 mat_res = await self._session.execute(
                     select(MaterialModel.category).where(
-                        (MaterialModel.code == item.material_code) | (MaterialModel.name == item.material_name)
+                        (MaterialModel.material_code == item.material_code) | (MaterialModel.material_name == item.material_name)
                     )
                 )
                 material_category = mat_res.scalar_one_or_none()
@@ -227,6 +255,11 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     color = color or "N/A"
                     grade = grade or "Grade A"
 
+            cum_rec = cum_received_by_item.get(item.material_code, Decimal("0"))
+            cum_acc = cum_accepted_by_item.get(item.material_code, Decimal("0"))
+            cum_rej = cum_rejected_by_item.get(item.material_code, Decimal("0"))
+            bal = max(quantity - cum_acc, Decimal("0"))
+
             line_snapshots.append(
                 PurchaseOrderLineSnapshot(
                     item_code=item.material_code,
@@ -238,6 +271,10 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     size=size,
                     color=color,
                     grade=grade,
+                    cumulative_received_quantity=cum_rec,
+                    cumulative_accepted_quantity=cum_acc,
+                    cumulative_rejected_quantity=cum_rej,
+                    balance_quantity=bal,
                 )
             )
 
@@ -545,6 +582,88 @@ class SqlAlchemyGrnRepository(GrnRepository):
             received_by=entity.received_by,
         )
 
+    async def list_grns_for_po(
+        self,
+        *,
+        po_id: str | None = None,
+        po_number: str | None = None,
+    ) -> list[GrnHistorySnapshot]:
+        """
+        Return chronological history of all partial receipts / GRNs for the PO.
+        """
+        conditions = []
+        po_uuid = _uuid_or_none(po_id)
+        if po_uuid is not None:
+            conditions.append(GrnModel.po_id == po_uuid)
+        if po_number:
+            conditions.append(GrnModel.po_number == str(po_number).strip())
+        if not conditions:
+            return []
+
+        result = await self._session.execute(
+            select(GrnModel)
+            .options(
+                selectinload(GrnModel.lines),
+            )
+            .where(and_(or_(*conditions), GrnModel.status.in_(["COMPLETED", "CONFIRMED", "POSTED"])))
+            .order_by(GrnModel.receipt_date.asc(), GrnModel.created_at.asc())
+        )
+        entities = result.scalars().all()
+
+        po_total_ordered = Decimal("0")
+        if po_number or po_uuid:
+            po_query = select(PurchaseOrderModel).options(selectinload(PurchaseOrderModel.items))
+            if po_uuid:
+                po_query = po_query.where(PurchaseOrderModel.id == po_uuid)
+            else:
+                po_query = po_query.where(PurchaseOrderModel.po_number == str(po_number).strip())
+            po_res = await self._session.execute(po_query)
+            po_ent = po_res.scalar_one_or_none()
+            if po_ent:
+                for item in po_ent.items:
+                    po_total_ordered += Decimal(str(item.quantity))
+
+        history: list[GrnHistorySnapshot] = []
+        running_cumulative = Decimal("0")
+
+        for g in entities:
+            rec_qty = Decimal("0")
+            acc_qty = Decimal("0")
+            rej_qty = Decimal("0")
+
+            for line in g.lines:
+                good = Decimal(str(line.good_quantity or line.quality_approved_quantity or line.received_quantity or 0))
+                dmg = Decimal(str(line.damaged_quantity or line.rejected_quantity or 0))
+                tot = good + dmg
+                if tot == Decimal("0") and line.received_quantity:
+                    tot = Decimal(str(line.received_quantity))
+                    good = tot
+                rec_qty += tot
+                acc_qty += good
+                rej_qty += dmg
+
+            running_cumulative += acc_qty
+            running_balance = max(po_total_ordered - running_cumulative, Decimal("0")) if po_total_ordered > Decimal("0") else Decimal("0")
+
+            history.append(
+                GrnHistorySnapshot(
+                    grn_id=str(g.id),
+                    grn_number=g.grn_number or f"GRN-{str(g.id)[:8]}",
+                    receipt_date=g.receipt_date or g.created_at,
+                    vehicle_number=g.vehicle_number,
+                    driver_name=g.driver_name,
+                    dock_number=g.dock_number,
+                    received_quantity=rec_qty,
+                    accepted_quantity=acc_qty,
+                    rejected_quantity=rej_qty,
+                    cumulative_received=running_cumulative,
+                    balance_quantity=running_balance,
+                    status=g.status,
+                )
+            )
+
+        return history
+
     # ========================================================================
     # RECEIVING DOCK OPTIONS
     # ========================================================================
@@ -710,6 +829,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
         *,
         receipt_type: str,
         dock_number: str,
+        grn_id: str | uuid.UUID | None = None,
         po_id: str | None = None,
         po_number: str | None = None,
         invoice_number: str | None = None,
@@ -723,17 +843,28 @@ class SqlAlchemyGrnRepository(GrnRepository):
         verification_notes: str | None = None,
     ) -> GrnModel:
         now = datetime.now(timezone.utc)
-        grn_uuid: uuid.UUID | None = None
+        grn_uuid = _uuid_or_none(grn_id)
         existing: GrnModel | None = None
-
-        if po_id or po_number:
-            existing_snapshot = await self.find_grn_header_by_po(po_id=po_id, po_number=po_number)
-            if existing_snapshot:
-                grn_uuid = uuid.UUID(existing_snapshot.id)
 
         if grn_uuid:
             res = await self._session.execute(
                 select(GrnModel).options(selectinload(GrnModel.lines)).where(GrnModel.id == grn_uuid)
+            )
+            existing = res.scalar_one_or_none()
+        elif po_id or po_number:
+            # Check for an active DRAFT GRN for this PO
+            conditions = []
+            po_uuid = _uuid_or_none(po_id)
+            if po_uuid is not None:
+                conditions.append(GrnModel.po_id == po_uuid)
+            if po_number:
+                conditions.append(GrnModel.po_number == str(po_number).strip())
+            
+            res = await self._session.execute(
+                select(GrnModel).options(selectinload(GrnModel.lines))
+                .where(and_(or_(*conditions), GrnModel.status == "DRAFT"))
+                .order_by(GrnModel.created_at.desc())
+                .limit(1)
             )
             existing = res.scalar_one_or_none()
 
@@ -809,7 +940,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
         )
 
         if po_uuid or po_number:
-            po_snap = await self.find_purchase_order(PurchaseOrderId.of(po_id)) if po_id else await self.find_purchase_order_by_number(po_number)
+            po_snap = await self.find_purchase_order(PurchaseOrderId.of(po_uuid)) if po_uuid else (await self.find_purchase_order_by_number(po_number) if po_number else None)
             if po_snap:
                 for line in po_snap.lines:
                     new_grn.lines.append(
@@ -825,7 +956,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                             damaged_quantity=Decimal("0"),
                             rejected_quantity=Decimal("0"),
                             quality_approved_quantity=Decimal("0"),
-                            balance_quantity=line.ordered_quantity,
+                            balance_quantity=line.balance_quantity,
                         )
                     )
 
@@ -1285,6 +1416,39 @@ class SqlAlchemyGrnRepository(GrnRepository):
                         "now": now,
                     },
                 )
+
+        # Recalculate and update parent Purchase Order status based on cumulative accepted quantity
+        if grn.po_id or grn.po_number:
+            po_query = select(PurchaseOrderModel).options(selectinload(PurchaseOrderModel.items))
+            if grn.po_id:
+                po_query = po_query.where(PurchaseOrderModel.id == grn.po_id)
+            else:
+                po_query = po_query.where(PurchaseOrderModel.po_number == str(grn.po_number).strip())
+            
+            po_res = await self._session.execute(po_query)
+            parent_po = po_res.scalar_one_or_none()
+
+            if parent_po and parent_po.items:
+                all_grns_res = await self._session.execute(
+                    select(GrnModel).options(selectinload(GrnModel.lines))
+                    .where(
+                        (GrnModel.po_id == parent_po.id) | (GrnModel.po_number == parent_po.po_number)
+                    )
+                )
+                all_po_grns = all_grns_res.scalars().all()
+
+                tot_ordered = sum(Decimal(str(pi.quantity)) for pi in parent_po.items)
+                tot_accepted = Decimal("0")
+
+                for g in all_po_grns:
+                    for gl in g.lines:
+                        good = Decimal(str(gl.good_quantity or gl.quality_approved_quantity or gl.received_quantity or 0))
+                        tot_accepted += good
+
+                if tot_accepted >= tot_ordered and tot_ordered > Decimal("0"):
+                    parent_po.status = "COMPLETED"
+                elif tot_accepted > Decimal("0"):
+                    parent_po.status = "PARTIALLY_RECEIVED"
 
         await self._session.flush()
         return grn
