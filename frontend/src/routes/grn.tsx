@@ -411,6 +411,8 @@ function GrnPageWorkflow() {
     }
   }, [activeTab, loadRecords]);
 
+  const [availablePos, setAvailablePos] = useState<any[]>([]);
+
   useEffect(() => {
     async function loadPos() {
       try {
