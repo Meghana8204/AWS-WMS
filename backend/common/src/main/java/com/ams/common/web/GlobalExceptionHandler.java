@@ -8,8 +8,10 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-
-
+/**
+ * Translates domain exceptions into HTTP responses - unchanged from the
+ * pre-migration version, now used only by auth-service.
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 

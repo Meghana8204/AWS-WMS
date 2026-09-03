@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Building2,
   FileText,
@@ -25,19 +25,8 @@ import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/lib/api-client";
 import { requireRole } from "@/lib/auth-utils";
-
-type ProcurementStats = {
-  activeSuppliers: number;
-  totalSuppliers: number;
-  openPos: number;
-  complianceRate: number | null;
-  complianceTarget: number;
-  totalPoValue: number;
-  trend: Array<{ month: string; pos: number }>;
-};
 
 export const Route = createFileRoute("/procurement-dashboard")({
   beforeLoad: () => requireRole("PROCUREMENT"),
@@ -52,27 +41,32 @@ export const Route = createFileRoute("/procurement-dashboard")({
   }),
   component: ProcurementDashboard,
 });
+
 function ProcurementDashboard() {
   const [loading, setLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [pos, setPos] = useState<any[]>([]);
-  const [stats, setStats] = useState<ProcurementStats>({
+  const [stats, setStats] = useState<any>({
     activeSuppliers: 0,
+    activeSuppliersThisMonth: 0,
     totalSuppliers: 0,
     openPos: 0,
-    complianceRate: null,
-    complianceTarget: 99,
+    complianceRate: 100,
     totalPoValue: 0,
     trend: [],
   });
+
+  // Search states
   const [supplierQuery, setSupplierQuery] = useState("");
   const [poQuery, setPoQuery] = useState("");
   const [supplierResults, setSupplierResults] = useState<any[]>([]);
   const [poResults, setPoResults] = useState<any[]>([]);
   const [isSearchingSuppliers, setIsSearchingSuppliers] = useState(false);
   const [isSearchingPOs, setIsSearchingPOs] = useState(false);
-  const [poSearchOpen, setPoSearchOpen] = useState(false);
+  const [poSearchFailed, setPoSearchFailed] = useState(false);
+  const poSearchInputRef = useRef<HTMLInputElement>(null);
+
   const loadData = async () => {
     try {
       setLoading(true);
@@ -92,29 +86,18 @@ function ProcurementDashboard() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     loadData();
   }, []);
-  useEffect(() => {
-    const refreshStats = async () => {
-      try {
-        setStats(await api.getProcurementStats());
-      } catch (err) {
-        console.error("Failed to refresh procurement stats", err);
-      }
-    };
-    const intervalId = window.setInterval(refreshStats, 15_000);
-    window.addEventListener("focus", refreshStats);
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshStats);
-    };
-  }, []);
+
+  // Real-time Supplier Search
   useEffect(() => {
     if (!supplierQuery.trim()) {
       setSupplierResults([]);
       return;
     }
+
     const handler = setTimeout(async () => {
       setIsSearchingSuppliers(true);
       try {
@@ -126,26 +109,43 @@ function ProcurementDashboard() {
         setIsSearchingSuppliers(false);
       }
     }, 300);
+
     return () => clearTimeout(handler);
   }, [supplierQuery]);
+
+  // Real-time PO Search
   useEffect(() => {
     if (!poQuery.trim()) {
       setPoResults([]);
+      setPoSearchFailed(false);
+      setIsSearchingPOs(false);
       return;
     }
+
+    const controller = new AbortController();
     const handler = setTimeout(async () => {
       setIsSearchingPOs(true);
+      setPoSearchFailed(false);
       try {
-        const results = await api.getPurchaseOrders(poQuery);
+        const results = await api.getPurchaseOrders(poQuery.trim(), controller.signal);
         setPoResults(results);
       } catch (err) {
-        console.error("PO search failed", err);
+        if (!controller.signal.aborted) {
+          console.error("PO search failed", err);
+          setPoResults([]);
+          setPoSearchFailed(true);
+        }
       } finally {
-        setIsSearchingPOs(false);
+        if (!controller.signal.aborted) setIsSearchingPOs(false);
       }
     }, 300);
-    return () => clearTimeout(handler);
+
+    return () => {
+      clearTimeout(handler);
+      controller.abort();
+    };
   }, [poQuery]);
+
   const activityItems = notifications.map((n) => ({
     time: new Date(n.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     title: n.title,
@@ -155,91 +155,25 @@ function ProcurementDashboard() {
       : n.title.includes("Rejected")
         ? "danger"
         : "primary",
-    link: n.link,
   }));
+
   return (
     <AppShell
       title="Procurement Management"
       subtitle="Manage your vendor ecosystem and purchase operations"
       actions={
-        <>
-          <Popover open={poSearchOpen} onOpenChange={setPoSearchOpen}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="rounded-xl">
-                <Search className="size-4" /> Find PO
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[360px] rounded-xl p-3" align="end">
-              <div className="space-y-3">
-                <div>
-                  <p className="text-sm font-semibold">Find a purchase order</p>
-                  <p className="text-xs text-muted-foreground">
-                    Search by PO number, supplier, or department
-                  </p>
-                </div>
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 size-4 text-muted-foreground" />
-                  <Input
-                    autoFocus
-                    placeholder="Start typing to search..."
-                    className="rounded-xl pl-9 pr-9"
-                    value={poQuery}
-                    onChange={(event) => setPoQuery(event.target.value)}
-                  />
-                  {isSearchingPOs && (
-                    <Loader2 className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" />
-                  )}
-                </div>
-                {poQuery.trim() ? (
-                  isSearchingPOs && poResults.length === 0 ? (
-                    <p className="py-4 text-center text-xs text-muted-foreground">Searching...</p>
-                  ) : poResults.length > 0 ? (
-                    <div className="max-h-72 space-y-1 overflow-y-auto">
-                      {poResults.slice(0, 8).map((po) => (
-                        <Link
-                          key={po.id}
-                          to="/purchase-order"
-                          search={{ poId: po.id }}
-                          onClick={() => setPoSearchOpen(false)}
-                          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
-                        >
-                          <FileText className="size-4 shrink-0 text-teal" />
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium">{po.po_number}</p>
-                            <p className="truncate text-[10px] text-muted-foreground">
-                              {po.supplier_name || po.department || "Supplier unavailable"}
-                            </p>
-                          </div>
-                          <StatusBadge status={po.status} />
-                        </Link>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="py-4 text-center text-xs text-muted-foreground">
-                      No purchase orders match “{poQuery}”.
-                    </p>
-                  )
-                ) : (
-                  <p className="py-4 text-center text-xs text-muted-foreground">
-                    Results update automatically as you type.
-                  </p>
-                )}
-              </div>
-            </PopoverContent>
-          </Popover>
-          <Button className="rounded-xl shadow-glow" asChild>
-            <Link to="/new-supplier">
-              <Plus className="size-4" /> New Supplier
-            </Link>
-          </Button>
-        </>
+        <Button className="rounded-xl shadow-glow" asChild>
+          <Link to="/new-supplier">
+            <Plus className="size-4" /> New Supplier
+          </Link>
+        </Button>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Active suppliers"
           value={loading ? "..." : String(stats.activeSuppliers)}
-          delta="+3 this month"
+          delta={`${stats.activeSuppliersThisMonth >= 0 ? "+" : ""}${stats.activeSuppliersThisMonth} this month`}
           icon={Building2}
           tone="primary"
           to="/master-data"
@@ -247,8 +181,8 @@ function ProcurementDashboard() {
         <StatCard
           label="Total suppliers"
           value={loading ? "..." : String(stats.totalSuppliers)}
-          delta="All registered suppliers"
-          icon={Building2}
+          delta="Available for procurement"
+          icon={Users}
           tone="success"
           to="/master-data"
         />
@@ -262,10 +196,8 @@ function ProcurementDashboard() {
         />
         <StatCard
           label="Compliance rate"
-          value={
-            loading ? "..." : stats.complianceRate === null ? "No data" : `${stats.complianceRate}%`
-          }
-          delta={`Target: ${stats.complianceTarget}%`}
+          value={loading ? "..." : `${stats.complianceRate}%`}
+          delta="Target: 99%"
           icon={ShieldCheck}
           tone="success"
         />
@@ -345,7 +277,7 @@ function ProcurementDashboard() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-medium">{s.supplierName}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {s.supplierCode || s.supplierId}
+                          {s.supplierCode || `${s.supplierId.substring(0, 8)}...`}
                         </p>
                       </div>
                     </Link>
@@ -360,6 +292,7 @@ function ProcurementDashboard() {
               </label>
               <div className="relative">
                 <Input
+                  ref={poSearchInputRef}
                   placeholder="Enter PO number..."
                   className="rounded-xl pr-8"
                   value={poQuery}
@@ -381,13 +314,22 @@ function ProcurementDashboard() {
                     >
                       <FileText className="size-4 text-teal" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{po.po_number}</p>
-                        <p className="text-[10px] text-muted-foreground">{po.supplier_name}</p>
+                        <p className="truncate font-medium">{po.poNumber}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {po.supplierName || "Supplier not specified"}
+                        </p>
                       </div>
                       <StatusBadge status={po.status} className="h-4 px-1.5 text-[9px]" />
                     </Link>
                   ))}
                 </div>
+              )}
+              {!isSearchingPOs && poQuery.trim() && poResults.length === 0 && (
+                <p className="px-1 text-xs text-muted-foreground">
+                  {poSearchFailed
+                    ? "Could not search purchase orders. Please try again."
+                    : "No matching purchase orders found."}
+                </p>
               )}
             </div>
             <p className="text-[10px] text-muted-foreground italic text-center">
@@ -443,7 +385,7 @@ function ProcurementDashboard() {
                           {s.supplierName}
                         </Link>
                         <p className="text-[11px] text-muted-foreground">
-                          {s.supplierCode || s.supplierId}
+                          {s.supplierCode || `${s.supplierId.substring(0, 8)}...`}
                         </p>
                       </td>
                       <td className="py-3 text-muted-foreground">{s.category}</td>

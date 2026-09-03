@@ -5,8 +5,10 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
-
-
+/**
+ * Append-only security audit trail: logins, logouts, failed attempts,
+ * user/role changes. Required by the "Audit Logs" scope of auth-service.
+ */
 @Entity
 @Table(name = "audit_log")
 public class AuditLog {
@@ -26,7 +28,7 @@ public class AuditLog {
     private Instant occurredAt;
 
     protected AuditLog() {
-
+        // required by JPA
     }
 
     public AuditLog(UUID userId, String eventType, String detail) {

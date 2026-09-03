@@ -12,18 +12,20 @@ from sqlalchemy.orm import selectinload
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+from app.security.dependencies import get_current_user, CurrentUser
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/stats")
 async def get_dashboard_stats(
-    uow: UnitOfWork = Depends(get_uow)
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user)
 ) -> dict:
     """
     Get real-time dashboard metrics from the gate repository.
     """
-
+    # Fetch real gate entries from PostgreSQL
     result = await uow.session.execute(
         select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
     )
@@ -31,38 +33,30 @@ async def get_dashboard_stats(
 
     total_arrivals = len(models)
 
-
+    # Compute status-based counters
     verified_arrivals = 0
     unscheduled_arrivals = 0
     vehicles_waiting = 0
     receiving_in_progress = 0
-    awaiting_dock_count = 0
 
     for m in models:
         status_upper = (m.status or "").upper()
 
-        if "REJECT" in status_upper or "CANCEL" in status_upper:
+        if "REJECT" in status_upper:
             continue
-
+        
         if status_upper == "PO_VERIFIED" or status_upper == "APPROVED":
             verified_arrivals += 1
         elif status_upper == "UNSCHEDULED_ARRIVAL":
             unscheduled_arrivals += 1
 
-
+        # Logic for vehicles waiting and receiving
         if "DOCK" in status_upper or "RECEIV" in status_upper:
             receiving_in_progress += 1
         elif "COMPLET" not in status_upper:
             vehicles_waiting += 1
 
-        # Check Awaiting Dock condition: approved, dock not assigned, not completed/exited
-        is_approved = any(kw in status_upper for kw in ["APPROVED", "GATE_ENTRY_APPROVED", "AWAITING_DOCK", "DOCK_PENDING"])
-        has_no_dock = not m.assigned_dock_id or m.assigned_dock_id.strip() == "" or m.assigned_dock_id.upper() == "UNASSIGNED"
-        is_active = not any(kw in status_upper for kw in ["COMPLET", "EXIT", "REJECT", "CANCEL"])
-        if is_approved and has_no_dock and is_active:
-            awaiting_dock_count += 1
-
-
+    # Dock Occupancy (Mock list for UI mapping)
     docks = [
         { "id": "D-01", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
         { "id": "D-02", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
@@ -74,7 +68,7 @@ async def get_dashboard_stats(
         { "id": "D-08", "zone": "Zone D — Hazmat", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Hazmat certified" },
     ]
 
-
+    # Dynamically map gate entries to docks
     for m in models:
         status_upper = (m.status or "").upper()
         if "DOCK" in status_upper or "RECEIV" in status_upper:
@@ -85,10 +79,10 @@ async def get_dashboard_stats(
                     dock["eta"] = "Free in 30 min" if "RECEIV" in status_upper else "Docking soon"
                     break
 
-
+    # Build real-time timeline of activity
     activity = []
     for m in models[:5]:
-
+        # Ensure naive datetime if needed or handle timezone
         time_str = m.created_at.strftime("%H:%M")
         status_upper = (m.status or "").upper()
 
@@ -145,62 +139,14 @@ async def get_dashboard_stats(
         "percentage": int(((total_arrivals - vehicles_waiting) / max(total_arrivals + 2, 10)) * 100) if total_arrivals > 0 else 0
     }
 
-
-    from app.modules.dock.infrastructure.persistence.models import DockMasterModel, DockAllocationRequestModel
-
-    dock_models_res = await uow.session.execute(select(DockMasterModel).where(DockMasterModel.is_active == True))
-    dock_models = dock_models_res.scalars().all()
-
-    dock_master_map = {}
-    if dock_models:
-        for dm in dock_models:
-            dock_master_map[str(dm.id)] = (dm.dock_code, dm.dock_name)
-            dock_master_map[dm.dock_code] = (dm.dock_code, dm.dock_name)
-
-    alloc_req_res = await uow.session.execute(
-        select(DockAllocationRequestModel).options(selectinload(DockAllocationRequestModel.assigned_dock))
-    )
-    alloc_reqs = alloc_req_res.scalars().all()
-    alloc_map_by_pass = {}
-    alloc_map_by_vehicle = {}
-    for ar in alloc_reqs:
-        if ar.assigned_dock:
-            code = ar.assigned_dock.dock_code
-            name = ar.assigned_dock.dock_name or ar.assigned_dock.dock_code
-        elif ar.assigned_dock_id and str(ar.assigned_dock_id) in dock_master_map:
-            code, name = dock_master_map[str(ar.assigned_dock_id)]
-        else:
-            continue
-        if ar.existing_gate_pass_id:
-            alloc_map_by_pass[ar.existing_gate_pass_id] = (code, name)
-        if ar.vehicle_number:
-            alloc_map_by_vehicle[ar.vehicle_number] = (code, name)
-
+    # Format gate entries list for dashboard table
     formatted_entries = []
     for m in models[:10]:
         dock_no = "—"
-        dock_name = "—"
-
-        if m.assigned_dock_id and m.assigned_dock_id.strip() and m.assigned_dock_id.upper() != "UNASSIGNED":
-            val = m.assigned_dock_id.strip()
-            if val in dock_master_map:
-                dock_no, dock_name = dock_master_map[val]
-            else:
-                dock_no = val
-                dock_name = f"Dock {val}" if not val.startswith("Dock") else val
-
-        if (dock_no == "—" or not dock_no) and m.gate_entry_number in alloc_map_by_pass:
-            dock_no, dock_name = alloc_map_by_pass[m.gate_entry_number]
-
-        if (dock_no == "—" or not dock_no) and m.vehicle_number in alloc_map_by_vehicle:
-            dock_no, dock_name = alloc_map_by_vehicle[m.vehicle_number]
-
-        if dock_no == "—" or not dock_no:
-            for d in docks:
-                if d["vehicle"] == m.vehicle_number:
-                    dock_no = d["id"]
-                    dock_name = f"Dock {d['id']}"
-                    break
+        for d in docks:
+            if d["vehicle"] == m.vehicle_number:
+                dock_no = d["id"]
+                break
 
         formatted_entries.append({
             "id": str(m.id),
@@ -210,8 +156,6 @@ async def get_dashboard_stats(
             "po_number": m.po_number,
             "arrival_time": m.created_at.strftime("%H:%M"),
             "dock_number": dock_no,
-            "dock_name": dock_name if dock_name != "—" else (f"Dock {dock_no}" if dock_no != "—" else "—"),
-            "assigned_dock_id": m.assigned_dock_id or (dock_no if dock_no != "—" else None),
             "status": m.status,
             "vendor": m.ocr_supplier_name or "Unknown Vendor",
             "material": m.ocr_product_material or "—",
@@ -219,23 +163,16 @@ async def get_dashboard_stats(
             "truck_photo_base64": base64.b64encode(m.vehicle_photo_data).decode("ascii") if m.vehicle_photo_data else None,
         })
 
-    if dock_models:
-        total_dock_count = len(dock_models)
-        occupied_count = sum(1 for d in dock_models if d.status in ("OCCUPIED", "RESERVED"))
-    else:
-        occupied_count = len([d for d in docks if d["status"] in ("Occupied", "Reserved")])
-        total_dock_count = 8
+    occupied_count = len([d for d in docks if d["status"] in ("Occupied", "Reserved")])
 
     return {
         "stats": {
             "totalArrivals": total_arrivals,
             "verifiedArrivals": verified_arrivals,
             "unscheduledArrivals": unscheduled_arrivals,
-            "occupiedDocks": f"{occupied_count}/{total_dock_count}",
+            "occupiedDocks": f"{occupied_count}/8",
             "vehiclesWaiting": vehicles_waiting,
-            "receivingInProgress": receiving_in_progress,
-            "awaitingDock": awaiting_dock_count,
-            "awaiting_dock": awaiting_dock_count,
+            "receivingInProgress": receiving_in_progress
         },
         "docks": docks,
         "arrivalTrend": arrival_trend,

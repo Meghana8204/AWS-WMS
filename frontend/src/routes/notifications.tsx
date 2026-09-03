@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+<<<<<<< HEAD
 import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X, Eye, ExternalLink } from "lucide-react";
 import { AppShell, DockAllocationNotificationCard } from "@/components/wms/app-shell";
 import { Card } from "@/components/ui/card";
@@ -9,12 +10,36 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { api, BUSINESS_API_URL } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { requireAuth } from "@/lib/auth-utils";
+=======
+import {
+  Bell,
+  Truck,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  Filter,
+  Inbox,
+  Loader2,
+  Calendar,
+  FileText,
+  ArrowRight,
+  Package,
+} from "lucide-react";
+import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { api } from "@/lib/api-client";
+import { cn } from "@/lib/utils";
+import { getUserInfo, requireAuth } from "@/lib/auth-utils";
+>>>>>>> main
 
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
   component: Notifications,
 });
 
+<<<<<<< HEAD
 function parseDamageNotificationMessage(msg?: string) {
   if (!msg) return { grnNumber: "", poNumber: "", supplierName: "", warehouseName: "", reportedBy: "", customRemarks: "", items: [] };
 
@@ -92,11 +117,15 @@ function parseGrnNotificationDetails(n: any) {
   };
 }
 
+=======
+>>>>>>> main
 function Notifications() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
 
+<<<<<<< HEAD
   // Modal State for Damaged Goods Details
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
@@ -108,16 +137,19 @@ function Notifications() {
   const [showGrnModal, setShowGrnModal] = useState(false);
   const [selectedGrnNotif, setSelectedGrnNotif] = useState<any | null>(null);
 
+=======
+>>>>>>> main
   useEffect(() => {
-    const info = localStorage.getItem("user_info");
-    const roles = info ? JSON.parse(info).roles || [] : [];
+    const roles = getUserInfo()?.roles || [];
     const role = roles.includes("SUPPLIER")
       ? "SUPPLIER"
       : roles.includes("FINANCE")
         ? "FINANCE"
         : roles.includes("PROCUREMENT")
           ? "PROCUREMENT"
-          : "WAREHOUSE";
+          : roles.includes("ASSEMBLY_MANAGER")
+            ? "ASSEMBLY_MANAGER"
+            : "WAREHOUSE";
     setUserRole(role);
     void fetchData(role, false);
     const timer = window.setInterval(() => void fetchData(role, true), 2000);
@@ -131,6 +163,7 @@ function Notifications() {
     };
   }, []);
 
+<<<<<<< HEAD
   // Fetch full GRN damage data when damage notification is selected
   useEffect(() => {
     if (!selectedDamageNotif) {
@@ -205,6 +238,8 @@ function Notifications() {
     };
   }, [selectedDamageNotif]);
 
+=======
+>>>>>>> main
   const fetchData = async (role: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -245,6 +280,7 @@ function Notifications() {
     }
   };
 
+<<<<<<< HEAD
   const handleOpenNotificationDetails = (n: any) => {
     const isDockAllocation =
       n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
@@ -307,12 +343,51 @@ function Notifications() {
       if (Array.isArray(ev) && ev.length > 0) return ev;
     }
     return [];
+=======
+  const handleMarkRead = async (id: string) => {
+    try {
+      const notification = notifications.find((n) => n.id === id);
+      if (userRole === "WAREHOUSE" && notification?.type === "arrival")
+        await api.markArrivalNotificationRead(id);
+      else await api.markNotificationRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch (e) {
+      toast.error("Unable to mark notification as read");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      if (userRole === "WAREHOUSE") {
+        await Promise.all([
+          api.markAllArrivalNotificationsRead(),
+          api.markAllNotificationsRead(userRole),
+        ]);
+      } else await api.markAllNotificationsRead(userRole);
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, is_read: true })));
+      window.dispatchEvent(new Event("notifications:refresh"));
+      toast.success("All notifications marked as read");
+    } catch (error) {
+      toast.error("Unable to mark all notifications as read");
+    }
+>>>>>>> main
   };
 
   return (
     <AppShell
       title="Notification centre"
       subtitle="Stay updated with procurement and supply chain alerts"
+      actions={
+        <Button
+          variant="outline"
+          className="rounded-xl"
+          onClick={handleMarkAllRead}
+          disabled={!notifications.some((notification) => !notification.is_read)}
+        >
+          Mark all read
+        </Button>
+      }
     >
       {loading ? (
         <div className="flex h-64 items-center justify-center">
@@ -330,6 +405,7 @@ function Notifications() {
         </Card>
       ) : (
         <div className="grid gap-4">
+<<<<<<< HEAD
           {notifications.map((n) => {
             const isDockAllocation =
               n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
@@ -338,6 +414,37 @@ function Notifications() {
             if (isDockAllocation) {
               return <DockAllocationNotificationCard key={n.id} notification={n} />;
             }
+=======
+          {notifications.map((n, i) => (
+            <Card
+              key={n.id}
+              className={cn(
+                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
+                !n.is_read && "bg-primary-soft/5 border-primary/20",
+              )}
+            >
+              {!n.is_read && <div className="absolute left-0 top-0 h-full w-1 bg-primary" />}
+
+              <div className="flex items-start gap-4">
+                <div
+                  className={cn(
+                    "grid size-12 shrink-0 place-items-center rounded-2xl",
+                    n.title?.includes("Approved")
+                      ? "bg-success-soft text-success"
+                      : n.title?.includes("Rejected") || n.title?.includes("Failed")
+                        ? "bg-destructive-soft text-destructive"
+                        : "bg-primary-soft text-primary",
+                  )}
+                >
+                  {n.type === "arrival" ? (
+                    <Truck className="size-6" />
+                  ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
+                    <Package className="size-6" />
+                  ) : (
+                    <FileText className="size-6" />
+                  )}
+                </div>
+>>>>>>> main
 
             const isDamage =
               n.title?.toLowerCase().includes("damage") ||
@@ -384,6 +491,7 @@ function Notifications() {
                     )}
                   </div>
 
+<<<<<<< HEAD
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
                       <h3
@@ -432,6 +540,20 @@ function Notifications() {
                       >
                         <FileText className="mr-1.5 size-3.5" /> View Details
                       </Button>
+=======
+                  <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
+                    <div className="flex gap-2">
+                      {n.po_number && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">
+                          PO: {n.po_number}
+                        </span>
+                      )}
+                      {n.supplier_name && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted">
+                          {n.supplier_name}
+                        </span>
+                      )}
+>>>>>>> main
                     </div>
                   </div>
                 </div>

@@ -1,18 +1,29 @@
 import * as React from "react";
-import { createFileRoute, useNavigate, useSearch, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate, useSearch } from "@tanstack/react-router";
 import { Warehouse, Loader2, Eye, EyeOff, ShieldCheck, Lock } from "lucide-react";
 import { toast } from "sonner";
+
 import { api } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { isAuthenticated, getUserInfo } from "@/lib/auth-utils";
+
+import {
+  getDefaultRouteForUser,
+  getSafeRedirectPath,
+  getUserInfo,
+  isAuthenticated,
+} from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/login")({
   beforeLoad: () => {
+    // Skip server-side redirects for localStorage-based auth
     if (typeof window === "undefined") return;
+
     if (isAuthenticated()) {
       const user = getUserInfo();
+<<<<<<< HEAD
       let target = "/warehouse-dashboard";
       if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
       else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
@@ -20,28 +31,58 @@ export const Route = createFileRoute("/login")({
       else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
       else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
       throw redirect({ to: target as any });
+=======
+      throw redirect({ to: getDefaultRouteForUser(user) as any });
+>>>>>>> main
     }
   },
   component: LoginPage,
 });
+
 function LoginPage() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as any;
-  const redirect = search.redirect || "";
+  const redirectPath = getSafeRedirectPath(search.redirect || search.next);
+  const magicToken = search.token;
+
   const [employeeId, setEmployeeId] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [rememberMe, setRememberMe] = React.useState(false);
+
+  // Handle auto-login via magic token
+  React.useEffect(() => {
+    if (magicToken && !isLoading) {
+      const performAutoLogin = async () => {
+        setIsLoading(true);
+        try {
+          // magicToken is a base64 string of "username:password_hash"
+          const decoded = atob(magicToken);
+          const [u, p] = decoded.split(":");
+          const data = await api.login(u, p);
+          completeAuthentication(data);
+        } catch (error) {
+          console.error("Auto-login failed", error);
+          toast.error("Magic link expired or invalid. Please login manually.");
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      void performAutoLogin();
+    }
+  }, [magicToken]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!employeeId || !password) {
       toast.error("Please enter both Employee ID and password");
       return;
     }
+
     setIsLoading(true);
     try {
-      const data = await api.login(employeeId, password);
+      const data = await api.login(employeeId, password, rememberMe);
       completeAuthentication(data);
     } catch (error: any) {
       toast.error(error.message || "Login failed. Please check your credentials.");
@@ -49,8 +90,10 @@ function LoginPage() {
       setIsLoading(false);
     }
   };
+
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
+<<<<<<< HEAD
     const isGrn = data.roles?.includes("GRN") || data.username?.toLowerCase() === "grn" || employeeId.toLowerCase() === "grn";
     const isSupplier = data.roles?.includes("SUPPLIER");
     const isProcurement = data.roles?.includes("PROCUREMENT");
@@ -71,25 +114,28 @@ function LoginPage() {
     } else {
       targetPath = redirect || "/warehouse-dashboard";
     }
+=======
+    const targetPath = redirectPath || getDefaultRouteForUser(data);
+
+>>>>>>> main
     setTimeout(() => {
-      if (targetPath.startsWith("http")) {
-        window.location.href = targetPath;
-      } else {
-        const [path, queryString] = targetPath.split("?");
-        if (queryString) {
-          const searchParams = Object.fromEntries(new URLSearchParams(queryString));
-          navigate({ to: path as any, search: searchParams });
-        } else {
-          navigate({ to: path as any });
-        }
-      }
+      // Keep route transitions internal. `redirectPath` has already rejected external URLs.
+      const target = new URL(targetPath, window.location.origin);
+      navigate({
+        to: target.pathname as any,
+        search: Object.fromEntries(target.searchParams) as any,
+        hash: target.hash,
+      });
     }, 500);
   };
+
   const handleForgotPassword = () => {
     toast.info("Please contact your IT administrator to reset your password.");
   };
+
   return (
     <div className="flex min-h-screen w-full flex-col lg:flex-row">
+      {/* Left side - Illustration/Branding */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-primary p-12 text-primary-foreground relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex items-center gap-2 text-2xl font-bold tracking-tight">
@@ -121,6 +167,7 @@ function LoginPage() {
           </div>
         </div>
 
+        {/* Mesh Background Pattern */}
         <div className="absolute inset-0 z-0 opacity-20">
           <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
             <defs>
@@ -136,6 +183,7 @@ function LoginPage() {
         </div>
       </div>
 
+      {/* Right side - Login Form */}
       <div className="flex flex-1 items-center justify-center bg-background p-6 lg:p-12">
         <div className="mx-auto w-full max-w-[400px] space-y-6">
           <div className="flex flex-col space-y-2 text-center lg:text-left">

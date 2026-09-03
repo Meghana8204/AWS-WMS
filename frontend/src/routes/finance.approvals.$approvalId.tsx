@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
@@ -14,8 +14,8 @@ import {
   Info,
   Download,
   MessageSquare,
-  Sparkles,
-  ArrowRight,
+  History,
+  Clock,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -25,9 +25,11 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
 export const Route = createFileRoute("/finance/approvals/$approvalId")({
   component: ApprovalDetail,
 });
+
 function ApprovalDetail() {
   const { approvalId } = Route.useParams();
   const navigate = useNavigate();
@@ -36,19 +38,13 @@ function ApprovalDetail() {
   const [processing, setProcessing] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [isRejecting, setIsRejecting] = useState(false);
-  const [hasRelatedProposals, setHasRelatedProposals] = useState(false);
+
   const fetchPo = async () => {
     try {
       setLoading(true);
       const data = await api.getPurchaseOrder(approvalId);
       setPo(data);
-      if (data.rfqId) {
-        const allApprovals = await api.getFinanceApprovals();
-        const related = allApprovals.filter(
-          (p: any) => p.rfqId === data.rfqId && p.id !== approvalId,
-        );
-        setHasRelatedProposals(related.length > 0);
-      }
+
     } catch (error) {
       console.error("Failed to fetch PO:", error);
       toast.error("Failed to load purchase order details");
@@ -56,9 +52,11 @@ function ApprovalDetail() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchPo();
   }, [approvalId]);
+
   const handleApprove = async () => {
     try {
       setProcessing(true);
@@ -71,6 +69,7 @@ function ApprovalDetail() {
       setProcessing(false);
     }
   };
+
   const handleReject = async () => {
     if (!rejectionReason) {
       toast.error("Please provide a reason for rejection");
@@ -88,6 +87,7 @@ function ApprovalDetail() {
       setIsRejecting(false);
     }
   };
+
   if (loading) {
     return (
       <AppShell title="Loading Proposal..." subtitle="Please wait">
@@ -97,7 +97,16 @@ function ApprovalDetail() {
       </AppShell>
     );
   }
+
   if (!po) return null;
+
+  const subtotal = Number(po.subtotal) || 0;
+  const discountAmount = Number(po.discountAmount) || 0;
+  const taxAmount = Number(po.taxAmount) || 0;
+  const taxableAmount = subtotal - discountAmount;
+  const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+
   return (
     <AppShell
       title={`Review PO Proposal: ${po.poNumber}`}
@@ -113,30 +122,8 @@ function ApprovalDetail() {
       }
     >
       <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left Column: PO Info & Material Details */}
         <div className="lg:col-span-2 space-y-6">
-          {hasRelatedProposals && (
-            <Card className="bg-primary/5 border-primary/20 shadow-soft overflow-hidden">
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Sparkles className="size-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm">Related Proposals Found</h4>
-                    <p className="text-xs text-muted-foreground">
-                      Multiple suppliers were selected for RFQ: {po.rfqId}
-                    </p>
-                  </div>
-                </div>
-                <Button size="sm" className="rounded-xl shadow-glow bg-primary font-bold" asChild>
-                  <Link to="/finance/approvals/compare/$rfqId" params={{ rfqId: po.rfqId }}>
-                    Open Comparison Matrix <ArrowRight className="ml-2 size-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">
@@ -239,8 +226,94 @@ function ApprovalDetail() {
               )}
             </CardContent>
           </Card>
+
+          {/* PO Approval History & Audit Trail */}
+          <Card className="border-border/40 shadow-soft overflow-hidden">
+            <CardHeader className="bg-muted/10 border-b border-border/60">
+              <div className="flex items-center gap-2">
+                <History className="size-4 text-primary" />
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  PO Approval History &amp; Audit Trail
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {!po.history || po.history.length === 0 ? (
+                <div className="p-4 rounded-xl bg-muted/20 border border-border/40 text-center text-xs text-muted-foreground italic">
+                  No approval history events recorded yet.
+                </div>
+              ) : (
+                <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                  {po.history.map((h: any, idx: number) => {
+                    const status = String(h.status || "").toUpperCase();
+                    const isApproved = status.includes("APPROV") || status.includes("APPROVED");
+                    const isRejected = status.includes("REJECT");
+
+                    return (
+                      <div key={h.id || idx} className="relative flex items-start gap-4">
+                        <div
+                          className={cn(
+                            "absolute -left-6 top-1 size-5 rounded-full border-2 bg-background flex items-center justify-center",
+                            isApproved
+                              ? "border-emerald-600 text-emerald-600"
+                              : isRejected
+                                ? "border-rose-600 text-rose-600"
+                                : "border-amber-500 text-amber-500",
+                          )}
+                        >
+                          {isApproved ? (
+                            <CheckCircle2 className="size-3" />
+                          ) : isRejected ? (
+                            <XCircle className="size-3" />
+                          ) : (
+                            <Clock className="size-3" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1 bg-muted/20 border border-border/40 rounded-xl p-3.5 space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span
+                              className={cn(
+                                "text-[10px] font-black uppercase px-2 py-0.5 rounded-md",
+                                isApproved
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : isRejected
+                                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200",
+                              )}
+                            >
+                              {h.status}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {h.createdAt || h.created_at
+                                ? new Date(h.createdAt || h.created_at).toLocaleString()
+                                : "—"}
+                            </span>
+                          </div>
+
+                          <p className="text-xs font-bold text-foreground">
+                            Action by:{" "}
+                            <span className="text-primary font-mono">
+                              {h.actorName || h.actor_name || "System / Officer"}
+                            </span>
+                          </p>
+
+                          {h.comments && (
+                            <p className="text-xs text-muted-foreground leading-relaxed italic bg-background/60 p-2.5 rounded-lg border border-border/30 mt-1">
+                              "{h.comments}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
+        {/* Right Column: Financial Summary & Actions */}
         <div className="space-y-6">
           <Card className="border-border/40 shadow-soft overflow-hidden sticky top-24">
             <CardHeader className="bg-primary text-primary-foreground">
@@ -252,13 +325,16 @@ function ApprovalDetail() {
               </div>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Selected supplier quotation totals
+              </p>
               <SummaryRow label="Subtotal" value={po.subtotal} />
-              <SummaryRow label="Discount" value={po.discountAmount} isNegative />
               <SummaryRow
-                label={`Tax (GST ${parseFloat(po.taxPercentage || 0).toLocaleString()}%)`}
-                value={po.taxAmount}
+                label={`Discount (${discountPercentage.toFixed(2)}%)`}
+                value={po.discountAmount}
+                isNegative
               />
-              <SummaryRow label="Freight Charges" value={po.freightCharges} />
+              <SummaryRow label={`Tax (GST ${taxPercentage.toFixed(2)}%)`} value={po.taxAmount} />
               <SummaryRow label="Freight" value={po.freightCharges} />
 
               <div className="pt-4 border-t border-border mt-2">
@@ -345,6 +421,7 @@ function ApprovalDetail() {
     </AppShell>
   );
 }
+
 function InfoField({ label, value, icon: Icon, mono = false }: any) {
   return (
     <div className="space-y-1.5">
@@ -357,6 +434,7 @@ function InfoField({ label, value, icon: Icon, mono = false }: any) {
     </div>
   );
 }
+
 function SummaryRow({ label, value, isNegative = false }: any) {
   return (
     <div className="flex items-center justify-between text-sm">

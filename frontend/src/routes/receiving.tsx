@@ -1,10 +1,11 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import {
   ArrowDown,
+  ChevronDown,
   DoorOpen,
   Loader2,
   PackageCheck,
@@ -30,7 +31,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
+<<<<<<< HEAD
 import { cn } from "@/lib/utils";
+=======
+
+>>>>>>> main
 export const Route = createFileRoute("/receiving")({ component: Receiving });
 type Material = {
   item_code: string;
@@ -48,6 +53,15 @@ type Material = {
   rejected_quantity?: number | null;
   condition_result?: string;
   inspection_required?: boolean;
+  physical_condition_ok?: boolean | null;
+  packaging_ok?: boolean | null;
+  specifications_ok?: boolean | null;
+  serial_batch_number?: string | null;
+  serial_batch_verified?: boolean;
+  disposition_status?: "AWAITING_QUARANTINE" | "QUARANTINED_DAMAGED";
+  quarantine_location?: string;
+  quarantined_by?: string;
+  quarantined_at?: string;
 };
 type Shipment = {
   id: string;
@@ -58,6 +72,9 @@ type Shipment = {
   assigned_dock_id: string;
   supplier_name: string;
   status:
+    | "AWAITING_DOCK"
+    | "DOCK_ASSIGNED"
+    | "MOVING_TO_DOCK"
     | "AT_DOCK"
     | "UNLOADING_IN_PROGRESS"
     | "QUALITY_INSPECTION_REQUIRED"
@@ -79,31 +96,31 @@ function Receiving() {
     [quantities, setQuantities] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true),
     [busy, setBusy] = useState<string | null>(null);
-  const [policy, setPolicy] = useState({ shortage_tolerance: "0", excess_tolerance: "0" });
   const [conditions, setConditions] = useState<
-    Record<
-      string,
-      {
-        good: string;
-        damaged: string;
-        rejected: string;
-        inspect: boolean;
-      }
-    >
+    Record<string, {
+      good: string;
+      damaged: string;
+      inspect: boolean;
+      physical: "" | "pass" | "fail";
+      packaging: "" | "pass" | "fail";
+      specifications: "" | "pass" | "fail";
+      serialBatch: string;
+      serialBatchVerified: boolean;
+    }>
   >({});
   const [labelShipment, setLabelShipment] = useState<Shipment | null>(null);
+  const [expandedShipment, setExpandedShipment] = useState<string | null>(null);
+  const [qualityImages, setQualityImages] = useState<Record<string, File | undefined>>({});
+  const [damageEvidence, setDamageEvidence] = useState<Record<string, { reason: string; remarks: string; photos: File[]; saved: boolean; reportId?: string; reportNumber?: string; statusLabel?: string; submitted?: boolean }>>({});
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [rows, rule]: [
-        Shipment[],
-        {
-          shortage_tolerance: number;
-          excess_tolerance: number;
-        },
-      ] = await Promise.all([api.getInboundArrivals(), api.getQuantityVerificationPolicy()]);
+      const rows: Shipment[] = await api.getInboundArrivals();
       const receiving = rows.filter((row) =>
         [
+          "AWAITING_DOCK",
+          "DOCK_ASSIGNED",
+          "MOVING_TO_DOCK",
           "AT_DOCK",
           "UNLOADING_IN_PROGRESS",
           "QUALITY_INSPECTION_REQUIRED",
@@ -113,10 +130,6 @@ function Receiving() {
         ].includes(row.status),
       );
       setShipments(receiving);
-      setPolicy({
-        shortage_tolerance: String(rule.shortage_tolerance),
-        excess_tolerance: String(rule.excess_tolerance),
-      });
       setQuantities(
         Object.fromEntries(
           receiving.flatMap((s) =>
@@ -138,8 +151,12 @@ function Receiving() {
                     ? String(m.received_quantity ?? "")
                     : String(m.good_quantity),
                 damaged: String(m.damaged_quantity ?? 0),
-                rejected: String(m.rejected_quantity ?? 0),
                 inspect: Boolean(m.inspection_required),
+                physical: m.physical_condition_ok == null ? "" : m.physical_condition_ok ? "pass" : "fail",
+                packaging: m.packaging_ok == null ? "" : m.packaging_ok ? "pass" : "fail",
+                specifications: m.specifications_ok == null ? "" : m.specifications_ok ? "pass" : "fail",
+                serialBatch: m.serial_batch_number ?? "",
+                serialBatchVerified: Boolean(m.serial_batch_verified),
               },
             ]),
           ),
@@ -156,6 +173,28 @@ function Receiving() {
   useEffect(() => {
     void load();
   }, [load]);
+  const dockQueue = shipments.filter((s) =>
+    s.status === "MOVING_TO_DOCK",
+  );
+  const receivingShipments = shipments.filter((s) =>
+    !["AWAITING_DOCK", "DOCK_ASSIGNED", "MOVING_TO_DOCK"].includes(s.status),
+  );
+
+
+  async function confirmDockArrival(s: Shipment) {
+    setBusy(`dock:${s.id}`);
+    try {
+      await api.confirmDockCheckIn(s.id);
+      toast.success(`${s.vehicle_number} arrived at ${s.assigned_dock_id}`);
+      await load();
+    } catch (e) {
+      toast.error("Dock check-in failed", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
   async function start(s: Shipment) {
     setBusy(s.id);
     try {
@@ -199,30 +238,6 @@ function Receiving() {
       setBusy(null);
     }
   }
-  async function savePolicy() {
-    const shortage_tolerance = Number(policy.shortage_tolerance),
-      excess_tolerance = Number(policy.excess_tolerance);
-    if (
-      !Number.isFinite(shortage_tolerance) ||
-      !Number.isFinite(excess_tolerance) ||
-      shortage_tolerance < 0 ||
-      excess_tolerance < 0
-    ) {
-      toast.error("Tolerances must be zero or positive");
-      return;
-    }
-    setBusy("policy");
-    try {
-      await api.updateQuantityVerificationPolicy({ shortage_tolerance, excess_tolerance });
-      toast.success("Quantity verification policy updated");
-    } catch (e) {
-      toast.error("Unable to update policy", {
-        description: e instanceof Error ? e.message : undefined,
-      });
-    } finally {
-      setBusy(null);
-    }
-  }
   async function saveConditions(s: Shipment) {
     const items = s.expected_materials.map((m) => {
       const c = conditions[`${s.id}:${m.item_code}`];
@@ -230,18 +245,41 @@ function Receiving() {
         item_code: m.item_code,
         good_quantity: Number(c?.good),
         damaged_quantity: Number(c?.damaged),
-        rejected_quantity: Number(c?.rejected),
-        inspection_required: Boolean(c?.inspect),
+        rejected_quantity: 0,
+        inspection_required: Boolean(c?.inspect || c?.physical === "fail" || c?.packaging === "fail" || c?.specifications === "fail"),
+        physical_condition_ok: c?.physical === "pass",
+        packaging_ok: c?.packaging === "pass",
+        specifications_ok: c?.specifications === "pass",
+        serial_batch_number: c?.serialBatch.trim() || undefined,
+        serial_batch_verified: Boolean(c?.serialBatch && c.serialBatchVerified),
       };
     });
     if (
       items.some((i) =>
-        [i.good_quantity, i.damaged_quantity, i.rejected_quantity].some(
+        [i.good_quantity, i.damaged_quantity].some(
           (v) => !Number.isFinite(v) || v < 0,
         ),
       )
     ) {
       toast.error("Enter valid condition quantities");
+      return;
+    }
+    if (items.some((item, index) => Math.abs(
+      item.good_quantity + item.damaged_quantity + item.rejected_quantity -
+      Number(s.expected_materials[index].received_quantity ?? 0),
+    ) > 0.0001)) {
+      toast.error("Inspection quantities do not match", {
+        description: "Good plus damaged quantity must equal the received quantity for every material.",
+      });
+      return;
+    }
+    if (s.expected_materials.some((m) => {
+      const c = conditions[`${s.id}:${m.item_code}`];
+      return !c || !c.physical || !c.packaging || !c.specifications || (c.serialBatch.trim() !== "" && !c.serialBatchVerified);
+    })) {
+      toast.error("Complete every inspection check", {
+        description: "Physical condition, packaging, specifications, and any entered serial/batch number must be verified.",
+      });
       return;
     }
     setBusy(`condition:${s.id}`);
@@ -257,6 +295,66 @@ function Receiving() {
       setBusy(null);
     }
   }
+  async function saveDamageEvidence(s: Shipment, m: Material) {
+    const key = `${s.id}:${m.item_code}`;
+    const evidence = damageEvidence[key];
+    const damagedQuantity = Number(conditions[key]?.damaged ?? 0);
+    if (!evidence?.reason.trim() || evidence.photos.length === 0) {
+      toast.error("Add a damage reason and at least one photo");
+      return;
+    }
+    setBusy(`damage:${key}`);
+    try {
+      const report = await api.createDamageReport(s.id, {
+        itemCode: m.item_code,
+        damagedQuantity,
+        damageReason: evidence.reason,
+        remarks: evidence.remarks,
+        photos: evidence.photos,
+      });
+      setDamageEvidence((all) => ({
+        ...all,
+        [key]: { ...evidence, saved: true, reportId: report.id, reportNumber: report.report_number, statusLabel: report.status_label },
+      }));
+      toast.success(`Damage Report ${report.report_number} created`);
+    } catch (error) {
+      toast.error("Unable to save damage evidence", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function moveToQuarantine(s: Shipment, m: Material) {
+    const key = `${s.id}:${m.item_code}`;
+    setBusy(`quarantine:${key}`);
+    try {
+      await api.quarantineDamagedMaterial(s.id, m.item_code);
+      toast.success("Damaged goods moved to quarantine", {
+        description: `${m.damaged_quantity} ${m.uom ?? ""} marked Quarantine – Damaged.`,
+      });
+      await load();
+    } catch (error) {
+      toast.error("Unable to move goods to quarantine", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function submitDamageReport(key: string) {
+    const evidence = damageEvidence[key];
+    if (!evidence?.reportId) return;
+    setBusy(`submit:${key}`);
+    try {
+      const result = await api.submitDamageReport(evidence.reportId);
+      setDamageEvidence((all) => ({ ...all, [key]: { ...evidence, submitted: true, statusLabel: result.status_label } }));
+      toast.success(`${evidence.reportNumber} sent to Procurement`);
+    } catch (error) {
+      toast.error("Unable to submit damage report", { description: error instanceof Error ? error.message : undefined });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function decideQuality(s: Shipment, decision: "PASS" | "FAIL") {
     setBusy(`quality:${s.id}`);
     try {
@@ -271,11 +369,31 @@ function Receiving() {
       setBusy(null);
     }
   }
+
+  async function sendQualityIssue(s: Shipment) {
+    const image = qualityImages[s.id];
+    if (!image) return toast.error("Select a quality-failure image");
+    setBusy(`issue:${s.id}`);
+    try {
+      await api.sendQualityIssue(s.id, image);
+      toast.success("Quality issue sent to Procurement");
+      setQualityImages((current) => ({ ...current, [s.id]: undefined }));
+      await load();
+    } catch (e) {
+      toast.error("Unable to send quality issue", {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setBusy(null);
+    }
+  }
   async function complete(s: Shipment) {
     setBusy(`complete:${s.id}`);
     try {
       const result = await api.completeReceiving(s.id);
-      toast.success("Receiving completed", { description: `GRN ${result.grn_id} prepared.` });
+      toast.success("Receiving completed", {
+        description: `GRN ${result.grn_number || result.grn_id} prepared · ${result.putaway_tasks_created || 0} putaway task(s) awaiting putaway.`,
+      });
       await load();
     } catch (e) {
       toast.error("Unable to complete receiving", {
@@ -317,52 +435,82 @@ function Receiving() {
         </div>
       ) : (
         <div className="space-y-4">
-          <Card className="rounded-2xl p-5">
-            <div className="flex flex-wrap items-end gap-4">
-              <div className="mr-auto">
-                <h3 className="font-semibold">Quantity verification policy</h3>
+          {dockQueue.length > 0 && (
+            <Card className="rounded-2xl p-5">
+              <div className="mb-4">
+                <h3 className="font-semibold">Dock movement</h3>
                 <p className="text-xs text-muted-foreground">
-                  A variance within tolerance is classified as MATCH. Set both to 0 for exact
-                  matching.
+                  Confirm that a vehicle has arrived at its assigned dock.
                 </p>
               </div>
-              <label className="text-xs font-medium">
-                Short tolerance
-                <Input
-                  className="mt-1 w-40"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={policy.shortage_tolerance}
-                  onChange={(e) => setPolicy((p) => ({ ...p, shortage_tolerance: e.target.value }))}
-                />
-              </label>
-              <label className="text-xs font-medium">
-                Excess tolerance
-                <Input
-                  className="mt-1 w-40"
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={policy.excess_tolerance}
-                  onChange={(e) => setPolicy((p) => ({ ...p, excess_tolerance: e.target.value }))}
-                />
-              </label>
-              <Button
-                variant="outline"
-                disabled={busy === "policy"}
-                onClick={() => void savePolicy()}
-              >
-                {busy === "policy" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}{" "}
-                Save policy
-              </Button>
-            </div>
-          </Card>
-          {shipments.length === 0 ? (
+              <div className="space-y-3">
+                {dockQueue.map((s) => {
+                  const dockBusy = busy === `dock:${s.id}`;
+                  return (
+                    <div
+                      key={s.id}
+                      className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-4 lg:flex-row lg:items-center"
+                    >
+                      <div className="min-w-48">
+                        <p className="font-mono font-bold">{s.vehicle_number}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {s.asn_number} · {s.supplier_name}
+                        </p>
+                      </div>
+                      <StatusBadge status={s.status} />
+                      <div className="ml-auto flex flex-wrap items-center gap-2">
+                        {/* Dock assignment and movement initiation are handled outside Receiving.
+                        {s.status === "AWAITING_DOCK" && (
+                          <>
+                            <select
+                              className="h-9 rounded-md border bg-background px-3 text-sm"
+                              value={selectedDock[s.id] || ""}
+                              onChange={(e) =>
+                                setSelectedDock((current) => ({
+                                  ...current,
+                                  [s.id]: e.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">Select available dock</option>
+                              {docks
+                                .filter((dock) => dock.status === "AVAILABLE")
+                                .map((dock) => (
+                                  <option key={dock.id} value={dock.id}>
+                                    {dock.id} · {dock.zone}
+                                  </option>
+                                ))}
+                            </select>
+                            <Button
+                              disabled={!selectedDock[s.id] || dockBusy}
+                              onClick={() => void assignDock(s)}
+                            >
+                              {dockBusy ? <Loader2 className="size-4 animate-spin" /> : <ArrowRight className="size-4" />}
+                              Assign dock
+                            </Button>
+                          </>
+                        )}
+                        {s.status === "DOCK_ASSIGNED" && (
+                          <Button disabled={dockBusy} onClick={() => void startMovement(s)}>
+                            {dockBusy ? <Loader2 className="size-4 animate-spin" /> : <Truck className="size-4" />}
+                            Move to {s.assigned_dock_id}
+                          </Button>
+                        )}
+                        */}
+                        {s.status === "MOVING_TO_DOCK" && (
+                          <Button disabled={dockBusy} onClick={() => void confirmDockArrival(s)}>
+                            {dockBusy ? <Loader2 className="size-4 animate-spin" /> : <PackageCheck className="size-4" />}
+                            Vehicle arrived at {s.assigned_dock_id}
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+          {receivingShipments.length === 0 ? (
             <Card className="grid h-64 place-items-center rounded-2xl text-sm text-muted-foreground">
               <div className="text-center">
                 <PackageCheck className="mx-auto mb-3 size-8" />
@@ -370,35 +518,52 @@ function Receiving() {
               </div>
             </Card>
           ) : (
-            shipments.map((s) => (
+            receivingShipments.map((s) => (
               <Card key={s.id} className="rounded-2xl p-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="grid size-11 place-items-center rounded-xl bg-primary-soft text-primary">
-                      <Truck className="size-5" />
-                    </span>
-                    <div>
-                      <p className="font-mono font-bold">{s.vehicle_number}</p>
-                      <p className="text-xs text-muted-foreground">{s.supplier_name}</p>
-                    </div>
-                  </div>
-                  <StatusBadge status={s.status} />
-                </div>
-                <div className="my-5 grid items-center gap-2 rounded-xl border bg-muted/20 p-4 text-center sm:grid-cols-7">
-                  <Link
-                    to="/procurement/asns/$asnId"
-                    params={{ asnId: s.asn_id }}
-                    className="font-mono font-semibold text-primary hover:underline"
+                <div className="grid items-center gap-3 rounded-xl border bg-muted/20 p-4 text-center sm:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto]">
+                  <button
+                    type="button"
+                    className="flex items-center justify-center gap-2 font-mono font-semibold text-primary hover:underline"
+                    aria-expanded={expandedShipment === s.id}
+                    onClick={() => setExpandedShipment((current) => current === s.id ? null : s.id)}
                   >
                     {s.asn_number}
-                  </Link>
+                    <ChevronDown className={`size-4 transition-transform ${expandedShipment === s.id ? "rotate-180" : ""}`} />
+                  </button>
                   <ArrowDown className="mx-auto size-4 -rotate-90 text-muted-foreground" />
                   <span className="font-mono font-semibold">{s.po_number}</span>
                   <ArrowDown className="mx-auto size-4 -rotate-90 text-muted-foreground" />
                   <span className="font-mono font-semibold">{s.vehicle_number}</span>
                   <ArrowDown className="mx-auto size-4 -rotate-90 text-muted-foreground" />
                   <span className="font-mono font-semibold">{s.assigned_dock_id}</span>
+                  {s.status === "AT_DOCK" && (
+                    <Button
+                      className="rounded-xl shadow-glow"
+                      disabled={busy === s.id}
+                      onClick={() => void start(s)}
+                    >
+                      {busy === s.id && <Loader2 className="size-4 animate-spin" />}
+                      Start unloading
+                    </Button>
+                  )}
                 </div>
+                {expandedShipment === s.id && <>
+                <div className="mb-3 mt-5 rounded-xl border border-primary/20 bg-primary-soft/40 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                      1
+                    </span>
+                    <div>
+                      <h3 className="font-semibold">Goods Receive</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Record the physical quantity received against each Purchase Order line.
+                        For example, if the PO quantity is 100 motors and 100 motors arrive, enter
+                        100 as received.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+<<<<<<< HEAD
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold">Physical Receiving Comparison</h3>
@@ -435,6 +600,17 @@ function Receiving() {
                         <th className="px-4 py-3">ASN Shipped Qty</th>
                         <th className="px-4 py-3">Physical Received Qty</th>
                         <th className="px-4 py-3">Verification Result</th>
+=======
+                <div className="overflow-x-auto rounded-xl border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Material</th>
+                        <th className="px-4 py-3">PO Quantity</th>
+                        <th className="px-4 py-3">Shipped</th>
+                        <th className="px-4 py-3">Received Quantity</th>
+                        <th className="px-4 py-3">Verification</th>
+>>>>>>> main
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -442,15 +618,19 @@ function Receiving() {
                         const targetPoQty = m.po_quantity && m.po_quantity > 0 ? m.po_quantity : m.quantity;
                         const raw = quantities[`${s.id}:${m.item_code}`] ?? "",
                           received = raw === "" ? null : Number(raw),
+<<<<<<< HEAD
                           variance = received == null ? null : received - targetPoQty,
                           shortage = Number(policy.shortage_tolerance) || 0,
                           excess = Number(policy.excess_tolerance) || 0,
+=======
+                          variance = received == null ? null : received - m.po_quantity,
+>>>>>>> main
                           result =
                             variance == null
                               ? "PENDING"
-                              : variance < -shortage
+                              : variance < 0
                                 ? "SHORT"
-                                : variance > excess
+                                : variance > 0
                                   ? "EXCESS"
                                   : "MATCH";
                         return (
@@ -483,6 +663,7 @@ function Receiving() {
                             <td className="px-4 py-3 font-semibold text-foreground">
                               {m.quantity.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
                             </td>
+<<<<<<< HEAD
                             <td className="min-w-48 px-4 py-3">
                               <div className="space-y-1">
                                 <Input
@@ -515,6 +696,24 @@ function Receiving() {
                                   </button>
                                 )}
                               </div>
+=======
+                            <td className="min-w-44 px-4 py-3">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="any"
+                                disabled={s.status !== "UNLOADING_IN_PROGRESS"}
+                                value={raw}
+                                onChange={(e) =>
+                                  setQuantities((q) => ({
+                                    ...q,
+                                    [`${s.id}:${m.item_code}`]: e.target.value,
+                                  }))
+                                }
+                                placeholder={`Received ${m.uom}`}
+                                aria-label={`Received quantity for ${m.material_name || m.item_code}`}
+                              />
+>>>>>>> main
                             </td>
                             <td className="px-4 py-3">
                               {result === "PENDING" ? (
@@ -544,7 +743,15 @@ function Receiving() {
                 </div>
                 {s.expected_materials.every((m) => m.received_quantity != null) && (
                   <>
-                    <h3 className="mb-2 mt-5 text-sm font-semibold">Quality / condition check</h3>
+                    <div className="mb-3 mt-5 rounded-xl border border-primary/20 bg-primary-soft/40 p-4">
+                      <div className="flex items-start gap-3">
+                        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-bold text-primary-foreground">2</span>
+                        <div>
+                          <h3 className="font-semibold">Goods Inspection</h3>
+                          <p className="mt-1 text-sm text-muted-foreground">Check quantity, physical condition, packaging, specifications, and serial or batch number when applicable.</p>
+                        </div>
+                      </div>
+                    </div>
                     <div className="overflow-x-auto rounded-xl border">
                       <table className="w-full text-sm">
                         <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
@@ -553,7 +760,10 @@ function Receiving() {
                             <th className="px-3 py-3">Received</th>
                             <th className="px-3 py-3">Good</th>
                             <th className="px-3 py-3">Damaged</th>
-                            <th className="px-3 py-3">Rejected</th>
+                            <th className="px-3 py-3">Physical condition</th>
+                            <th className="px-3 py-3">Packaging</th>
+                            <th className="px-3 py-3">Specifications</th>
+                            <th className="px-3 py-3">Serial / batch</th>
                             <th className="px-3 py-3">Inspect</th>
                             <th className="px-3 py-3">Result</th>
                           </tr>
@@ -564,24 +774,25 @@ function Receiving() {
                               c = conditions[key] || {
                                 good: "",
                                 damaged: "0",
-                                rejected: "0",
                                 inspect: false,
+                                physical: "",
+                                packaging: "",
+                                specifications: "",
+                                serialBatch: "",
+                                serialBatchVerified: false,
                               },
                               locked = ["QUALITY_PASSED", "QUALITY_FAILED"].includes(s.status),
                               damaged = Number(c.damaged),
-                              rejected = Number(c.rejected),
-                              result = c.inspect
+                              result = c.inspect || c.physical === "fail" || c.packaging === "fail" || c.specifications === "fail"
                                 ? "INSPECTION REQUIRED"
-                                : rejected > 0
-                                  ? "REJECTED"
-                                  : damaged > 0
+                                : damaged > 0
                                     ? "DAMAGED"
                                     : m.verification_status === "SHORT" ||
                                         m.verification_status === "EXCESS"
                                       ? m.verification_status
                                       : "ACCEPTED";
                             const update = (
-                              field: "good" | "damaged" | "rejected",
+                              field: "good" | "damaged",
                               value: string,
                             ) =>
                               setConditions((all) => ({ ...all, [key]: { ...c, [field]: value } }));
@@ -610,18 +821,68 @@ function Receiving() {
                                     step="any"
                                     disabled={locked}
                                     value={c.damaged}
-                                    onChange={(e) => update("damaged", e.target.value)}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      const damagedQuantity = Number(value);
+                                      const receivedQuantity = Number(m.received_quantity ?? 0);
+                                      setConditions((all) => ({
+                                        ...all,
+                                        [key]: {
+                                          ...c,
+                                          damaged: value,
+                                          good: Number.isFinite(damagedQuantity) && damagedQuantity >= 0
+                                            ? String(Math.max(0, receivedQuantity - damagedQuantity))
+                                            : c.good,
+                                        },
+                                      }));
+                                    }}
                                   />
                                 </td>
-                                <td className="min-w-32 px-3 py-3">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="any"
-                                    disabled={locked}
-                                    value={c.rejected}
-                                    onChange={(e) => update("rejected", e.target.value)}
-                                  />
+                                {(["physical", "packaging", "specifications"] as const).map((field) => (
+                                  <td className="min-w-36 px-3 py-3" key={field}>
+                                    <select
+                                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                      disabled={locked}
+                                      value={c[field]}
+                                      onChange={(e) => setConditions((all) => ({
+                                        ...all,
+                                        [key]: { ...c, [field]: e.target.value as "" | "pass" | "fail" },
+                                      }))}
+                                      aria-label={`${field} check for ${m.material_name || m.item_code}`}
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="pass">Pass</option>
+                                      <option value="fail">Fail</option>
+                                    </select>
+                                  </td>
+                                ))}
+                                <td className="min-w-52 px-3 py-3">
+                                  <div className="space-y-2">
+                                    <Input
+                                      disabled={locked}
+                                      value={c.serialBatch}
+                                      placeholder="Optional number"
+                                      onChange={(e) => setConditions((all) => ({
+                                        ...all,
+                                        [key]: { ...c, serialBatch: e.target.value, serialBatchVerified: false },
+                                      }))}
+                                    />
+                                    {c.serialBatch && (
+                                      <label className="flex items-center gap-2 text-xs">
+                                        <input
+                                          type="checkbox"
+                                          className="size-4 accent-primary"
+                                          disabled={locked}
+                                          checked={c.serialBatchVerified}
+                                          onChange={(e) => setConditions((all) => ({
+                                            ...all,
+                                            [key]: { ...c, serialBatchVerified: e.target.checked },
+                                          }))}
+                                        />
+                                        Verified
+                                      </label>
+                                    )}
+                                  </div>
                                 </td>
                                 <td className="px-3 py-3 text-center">
                                   <input
@@ -644,6 +905,32 @@ function Receiving() {
                         </tbody>
                       </table>
                     </div>
+                    {s.expected_materials.some((m) => Number(conditions[`${s.id}:${m.item_code}`]?.damaged ?? 0) > 0) && (
+                      <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+                        <div className="flex items-start gap-3">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-destructive text-sm font-bold text-destructive-foreground">3</span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold text-destructive">Damage Found</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">The damaged quantity has been recorded in Goods Receiving / Inspection. Review the split before saving.</p>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                              {s.expected_materials.filter((m) => Number(conditions[`${s.id}:${m.item_code}`]?.damaged ?? 0) > 0).map((m) => {
+                                const condition = conditions[`${s.id}:${m.item_code}`];
+                                return (
+                                  <div key={m.item_code} className="rounded-lg border bg-background p-3 text-sm">
+                                    <p className="mb-2 font-medium">{m.material_name || m.item_code}</p>
+                                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                      <dt className="text-muted-foreground">Received</dt><dd className="text-right font-semibold">{m.received_quantity} {m.uom}</dd>
+                                      <dt className="text-muted-foreground">Good</dt><dd className="text-right font-semibold text-success">{condition.good} {m.uom}</dd>
+                                      <dt className="text-muted-foreground">Damaged</dt><dd className="text-right font-semibold text-destructive">{condition.damaged} {m.uom}</dd>
+                                    </dl>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-3 flex justify-end gap-2">
                       {!["QUALITY_PASSED", "QUALITY_FAILED"].includes(s.status) && (
                         <Button
@@ -680,6 +967,150 @@ function Receiving() {
                         </span>
                       )}
                     </div>
+                    {s.expected_materials.some((m) => Number(m.damaged_quantity ?? 0) > 0) && (
+                      <div className="mt-4 rounded-xl border border-warning/30 bg-warning-soft/40 p-4">
+                        <div className="flex items-start gap-3">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-warning text-sm font-bold text-white">4</span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold">Take Damage Photos</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">Upload evidence and record the reason and remarks for each damaged material. PO, quantity, date, and inspector are captured automatically; GRN is linked when available.</p>
+                            <div className="mt-4 space-y-4">
+                              {s.expected_materials.filter((m) => Number(m.damaged_quantity ?? 0) > 0).map((m) => {
+                                const key = `${s.id}:${m.item_code}`;
+                                const evidence = damageEvidence[key] ?? { reason: "", remarks: "", photos: [], saved: false };
+                                const updateEvidence = (changes: Partial<typeof evidence>) => setDamageEvidence((all) => ({
+                                  ...all,
+                                  [key]: { ...evidence, ...changes, saved: false },
+                                }));
+                                return (
+                                  <div key={key} className="rounded-xl border bg-background p-4">
+                                    <div className="mb-3 flex flex-wrap justify-between gap-2">
+                                      <p className="font-medium">{m.material_name || m.item_code}</p>
+                                      <span className="text-sm font-semibold text-destructive">Damaged: {m.damaged_quantity} {m.uom}</span>
+                                    </div>
+                                    <div className="grid gap-3 md:grid-cols-2">
+                                      <label className="text-sm font-medium">Damage reason
+                                        <Input className="mt-1" value={evidence.reason} placeholder="e.g. impact damage" onChange={(e) => updateEvidence({ reason: e.target.value })} />
+                                      </label>
+                                      <label className="text-sm font-medium">Damage photos
+                                        <Input className="mt-1" type="file" accept="image/*" multiple onChange={(e) => updateEvidence({ photos: Array.from(e.target.files ?? []) })} />
+                                      </label>
+                                      <label className="text-sm font-medium md:col-span-2">Remarks
+                                        <textarea className="mt-1 min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={evidence.remarks} placeholder="Additional inspection remarks" onChange={(e) => updateEvidence({ remarks: e.target.value })} />
+                                      </label>
+                                    </div>
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                      <span className="text-xs text-muted-foreground">{evidence.photos.length} photo(s) selected</span>
+                                      <Button type="button" size="sm" disabled={evidence.saved || busy === `damage:${key}`} onClick={() => void saveDamageEvidence(s, m)}>
+                                        {busy === `damage:${key}` && <Loader2 className="size-4 animate-spin" />}
+                                        {evidence.saved ? "Evidence saved" : "Save damage evidence"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {s.expected_materials.some((m) => Number(m.damaged_quantity ?? 0) > 0) && (
+                      <div className="mt-4 rounded-xl border border-orange-300 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/20">
+                        <div className="flex items-start gap-3">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-orange-600 text-sm font-bold text-white">5</span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold">Move Damaged Goods to Quarantine</h3>
+                            <p className="mt-1 text-sm text-muted-foreground">Damaged quantities are excluded from normal available inventory and must remain in the designated quarantine area.</p>
+                            <div className="mt-3 space-y-2">
+                              {s.expected_materials.filter((m) => Number(m.damaged_quantity ?? 0) > 0).map((m) => {
+                                const key = `${s.id}:${m.item_code}`;
+                                const quarantined = m.disposition_status === "QUARANTINED_DAMAGED";
+                                return (
+                                  <div key={key} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-background p-3">
+                                    <div>
+                                      <p className="font-medium">{m.material_name || m.item_code}</p>
+                                      <p className="text-xs text-muted-foreground">{m.damaged_quantity} {m.uom} · {m.quarantine_location || "QUARANTINE-DAMAGE-AREA"}</p>
+                                    </div>
+                                    {quarantined ? (
+                                      <span className="rounded-full bg-orange-100 px-3 py-1 text-sm font-bold text-orange-700 dark:bg-orange-950 dark:text-orange-300">Quarantine – Damaged</span>
+                                    ) : (
+                                      <Button type="button" variant="destructive" size="sm" disabled={busy === `quarantine:${key}`} onClick={() => void moveToQuarantine(s, m)}>
+                                        {busy === `quarantine:${key}` && <Loader2 className="size-4 animate-spin" />}
+                                        Move to quarantine
+                                      </Button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {s.expected_materials.some((m) => damageEvidence[`${s.id}:${m.item_code}`]?.reportNumber) && (
+                      <div className="mt-4 rounded-xl border border-blue-300 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/20">
+                        <div className="flex items-start gap-3">
+                          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-600 text-sm font-bold text-white">6</span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="font-semibold">Damage Report Created</h3>
+                            <div className="mt-3 grid gap-3 md:grid-cols-2">
+                              {s.expected_materials.filter((m) => damageEvidence[`${s.id}:${m.item_code}`]?.reportNumber).map((m) => {
+                                const evidence = damageEvidence[`${s.id}:${m.item_code}`];
+                                return (
+                                  <div key={m.item_code} className="rounded-lg border bg-background p-4 text-sm">
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                      <strong className="text-base">{evidence.reportNumber}</strong>
+                                      <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">{evidence.statusLabel}</span>
+                                    </div>
+                                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                      <dt className="text-muted-foreground">PO</dt><dd className="text-right font-medium">{s.po_number}</dd>
+                                      <dt className="text-muted-foreground">GRN</dt><dd className="text-right font-medium">{s.prepared_grn_id ? "Linked" : "Pending generation"}</dd>
+                                      <dt className="text-muted-foreground">Material</dt><dd className="text-right font-medium">{m.material_name || m.item_code}</dd>
+                                      <dt className="text-muted-foreground">Received</dt><dd className="text-right font-medium">{m.received_quantity} {m.uom}</dd>
+                                      <dt className="text-muted-foreground">Damaged</dt><dd className="text-right font-medium text-destructive">{m.damaged_quantity} {m.uom}</dd>
+                                      <dt className="text-muted-foreground">Reason</dt><dd className="text-right font-medium">{evidence.reason}</dd>
+                                      <dt className="text-muted-foreground">Photos</dt><dd className="text-right font-medium">{evidence.photos.length} attached</dd>
+                                    </dl>
+                                    <div className="mt-4 border-t pt-3">
+                                      <p className="mb-2 text-xs text-muted-foreground">Step 7 · Submit the quarantined damage report for Procurement review.</p>
+                                      <Button className="w-full" size="sm" disabled={evidence.submitted || busy === `submit:${s.id}:${m.item_code}`} onClick={() => void submitDamageReport(`${s.id}:${m.item_code}`)}>
+                                        {busy === `submit:${s.id}:${m.item_code}` && <Loader2 className="size-4 animate-spin" />}
+                                        {evidence.submitted ? "Sent to Procurement" : "Send Damage Report to Procurement"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {s.status === "QUALITY_FAILED" && (
+                      <div className="mt-4 flex flex-wrap items-end gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+                        <label className="min-w-64 flex-1 text-sm font-medium">
+                          Failed inspection image
+                          <Input
+                            className="mt-2"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) =>
+                              setQualityImages((current) => ({
+                                ...current,
+                                [s.id]: event.target.files?.[0],
+                              }))
+                            }
+                          />
+                        </label>
+                        <Button
+                          disabled={!qualityImages[s.id] || busy === `issue:${s.id}`}
+                          onClick={() => void sendQualityIssue(s)}
+                        >
+                          {busy === `issue:${s.id}` && <Loader2 className="size-4 animate-spin" />}
+                          Send to Procurement
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -688,15 +1119,7 @@ function Receiving() {
                       ? `Last recorded by ${s.expected_materials.find((m) => m.recorded_by)?.recorded_by} · ${new Date(s.expected_materials.find((m) => m.recorded_at)!.recorded_at!).toLocaleString()}`
                       : "Actual quantities have not been recorded."}
                   </p>
-                  {s.status === "AT_DOCK" ? (
-                    <Button
-                      className="rounded-xl shadow-glow"
-                      disabled={busy === s.id}
-                      onClick={() => void start(s)}
-                    >
-                      {busy === s.id && <Loader2 className="size-4 animate-spin" />} Start unloading
-                    </Button>
-                  ) : (
+                  {s.status !== "AT_DOCK" && (
                     <Button
                       className="rounded-xl"
                       disabled={busy === s.id}
@@ -773,6 +1196,7 @@ function Receiving() {
                     </div>
                   </div>
                 ) : null}
+                </>}
               </Card>
             ))
           )}
@@ -787,6 +1211,7 @@ function Receiving() {
     </AppShell>
   );
 }
+
 type HandlingUnit = {
   id: string;
   hu_number: string;
@@ -804,11 +1229,8 @@ type HandlingUnit = {
   current_location: string;
   status: string;
 };
-type GeneratedLabel = {
-  unit: HandlingUnit;
-  qr: string;
-  barcode: string;
-};
+type GeneratedLabel = { unit: HandlingUnit; qr: string; barcode: string };
+
 function MaterialLabelsDialog({
   shipment,
   onOpenChange,
@@ -818,6 +1240,7 @@ function MaterialLabelsDialog({
 }) {
   const [labels, setLabels] = useState<GeneratedLabel[]>([]);
   const [generating, setGenerating] = useState(false);
+
   useEffect(() => {
     if (!shipment) {
       setLabels([]);
@@ -876,6 +1299,7 @@ function MaterialLabelsDialog({
       active = false;
     };
   }, [shipment]);
+
   function printLabels() {
     if (!shipment) return;
     const escape = (value: unknown) =>
@@ -901,6 +1325,7 @@ function MaterialLabelsDialog({
     );
     popup.document.close();
   }
+
   return (
     <Dialog open={Boolean(shipment)} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">

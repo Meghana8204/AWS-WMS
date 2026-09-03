@@ -107,6 +107,8 @@ class GateEntryResponse(ApiModel):
     vehicle_plate: str
     status: str
     created_by: str
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
     po_id: Optional[str] = None
     po_number: Optional[str] = None
     po_status: Optional[str] = None
@@ -165,6 +167,11 @@ class MaterialConditionItem(ApiModel):
     damaged_quantity: float = Field(default=0, ge=0)
     rejected_quantity: float = Field(default=0, ge=0)
     inspection_required: bool = False
+    physical_condition_ok: bool
+    packaging_ok: bool
+    specifications_ok: bool
+    serial_batch_number: Optional[str] = Field(default=None, max_length=128)
+    serial_batch_verified: bool = False
     notes: Optional[str] = Field(default=None, max_length=1000)
 
 

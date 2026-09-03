@@ -3,6 +3,7 @@ import { Settings as SettingsIcon } from "lucide-react";
 import { AppShell } from "@/components/wms/app-shell";
 import { ModulePlaceholder } from "@/components/wms/module-placeholder";
 import { requireAuth } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/settings")({
   beforeLoad: () => requireAuth(),
   head: () => ({

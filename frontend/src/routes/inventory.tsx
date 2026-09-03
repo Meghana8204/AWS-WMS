@@ -1,24 +1,22 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Boxes,
   Search,
-  Filter,
   Loader2,
-  ArrowUpRight,
   AlertTriangle,
-  MoreHorizontal,
   Plus,
   History,
   MapPin,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { StatCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 export const Route = createFileRoute("/inventory")({
   component: Inventory,
 });
@@ -27,6 +25,8 @@ function Inventory() {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [locationBalances, setLocationBalances] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [stockFilter, setStockFilter] = useState("ALL");
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -47,6 +47,21 @@ function Inventory() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const filteredStock = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return stock.filter((item) => {
+      const onHand = Number(item.onHand ?? 0);
+      const reorderPoint = Number(item.reorderPoint ?? 0);
+      const matchesSearch = !query || [item.materialCode, item.materialName, item.category, item.warehouseId]
+        .some((value) => value?.toLowerCase().includes(query));
+      const matchesStatus = stockFilter === "ALL"
+        || (stockFilter === "LOW" && onHand > 0 && onHand < reorderPoint)
+        || (stockFilter === "OUT" && onHand === 0)
+        || (stockFilter === "AVAILABLE" && onHand >= reorderPoint);
+      return matchesSearch && matchesStatus;
+    });
+  }, [searchTerm, stock, stockFilter]);
   return (
     <AppShell
       title="Warehouse Inventory"
@@ -59,48 +74,49 @@ function Inventory() {
         </Button>
       }
     >
-      <div className="mb-6 flex flex-wrap items-center gap-4">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search material code or name..."
-            className="pl-10 rounded-xl border-border"
-          />
-        </div>
-        <Button variant="outline" className="rounded-xl border-border">
-          <Filter className="mr-2 size-4" /> Filter
-        </Button>
+      <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Total SKUs" value={loading ? "..." : String(stock.length)} icon={Boxes} tone="primary" />
+        <StatCard
+          label="Low Stock"
+          value={loading ? "..." : String(stock.filter((s) => Number(s.onHand) > 0 && Number(s.onHand) < Number(s.reorderPoint)).length)}
+          icon={AlertTriangle}
+          tone="warning"
+        />
+        <StatCard
+          label="Out of Stock"
+          value={loading ? "..." : String(stock.filter((s) => Number(s.onHand) === 0).length)}
+          icon={Boxes}
+          tone="danger"
+        />
+        <StatCard
+          label="Total Units"
+          value={loading ? "..." : stock.reduce((acc, s) => acc + Number(s.onHand ?? 0), 0).toLocaleString()}
+          icon={Boxes}
+          tone="success"
+        />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
-        <InventoryStat
-          label="Total SKUs"
-          value={stock.length}
-          icon={Boxes}
-          color="text-primary"
-          bg="bg-primary-soft/20"
-        />
-        <InventoryStat
-          label="Low Stock"
-          value={stock.filter((s) => parseFloat(s.onHand) < parseFloat(s.reorderPoint)).length}
-          icon={AlertTriangle}
-          color="text-warning"
-          bg="bg-warning-soft/20"
-        />
-        <InventoryStat
-          label="Out of Stock"
-          value={stock.filter((s) => parseFloat(s.onHand) === 0).length}
-          icon={Boxes}
-          color="text-destructive"
-          bg="bg-destructive-soft/20"
-        />
-        <InventoryStat
-          label="Total Units"
-          value={stock.reduce((acc, s) => acc + parseFloat(s.onHand), 0).toLocaleString()}
-          icon={Boxes}
-          color="text-success"
-          bg="bg-success-soft/20"
-        />
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[280px] max-w-md flex-1">
+          <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search material code or name..."
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            className="h-10 rounded-xl border-border bg-card pl-10 pr-4 text-sm focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <Select value={stockFilter} onValueChange={setStockFilter}>
+          <SelectTrigger className="h-10 w-44 rounded-xl bg-card text-xs font-medium">
+            <SelectValue placeholder="All Stock" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl">
+            <SelectItem value="ALL">All Stock</SelectItem>
+            <SelectItem value="AVAILABLE">Available</SelectItem>
+            <SelectItem value="LOW">Low Stock</SelectItem>
+            <SelectItem value="OUT">Out of Stock</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {loading ? (
@@ -108,10 +124,10 @@ function Inventory() {
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
       ) : (
-        <Card className="border-border/40 overflow-hidden shadow-soft">
+        <Card className="overflow-hidden rounded-2xl border-border/70 shadow-soft">
           <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
-              <thead className="bg-muted/30 border-b border-border/60 text-[10px] uppercase font-black tracking-widest text-muted-foreground">
+              <thead className="border-b border-border bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-6 py-4">Material</th>
                   <th className="px-6 py-4">Storage Locations</th>
@@ -122,15 +138,22 @@ function Inventory() {
                   <th className="px-6 py-4">UOM</th>
                   <th className="px-6 py-4">Warehouse</th>
                   <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {stock.map((s) => (
-                  <tr key={s.id} className="hover:bg-muted/5 transition-colors group">
+                {filteredStock.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-6 py-14 text-center text-sm text-muted-foreground">
+                      {searchTerm || stockFilter !== "ALL"
+                        ? "No inventory matches your search or filter."
+                        : "No inventory has been posted yet."}
+                    </td>
+                  </tr>
+                ) : filteredStock.map((s) => (
+                  <tr key={s.id} className="transition-colors hover:bg-muted/20">
                     <td className="px-6 py-4">
-                      <p className="font-bold text-foreground">{s.materialName}</p>
-                      <p className="font-mono text-[10px] text-muted-foreground">
+                      <p className="font-semibold text-foreground">{s.materialName}</p>
+                      <p className="font-mono text-[11px] text-muted-foreground">
                         {s.materialCode}
                       </p>
                     </td>
@@ -169,13 +192,13 @@ function Inventory() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-muted-foreground font-medium">{s.category}</td>
-                    <td className="px-6 py-4 text-right font-mono font-bold">
+                    <td className="px-6 py-4 text-right font-mono font-semibold tabular-nums">
                       {parseFloat(s.onHand).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-right font-mono text-muted-foreground">
                       {parseFloat(s.allocated).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 text-right font-mono font-black text-primary">
+                    <td className="px-6 py-4 text-right font-mono font-semibold text-primary tabular-nums">
                       {parseFloat(s.available).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 font-bold text-muted-foreground">{s.uom}</td>
@@ -192,15 +215,6 @@ function Inventory() {
                         <StatusBadge status="Active" />
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </Button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -209,11 +223,11 @@ function Inventory() {
         </Card>
       )}
       {!loading && (
-        <Card className="mt-8 overflow-hidden border-border/40 shadow-soft">
+        <Card className="mt-6 overflow-hidden rounded-2xl border-border/70 shadow-soft">
           <div className="flex items-center gap-3 border-b p-5">
             <History className="size-5 text-primary" />
             <div>
-              <h2 className="font-bold">Inventory Transactions</h2>
+              <h2 className="text-sm font-semibold tracking-tight">Inventory Transactions</h2>
               <p className="text-xs text-muted-foreground">
                 GRN → Inventory transaction → Stock updated
               </p>
@@ -221,7 +235,7 @@ function Inventory() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/30 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+              <thead className="border-b border-border bg-muted/30 text-[11px] uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">GRN / References</th>
                   <th className="px-4 py-3">Supplier</th>
@@ -277,24 +291,5 @@ function Inventory() {
         </Card>
       )}
     </AppShell>
-  );
-}
-function InventoryStat({ label, value, icon: Icon, color, bg }: any) {
-  return (
-    <Card className="border-border/40 shadow-soft overflow-hidden">
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">
-              {label}
-            </p>
-            <h2 className="text-2xl font-black mt-1">{value}</h2>
-          </div>
-          <div className={cn("size-12 rounded-2xl flex items-center justify-center", bg, color)}>
-            <Icon className="size-6" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

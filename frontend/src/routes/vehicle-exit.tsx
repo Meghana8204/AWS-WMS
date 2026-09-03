@@ -13,6 +13,7 @@ import {
   Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
+
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,10 +22,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { requireRole } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/vehicle-exit")({
-  beforeLoad: () => requireRole(["WAREHOUSE", "WAREHOUSE_OPERATOR", "GATE_SECURITY"]),
+  beforeLoad: () => requireRole(["WAREHOUSE", "GATE_SECURITY"]),
   component: VehicleExit,
 });
+
 type ExitRecord = {
   gate_entry_id: string;
   gate_entry_number: string;
@@ -43,6 +46,7 @@ type ExitRecord = {
   approved_by?: string;
   approved_at?: string;
 };
+
 const checks = [
   ["vehicle_verified", "Vehicle verified", Truck],
   ["driver_verified", "Driver verified", UserCheck],
@@ -51,8 +55,10 @@ const checks = [
   ["grn_verified", "GRN posted and verified", PackageCheck],
   ["receiving_verified", "Receiving complete and dock released", Warehouse],
 ] as const;
+
 type CheckKey = (typeof checks)[number][0];
 type VerificationState = Record<CheckKey, boolean>;
+
 const emptyVerification = (): VerificationState => ({
   vehicle_verified: false,
   driver_verified: false,
@@ -61,12 +67,14 @@ const emptyVerification = (): VerificationState => ({
   grn_verified: false,
   receiving_verified: false,
 });
+
 function VehicleExit() {
   const [records, setRecords] = useState<ExitRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [references, setReferences] = useState<Record<string, string>>({});
   const [verification, setVerification] = useState<Record<string, VerificationState>>({});
+
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -81,11 +89,13 @@ function VehicleExit() {
       if (!quiet) setLoading(false);
     }
   }, []);
+
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(true), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
+
   const awaiting = useMemo(
     () => records.filter((record) => record.status === "RECEIVING_COMPLETED"),
     [records],
@@ -94,12 +104,14 @@ function VehicleExit() {
     () => records.filter((record) => record.status === "EXIT_APPROVED"),
     [records],
   );
+
   function updateCheck(id: string, key: CheckKey, checked: boolean) {
     setVerification((current) => ({
       ...current,
       [id]: { ...(current[id] || emptyVerification()), [key]: checked },
     }));
   }
+
   async function approve(record: ExitRecord) {
     const selected = verification[record.gate_entry_id] || emptyVerification();
     if (!checks.every(([key]) => selected[key])) {
@@ -111,6 +123,7 @@ function VehicleExit() {
       toast.error("Enter an exit document reference");
       return;
     }
+
     setBusy(record.gate_entry_id);
     try {
       const result = await api.approveVehicleExit(record.gate_entry_id, {
@@ -129,6 +142,7 @@ function VehicleExit() {
       setBusy(null);
     }
   }
+
   return (
     <AppShell
       title="Vehicle Exit Approval"
@@ -292,6 +306,7 @@ function VehicleExit() {
     </AppShell>
   );
 }
+
 function Info({ label, value }: { label: string; value?: string }) {
   return (
     <div>

@@ -18,7 +18,7 @@ import {
   Send,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
-import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
+import { Field, SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -32,9 +32,11 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+
 type POSearch = {
   poId?: string;
 };
+
 export const Route = createFileRoute("/purchase-order")({
   head: () => ({
     meta: [
@@ -52,6 +54,7 @@ export const Route = createFileRoute("/purchase-order")({
   },
   component: PurchaseOrder,
 });
+
 function PurchaseOrder() {
   const { poId } = Route.useSearch();
   const [poData, setPoData] = useState<any>(null);
@@ -63,6 +66,7 @@ function PurchaseOrder() {
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const navigate = useNavigate();
+
   const fetchPo = async () => {
     try {
       setLoading(true);
@@ -83,16 +87,18 @@ function PurchaseOrder() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     if (poId) fetchPo();
   }, [poId]);
+
   const handleSendToSupplier = async () => {
     try {
       setSending(true);
       const result = await api.sendPoToSupplier(poId as string);
       toast.success(
         result.message ||
-          (result.resent ? "Purchase Order resend queued." : "Purchase Order email queued."),
+          (result.resent ? "Purchase Order resent successfully." : "Purchase Order sent successfully."),
       );
       fetchPo();
     } catch (e: any) {
@@ -101,6 +107,7 @@ function PurchaseOrder() {
       setSending(false);
     }
   };
+
   if (loading) {
     return (
       <AppShell title="Loading PO..." subtitle="Please wait">
@@ -110,6 +117,7 @@ function PurchaseOrder() {
       </AppShell>
     );
   }
+
   if (!poData) {
     return (
       <AppShell title="Not Found" subtitle="PO details not found">
@@ -120,6 +128,21 @@ function PurchaseOrder() {
       </AppShell>
     );
   }
+
+  const subtotal = Number(poData.subtotal) || 0;
+  const discountAmount = Number(poData.discountAmount) || 0;
+  const freightCharges = Number(poData.freightCharges) || 0;
+  const taxAmount = Number(poData.taxAmount) || 0;
+  const taxableAmount = subtotal - discountAmount;
+  const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
+  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
+
   return (
     <AppShell
       title={`Purchase Order: ${poData.poNumber}`}
@@ -182,6 +205,7 @@ function PurchaseOrder() {
       }
     >
       <div className="grid gap-6 xl:grid-cols-3">
+        {/* PO Header & Supplier Info */}
         <div className="space-y-6">
           <SectionCard title="PO Information" icon={FileText}>
             <div className="grid gap-3">
@@ -274,6 +298,7 @@ function PurchaseOrder() {
           )}
         </div>
 
+        {/* Item Details */}
         <div className="xl:col-span-2 space-y-6">
           <SectionCard title="Order Items" icon={Truck}>
             <div className="mt-2 -mx-5 overflow-x-auto px-5">
@@ -313,15 +338,11 @@ function PurchaseOrder() {
               </table>
             </div>
 
-            <div className="mt-8 border-t border-border pt-6">
+            <div className="hidden" aria-hidden="true">
               <div className="ml-auto max-w-xs space-y-3">
                 <SummaryRow label="Subtotal" value={poData.subtotal} />
                 <SummaryRow label="Discount" value={poData.discountAmount} isNegative />
-                <SummaryRow
-                  label={`Tax (GST ${parseFloat(poData.taxPercentage || 0).toLocaleString()}%)`}
-                  value={poData.taxAmount}
-                />
-                <SummaryRow label="Freight Charges" value={poData.freightCharges} />
+                <SummaryRow label="Tax (GST)" value={poData.taxAmount} />
                 <SummaryRow label="Additional Charges" value={poData.additionalCharges} />
                 <div className="pt-3 border-t border-primary/20 flex items-center justify-between">
                   <span className="text-sm font-black text-foreground uppercase">Grand Total</span>
@@ -330,6 +351,37 @@ function PurchaseOrder() {
                   </span>
                 </div>
               </div>
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="RFQ Response Summary"
+            description="Selected supplier quotation totals and commercial terms"
+            icon={CheckCircle2}
+          >
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <SummaryMetric label="Items quoted" value={`${poData.items?.length || 0}`} />
+              <SummaryMetric label="Subtotal" value={formatCurrency(subtotal)} />
+              <SummaryMetric
+                label={`Discount (${discountPercentage.toFixed(2)}%)`}
+                value={`− ${formatCurrency(discountAmount)}`}
+                valueClassName="text-destructive"
+              />
+              <SummaryMetric
+                label={`GST (${taxPercentage.toFixed(2)}%)`}
+                value={formatCurrency(taxAmount)}
+              />
+              <SummaryMetric label="Freight charges" value={formatCurrency(freightCharges)} />
+              <SummaryMetric
+                label="Quotation total"
+                value={formatCurrency(Number(poData.totalAmount) || 0)}
+                valueClassName="text-primary"
+                emphasis
+              />
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+              <span>Expected delivery: {poData.expectedDeliveryDate || "Not specified"}</span>
+              <span>Payment: {poData.paymentTerms || "Not specified"}</span>
             </div>
           </SectionCard>
 
@@ -566,6 +618,7 @@ function PurchaseOrder() {
     </AppShell>
   );
 }
+
 function SummaryRow({ label, value, isNegative = false }: any) {
   return (
     <div className="flex items-center justify-between text-sm">
@@ -573,6 +626,22 @@ function SummaryRow({ label, value, isNegative = false }: any) {
       <span className={cn("font-mono font-bold", isNegative && "text-destructive")}>
         {isNegative ? "- " : ""}₹ {parseFloat(value || 0).toLocaleString()}
       </span>
+    </div>
+  );
+}
+
+function SummaryMetric({ label, value, valueClassName, emphasis = false }: any) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border/60 bg-muted/20 p-4",
+        emphasis && "border-primary/30 bg-primary-soft/15",
+      )}
+    >
+      <p className={cn("text-xs font-medium text-muted-foreground", emphasis && "font-bold text-primary")}>
+        {label}
+      </p>
+      <p className={cn("mt-1 text-lg font-bold", valueClassName)}>{value}</p>
     </div>
   );
 }

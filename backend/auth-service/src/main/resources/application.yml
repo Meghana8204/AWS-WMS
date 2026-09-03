@@ -35,7 +35,8 @@ ams:
       audience: ams-business-service
       access-token-ttl-minutes: 15
       refresh-token-ttl-days: 30
-
+      # RSA keypair for RS256. In production these are mounted from a
+      # secret (see deploy/k8s/base/auth-secrets.yaml), never committed.
       private-key-path: ${JWT_PRIVATE_KEY_PATH:classpath:keys/dev-private.pem}
       public-key-path: ${JWT_PUBLIC_KEY_PATH:classpath:keys/dev-public.pem}
       key-id: ${JWT_KEY_ID:dev-key-1}

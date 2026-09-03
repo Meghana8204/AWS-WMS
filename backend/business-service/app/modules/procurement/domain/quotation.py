@@ -83,13 +83,13 @@ class Quotation(AggregateRoot):
         documents: List[QuotationDocument] = None,
     ) -> Quotation:
         total_amount = sum((line.quantity * line.unit_price for line in lines), Decimal("0"))
-
-
+        # Adjust total_amount for tax/freight/discount if needed, or keep sum. Let's do simple calculation:
+        # total = (sum(qty * price) - discount) + tax + freight
         disc = discount or Decimal("0")
         tx = tax or Decimal("0")
         fr = freight_charges or Decimal("0")
-
-
+        # Let's say tax is percentage, e.g. total_amount * (tx / 100) or value. Let's treat tax as a value/flat amount or calculate:
+        # standard is total_amount = (base_amount - discount) + (base_amount - discount)*tax/100 + freight_charges
         base_amount = total_amount - disc
         calculated_tax = base_amount * (tx / Decimal("100")) if tx > 0 else Decimal("0")
         net_amount = base_amount + calculated_tax + fr

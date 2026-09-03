@@ -4,8 +4,9 @@ import uuid
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.procurement.infrastructure.persistence.models import MaterialStockModel
@@ -23,6 +24,37 @@ class PutawayConfirmationRequest(BaseModel):
     material_scan: str
     location_scan: str
     quantity: Decimal
+
+
+class StorageLocationCreateRequest(BaseModel):
+    location_code: str = Field(min_length=1, max_length=64)
+    warehouse_id: str = Field(min_length=1, max_length=64)
+    zone: str = Field(min_length=1, max_length=128)
+    rack: str = Field(min_length=1, max_length=64)
+    bin: str = Field(min_length=1, max_length=64)
+    capacity: Decimal = Field(gt=0)
+
+
+class StorageLocationUpdateRequest(BaseModel):
+    active: bool
+
+
+def storage_location_response(location: StorageLocationModel) -> dict:
+    capacity = location.capacity or Decimal("0")
+    occupied = location.occupied_quantity or Decimal("0")
+    return {
+        "id": str(location.id),
+        "location_code": location.location_code,
+        "warehouse_id": location.warehouse_id,
+        "zone": location.zone,
+        "rack": location.rack,
+        "bin": location.bin,
+        "capacity": float(capacity),
+        "occupied_quantity": float(occupied),
+        "available_capacity": float(capacity - occupied),
+        "utilization_percent": float((occupied / capacity) * 100) if capacity else 0,
+        "active": location.active,
+    }
 
 
 def task_response(task: PutawayTaskModel) -> dict:
@@ -79,18 +111,78 @@ async def list_putaway_tasks(
 @router.get("/locations")
 async def list_storage_locations(
     warehouse_id: str | None = None,
+    include_inactive: bool = False,
     _user=Depends(require_permission("gate:read")),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    query = select(StorageLocationModel).where(StorageLocationModel.active.is_(True))
+    query = select(StorageLocationModel)
+    if not include_inactive:
+        query = query.where(StorageLocationModel.active.is_(True))
     if warehouse_id:
         query = query.where(StorageLocationModel.warehouse_id == warehouse_id)
     result = await uow.session.execute(query.order_by(StorageLocationModel.warehouse_id, StorageLocationModel.zone, StorageLocationModel.rack, StorageLocationModel.bin))
-    return [{"id": str(location.id), "location_code": location.location_code, "warehouse_id": location.warehouse_id,
-             "zone": location.zone, "rack": location.rack, "bin": location.bin,
-             "capacity": float(location.capacity), "occupied_quantity": float(location.occupied_quantity),
-             "available_capacity": float(location.capacity - location.occupied_quantity), "active": location.active}
-            for location in result.scalars().all()]
+    return [storage_location_response(location) for location in result.scalars().all()]
+
+
+@router.post("/locations", status_code=201)
+async def create_storage_location(
+    request: StorageLocationCreateRequest,
+    _user=Depends(require_permission("gate:approve")),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    values = {
+        "location_code": request.location_code.strip().upper(),
+        "warehouse_id": request.warehouse_id.strip().upper(),
+        "zone": request.zone.strip(),
+        "rack": request.rack.strip(),
+        "bin": request.bin.strip(),
+    }
+    if any(not value for value in values.values()):
+        raise HTTPException(status_code=422, detail="Location fields cannot be blank")
+
+    existing = await uow.session.scalar(
+        select(StorageLocationModel).where(
+            (StorageLocationModel.location_code == values["location_code"])
+            | (
+                (StorageLocationModel.warehouse_id == values["warehouse_id"])
+                & (StorageLocationModel.zone == values["zone"])
+                & (StorageLocationModel.rack == values["rack"])
+                & (StorageLocationModel.bin == values["bin"])
+            )
+        )
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail="Storage location already exists")
+
+    location = StorageLocationModel(
+        **values,
+        capacity=request.capacity,
+        occupied_quantity=Decimal("0"),
+        active=True,
+    )
+    uow.session.add(location)
+    try:
+        await uow.session.flush()
+    except IntegrityError as error:
+        raise HTTPException(status_code=409, detail="Storage location already exists") from error
+    return storage_location_response(location)
+
+
+@router.put("/locations/{location_id}")
+async def update_storage_location(
+    location_id: uuid.UUID,
+    request: StorageLocationUpdateRequest,
+    _user=Depends(require_permission("gate:approve")),
+    uow: UnitOfWork = Depends(get_uow),
+):
+    location = await uow.session.get(StorageLocationModel, location_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Storage location not found")
+    if not request.active and location.occupied_quantity > 0:
+        raise HTTPException(status_code=409, detail="Occupied storage locations cannot be deactivated")
+    location.active = request.active
+    await uow.session.flush()
+    return storage_location_response(location)
 
 
 @router.get("/inventory-locations")

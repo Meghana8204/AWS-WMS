@@ -19,7 +19,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy import or_, select, cast, String, update, func, Date
+from sqlalchemy import inspect, or_, select, cast, String, update, func, Date
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import aliased, selectinload, joinedload
 from app.modules.gate.infrastructure.persistence.models import GateEntryModel
@@ -683,33 +683,6 @@ async def list_material_stock(uow: UnitOfWork = Depends(get_uow)):
         res = await uow.session.execute(stmt)
         entities = res.scalars().all()
 
-
-        if not entities:
-            logger.info("Material stock table empty, seeding demo data...")
-            mock_data = [
-                {"code": "MAT-001", "name": "Steel Pipe 2\"", "cat": "Raw Materials", "qty": 1240, "uom": "MTR"},
-                {"code": "MAT-002", "name": "Aluminum Sheet", "cat": "Raw Materials", "qty": 850, "uom": "SQM"},
-                {"code": "COMP-08", "name": "Bearing 6205", "cat": "Components", "qty": 3200, "uom": "PCS"},
-                {"code": "HDW-12", "name": "M12 Bolt", "cat": "Hardware", "qty": 15000, "uom": "PCS"},
-            ]
-            for m in mock_data:
-                new_s = MaterialStockModel(
-                    id=uuid.uuid4(),
-                    material_code=m["code"],
-                    material_name=m["name"],
-                    category=m["cat"],
-                    on_hand=Decimal(str(m["qty"])),
-                    available=Decimal(str(m["qty"])),
-                    warehouse_id="Main Warehouse",
-                    uom=m["uom"]
-                )
-                uow.session.add(new_s)
-            await uow.commit()
-
-
-            res = await uow.session.execute(stmt)
-            entities = res.scalars().all()
-
         return [
             MaterialStockResponse(
                 id=str(s.id),
@@ -731,6 +704,16 @@ async def list_material_stock(uow: UnitOfWork = Depends(get_uow)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _is_rel_loaded(entity, attr_name: str) -> bool:
+    try:
+        insp = inspect(entity)
+        if insp is None:
+            return False
+        return attr_name not in insp.unloaded
+    except Exception:
+        return False
+
+
 def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
     """
     Safely maps a Supplier domain object to a SupplierResponse.
@@ -738,10 +721,10 @@ def _response_from_entity(entity: SupplierModel) -> SupplierResponse:
     try:
         e_id = str(getattr(entity, 'id', uuid.uuid4()))
         e_name = getattr(entity, 'supplier_name', 'Unknown')
-        addr = getattr(entity, 'address', None)
-        cont = getattr(entity, 'contact', None)
-        bank = getattr(entity, 'bank_info', None)
-        docs = getattr(entity, 'documents', None) or []
+        addr = getattr(entity, 'address', None) if _is_rel_loaded(entity, 'address') else None
+        cont = getattr(entity, 'contact', None) if _is_rel_loaded(entity, 'contact') else None
+        bank = getattr(entity, 'bank_info', None) if _is_rel_loaded(entity, 'bank_info') else None
+        docs = (getattr(entity, 'documents', None) if _is_rel_loaded(entity, 'documents') else []) or []
 
         return SupplierResponse(
             supplier_id=e_id,
@@ -1278,14 +1261,10 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     eyebrow="Request for quotation",
                     title=f"Quotation requested · {rfq.rfq_number}",
                     greeting=f"Hello {supplier.supplier_name},",
-                    intro="You have been invited to submit a commercial quotation for the materials below. Review the requirements and respond through the secure supplier portal.",
-                    details=[("RFQ number", rfq.rfq_number), ("Materials", str(len(rfq.items)))],
-                    items=[{
-                        "material": item.material_name,
-                        "quantity": f"{float(item.quantity):.4f} {item.uom}",
-                        "delivery": str(item.required_delivery_date or "As specified"),
-                        "warehouse": item.warehouse or "Main warehouse",
-                    } for item in rfq.items],
+                    intro="You have been invited to submit a commercial quotation. Review the requirements and respond through the secure supplier portal.",
+                    details=(),
+                    items=(),
+                    items_heading=None,
                     credentials=[("Username", username), ("Temporary password", temp_password)],
                     primary_cta=("Review & submit quotation", login_link),
                     note="Please submit your quotation before the RFQ closing date. Pricing and delivery commitments entered in the portal will form part of your official response.",
@@ -2723,7 +2702,7 @@ async def list_quotations(
     _user: CurrentUser = Depends(get_current_user),
 ) -> List[QuotationResponse]:
     stmt = select(QuotationModel).options(
-        selectinload(QuotationModel.lines),
+        selectinload(QuotationModel.lines).selectinload(QuotationLineModel.material),
         selectinload(QuotationModel.documents),
     )
     if rfq_id:
@@ -2733,7 +2712,24 @@ async def list_quotations(
 
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
-    return [_to_quotation_response(e) for e in entities]
+
+    supplier_ids = list({e.supplier_id for e in entities if e.supplier_id})
+    supplier_map = {}
+    if supplier_ids:
+        sup_res = await uow.session.execute(
+            select(SupplierModel)
+            .options(
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            )
+            .where(SupplierModel.id.in_(supplier_ids))
+        )
+        for sup in sup_res.scalars().all():
+            supplier_map[str(sup.id)] = _response_from_entity(sup)
+
+    return [_to_quotation_response(e, supplier_info=supplier_map.get(str(e.supplier_id))) for e in entities]
 
 
 @router.get("/quotations/{id}", response_model=QuotationResponse)
@@ -2746,7 +2742,24 @@ async def get_quotation(id: str, uow: UnitOfWork = Depends(get_uow)):
     q = res.scalar_one_or_none()
     if not q:
         raise HTTPException(status_code=404, detail="Quotation not found")
-    return _to_quotation_response(q)
+
+    sup_info = None
+    if q.supplier_id:
+        sup_res = await uow.session.execute(
+            select(SupplierModel)
+            .options(
+                selectinload(SupplierModel.contact),
+                selectinload(SupplierModel.address),
+                selectinload(SupplierModel.bank_info),
+                selectinload(SupplierModel.documents),
+            )
+            .where(SupplierModel.id == q.supplier_id)
+        )
+        sup = sup_res.scalar_one_or_none()
+        if sup:
+            sup_info = _response_from_entity(sup)
+
+    return _to_quotation_response(q, supplier_info=sup_info)
 
 
 @router.put("/quotations/{id}", response_model=QuotationResponse)
@@ -2861,16 +2874,24 @@ async def reject_quotation(
     return _to_quotation_response(quotation)
 
 
-def _to_quotation_response(q) -> QuotationResponse:
+def _to_quotation_response(q, supplier_info=None) -> QuotationResponse:
     lines = []
     for l in q.lines:
+        mat_name = getattr(l, "material_name", None)
+        uom_val = getattr(l, "uom", None)
+        if not mat_name and getattr(l, "material", None):
+            mat_name = getattr(l.material, "material_name", None)
+            uom_val = getattr(l.material, "uom", None)
+
         lines.append(QuotationLineSchema(
             material_id=str(getattr(l, "material_id", None)) if getattr(l, "material_id", None) else None,
             material_variant_id=str(getattr(l, "material_variant_id", None)) if getattr(l, "material_variant_id", None) else None,
             item_code=l.item_code,
             variant_code=getattr(l, "variant_code", None),
             quantity=l.quantity,
-            unit_price=l.unit_price
+            unit_price=l.unit_price,
+            material_name=mat_name,
+            uom=uom_val
         ))
 
     documents = [QuotationDocumentSchema(
@@ -2883,6 +2904,7 @@ def _to_quotation_response(q) -> QuotationResponse:
         id=str(q.id),
         rfq_id=str(q.rfq_id),
         supplier_id=str(q.supplier_id),
+        supplier_info=supplier_info,
         status=q.status,
         lines=lines,
         discount=getattr(q, "discount", Decimal("0")) or Decimal("0"),

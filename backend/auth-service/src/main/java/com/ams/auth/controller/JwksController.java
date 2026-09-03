@@ -7,8 +7,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-
-
+/**
+ * Publishes this service's RSA public key as a standard JWKS document.
+ * The Python business-service fetches and caches this (see
+ * business-service/app/security/jwt.py) so it can validate access tokens
+ * locally instead of calling this service on every request.
+ */
 @RestController
 public class JwksController {
 

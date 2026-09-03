@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-
+    # Add columns to quotation table
     op.add_column('quotation', sa.Column('discount', sa.Numeric(precision=18, scale=4), nullable=True))
     op.add_column('quotation', sa.Column('tax', sa.Numeric(precision=18, scale=4), nullable=True))
     op.add_column('quotation', sa.Column('freight_charges', sa.Numeric(precision=18, scale=4), nullable=True))
@@ -28,7 +28,7 @@ def upgrade() -> None:
     op.add_column('quotation', sa.Column('quotation_validity', sa.Date(), nullable=True))
     op.add_column('quotation', sa.Column('remarks', sa.String(length=500), nullable=True))
 
-
+    # Create quotation_document table
     op.create_table(
         'quotation_document',
         sa.Column('id', GUID(length=36), nullable=False),

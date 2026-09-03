@@ -17,7 +17,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-
+    # Create raw_material_master table
     op.create_table(
         "raw_material_master",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
@@ -25,10 +25,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("name")
     )
-
-
-    op.execute("INSERT INTO raw_material_master (name) VALUES ('Steel'), ('Aluminum'), ('Plastic'), ('Copper'), ('Rubber'), ('Chemicals')")
-
 
 def downgrade() -> None:
     op.drop_table("raw_material_master")

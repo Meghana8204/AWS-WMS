@@ -5,7 +5,6 @@ FastAPI entrypoint for ams-wms-business-service.
 from __future__ import annotations
 
 import asyncio
-
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -23,12 +22,15 @@ from app.modules.gate.infrastructure.api.router import (
     router as gate_router,
 )
 from app.modules.gate.infrastructure.api.dashboard import router as dashboard_router
+from app.modules.gate.infrastructure.api.quality import router as quality_router
+from app.modules.gate.infrastructure.api.damage_claims import router as damage_claims_router
 from app.modules.notification.infrastructure.api.router import router as notification_router
 from app.modules.procurement.infrastructure.api.material_router import router as material_router
 from app.modules.procurement.infrastructure.api.router import router as procurement_router
 from app.modules.receiving.infrastructure.api.router import router as receiving_router
 from app.modules.returns.infrastructure.api.router import router as returns_router
 from app.modules.storage.infrastructure.api.router import router as storage_router
+from app.modules.assembly.infrastructure.api.router import router as assembly_router
 from app.workers.notification_consumer import start_notification_consumer
 from app.workers.outbox_relay import relay_once
 
@@ -44,23 +46,106 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     global _consumer_task
 
+    # Ensure ORM-owned tables exist before applying the legacy compatibility
+    # DDL below.  This is especially important for local databases whose data
+    # tables were cleared while their Alembic revision marker was retained:
+    # create_all resolves foreign-key dependencies and creates parent tables
+    # (supplier, rfq, asn) before children such as purchase_order.
+    try:
+        from app.database.base import Base
+        from app.database.session import engine
 
+        # Import every model module so its tables are registered in metadata.
+        from app.events import outbox_model  # noqa: F401
+        from app.modules.gate.infrastructure.persistence import models as gate_models  # noqa: F401
+        from app.modules.notification.infrastructure.persistence import models as notification_models  # noqa: F401
+        from app.modules.procurement.infrastructure.persistence import models as procurement_models  # noqa: F401
+        from app.modules.receiving.infrastructure.persistence import models as receiving_models  # noqa: F401
+        from app.modules.returns.infrastructure.persistence import models as returns_models  # noqa: F401
+        from app.modules.storage.infrastructure.persistence import models as storage_models  # noqa: F401
+        from app.modules.assembly.infrastructure.persistence import models as assembly_models  # noqa: F401
 
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+        logger.info("Ensured ORM database schema exists")
+    except Exception as exc:
+        logger.exception("Failed to initialize ORM database schema: %s", exc)
+        raise
 
-
-
-
+    # --- Development schema compatibility guard ---
+    #
+    # Older local databases can predate some of the fields now mapped by the
+    # procurement ORM.  Use PostgreSQL's idempotent form rather than catching
+    # duplicate-column errors: after a PostgreSQL statement fails, the whole
+    # transaction is aborted and every later migration statement would fail.
     try:
         from sqlalchemy import text
         from app.database.session import session_scope
 
-
+        # Helper to run DDL in its own transaction
         async def run_ddl(ddl_query: str):
             async with session_scope() as session:
                 await session.execute(text(ddl_query))
                 await session.commit()
 
+        # Upgrade legacy Material Data columns to the canonical Warehouse
+        # Material Master shape. create_all() intentionally does not alter an
+        # existing table, so older developer databases need this data-safe,
+        # idempotent compatibility step before the material API can query it.
+        for column, column_type in [
+            ("material_code", "VARCHAR(64)"),
+            ("material_name", "VARCHAR(256)"),
+            ("base_uom", "VARCHAR(32) DEFAULT 'PCS'"),
+            ("status", "VARCHAR(32) DEFAULT 'Active'"),
+            ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("created_by", "VARCHAR(64)"),
+            ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
+            ("updated_by", "VARCHAR(64)"),
+        ]:
+            await run_ddl(
+                f"ALTER TABLE material ADD COLUMN IF NOT EXISTS {column} {column_type}"
+            )
 
+        await run_ddl("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'code'
+                ) THEN
+                    UPDATE material
+                    SET material_code = code
+                    WHERE material_code IS NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'name'
+                ) THEN
+                    UPDATE material
+                    SET material_name = name
+                    WHERE material_name IS NULL;
+                END IF;
+
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'material' AND column_name = 'uom'
+                ) THEN
+                    UPDATE material
+                    SET base_uom = COALESCE(NULLIF(base_uom, ''), uom, 'PCS');
+                END IF;
+            END $$;
+        """)
+        await run_ddl(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_material_material_code "
+            "ON material (material_code) WHERE material_code IS NOT NULL"
+        )
+        logger.info("Ensured canonical Material Master columns and legacy data mapping")
+
+        # Add columns to asn
         for col in [
             ("shipment_date", "DATE DEFAULT CURRENT_DATE"),
             ("driver_name", "VARCHAR(128)"),
@@ -79,7 +164,7 @@ async def lifespan(app: FastAPI):
                 logger.debug(f"Ensured column {col[0]} exists on asn")
             except Exception: pass
 
-
+        # Ensure supplier_contact has primary_email and secondary_email
         try:
             await run_ddl("ALTER TABLE supplier_contact RENAME COLUMN email TO primary_email")
             logger.debug("Renamed 'email' to 'primary_email' on supplier_contact")
@@ -94,7 +179,7 @@ async def lifespan(app: FastAPI):
             logger.debug("Ensured primary/secondary email columns exist on supplier_contact")
         except Exception: pass
 
-
+        # Ensure supplier has missing columns
         for col in [
             ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
             ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"),
@@ -116,9 +201,9 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE supplier ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-
+        # Ensure category is JSONB (it was incorrectly VARCHAR(64) in early versions)
         try:
-
+            # More robust migration: handle existing VARCHAR data
             await run_ddl("""
                 ALTER TABLE supplier
                 ALTER COLUMN category TYPE JSONB
@@ -132,7 +217,7 @@ async def lifespan(app: FastAPI):
                 )
             """)
 
-
+            # Also ensure main_materials is JSONB
             await run_ddl("""
                 ALTER TABLE supplier
                 ALTER COLUMN main_materials TYPE JSONB
@@ -151,7 +236,53 @@ async def lifespan(app: FastAPI):
 
         logger.debug("Ensured columns exist on supplier")
 
+        # Receiving/damage-claim compatibility for local databases created
+        # before the damaged-goods workflow was introduced. SQLAlchemy's
+        # create_all creates missing tables but intentionally does not add
+        # columns to existing tables.
+        for col in [
+            ("physical_condition_ok", "BOOLEAN"),
+            ("packaging_ok", "BOOLEAN"),
+            ("specifications_ok", "BOOLEAN"),
+            ("serial_batch_number", "VARCHAR(128)"),
+            ("serial_batch_verified", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("disposition_status", "VARCHAR(32)"),
+            ("quarantine_location", "VARCHAR(128)"),
+            ("quarantined_by", "VARCHAR(128)"),
+            ("quarantined_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE receiving_line ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure receiving_line.%s: %s", col[0], exc)
 
+        for col in [
+            ("report_number", "VARCHAR(32)"),
+            ("received_quantity", "NUMERIC(18,4)"),
+            ("status", "VARCHAR(32) NOT NULL DEFAULT 'PENDING_PROCUREMENT'"),
+            ("submitted_by", "VARCHAR(128)"),
+            ("submitted_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE damage_report ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure damage_report.%s: %s", col[0], exc)
+
+        for col in [
+            ("supplier_response", "VARCHAR(32)"),
+            ("resolution", "VARCHAR(32)"),
+            ("supplier_remarks", "TEXT"),
+            ("return_required", "BOOLEAN NOT NULL DEFAULT FALSE"),
+            ("responded_at", "TIMESTAMP WITH TIME ZONE"),
+            ("closed_by", "VARCHAR(128)"),
+            ("closed_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE supplier_damage_claim ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception as exc:
+                logger.warning("Unable to ensure supplier_damage_claim.%s: %s", col[0], exc)
+
+        # Ensure rfq has missing columns
         for col in [
             ("rfq_number", "VARCHAR(64)"),
             ("rfq_date", "DATE DEFAULT CURRENT_DATE"),
@@ -175,7 +306,7 @@ async def lifespan(app: FastAPI):
         except Exception: pass
         logger.debug("Ensured columns exist on rfq")
 
-
+        # Ensure quotation has missing columns
         for col in [
             ("discount", "NUMERIC(18,4) DEFAULT 0"),
             ("tax", "NUMERIC(18,4) DEFAULT 0"),
@@ -191,7 +322,7 @@ async def lifespan(app: FastAPI):
             except Exception: pass
         logger.debug("Ensured columns exist on quotation")
 
-
+        # Create purchase_order table if not exists
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS purchase_order (
@@ -213,7 +344,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create purchase_order table: {e}")
 
-
+        # Create purchase_order_item table if not exists
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS purchase_order_item (
@@ -230,7 +361,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create purchase_order_item table: {e}")
 
-
+        # Ensure purchase_order_item has missing columns
         for col in [
             ("category", "VARCHAR(128)"),
             ("discount", "NUMERIC(18, 4) DEFAULT 0"),
@@ -240,7 +371,7 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE purchase_order_item ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-
+        # Ensure purchase_order has missing columns
         for col in [
             ("subtotal", "NUMERIC(18, 4) DEFAULT 0"),
             ("discount_amount", "NUMERIC(18, 4) DEFAULT 0"),
@@ -257,7 +388,7 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
-
+        # Additional PO Columns for full data snapshot
         for col in [
             ("department", "VARCHAR(128)"),
             ("supplier_code", "VARCHAR(64)"),
@@ -278,7 +409,7 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE purchase_order ADD COLUMN IF NOT EXISTS rejection_reason TEXT")
         except Exception: pass
 
-
+        # Create po_approval_history table
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS po_approval_history (
@@ -294,7 +425,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create po_approval_history table: {e}")
 
-
+        # Create notification table
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS notification (
@@ -328,7 +459,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create notification table: {e}")
 
-
+        # Create material_request table if not exists
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_request (
@@ -344,10 +475,12 @@ async def lifespan(app: FastAPI):
                 )
             """)
             logger.debug("Ensured material_request table exists")
+            await run_ddl("ALTER TABLE material_request ADD COLUMN IF NOT EXISTS approved_by VARCHAR(128)")
+            await run_ddl("ALTER TABLE material_request ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP WITH TIME ZONE")
         except Exception as e:
             logger.warning(f"Failed to create material_request table: {e}")
 
-
+        # Create material_request_item table if not exists
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_request_item (
@@ -367,6 +500,44 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to create material_request_item table: {e}")
 
         try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS stock_reservation (
+                    id UUID PRIMARY KEY, request_id UUID NOT NULL REFERENCES material_request(id),
+                    request_item_id UUID NOT NULL UNIQUE REFERENCES material_request_item(id),
+                    material_code VARCHAR(64) NOT NULL, warehouse_id VARCHAR(64) NOT NULL,
+                    quantity NUMERIC(18,4) NOT NULL, uom VARCHAR(32) NOT NULL,
+                    status VARCHAR(32) NOT NULL, allocations JSON NOT NULL DEFAULT '[]', reserved_by VARCHAR(128) NOT NULL,
+                    reserved_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS pick_task (
+                    id UUID PRIMARY KEY, task_number VARCHAR(64) NOT NULL UNIQUE,
+                    request_id UUID NOT NULL UNIQUE REFERENCES material_request(id),
+                    request_number VARCHAR(64) NOT NULL, warehouse_id VARCHAR(64) NOT NULL,
+                    department VARCHAR(64) NOT NULL, items JSON NOT NULL,
+                    status VARCHAR(32) NOT NULL, created_by VARCHAR(128) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("ALTER TABLE stock_reservation ADD COLUMN IF NOT EXISTS allocations JSON NOT NULL DEFAULT '[]'")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS destination VARCHAR(128) NOT NULL DEFAULT 'Production Staging Area'")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS assigned_to VARCHAR(128)")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMP WITH TIME ZONE")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS started_at TIMESTAMP WITH TIME ZONE")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITH TIME ZONE")
+            await run_ddl("ALTER TABLE pick_task ADD COLUMN IF NOT EXISTS completed_by VARCHAR(128)")
+            await run_ddl("""CREATE TABLE IF NOT EXISTS material_issue (
+                id UUID PRIMARY KEY, issue_number VARCHAR(64) NOT NULL UNIQUE,
+                pick_task_id UUID NOT NULL UNIQUE REFERENCES pick_task(id),
+                request_id UUID NOT NULL REFERENCES material_request(id), department VARCHAR(64) NOT NULL,
+                items JSON NOT NULL, issued_by VARCHAR(128) NOT NULL, received_by VARCHAR(128) NOT NULL,
+                issued_at TIMESTAMP WITH TIME ZONE NOT NULL)""")
+            logger.debug("Ensured outbound reservation and pick task tables exist")
+        except Exception as e:
+            logger.warning(f"Failed to create outbound workflow tables: {e}")
+
+        try:
             for tbl in ["material_request_item", "purchase_order_item", "material_stock"]:
                 await run_ddl(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS material_id UUID REFERENCES material(id) ON DELETE SET NULL")
                 await run_ddl(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS material_variant_id UUID REFERENCES material_variant(id) ON DELETE SET NULL")
@@ -375,7 +546,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to alter material linkage columns: {e}")
 
-
+        # Create material_stock table
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS material_stock (
@@ -396,6 +567,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
+<<<<<<< HEAD
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS grn_damage_lot (
@@ -430,6 +602,9 @@ async def lifespan(app: FastAPI):
             logger.warning(f"Failed to create grn_damage_lot/grn_damage_qr tables: {e}")
 
 
+=======
+        # Create arrival_notification table
+>>>>>>> main
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS arrival_notification (
@@ -454,19 +629,19 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create arrival_notification table: {e}")
 
-
+        # Ensure supplier_document has file_type, file_size and upload_id
         try:
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_type VARCHAR(64)")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS file_size BIGINT")
             await run_ddl("ALTER TABLE supplier_document ADD COLUMN IF NOT EXISTS upload_id VARCHAR(128)")
 
-
+            # Ensure they are nullable to prevent IntegrityErrors on incomplete data
             await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_type DROP NOT NULL")
             await run_ddl("ALTER TABLE supplier_document ALTER COLUMN file_size DROP NOT NULL")
             logger.debug("Ensured extended columns exist and are nullable on supplier_document")
         except Exception: pass
 
-
+        # Create or ensure complete columns on gate_entry
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS gate_entry (
@@ -547,6 +722,18 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE gate_entry ADD COLUMN IF NOT EXISTS {col} {col_type}")
             except Exception: pass
 
+        # Create warehouse workflow tables if not exist
+        for col, col_type in [
+            ("quality_issue_image_data", "BYTEA"),
+            ("quality_issue_filename", "VARCHAR(256)"),
+            ("quality_issue_content_type", "VARCHAR(128)"),
+            ("quality_issue_status", "VARCHAR(32)"),
+            ("quality_issue_sent_at", "TIMESTAMP WITH TIME ZONE"),
+            ("quality_issue_forwarded_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE dock_assignment ADD COLUMN IF NOT EXISTS {col} {col_type}")
+            except Exception: pass
 
         try:
             await run_ddl("""
@@ -610,7 +797,6 @@ async def lifespan(app: FastAPI):
                     task_number VARCHAR(64) UNIQUE NOT NULL,
                     grn_id UUID,
                     grn_number VARCHAR(64),
-                    handling_unit_id UUID UNIQUE REFERENCES handling_unit(id),
                     item_code VARCHAR(64) NOT NULL,
                     material_name VARCHAR(256),
                     quantity NUMERIC(18, 4) NOT NULL,
@@ -623,24 +809,20 @@ async def lifespan(app: FastAPI):
                     destination_bin VARCHAR(32),
                     location_assigned_by VARCHAR(128),
                     location_assigned_at TIMESTAMP WITH TIME ZONE,
-                    status VARCHAR(32) NOT NULL DEFAULT 'PUTAWAY_PENDING',
-                    started_by VARCHAR(128),
-                    started_at TIMESTAMP WITH TIME ZONE,
-                    completed_by VARCHAR(128),
-                    completed_at TIMESTAMP WITH TIME ZONE,
+                    assigned_to VARCHAR(128),
+                    assigned_by VARCHAR(128),
+                    assigned_at TIMESTAMP WITH TIME ZONE,
+                    material_category VARCHAR(128),
+                    handling_requirement VARCHAR(128),
+                    rotation_policy VARCHAR(16),
+                    placement_metadata JSON,
+                    status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
                     created_by VARCHAR(128) NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         except Exception: pass
-
-
-        for col, col_type in [
-            ("handling_unit_id", "UUID"),
-            ("started_by", "VARCHAR(128)"),
-            ("started_at", "TIMESTAMP WITH TIME ZONE"),
-            ("completed_by", "VARCHAR(128)"),
-            ("completed_at", "TIMESTAMP WITH TIME ZONE"),
+        for column, column_type in [
             ("assigned_to", "VARCHAR(128)"),
             ("assigned_by", "VARCHAR(128)"),
             ("assigned_at", "TIMESTAMP WITH TIME ZONE"),
@@ -650,7 +832,131 @@ async def lifespan(app: FastAPI):
             ("placement_metadata", "JSON"),
         ]:
             try:
-                await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {col} {col_type}")
+                await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {column} {column_type}")
+            except Exception: pass
+        for column, column_type in [
+            ("priority", "VARCHAR(16) NOT NULL DEFAULT 'MEDIUM'"),
+            ("required_date", "DATE"),
+            ("assigned_team", "VARCHAR(128)"),
+            ("assembly_steps", "JSON NOT NULL DEFAULT '[]'"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE assembly_order ADD COLUMN IF NOT EXISTS {column} {column_type}")
+            except Exception: pass
+        try:
+            await run_ddl("UPDATE assembly_order SET status = 'READY' WHERE status = 'PENDING'")
+            await run_ddl("UPDATE assembly_order SET status = 'QUALITY_CHECK' WHERE status = 'QUALITY_PENDING'")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_material_reservation (
+                    id UUID PRIMARY KEY,
+                    assembly_order_id UUID NOT NULL REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    material_code VARCHAR(64) NOT NULL,
+                    quantity NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32) NOT NULL DEFAULT 'PCS',
+                    status VARCHAR(32) NOT NULL DEFAULT 'RESERVED',
+                    reserved_by VARCHAR(128) NOT NULL,
+                    reserved_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    CONSTRAINT uq_assembly_reservation_order_material UNIQUE (assembly_order_id, material_code)
+                )
+            """)
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_material_reservation_order ON assembly_material_reservation (assembly_order_id)")
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_material_reservation_material ON assembly_material_reservation (material_code)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_team (
+                    id UUID PRIMARY KEY, name VARCHAR(128) NOT NULL UNIQUE,
+                    team_leader VARCHAR(128) NOT NULL, workers JSON NOT NULL DEFAULT '[]',
+                    shift VARCHAR(64) NOT NULL, workstation VARCHAR(64) NOT NULL,
+                    active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS ix_assembly_team_name ON assembly_team (name)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_material_consumption (
+                    id UUID PRIMARY KEY, assembly_order_id UUID NOT NULL REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    material_code VARCHAR(64) NOT NULL, expected_per_unit NUMERIC(18, 4) NOT NULL,
+                    assembled_quantity NUMERIC(18, 4) NOT NULL, actual_consumed NUMERIC(18, 4) NOT NULL,
+                    uom VARCHAR(32) NOT NULL, recorded_by VARCHAR(128) NOT NULL,
+                    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    CONSTRAINT uq_assembly_consumption_order_material UNIQUE (assembly_order_id, material_code)
+                )
+            """)
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_consumption_order ON assembly_material_consumption (assembly_order_id)")
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_consumption_material ON assembly_material_consumption (material_code)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_scrap (
+                    id UUID PRIMARY KEY, assembly_order_id UUID NOT NULL REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    material_code VARCHAR(64) NOT NULL, quantity NUMERIC(18, 4) NOT NULL, uom VARCHAR(32) NOT NULL,
+                    reason TEXT NOT NULL, employee_team VARCHAR(128) NOT NULL,
+                    approval_required BOOLEAN NOT NULL DEFAULT TRUE, status VARCHAR(32) NOT NULL DEFAULT 'PENDING_APPROVAL',
+                    recorded_at TIMESTAMP WITH TIME ZONE NOT NULL, approved_by VARCHAR(128), approved_at TIMESTAMP WITH TIME ZONE
+                )
+            """)
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_scrap_order ON assembly_scrap (assembly_order_id)")
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_scrap_material ON assembly_scrap (material_code)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_quality_inspection (
+                    id UUID PRIMARY KEY, assembly_order_id UUID NOT NULL UNIQUE REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    produced_quantity NUMERIC(18, 4) NOT NULL, passed_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    failed_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0, rework_quantity NUMERIC(18, 4) NOT NULL DEFAULT 0,
+                    status VARCHAR(32) NOT NULL DEFAULT 'PENDING_INSPECTION', inspected_by VARCHAR(128), notes TEXT,
+                    inspected_at TIMESTAMP WITH TIME ZONE, created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS ix_assembly_quality_order ON assembly_quality_inspection (assembly_order_id)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_rework_order (
+                    id UUID PRIMARY KEY, assembly_order_id UUID NOT NULL REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    rework_number VARCHAR(80) NOT NULL UNIQUE, reason_for_failure TEXT NOT NULL,
+                    failed_quantity NUMERIC(18, 4) NOT NULL, assigned_team VARCHAR(128) NOT NULL,
+                    assigned_worker VARCHAR(128), status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+                    final_result VARCHAR(32) NOT NULL DEFAULT 'PENDING_INSPECTION', notes TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE NOT NULL, started_at TIMESTAMP WITH TIME ZONE,
+                    completed_at TIMESTAMP WITH TIME ZONE, updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_rework_order ON assembly_rework_order (assembly_order_id)")
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS ix_assembly_rework_number ON assembly_rework_order (rework_number)")
+        except Exception: pass
+        try:
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS assembly_finished_goods (
+                    id UUID PRIMARY KEY, assembly_order_id UUID NOT NULL UNIQUE REFERENCES assembly_order(id) ON DELETE RESTRICT,
+                    product_code VARCHAR(64) NOT NULL, product_name VARCHAR(255) NOT NULL,
+                    quantity NUMERIC(18, 4) NOT NULL, uom VARCHAR(32) NOT NULL DEFAULT 'PCS',
+                    status VARCHAR(32) NOT NULL DEFAULT 'AVAILABLE', warehouse_id VARCHAR(64) NOT NULL,
+                    location_code VARCHAR(64) NOT NULL, on_hand_before NUMERIC(18, 4) NOT NULL,
+                    on_hand_after NUMERIC(18, 4) NOT NULL, posted_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+                )
+            """)
+            await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS ix_assembly_fg_order ON assembly_finished_goods (assembly_order_id)")
+            await run_ddl("CREATE INDEX IF NOT EXISTS ix_assembly_fg_product ON assembly_finished_goods (product_code)")
+        except Exception: pass
+        try:
+            await run_ddl("UPDATE putaway_task SET status = 'OPEN' WHERE status = 'PUTAWAY_PENDING'")
+        except Exception: pass
+        for column, column_type in [
+            ("material_code", "VARCHAR(64)"), ("material_name", "VARCHAR(256)"),
+            ("source_location", "VARCHAR(128)"), ("destination_location", "VARCHAR(128)"),
+            ("batch_lot", "VARCHAR(128)"), ("serial_number", "VARCHAR(128)"),
+            ("container_pallet", "VARCHAR(128)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE putaway_movement ADD COLUMN IF NOT EXISTS {column} {column_type}")
             except Exception: pass
 
         try:
@@ -771,12 +1077,12 @@ async def lifespan(app: FastAPI):
         coalesce=True,
     )
 
-
+    # Add arrival notification check (every hour in prod, more frequent for dev demo)
     from app.modules.procurement.infrastructure.api.router import check_upcoming_arrivals
     scheduler.add_job(
         check_upcoming_arrivals,
         "interval",
-        minutes=1,
+        minutes=1, # Check every minute for real-time demo feel
         id="arrival-notification-check",
         max_instances=1,
         coalesce=True
@@ -813,8 +1119,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-
-
+    # --- CORS Configuration -----------------------------------------------
+    # Robustly handle origins from settings (could be List[str] or comma-separated string)
     raw_origins = settings.cors_allow_origins
     if isinstance(raw_origins, str):
         try:
@@ -825,6 +1131,7 @@ def create_app() -> FastAPI:
     else:
         origins = list(raw_origins)
 
+<<<<<<< HEAD
 
     for o in [
         "http://localhost:8080",
@@ -839,11 +1146,29 @@ def create_app() -> FastAPI:
         if o not in origins:
             origins.append(o)
 
+=======
+    # Always ensure common local dev origins are present for ease of use
+    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
+        if o not in origins:
+            origins.append(o)
+
+    # Register request context first so CORS wraps normal application responses.
+    # Top-level exception responses are covered in the centralized error handler.
+>>>>>>> main
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
+<<<<<<< HEAD
         allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|.*\.loca\.lt)(:\d+)?",
+=======
+        allow_origin_regex=(
+            r"^https?://(?:localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|"
+            r"192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}):8080$"
+            if settings.environment.lower() in ("local", "test", "development")
+            else None
+        ),
+>>>>>>> main
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -851,7 +1176,7 @@ def create_app() -> FastAPI:
     )
     register_exception_handlers(app)
 
-
+    # Local development authentication override (for standalone testing without auth-service)
     if settings.environment.lower() in ("local", "test", "development"):
         from app.security.dependencies import CurrentUser, get_current_user
 
@@ -874,7 +1199,14 @@ def create_app() -> FastAPI:
     app.include_router(gate_router)
     app.include_router(gate_preview_router)
     app.include_router(dashboard_router)
+    app.include_router(quality_router)
+    app.include_router(damage_claims_router)
     app.include_router(procurement_router)
+    app.include_router(assembly_router)
+
+    @app.get("/api/debug-assembly")
+    async def debug_assembly():
+        return {"status": "ok"}
     app.include_router(material_router)
 
     from fastapi.staticfiles import StaticFiles

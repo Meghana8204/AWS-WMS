@@ -30,7 +30,7 @@ class PostedInventoryLine:
     item_code: str
     material_name: str
     quantity: Decimal | float | int
-    uom: str = "PCS"
+    uom: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -42,4 +42,3 @@ class GrnPostedEvent(DomainEvent):
     supplier_name: str | None = None
     warehouse_id: str | None = None
     lines: list[PostedInventoryLine]
-

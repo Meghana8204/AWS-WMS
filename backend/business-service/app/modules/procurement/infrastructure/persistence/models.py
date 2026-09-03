@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import List, Optional
 import uuid
 
-from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Table, Text
+from sqlalchemy import BigInteger, Column, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Table, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID
@@ -490,6 +490,58 @@ class MaterialRequestItemModel(Base):
     request: Mapped[MaterialRequestModel] = relationship("MaterialRequestModel", back_populates="items")
     material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
     variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
+
+
+class StockReservationModel(Base):
+    __tablename__ = "stock_reservation"
+    __table_args__ = (UniqueConstraint("request_item_id", name="uq_stock_reservation_request_item"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False, index=True)
+    request_item_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request_item.id", ondelete="RESTRICT"), nullable=False)
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="RESERVED")
+    allocations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    reserved_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    reserved_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+
+class PickTaskModel(Base):
+    __tablename__ = "pick_task"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    task_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True)
+    request_number: Mapped[str] = mapped_column(String(64), nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    department: Mapped[str] = mapped_column(String(64), nullable=False)
+    items: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN")
+    destination: Mapped[str] = mapped_column(String(128), nullable=False, default="Production Staging Area")
+    assigned_to: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    completed_by: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
+
+
+class MaterialIssueModel(Base):
+    __tablename__ = "material_issue"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    issue_number: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    pick_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("pick_task.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    request_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("material_request.id", ondelete="RESTRICT"), nullable=False)
+    department: Mapped[str] = mapped_column(String(64), nullable=False)
+    items: Mapped[list] = mapped_column(JSON, nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    received_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
 
 class MaterialStockModel(Base):

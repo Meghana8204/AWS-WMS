@@ -24,6 +24,7 @@ import {
   Info,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { StatCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ export const Route = createFileRoute("/warehouse/materials")({
   component: WarehouseMaterials,
 });
 
+<<<<<<< HEAD
 const DEFAULT_UOMS = [
   "INGOT",
   "ROLL",
@@ -88,6 +90,8 @@ export const formatSpecCode = (code?: string): string => {
   return code.replace(/-V(\d+)$/i, "-S$1");
 };
 
+=======
+>>>>>>> main
 interface VariantItem {
   variant_code?: string;
   size: string;
@@ -106,7 +110,7 @@ function WarehouseMaterials() {
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [categories, setCategories] = useState<string[]>([]);
-  const [uoms, setUoms] = useState<string[]>(DEFAULT_UOMS);
+  const [uoms, setUoms] = useState<string[]>([]);
 
   // Modals & Dialog states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -120,10 +124,10 @@ function WarehouseMaterials() {
   // Form states for creating Material
   const [materialCode, setMaterialCode] = useState("");
   const [materialName, setMaterialName] = useState("");
-  const [category, setCategory] = useState("Electrical");
+  const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [baseUom, setBaseUom] = useState("PCS");
+  const [baseUom, setBaseUom] = useState("");
   const [materialStatus, setMaterialStatus] = useState("Active");
 
   // Multi-variants/specifications builder inside Create Material
@@ -134,7 +138,7 @@ function WarehouseMaterials() {
       color: "",
       grade: "",
       specification: "",
-      uom: "PCS",
+      uom: "",
       attributes: {},
       status: "Active",
     },
@@ -149,7 +153,7 @@ function WarehouseMaterials() {
   const [newVarColor, setNewVarColor] = useState("");
   const [newVarGrade, setNewVarGrade] = useState("");
   const [newVarSpec, setNewVarSpec] = useState("");
-  const [newVarUom, setNewVarUom] = useState("PCS");
+  const [newVarUom, setNewVarUom] = useState("");
   const [newVarCode, setNewVarCode] = useState("");
   const [newVarAttrs, setNewVarAttrs] = useState<Record<string, string>>({});
 
@@ -163,7 +167,7 @@ function WarehouseMaterials() {
           status: selectedStatus !== "ALL" ? selectedStatus : undefined,
         }),
         api.getMaterialCategories().catch(() => []),
-        api.getMaterialUoms().catch(() => DEFAULT_UOMS),
+        api.getMaterialUoms().catch(() => []),
       ]);
       setMaterials(matData);
       if (catData.length > 0) setCategories(catData);
@@ -196,7 +200,7 @@ function WarehouseMaterials() {
       setMaterialCode(code);
       setMaterialName("");
       setDescription("");
-      setBaseUom("PCS");
+      setBaseUom(uoms[0] || "");
       setMaterialStatus("Active");
       setCustomCategory("");
       setVariantsList([
@@ -206,7 +210,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: "PCS",
+          uom: uoms[0] || "",
           attributes: {},
           status: "Active",
         },
@@ -221,7 +225,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: "PCS",
+          uom: uoms[0] || "",
           attributes: {},
           status: "Active",
         },
@@ -412,7 +416,7 @@ function WarehouseMaterials() {
     setNewVarColor("");
     setNewVarGrade("");
     setNewVarSpec("");
-    setNewVarUom(selectedMaterial.base_uom || "PCS");
+    setNewVarUom(selectedMaterial.base_uom || uoms[0] || "");
     setNewVarAttrs({});
     setAttrKey("");
     setAttrVal("");
@@ -496,6 +500,7 @@ function WarehouseMaterials() {
       }
     >
       {/* Metric Cards */}
+<<<<<<< HEAD
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
         <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
           <div className="flex items-center justify-between">
@@ -563,6 +568,35 @@ function WarehouseMaterials() {
             </div>
           </div>
         </Card>
+=======
+      <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Base Materials"
+          value={loading ? "..." : String(totalMaterials)}
+          icon={Database}
+          tone="primary"
+        />
+        <StatCard
+          label="Total Variants"
+          value={loading ? "..." : String(totalVariants)}
+          delta="Stockable SKUs / Specs"
+          icon={Layers}
+          tone="teal"
+        />
+        <StatCard
+          label="Active Materials"
+          value={loading ? "..." : `${activeCount} / ${totalMaterials}`}
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StatCard
+          label="Categories"
+          value={loading ? "..." : String(distinctCategories)}
+          delta="Material classifications"
+          icon={Tag}
+          tone="warning"
+        />
+>>>>>>> main
       </div>
 
       {/* Filter and Search Bar */}

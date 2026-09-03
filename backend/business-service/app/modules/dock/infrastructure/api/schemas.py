@@ -9,10 +9,10 @@ from pydantic import BaseModel, Field
 class CreateDockMasterRequest(BaseModel):
     dock_code: str = Field(..., min_length=1, max_length=32)
     dock_name: str = Field(..., min_length=1, max_length=128)
-    dock_type: str = Field("RAW_MATERIAL", max_length=32)
+    dock_type: str = Field(..., min_length=1, max_length=32)
     location: Optional[str] = Field(None, max_length=128)
     description: Optional[str] = None
-    status: str = Field("AVAILABLE", max_length=32)
+    status: str = Field(..., min_length=1, max_length=32)
     is_active: bool = True
 
 
@@ -82,7 +82,7 @@ class DockMasterResponse(BaseModel):
     id: uuid.UUID
     dock_code: str
     dock_name: str
-    dock_type: str = "RAW_MATERIAL"
+    dock_type: str
     location: Optional[str] = None
     description: Optional[str] = None
     status: str

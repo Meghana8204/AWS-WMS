@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ArrowRight, type LucideIcon } from "lucide-react";
+
 export function StatCard({
   label,
   value,
@@ -25,9 +26,8 @@ export function StatCard({
     warning: "bg-warning-soft text-warning-foreground",
     danger: "bg-danger-soft text-destructive",
   };
-  return (
-    <Link to={to} className="group block">
-      <Card className="gap-0 rounded-2xl border-border/70 p-4 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
+  const cardContent = (
+      <Card className="flex h-full min-h-36 flex-col gap-0 rounded-2xl border-border/70 p-4 shadow-soft transition-all duration-300 group-hover:-translate-y-0.5 group-hover:shadow-lift">
         <div className="flex items-center justify-between">
           <span className={cn("grid size-9 place-items-center rounded-xl", tones[tone])}>
             <Icon className="size-4" />
@@ -36,12 +36,29 @@ export function StatCard({
         </div>
         <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
         <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
-        {delta && (
-          <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">{delta}</p>
-        )}
+        <p
+          className={cn(
+            "mt-1.5 min-h-4 text-[10px] font-semibold text-muted-foreground/80",
+            !delta && "invisible",
+          )}
+          aria-hidden={!delta}
+        >
+          {delta || "No additional detail"}
+        </p>
       </Card>
-    </Link>
   );
+<<<<<<< HEAD
+=======
+
+  if (to) {
+    return (
+      <Link to={to} className="group block h-full">
+        {cardContent}
+      </Link>
+    );
+  }
+  return <div className="group block h-full">{cardContent}</div>;
+>>>>>>> main
 }
 export function Field({ label, value, mono, icon: Icon }: { label: string; value: ReactNode; mono?: boolean; icon?: LucideIcon }) {
   return (
@@ -88,15 +105,11 @@ export function SectionCard({
     </Card>
   );
 }
+
 export function Timeline({
   items,
 }: {
-  items: {
-    time: string;
-    title: string;
-    detail: string;
-    tone?: string;
-  }[];
+  items: { time: string; title: string; detail: string; tone?: string }[];
 }) {
   const tones: Record<string, string> = {
     primary: "bg-primary",
@@ -125,48 +138,4 @@ export function Timeline({
     </ol>
   );
 }
-export function StepRail({ current }: { current: number }) {
-  const steps = [
-    { n: 1, label: "Gate Entry", to: "/gate-entry" },
-    { n: 2, label: "Vehicle", to: "/vehicle-verification" },
-    { n: 3, label: "Driver", to: "/driver-verification" },
-    { n: 4, label: "Vendor & PO", to: "/purchase-order" },
-    { n: 5, label: "Accept", to: "/accept-arrival" },
-    { n: 6, label: "Dock", to: "/dock-assignment" },
-    { n: 7, label: "Receiving", to: "/receiving" },
-  ];
-  return (
-    <div className="mb-6 flex items-center gap-1 overflow-x-auto rounded-2xl border border-border/70 bg-card p-2 shadow-soft">
-      {steps.map((s, i) => {
-        const done = s.n < current;
-        const active = s.n === current;
-        return (
-          <div key={s.n} className="flex shrink-0 items-center">
-            <Link
-              to={s.to}
-              className={cn(
-                "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition-colors",
-                active && "bg-primary-soft text-primary",
-                done && "text-success hover:bg-success-soft",
-                !active && !done && "text-muted-foreground hover:bg-accent",
-              )}
-            >
-              <span
-                className={cn(
-                  "grid size-5 place-items-center rounded-full text-[10px] font-semibold",
-                  active && "bg-primary text-primary-foreground",
-                  done && "bg-success text-success-foreground",
-                  !active && !done && "bg-muted text-muted-foreground",
-                )}
-              >
-                {done ? "✓" : s.n}
-              </span>
-              {s.label}
-            </Link>
-            {i < steps.length - 1 && <span className="mx-0.5 h-px w-4 bg-border" />}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+

@@ -25,13 +25,13 @@ class MockAnprService(AnprService):
         self.test_mappings = test_mappings or {}
 
     async def recognize_license_plate(self, image_data: bytes | str) -> AnprResult:
-
+        # If image_data is a filename or string key present in test mappings
         if isinstance(image_data, str) and image_data in self.test_mappings:
             veh, conf = self.test_mappings[image_data]
             return AnprResult(detected_vehicle_number=veh, confidence=conf, raw_metadata={"source": "mock_mapping"})
 
         if isinstance(image_data, bytes):
-
+            # Check if bytes contain ASCII test string
             try:
                 decoded = image_data.decode("utf-8", errors="ignore").strip()
                 if decoded in self.test_mappings:
@@ -65,7 +65,7 @@ class MockOcrService(OcrService):
         if key in self.test_po_data:
             return self.test_po_data[key]
 
-
+        # Attempt to parse PO text if raw text was passed
         if key:
             po_match = re.search(r"PO-\d+", key, re.IGNORECASE)
             po_num = po_match.group(0).upper() if po_match else "PO-1001"
@@ -79,7 +79,7 @@ class MockOcrService(OcrService):
                 confidence=0.98,
             )
 
-
+        # Default fallback mock result
         return OcrResult(
             po_number="PO-1001",
             supplier_name="Acme Corp",

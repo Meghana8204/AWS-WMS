@@ -15,7 +15,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-
+    # Add reference columns to existing purchase_order table if not present
     op.add_column("purchase_order", sa.Column("supplier_name", sa.String(128), nullable=True))
     op.add_column("purchase_order", sa.Column("po_date", sa.Date(), nullable=True))
     op.add_column("purchase_order", sa.Column("expected_delivery_date", sa.Date(), nullable=True))

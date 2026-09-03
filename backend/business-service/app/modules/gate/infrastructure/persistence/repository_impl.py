@@ -33,7 +33,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
         self._session = session
 
     async def save(self, gate_entry: GateEntry) -> None:
-
+        # Check if entity already exists in session/db
         result = await self._session.execute(
             select(GateEntryModel)
             .options(selectinload(GateEntryModel.audit_logs))
@@ -120,7 +120,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
             entity.manual_verification_notes = gate_entry.manual_verification_notes
             entity.updated_at = gate_entry.updated_at
 
-
+        # Save audit logs
         existing_log_ids = {l.id for l in entity.audit_logs}
         for log in gate_entry.audit_logs:
             if log.id not in existing_log_ids:
@@ -134,7 +134,7 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
                 )
                 self._session.add(log_entity)
 
-
+        # Write domain events to outbox within same transaction
         for event in gate_entry.domain_events:
             self._session.add(to_outbox_row("GateEntry", str(gate_entry.id), event))
 
@@ -295,10 +295,10 @@ class SqlAlchemyPurchaseOrderLookupRepository(PurchaseOrderLookupRepository):
         self._session = session
 
     async def find_po_details_by_number(self, po_number: str) -> Optional[PurchaseOrderDetails]:
-
-
-
-
+        # Purchase Order module has been removed.
+        # Returning a generic object so gate entry can proceed with manual verification if needed,
+        # or returning None if we want to force UNSCHEDULED status.
+        # Given the previous requirement to remove PO completely, we'll return a stub.
         return PurchaseOrderDetails(
             po_id=str(uuid.uuid4()),
             po_number=po_number,

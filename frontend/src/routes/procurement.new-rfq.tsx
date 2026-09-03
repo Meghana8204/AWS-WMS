@@ -15,8 +15,9 @@ import {
   Trash2,
   Package,
   Sparkles,
+  ClipboardList,
 } from "lucide-react";
-import { AppShell } from "@/components/wms/app-shell";
+import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +35,9 @@ function NewRfq() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [selectedSuppliers, setSelectedSuppliers] = useState<string[]>([]);
   const [loadingSuppliers, setLoadingSuppliers] = useState(true);
+  const [materialRequests, setMaterialRequests] = useState<any[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [loadingRequests, setLoadingRequests] = useState(true);
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [filters, setFilters] = useState({
     search: "",
@@ -44,6 +48,8 @@ function NewRfq() {
   const [formData, setFormData] = useState({
     rfq_date: new Date().toISOString().split("T")[0],
     material_request_number: "",
+    department: "",
+    requested_by: "",
     required_delivery_date: "",
     warehouse: "Main Warehouse",
     procurement_officer: "",
@@ -57,7 +63,6 @@ function NewRfq() {
       category: "Raw Materials",
       quantity: 1,
       uom: "PCS",
-      special_requirements: "",
     },
   ]);
   const addItem = () => {
@@ -69,7 +74,6 @@ function NewRfq() {
         category: "Raw Materials",
         quantity: 1,
         uom: "PCS",
-        special_requirements: "",
       },
     ]);
   };
@@ -82,6 +86,42 @@ function NewRfq() {
   };
   const handleItemChange = (index: number, field: string, value: any) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  };
+
+  const applyMaterialRequest = (requestId: string, requests = materialRequests) => {
+    const mr = requests.find(
+      (request) => request.id === requestId || request.requestNumber === requestId,
+    );
+    if (!mr) return;
+
+    setSelectedRequestId(mr.id);
+    setFormData((prev) => ({
+      ...prev,
+      material_request_number: mr.requestNumber || mr.request_number || "",
+      department: mr.department || "",
+      requested_by: mr.requestedBy || mr.requested_by || "",
+      warehouse: mr.warehouseId || mr.warehouse_id || mr.warehouse || "Main Warehouse",
+      required_delivery_date:
+        mr.requiredDate || mr.required_date
+          ? String(mr.requiredDate || mr.required_date).split("T")[0]
+          : "",
+      remarks: mr.remarks || "",
+    }));
+
+    if (mr.items && mr.items.length > 0) {
+      setItems(
+        mr.items.map((item: any) => ({
+          material_id: item.materialId || item.material_id || null,
+          material_variant_id: item.materialVariantId || item.material_variant_id || null,
+          material_code: item.materialCode || item.material_code || "",
+          variant_code: item.variantCode || item.variant_code || null,
+          material_name: item.materialName || item.material_name || item.materialCode || "",
+          category: item.category || "Raw Materials",
+          quantity: item.quantity ?? 1,
+          uom: item.uom || "PCS",
+        })),
+      );
+    }
   };
   useEffect(() => {
     async function fetchSuppliers() {
@@ -127,59 +167,38 @@ function NewRfq() {
       const user = JSON.parse(userInfo);
       setFormData((prev) => ({ ...prev, procurement_officer: user.username || "" }));
     }
-    const urlParams = new URLSearchParams(window.location.search);
-    const fromRequestId = urlParams.get("fromRequestId");
-    if (fromRequestId) {
-      const loadMR = async () => {
-        try {
-          const allMRs = await api.getMaterialRequests();
-          const mr = allMRs.find((r) => r.id === fromRequestId);
-          if (mr) {
-            setFormData((prev) => ({
-              ...prev,
-              material_request_number: mr.requestNumber,
-              warehouse: mr.warehouseId,
-              required_delivery_date: mr.requiredDate,
-            }));
-            setItems(
-              mr.items.map((it: any) => ({
-                material_id: it.materialId || it.material_id || null,
-                material_variant_id: it.materialVariantId || it.material_variant_id || null,
-                material_code: it.materialCode || it.material_code,
-                variant_code: it.variantCode || it.variant_code || null,
-                material_name: it.materialName || it.material_name || it.materialCode,
-                category: "Raw Materials",
-                quantity: it.quantity,
-                uom: it.uom,
-                special_requirements: "",
-              })),
-            );
-          }
-        } catch (e) {
-          console.error("Failed to load MR details", e);
+    const loadMaterialRequests = async () => {
+      try {
+        setLoadingRequests(true);
+        const allMRs = await api.getMaterialRequests();
+        setMaterialRequests(allMRs);
+
+        let fromRequestId = new URLSearchParams(window.location.search).get("fromRequestId");
+        if (!fromRequestId && typeof window !== "undefined") {
+          const match = window.location.href.match(/fromRequestId=([^&]+)/);
+          if (match) fromRequestId = decodeURIComponent(match[1]);
         }
-      };
-      loadMR();
-    } else {
-      void fetchNextMrNumber();
-    }
+
+        if (fromRequestId) {
+          const found = allMRs.find(
+            (request: any) =>
+              request.id === fromRequestId || request.requestNumber === fromRequestId,
+          );
+          if (found) {
+            applyMaterialRequest(found.id, allMRs);
+          }
+        } else if (allMRs.length > 0) {
+          applyMaterialRequest(allMRs[0].id, allMRs);
+        }
+      } catch (e) {
+        console.error("Failed to load material requests", e);
+        toast.error("Failed to load material requests");
+      } finally {
+        setLoadingRequests(false);
+      }
+    };
+    void loadMaterialRequests();
   }, []);
-  const fetchNextMrNumber = async () => {
-    try {
-      const { requestNumber } = await api.getNextMaterialRequestNumber();
-      setFormData((prev) => ({
-        ...prev,
-        material_request_number: requestNumber,
-      }));
-    } catch (e) {
-      console.error("Failed to fetch next MR number", e);
-      const yearMonth = new Date().toISOString().slice(0, 7).replace(/-/g, "");
-      setFormData((prev) => ({
-        ...prev,
-        material_request_number: `MR-${yearMonth}-0001`,
-      }));
-    }
-  };
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -264,9 +283,40 @@ function NewRfq() {
                 <Input
                   id="material_request_number"
                   name="material_request_number"
-                  placeholder="e.g. MR-202608-0001"
-                  className={cn(inputClass, "pl-10 bg-muted/50")}
-                  value={formData.material_request_number}
+                  className={cn(inputClass, "pl-10 bg-muted/50 font-mono text-sm font-bold text-primary")}
+                  value={
+                    formData.material_request_number ||
+                    (loadingRequests ? "Loading material request..." : "None")
+                  }
+                  readOnly
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="department">Department</Label>
+              <div className="relative">
+                <Building2 className="absolute left-3 top-3 size-4 text-muted-foreground" />
+                <Input
+                  id="department"
+                  name="department"
+                  className={cn(inputClass, "pl-10 bg-muted/50 font-medium")}
+                  value={formData.department || "—"}
+                  readOnly
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="requested_by">Requested By</Label>
+              <div className="relative">
+                <User className="absolute left-3 top-3 size-4 text-muted-foreground" />
+                <Input
+                  id="requested_by"
+                  name="requested_by"
+                  className={cn(inputClass, "pl-10 bg-muted/50 font-medium")}
+                  value={formData.requested_by || "—"}
                   readOnly
                 />
               </div>
@@ -284,6 +334,7 @@ function NewRfq() {
                   className={cn(inputClass, "pl-10")}
                   value={formData.required_delivery_date}
                   onChange={handleInputChange}
+                  readOnly
                 />
               </div>
             </div>
@@ -304,7 +355,7 @@ function NewRfq() {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="procurement_officer">Procurement Officer</Label>
               <div className="relative">
                 <User className="absolute left-3 top-3 size-4 text-muted-foreground" />
@@ -320,18 +371,6 @@ function NewRfq() {
               </div>
             </div>
           </div>
-
-          <div className="mt-6 space-y-2">
-            <Label htmlFor="remarks">Remarks</Label>
-            <Textarea
-              id="remarks"
-              name="remarks"
-              placeholder="Additional instructions for suppliers..."
-              className="min-h-[100px] rounded-xl border-border/80 bg-background"
-              value={formData.remarks}
-              onChange={handleInputChange}
-            />
-          </div>
         </SectionCard>
 
         <SectionCard
@@ -339,115 +378,64 @@ function NewRfq() {
           description="List materials required in this RFQ"
           icon={Package}
         >
-          <div className="space-y-6">
+          <div className="space-y-4">
             {items.map((item, index) => (
               <div
                 key={index}
-                className="relative rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all hover:bg-muted/30"
+                className="rounded-2xl border border-border/80 bg-muted/20 p-5 transition-all"
               >
-                <div className="absolute right-4 top-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 rounded-xl text-destructive hover:bg-destructive-soft/10 hover:text-destructive"
-                    onClick={() => removeItem(index)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-
-                <p className="mb-4 text-xs font-bold text-primary uppercase tracking-wider">
+                <p className="mb-3 text-xs font-bold text-primary uppercase tracking-wider">
                   Item #{index + 1}
                 </p>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Material Code</Label>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1.5 font-mono text-xs font-bold text-primary">
+                    <Label className="text-xs font-semibold">Material Code</Label>
                     <Input
-                      placeholder="e.g. MAT-001"
-                      className="h-10 rounded-xl bg-muted/50"
+                      className="h-10 rounded-xl bg-muted/50 font-mono text-xs font-bold text-primary"
                       value={item.material_code}
                       readOnly
-                      required
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Material Name</Label>
+                    <Label className="text-xs font-semibold">Variant Code</Label>
                     <Input
-                      placeholder="e.g. Steel Pipe 2\"
-                      className="h-10 rounded-xl"
+                      className="h-10 rounded-xl font-mono text-xs text-teal-600 bg-muted/50 font-semibold"
+                      value={item.variant_code || "—"}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">Required Quantity</Label>
+                    <Input
+                      className="h-10 rounded-xl font-mono font-bold text-orange-600 bg-muted/50"
+                      value={item.quantity ?? ""}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold">UOM</Label>
+                    <Input
+                      className="h-10 rounded-xl font-bold uppercase text-muted-foreground bg-muted/50"
+                      value={item.uom || "PCS"}
+                      readOnly
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
+                    <Label className="text-xs font-semibold">Material Name &amp; Specs</Label>
+                    <Input
+                      className="h-10 rounded-xl font-medium bg-muted/50"
                       value={item.material_name}
-                      onChange={(e) => handleItemChange(index, "material_name", e.target.value)}
-                      required
+                      readOnly
                     />
                   </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Category Description</Label>
-                    <select
-                      className="h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-                      value={item.category}
-                      onChange={(e) => handleItemChange(index, "category", e.target.value)}
-                    >
-                      <option value="Raw Materials">Raw Materials</option>
-                      <option value="Components">Components</option>
-                      <option value="Services">Services</option>
-                      <option value="Hardware">Hardware</option>
-                      <option value="General">General</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Required Quantity</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      step="1"
-                      className="h-10 rounded-xl font-mono"
-                      value={Math.floor(item.quantity)}
-                      onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">UOM</Label>
-                    <Input
-                      placeholder="e.g. PCS, KG, MTR"
-                      className="h-10 rounded-xl"
-                      value={item.uom}
-                      onChange={(e) => handleItemChange(index, "uom", e.target.value)}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-1.5">
-                  <Label className="text-xs">Special Requirements</Label>
-                  <Input
-                    placeholder="e.g. Needs specialized temperature control, surface treatment certificate..."
-                    className="h-10 rounded-xl"
-                    value={item.special_requirements}
-                    onChange={(e) =>
-                      handleItemChange(index, "special_requirements", e.target.value)
-                    }
-                  />
                 </div>
               </div>
             ))}
-
-            <Button
-              type="button"
-              variant="outline"
-              className="w-full h-11 rounded-xl border-dashed border-primary/40 text-primary hover:bg-primary-soft/10 hover:border-primary"
-              onClick={addItem}
-            >
-              <Plus className="mr-2 size-4" /> Add Material Requirement
-            </Button>
           </div>
         </SectionCard>
 

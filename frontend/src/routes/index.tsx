@@ -1,9 +1,9 @@
-import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
-import { isAuthenticated, getUserInfo } from "@/lib/auth-utils";
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { getDefaultRouteForUser, isAuthenticated } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
+<<<<<<< HEAD
     if (typeof window === "undefined") {
       throw redirect({ to: "/login" });
     }
@@ -20,21 +20,11 @@ export const Route = createFileRoute("/")({
       throw redirect({ to: target as any });
     }
 
+=======
+>>>>>>> main
     throw redirect({
-      to: "/login",
+      to: (isAuthenticated() ? getDefaultRouteForUser() : "/login") as any,
       replace: true,
     });
   },
-  component: IndexPage,
 });
-
-function IndexPage() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-        <span className="text-sm font-medium">Loading NexusWMS...</span>
-      </div>
-    </div>
-  );
-}

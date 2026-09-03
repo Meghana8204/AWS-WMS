@@ -16,14 +16,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.config.settings import get_settings
 from app.database.base import Base
 
-
-from app.events import outbox_model
-from app.modules.receiving.infrastructure.persistence import models as receiving_models
-from app.modules.returns.infrastructure.persistence import models as returns_models
-from app.modules.notification.infrastructure.persistence import models as notification_models
-from app.modules.gate.infrastructure.persistence import models as gate_models
-from app.modules.procurement.infrastructure.persistence import models as procurement_models
-from app.modules.dock.infrastructure.persistence import models as dock_models
+# Import every module's models so Base.metadata is fully populated.
+from app.events import outbox_model  # noqa: F401
+from app.modules.receiving.infrastructure.persistence import models as receiving_models  # noqa: F401
+from app.modules.returns.infrastructure.persistence import models as returns_models  # noqa: F401
+from app.modules.notification.infrastructure.persistence import models as notification_models  # noqa: F401
+from app.modules.gate.infrastructure.persistence import models as gate_models  # noqa: F401
+from app.modules.procurement.infrastructure.persistence import models as procurement_models  # noqa: F401
+from app.modules.dock.infrastructure.persistence import models as dock_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

@@ -76,7 +76,7 @@ function GateDashboard() {
           delta="Requires manual review"
           icon={ClipboardCheck}
           tone="warning"
-          to="/gate-entry"
+          to="/unscheduled-arrivals"
         />
         <StatCard
           label="Awaiting Dock"

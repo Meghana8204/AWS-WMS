@@ -17,8 +17,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.List;
 
-
-
+/**
+ * Validates the Authorization: Bearer header on every request into
+ * auth-service itself (e.g. /auth/logout, /api/users/**). This is separate
+ * from - and structurally identical to - the local JWT validation the
+ * Python business-service performs against this service's JWKS endpoint.
+ */
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -44,7 +48,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 var authentication = new UsernamePasswordAuthenticationToken(claims.getSubject(), null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (InvalidTokenException ignored) {
-
+                // Leave the security context empty; downstream authorization
+                // rules will reject the request as unauthenticated.
             }
         }
         chain.doFilter(request, response);

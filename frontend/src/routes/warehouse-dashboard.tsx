@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import {
   Truck,
@@ -29,25 +29,19 @@ import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
-import { activity, arrivalTrend, docks } from "@/lib/wms-data";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { getUserInfo } from "@/lib/auth-utils";
+
 export const Route = createFileRoute("/warehouse-dashboard")({
-  beforeLoad: () => {
-    if (getUserInfo()?.roles.includes("GATE_SECURITY")) {
-      throw redirect({ to: "/gate-dashboard" });
-    }
-  },
   head: () => ({
     meta: [
-      { title: "Warehouse Dashboard · NexusWMS Pune DC" },
+      { title: "Warehouse Dashboard · NexusWMS" },
       {
         name: "description",
         content:
-          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress at Pune Distribution Centre.",
+          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress.",
       },
-      { property: "og:title", content: "Warehouse Dashboard · NexusWMS Pune DC" },
+      { property: "og:title", content: "Warehouse Dashboard · NexusWMS" },
       {
         property: "og:description",
         content:
@@ -57,17 +51,24 @@ export const Route = createFileRoute("/warehouse-dashboard")({
   }),
   component: WarehouseDashboard,
 });
+
 const quickActions = [
+<<<<<<< HEAD
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
   { label: "Goods Receiving", to: "/grn", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
+=======
+  { label: "Receiving", to: "/receiving", icon: PackageCheck },
+>>>>>>> main
 ];
+
 function WarehouseDashboard() {
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("ALL");
+
   async function fetchDashboardData() {
     try {
       const data = await api.getDashboardStats();
@@ -78,26 +79,34 @@ function WarehouseDashboard() {
       setLoading(false);
     }
   }
+
   useEffect(() => {
     fetchDashboardData();
     const timer = window.setInterval(fetchDashboardData, 10000);
     return () => window.clearInterval(timer);
   }, []);
+
   const stats = dashboardData?.stats || {
     totalArrivals: 0,
     verifiedArrivals: 0,
     unscheduledArrivals: 0,
-    occupiedDocks: "0/8",
+    occupiedDocks: "0/0",
     vehiclesWaiting: 0,
   };
+
   const rawItems = dashboardData?.gateEntries || [];
+
+  // Filter items based on status toggle and search term
   const filteredItems = rawItems.filter((item: any) => {
     const matchesFilter =
       activeFilter === "ALL" ||
       (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
       (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
+
     if (!matchesFilter) return false;
+
     if (!searchTerm) return true;
+
     const s = searchTerm.toLowerCase();
     return (
       item.vehicle_number?.toLowerCase().includes(s) ||
@@ -107,13 +116,15 @@ function WarehouseDashboard() {
       item.material?.toLowerCase().includes(s)
     );
   });
+
   const activeTrend = dashboardData?.arrivalTrend || [];
   const activeActivity = dashboardData?.activity || [];
-  const targetProgress = dashboardData?.targetProgress || { current: 0, target: 10, percentage: 0 };
+  const targetProgress = dashboardData?.targetProgress || { current: 0, target: 0, percentage: 0 };
+
   return (
     <AppShell
       title="Warehouse Dashboard"
-      subtitle="Warehouse Operations · Live arrivals, receiving and inventory overview"
+      subtitle="Real-time inbound and operations overview"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>
@@ -136,7 +147,7 @@ function WarehouseDashboard() {
           delta="Live from gate"
           icon={Truck}
           tone="primary"
-          to="/vehicle-queue"
+          to="/receiving"
         />
         <StatCard
           label="Verified POs"
@@ -144,7 +155,7 @@ function WarehouseDashboard() {
           delta="Matched in DB"
           icon={Clock3}
           tone="success"
-          to="/vehicle-queue"
+          to="/receiving"
         />
         <StatCard
           label="Unscheduled"
@@ -164,7 +175,7 @@ function WarehouseDashboard() {
         />
         <StatCard
           label="Dock occupancy"
-          value={loading ? ".../8" : (stats.occupiedDocks || "0/8")}
+          value={loading ? "..." : (stats.occupiedDocks || "0/0")}
           delta="Real-time status"
           icon={Warehouse}
           tone="teal"
@@ -173,10 +184,10 @@ function WarehouseDashboard() {
         <StatCard
           label="Vehicles waiting"
           value={loading ? "..." : String(stats.vehiclesWaiting || 0)}
-          delta="Avg wait 12 min"
+          delta="Currently in queue"
           icon={ListOrdered}
           tone="danger"
-          to="/vehicle-queue"
+          to="/receiving"
         />
       </div>
 
@@ -302,7 +313,7 @@ function WarehouseDashboard() {
                 />
               </div>
               <Button variant="ghost" size="sm" className="rounded-lg" asChild>
-                <Link to="/vehicle-queue">
+                <Link to="/receiving">
                   View all <ArrowUpRight className="size-3.5" />
                 </Link>
               </Button>
@@ -442,6 +453,7 @@ function WarehouseDashboard() {
     </AppShell>
   );
 }
+
 function FilterButton({
   label,
   count,
@@ -460,11 +472,13 @@ function FilterButton({
     success: "bg-success text-success-foreground border-success",
     warning: "bg-warning text-warning-foreground border-warning",
   };
+
   const inactiveTones = {
     primary: "hover:bg-primary-soft hover:text-primary border-border/60",
     success: "hover:bg-success-soft hover:text-success border-border/60",
     warning: "hover:bg-warning-soft hover:text-warning border-border/60",
   };
+
   return (
     <button
       onClick={onClick}

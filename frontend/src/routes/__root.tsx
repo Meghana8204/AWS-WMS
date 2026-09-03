@@ -9,10 +9,12 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/sonner";
+
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { isAuthenticated } from "../lib/auth-utils";
 import { redirect } from "@tanstack/react-router";
+
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -34,12 +36,14 @@ function NotFoundComponent() {
     </div>
   );
 }
+
 function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
@@ -70,9 +74,8 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
     </div>
   );
 }
-export const Route = createRootRouteWithContext<{
-  queryClient: QueryClient;
-}>()({
+
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -92,13 +95,17 @@ export const Route = createRootRouteWithContext<{
     ],
   }),
   beforeLoad: ({ location }) => {
+    // Skip server-side redirects for localStorage-based auth to prevent refresh redirects to login
     if (typeof window === "undefined") return;
-    const publicRoutes = ["/login"];
-    if (!publicRoutes.includes(location.pathname) && !isAuthenticated()) {
+
+    // List of routes that don't require authentication
+    const publicRoutes = new Set(["/login"]);
+
+    if (!publicRoutes.has(location.pathname) && !isAuthenticated()) {
       throw redirect({
         to: "/login",
         search: {
-          redirect: location.pathname,
+          redirect: `${location.pathname}${location.searchStr}${location.hash}`,
         },
       });
     }
@@ -108,6 +115,7 @@ export const Route = createRootRouteWithContext<{
   notFoundComponent: NotFoundComponent,
   errorComponent: ErrorComponent,
 });
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
@@ -121,10 +129,13 @@ function RootShell({ children }: { children: ReactNode }) {
     </html>
   );
 }
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
       <Toaster position="top-right" richColors closeButton />
     </QueryClientProvider>

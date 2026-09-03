@@ -42,10 +42,10 @@ def upgrade() -> None:
         sa.Column("ordered_quantity", sa.Numeric(18, 4), nullable=True),
     )
 
-
-
-
-
+    # Seed data so the API is callable immediately after startup, same as
+    # the original V1__init_receiving.sql:
+    # POST /api/receiving/grn with po_id = 11111111-1111-1111-1111-111111111111
+    # and item_code = ITEM-A (max quantity 100) will succeed.
     op.execute(
         """
         INSERT INTO purchase_order (id, po_number)

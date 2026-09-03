@@ -24,6 +24,35 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+function formatDisplayDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const clean = String(dateStr).split("T")[0];
+  const parts = clean.split("-");
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const mIdx = parseInt(month, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${parseInt(day, 10)} ${months[mIdx]} ${year}`;
+    }
+  }
+  return clean;
+}
+
 export const Route = createFileRoute("/procurement/material-requests")({
   component: MaterialRequests,
 });
@@ -128,7 +157,7 @@ function MaterialRequests() {
                       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
                         <Calendar className="size-3" /> Required By
                       </div>
-                      <p className="text-sm font-semibold">{req.requiredDate}</p>
+                      <p className="text-sm font-semibold">{formatDisplayDate(req.requiredDate)}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -148,7 +177,7 @@ function MaterialRequests() {
       )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
+        <DialogContent className="max-w-4xl w-full rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
               <div className="p-6 text-white bg-blue-600 flex justify-between items-start">
@@ -165,8 +194,8 @@ function MaterialRequests() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+              <div className="flex-1 overflow-y-auto p-6 space-y-6 w-full min-w-0">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40">
                   <div className="space-y-1">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Department
@@ -178,7 +207,7 @@ function MaterialRequests() {
                       Required Date
                     </Label>
                     <p className="font-bold text-sm tabular-nums">
-                      {new Date(selectedRequest.requiredDate).toLocaleDateString()}
+                      {formatDisplayDate(selectedRequest.requiredDate)}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -187,7 +216,7 @@ function MaterialRequests() {
                     </Label>
                     <p className="font-bold text-sm">{selectedRequest.requestedBy}</p>
                   </div>
-                  <div className="space-y-1 text-right">
+                  <div className="space-y-1 sm:text-right">
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Warehouse
                     </Label>
@@ -195,19 +224,29 @@ function MaterialRequests() {
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Requested Materials
                   </Label>
-                  <div className="rounded-2xl border border-border/60 overflow-hidden bg-muted/5">
-                    <table className="w-full text-left text-sm border-collapse">
+                  <div className="rounded-2xl border border-border/60 overflow-hidden bg-muted/5 shadow-inner">
+                    <table className="w-full table-fixed text-left text-sm border-collapse">
+                      <colgroup>
+                        <col className="w-[23%]" />
+                        <col className="w-[27%]" />
+                        <col className="w-[28%]" />
+                        <col className="w-[10%]" />
+                        <col className="w-[12%]" />
+                      </colgroup>
                       <thead>
                         <tr className="bg-muted/50 border-b border-border/60">
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
                             Material Code
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
-                            Material Name
+                            Variant Code
+                          </th>
+                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                            Material Name &amp; Specs
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">
                             Qty
@@ -224,11 +263,16 @@ function MaterialRequests() {
                             className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
                           >
                             <td className="p-3 font-mono text-xs font-bold text-primary">
-                              {item.materialCode}
+                              {item.materialCode || item.material_code}
                             </td>
-                            <td className="p-3 font-medium text-foreground">{item.materialName}</td>
+                            <td className="p-3 font-mono text-xs font-semibold text-teal-600">
+                              {item.variantCode || item.variant_code || "—"}
+                            </td>
+                            <td className="p-3 font-medium text-foreground truncate">
+                              {item.materialName || item.material_name || "—"}
+                            </td>
                             <td className="p-3 text-center font-bold text-orange-600 tabular-nums">
-                              {Math.floor(item.quantity)}
+                              {item.quantity}
                             </td>
                             <td className="p-3 text-[10px] font-black uppercase text-muted-foreground">
                               {item.uom}
@@ -245,7 +289,7 @@ function MaterialRequests() {
                     Remarks / Justification
                   </Label>
                   <p className="text-sm bg-muted/30 p-4 rounded-2xl italic text-muted-foreground border border-border/40 leading-relaxed">
-                    {selectedRequest.remarks || "No additional remarks provided."}
+                    {selectedRequest.remarks || "No remarks provided."}
                   </p>
                 </div>
               </div>
