@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
+import { DamagePhoto } from "@/components/wms/damage-photo";
 import {
   AlertTriangle,
   ArrowLeft,

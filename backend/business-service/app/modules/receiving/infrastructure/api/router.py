@@ -48,9 +48,10 @@ from app.modules.receiving.infrastructure.api.schemas import (
     GrnSummaryResponse,
     QrScanLookupResponse,
     QualityInspectionRequest,
-    QualityInspectionResponse,
     UpdateGrnLinesRequest,
     UpdateGrnLinesResponse,
+    UpdateGrnStepRequest,
+    UpdateGrnStepResponse,
 )
 from app.modules.receiving.infrastructure.persistence.repository_impl import (
     SqlAlchemyGrnRepository,
@@ -992,6 +993,37 @@ async def complete_grn(
         posted_by=grn.posted_by,
         posted_at=grn.posted_at,
         message="GRN posted successfully. Material stock updated and putaway tasks created.",
+    )
+
+
+# ============================================================================
+# WIZARD STEP UPDATE
+# ============================================================================
+
+@router.patch("/{grn_id}/step", response_model=UpdateGrnStepResponse)
+async def update_grn_step(
+    grn_id: str,
+    request: UpdateGrnStepRequest,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+    _perm=Depends(require_permission("receiving:write")),
+) -> UpdateGrnStepResponse:
+    repo = SqlAlchemyGrnRepository(uow.session)
+    grn = await repo.get_grn_detail_by_id(grn_id)
+    if not grn:
+        raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
+
+    current_step = request.current_step
+    max_completed = request.max_completed_step if request.max_completed_step is not None else max(0, current_step - 1)
+    completed_steps = list(range(1, max_completed + 1)) if max_completed > 0 else []
+
+    return UpdateGrnStepResponse(
+        grn_id=str(grn.id),
+        grn_number=grn.grn_number,
+        status=grn.status,
+        current_step=current_step,
+        max_completed_step=max_completed,
+        completed_steps=completed_steps,
     )
 
 
