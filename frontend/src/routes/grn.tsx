@@ -411,8 +411,6 @@ function GrnPageWorkflow() {
     }
   }, [activeTab, loadRecords]);
 
-  const [availablePos, setAvailablePos] = useState<any[]>([]);
-
   useEffect(() => {
     async function loadPos() {
       try {
@@ -423,14 +421,6 @@ function GrnPageWorkflow() {
         });
         if (formalPos.length > 0) {
           setAvailablePos(formalPos);
-          const firstValidPo = formalPos.find((p: any) => p.items && p.items.length > 0) || formalPos[0];
-          if (firstValidPo && (firstValidPo.poNumber || firstValidPo.po_number)) {
-            const targetPo = firstValidPo.poNumber || firstValidPo.po_number;
-            setHeader((prev) => ({ ...prev, po_number: prev.po_number || targetPo }));
-            if (!header.po_number && !grnId) {
-              void fetchPoContext(targetPo);
-            }
-          }
         }
       } catch (e) {
         console.error("Failed to load formal POs", e);
@@ -542,31 +532,18 @@ function GrnPageWorkflow() {
         setMaterialBatches(initBatches);
       }
 
-      toast.success(`Auto-Fetched PO ${numToFetch} details from database`);
+      toast.success(`PO ${numToFetch} details fetched successfully`);
     } catch (err: any) {
       if (requestId !== contextRequest.current) return;
-      console.error("Auto PO Fetch error:", err);
+      console.error("PO Fetch error:", err);
       toast.error(err.message || "Failed to fetch PO details");
     } finally {
       if (requestId === contextRequest.current) setLoadingContext(false);
     }
   }
 
-  // Use one explicit lookup path. Background duplicate lookups must not clear
-  // the ID returned by a completed header save.
   function changePoNumber(value: string) {
-    ++contextRequest.current;
-    setLoadingContext(false);
-    setGrnId(null);
-    setMaterials([]);
-    setDamagePhotos({});
-    setQualityApproved({});
-    setMaterialBatches({});
-    setHeader((previous) => ({ ...previous, po_number: value, grn_number: "" }));
-    setCurrentPage(1);
-    if (value.trim()) {
-      void fetchPoContext(value.trim());
-    }
+    setHeader((previous) => ({ ...previous, po_number: value }));
   }
 
   async function loadExistingGrnSession(targetGrnId: string) {
@@ -2511,64 +2488,75 @@ function GrnPageWorkflow() {
                     Purchase Order
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Select purchase order to auto-populate vendor and inbound order information.
+                    Enter purchase order number to populate vendor and inbound order information.
                   </p>
                 </div>
 
-                {/* PO NUMBER SELECTION & AUTO-FETCH INPUT */}
+                {/* PO NUMBER ENTRY & SIDE FETCH DETAILS BUTTON */}
                 <div className="flex flex-wrap items-end gap-3 max-w-2xl">
-                  <div className="flex-1 min-w-[260px]">
+                  <div className="flex-1 min-w-[280px]">
                     <label className="text-xs font-bold text-foreground mb-1 flex items-center justify-between">
                       <span>PO Number *</span>
                       {loadingContext && (
                         <span className="text-[10px] font-bold text-primary flex items-center gap-1 animate-pulse">
-                          <Loader2 className="size-3 animate-spin" /> Auto-Fetching PO Details...
+                          <Loader2 className="size-3 animate-spin" /> Fetching PO Details...
                         </span>
                       )}
                     </label>
                     <div className="flex gap-2">
                       <Input
-                        placeholder="e.g. PO-1001"
+                        placeholder="Enter PO Number (e.g. PO-2026-0001)"
                         value={header.po_number}
-                        disabled={busyAction}
+                        disabled={busyAction || loadingContext}
                         onChange={(e) => changePoNumber(e.target.value)}
-                        className="rounded-xl font-mono text-base font-bold text-primary flex-1"
-                      />
-                      <select
-                        disabled={busyAction}
-                        value={header.po_number}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val && !val.toUpperCase().startsWith("PROP-")) {
-                            changePoNumber(val);
-                            void fetchPoContext(val);
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void fetchPoContext();
                           }
                         }}
-                        className="rounded-xl border bg-background px-3 py-2 text-xs font-bold text-primary max-w-[200px]"
-                      >
-                        {availablePos.length > 0 ? (
-                          availablePos
-                            .filter((p: any) => {
-                              const num = (p.poNumber || p.po_number || "").trim().toUpperCase();
-                              return num.startsWith("PO-") && !num.startsWith("PROP-");
-                            })
-                            .map((p: any) => {
-                              const num = p.poNumber || p.po_number;
-                              return (
-                                <option key={p.id || num} value={num}>
-                                  {num} ({p.supplierName || p.supplier_name || "Supplier"})
-                                </option>
-                              );
-                            })
-                        ) : (
-                          <option value="">No Purchase Orders Found</option>
-                        )}
-                      </select>
+                        className="rounded-xl font-mono text-base font-bold text-primary flex-1"
+                      />
+                      {availablePos.length > 0 && (
+                        <select
+                          disabled={busyAction || loadingContext}
+                          value={header.po_number}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val) {
+                              changePoNumber(val);
+                            }
+                          }}
+                          className="rounded-xl border bg-background px-3 py-2 text-xs font-bold text-muted-foreground max-w-[180px]"
+                        >
+                          <option value="">Select PO...</option>
+                          {availablePos.map((p: any) => {
+                            const num = p.poNumber || p.po_number;
+                            return (
+                              <option key={p.id || num} value={num}>
+                                {num}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      )}
                     </div>
                   </div>
-                  <Button onClick={() => void fetchPoContext()} disabled={loadingContext || busyAction} className="rounded-xl font-semibold">
-                    {loadingContext ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
-                    Fetch Details
+                  <Button
+                    type="button"
+                    onClick={() => void fetchPoContext()}
+                    disabled={loadingContext || busyAction || !header.po_number.trim()}
+                    className="rounded-xl font-semibold shadow-xs"
+                  >
+                    {loadingContext ? (
+                      <>
+                        <Loader2 className="mr-2 size-4 animate-spin" /> Fetching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="mr-2 size-4" /> Fetch Details
+                      </>
+                    )}
                   </Button>
                 </div>
 
