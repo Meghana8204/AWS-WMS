@@ -301,6 +301,10 @@ function GateEntry() {
   }, [vehiclePhoto]);
 
   async function scanCapture(kind: CaptureKind, file: File) {
+    if (!file || !(file instanceof Blob) || file.size === 0) {
+      toast.error("Please capture or upload a document first.");
+      return;
+    }
     console.log(`Starting scanCapture for kind: ${kind}`, file);
     setScanning(null);
     if (kind === "po") setPoDocument(file);
@@ -371,7 +375,12 @@ function GateEntry() {
         ]
           .filter(([, value]) => value === undefined || value === null || value === "")
           .map(([label]) => label);
-        if (missing.length) {
+        if (!detectedPo && !result.supplier_name && !fields.supplier_name && !result.material_description && !fields.material_description) {
+          toast.info(
+            "No readable purchase-order details were found. Use a clearer document image or enter the details manually.",
+            { id: toastId },
+          );
+        } else if (missing.length) {
           toast.warning("PO scanned with fields requiring review", {
             id: toastId,
             description: `Check: ${missing.join(", ")}`,
@@ -402,10 +411,17 @@ function GateEntry() {
       }
     } catch (error: any) {
       console.error("OCR scan error:", error);
-      toast.error("OCR scan failed", {
-        id: toastId,
-        description: error.message || "Falling back to manual entry.",
-      });
+      const msg = String(error?.message || "");
+      if (msg.includes("422") || msg.includes("Unprocessable") || msg.includes("empty") || msg.includes("validation")) {
+        toast.error("Unable to process the uploaded document. Please try again.", {
+          id: toastId,
+        });
+      } else {
+        toast.error("Document scanning failed. Please try again or enter the details manually.", {
+          id: toastId,
+          description: error.message || "Falling back to manual entry.",
+        });
+      }
     }
   }
 
