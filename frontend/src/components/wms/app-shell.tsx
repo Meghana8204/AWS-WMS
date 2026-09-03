@@ -41,14 +41,14 @@ import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
 const grnNav = [
-  { label: "GRN Operations Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
-  { label: "GRN Records History", to: "/grn?tab=records", icon: ClipboardList },
-  { label: "Header Details & Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
-  { label: "Material Receiving", to: "/grn?tab=wizard&page=2", icon: PackageCheck },
-  { label: "Quality & Photos", to: "/grn?tab=wizard&page=3", icon: AlertTriangle },
-  { label: "Batch Allocation", to: "/grn?tab=wizard&page=4", icon: Boxes },
-  { label: "Documents & Posting", to: "/grn?tab=wizard&page=5", icon: FileText },
-  { label: "Batch QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
+  { label: "GRN Operations Dashboard", to: "/grn", search: { tab: "dashboard" }, icon: LayoutDashboard },
+  { label: "GRN Records History", to: "/grn", search: { tab: "records" }, icon: ClipboardList },
+  { label: "Header Details & Entry", to: "/grn", search: { tab: "wizard", page: 1 }, icon: ShieldCheck },
+  { label: "Material Receiving", to: "/grn", search: { tab: "wizard", page: 2 }, icon: PackageCheck },
+  { label: "Quality & Photos", to: "/grn", search: { tab: "wizard", page: 3 }, icon: AlertTriangle },
+  { label: "Batch Allocation", to: "/grn", search: { tab: "wizard", page: 4 }, icon: Boxes },
+  { label: "Documents & Posting", to: "/grn", search: { tab: "wizard", page: 5 }, icon: FileText },
+  { label: "Batch QR Code Labels", to: "/grn", search: { tab: "wizard", page: 6 }, icon: QrCode },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
 ];
 const warehouseNav = [
@@ -128,10 +128,11 @@ function isActiveNavItem(
   item: { to: string; search?: Record<string, unknown> },
   navItems: ReadonlyArray<{ to: string; search?: Record<string, unknown> }>,
 ): boolean {
-  if (!isActiveRoute(path, item.to)) return false;
+  const itemPath = item.to.split("?")[0];
+  if (path !== itemPath && !path.startsWith(`${itemPath}/`)) return false;
 
   if (item.search) {
-    return Object.entries(item.search).every(([key, value]) => currentSearch[key] === value);
+    return Object.entries(item.search).every(([key, value]) => String(currentSearch[key] ?? "") === String(value));
   }
 
   // A base link and a filtered link can share a pathname. Keep the base link
