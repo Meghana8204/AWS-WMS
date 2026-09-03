@@ -1621,7 +1621,6 @@ export const api = {
       method: "POST",
     });
   },
-  },
 
   async updateMaterialVariantStatus(
     materialId: string,
