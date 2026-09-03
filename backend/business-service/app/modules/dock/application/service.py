@@ -302,7 +302,6 @@ class DockAllocationService:
         )
         session.add(dock_hist)
 
-<<<<<<< HEAD
         driver_name = None
         driver_phone = None
         asn_number = None
@@ -321,20 +320,6 @@ class DockAllocationService:
                         GateEntryModel.vehicle_number == req.vehicle_number,
                     )
                 )
-=======
-        material_text = req.material_reference or req.material_description
-        notif_msg = f"Dock {dock.dock_code} has been assigned to vehicle {req.vehicle_number}."
-        if material_text:
-            notif_msg = f"{notif_msg[:-1]} for material {material_text}."
-        
-        # Mandatory Notification to Quality Inspector
-        session.add(
-            NotificationModel(
-                user_role="QUALITY_INSPECTOR",
-                title="DOCK ALLOCATED",
-                message=notif_msg,
-                link=f"/dock-management?requestId={req.id}",
->>>>>>> main
             )
             ge = ge_res.scalars().first()
             if ge:
@@ -355,6 +340,21 @@ class DockAllocationService:
                             driver_phone = asn_obj.driver_contact
         except Exception:
             pass
+
+        material_text = req.material_reference or req.material_description
+        notif_msg = f"Dock {dock.dock_code} has been assigned to vehicle {req.vehicle_number}."
+        if material_text:
+            notif_msg = f"{notif_msg[:-1]} for material {material_text}."
+        
+        # Mandatory Notification to Quality Inspector
+        session.add(
+            NotificationModel(
+                user_role="QUALITY_INSPECTOR",
+                title="DOCK ALLOCATED",
+                message=notif_msg,
+                link=f"/dock-management?requestId={req.id}",
+            )
+        )
 
         if not asn_number:
             try:

@@ -14,13 +14,7 @@ import uuid
 from decimal import Decimal
 from typing import Optional
 
-<<<<<<< HEAD
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
-=======
-# pyrefly: ignore [missing-import]
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
->>>>>>> main
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import selectinload
 
@@ -127,44 +121,11 @@ async def _lookup_database_po(
     if not target:
         return None
 
-<<<<<<< HEAD
     try:
         result = await session.execute(
             select(PurchaseOrderModel)
             .options(selectinload(PurchaseOrderModel.items))
             .where(func.upper(PurchaseOrderModel.po_number) == target)
-=======
-    result = await session.execute(
-        select(PurchaseOrderModel)
-        .options(selectinload(PurchaseOrderModel.items))
-        .where(func.upper(PurchaseOrderModel.po_number) == target)
-    )
-    exact = result.scalars().first()
-    if exact:
-        return _po_record_from_model(exact)
-
-    if not allow_partial:
-        return None
-
-    # OCR commonly sees PO-2026 from PO-2026-0001. Resolve a partial prefix
-    # only when it is unambiguous or is linked to the current ASN shipment.
-    candidates_result = await session.execute(
-        select(PurchaseOrderModel)
-        .options(selectinload(PurchaseOrderModel.items))
-        .where(func.upper(PurchaseOrderModel.po_number).like(f"{target}-%"))
-        .order_by(PurchaseOrderModel.created_at.desc())
-    )
-    candidates = candidates_result.scalars().all()
-    if len(candidates) == 1:
-        return _po_record_from_model(candidates[0])
-    if candidates:
-        candidate_numbers = [candidate.po_number for candidate in candidates]
-        shipment_result = await session.execute(
-            select(AsnModel.po_number)
-            .where(AsnModel.po_number.in_(candidate_numbers))
-            .order_by(AsnModel.created_at.desc())
-            .limit(1)
->>>>>>> main
         )
         exact = result.scalars().first()
         if exact:
@@ -876,9 +837,6 @@ async def create_gate_entry(
     entry.approve_gate_entry(user.username)
     if asn:
         asn.status = GateEntryStatus.GATE_ENTRY_APPROVED.value
-<<<<<<< HEAD
-        entry.move_to_inbound_queue()
-=======
         uow.session.add(NotificationModel(
             user_role="WAREHOUSE",
             title="Gate Entry Approved",
@@ -893,7 +851,6 @@ async def create_gate_entry(
             link="/vehicle-queue",
         ))
     entry.move_to_inbound_queue()
->>>>>>> main
 
     document_data = base64.b64decode(request.document_image_base64) if request.document_image_base64 else None
     await _save_gate_entry(uow.session, entry, document_data=document_data)
@@ -2679,33 +2636,24 @@ async def list_gate_entries(
     _user: CurrentUser = Depends(require_permission("gate:read")),
     uow: UnitOfWork = Depends(get_uow),
 ) -> list[GateEntryResponse]:
-<<<<<<< HEAD
+    """List all Gate Entries with optional status filter."""
     try:
         query = select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
         if status:
             query = query.where(GateEntryModel.status == status.strip().upper())
         result = await uow.session.execute(query)
-        entries = [_gate_entry_from_model(model) for model in result.scalars().all()]
-        return [_to_gate_entry_response(e) for e in entries]
+        models = list(result.scalars().all())
+        responses = []
+        for model in models:
+            response = _to_gate_entry_response(_gate_entry_from_model(model))
+            responses.append(response.model_copy(update={
+                "driver_phone": model.driver_phone,
+                "document_image_base64": base64.b64encode(model.po_document_data).decode("ascii") if model.po_document_data else None,
+            }))
+        return responses
     except Exception as e:
         logger.exception("Error in list_gate_entries: %s", e)
         raise HTTPException(status_code=500, detail=f"Failed to list gate entries: {str(e)}")
-=======
-    """List all Gate Entries with optional status filter."""
-    query = select(GateEntryModel).order_by(GateEntryModel.created_at.desc())
-    if status:
-        query = query.where(GateEntryModel.status == status.strip().upper())
-    result = await uow.session.execute(query)
-    models = list(result.scalars().all())
-    responses = []
-    for model in models:
-        response = _to_gate_entry_response(_gate_entry_from_model(model))
-        responses.append(response.model_copy(update={
-            "driver_phone": model.driver_phone,
-            "document_image_base64": base64.b64encode(model.po_document_data).decode("ascii") if model.po_document_data else None,
-        }))
-    return responses
->>>>>>> main
 
 
 @router.get("/{entry_id}/pass")

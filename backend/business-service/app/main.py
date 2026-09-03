@@ -567,7 +567,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
-<<<<<<< HEAD
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS grn_damage_lot (
@@ -601,10 +600,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create grn_damage_lot/grn_damage_qr tables: {e}")
 
-
-=======
         # Create arrival_notification table
->>>>>>> main
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS arrival_notification (
@@ -1131,8 +1127,6 @@ def create_app() -> FastAPI:
     else:
         origins = list(raw_origins)
 
-<<<<<<< HEAD
-
     for o in [
         "http://localhost:8080",
         "http://127.0.0.1:8080",
@@ -1146,29 +1140,11 @@ def create_app() -> FastAPI:
         if o not in origins:
             origins.append(o)
 
-=======
-    # Always ensure common local dev origins are present for ease of use
-    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
-        if o not in origins:
-            origins.append(o)
-
-    # Register request context first so CORS wraps normal application responses.
-    # Top-level exception responses are covered in the centralized error handler.
->>>>>>> main
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-<<<<<<< HEAD
         allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|.*\.loca\.lt)(:\d+)?",
-=======
-        allow_origin_regex=(
-            r"^https?://(?:localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|"
-            r"192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}):8080$"
-            if settings.environment.lower() in ("local", "test", "development")
-            else None
-        ),
->>>>>>> main
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
