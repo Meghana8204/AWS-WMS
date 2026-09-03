@@ -46,6 +46,8 @@ export function StatCard({
           {delta || "No additional detail"}
         </p>
       </Card>
+    );
+
   if (to) {
     return (
       <Link to={to} className="group block h-full">
