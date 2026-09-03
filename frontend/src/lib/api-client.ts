@@ -279,7 +279,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     });
->>>>>>> main
   },
   async getDockAllocationRequests(statusFilter?: string): Promise<any[]> {
     const query = statusFilter && statusFilter !== "ALL" ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
