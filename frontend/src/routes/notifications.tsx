@@ -1,16 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-<<<<<<< HEAD
-import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X, Eye, ExternalLink } from "lucide-react";
-import { AppShell, DockAllocationNotificationCard } from "@/components/wms/app-shell";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { api, BUSINESS_API_URL } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
-import { requireAuth } from "@/lib/auth-utils";
-=======
 import {
   Bell,
   Truck,
@@ -24,22 +14,25 @@ import {
   FileText,
   ArrowRight,
   Package,
+  AlertTriangle,
+  Camera,
+  X,
+  ExternalLink,
 } from "lucide-react";
-import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { AppShell, StatusBadge, DockAllocationNotificationCard } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api } from "@/lib/api-client";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { api, BUSINESS_API_URL } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { getUserInfo, requireAuth } from "@/lib/auth-utils";
->>>>>>> main
 
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
   component: Notifications,
 });
 
-<<<<<<< HEAD
 function parseDamageNotificationMessage(msg?: string) {
   if (!msg) return { grnNumber: "", poNumber: "", supplierName: "", warehouseName: "", reportedBy: "", customRemarks: "", items: [] };
 
@@ -117,15 +110,12 @@ function parseGrnNotificationDetails(n: any) {
   };
 }
 
-=======
->>>>>>> main
 function Notifications() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
 
-<<<<<<< HEAD
   // Modal State for Damaged Goods Details
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
@@ -137,8 +127,6 @@ function Notifications() {
   const [showGrnModal, setShowGrnModal] = useState(false);
   const [selectedGrnNotif, setSelectedGrnNotif] = useState<any | null>(null);
 
-=======
->>>>>>> main
   useEffect(() => {
     const roles = getUserInfo()?.roles || [];
     const role = roles.includes("SUPPLIER")
@@ -163,7 +151,6 @@ function Notifications() {
     };
   }, []);
 
-<<<<<<< HEAD
   // Fetch full GRN damage data when damage notification is selected
   useEffect(() => {
     if (!selectedDamageNotif) {
@@ -192,7 +179,6 @@ function Notifications() {
           }
         }
 
-        // PO-level fallback if GRN detail is not found or has empty evidence
         const hasEvidence = grnResult?.lines?.some(
           (l: any) =>
             (Array.isArray(l.damageEvidence) && l.damageEvidence.length > 0) ||
@@ -238,8 +224,6 @@ function Notifications() {
     };
   }, [selectedDamageNotif]);
 
-=======
->>>>>>> main
   const fetchData = async (role: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -280,7 +264,6 @@ function Notifications() {
     }
   };
 
-<<<<<<< HEAD
   const handleOpenNotificationDetails = (n: any) => {
     const isDockAllocation =
       n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
@@ -343,7 +326,8 @@ function Notifications() {
       if (Array.isArray(ev) && ev.length > 0) return ev;
     }
     return [];
-=======
+  };
+
   const handleMarkRead = async (id: string) => {
     try {
       const notification = notifications.find((n) => n.id === id);
@@ -371,7 +355,6 @@ function Notifications() {
     } catch (error) {
       toast.error("Unable to mark all notifications as read");
     }
->>>>>>> main
   };
 
   return (
@@ -381,548 +364,399 @@ function Notifications() {
       actions={
         <Button
           variant="outline"
-          className="rounded-xl"
+          size="sm"
+          className="rounded-xl border-border/80 text-xs font-semibold"
           onClick={handleMarkAllRead}
-          disabled={!notifications.some((notification) => !notification.is_read)}
         >
-          Mark all read
+          Mark all as read
         </Button>
       }
     >
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-        </div>
-      ) : notifications.length === 0 ? (
-        <Card className="items-center gap-2 rounded-2xl border-dashed p-14 text-center shadow-none">
-          <span className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
-            <Inbox className="size-6" />
-          </span>
-          <p className="mt-2 text-sm font-semibold">Nothing in this queue</p>
-          <p className="max-w-xs text-xs text-muted-foreground">
-            Your notification history is empty.
-          </p>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-<<<<<<< HEAD
-          {notifications.map((n) => {
-            const isDockAllocation =
-              n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
-              n.title?.toUpperCase().includes("DOCK CONFIRMED");
+      <div className="mx-auto max-w-4xl space-y-6">
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <Loader2 className="size-8 animate-spin text-primary" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <Card className="flex h-64 flex-col items-center justify-center p-6 text-center border-dashed border-border/50 bg-muted/20">
+            <Inbox className="size-12 text-muted-foreground/30 mb-4" />
+            <h3 className="text-lg font-semibold text-muted-foreground">No notifications</h3>
+            <p className="text-sm text-muted-foreground/70">
+              You are all caught up! Check back later for new alerts.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-3">
+            {notifications.map((n) => {
+              const isDockAlloc =
+                n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
+                n.title?.toUpperCase().includes("DOCK CONFIRMED");
 
-            if (isDockAllocation) {
-              return <DockAllocationNotificationCard key={n.id} notification={n} />;
-            }
-=======
-          {notifications.map((n, i) => (
-            <Card
-              key={n.id}
-              className={cn(
-                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
-                !n.is_read && "bg-primary-soft/5 border-primary/20",
-              )}
-            >
-              {!n.is_read && <div className="absolute left-0 top-0 h-full w-1 bg-primary" />}
+              if (isDockAlloc) {
+                return <DockAllocationNotificationCard key={n.id} notification={n} />;
+              }
 
-              <div className="flex items-start gap-4">
-                <div
+              return (
+                <Card
+                  key={n.id}
                   className={cn(
-                    "grid size-12 shrink-0 place-items-center rounded-2xl",
-                    n.title?.includes("Approved")
-                      ? "bg-success-soft text-success"
-                      : n.title?.includes("Rejected") || n.title?.includes("Failed")
-                        ? "bg-destructive-soft text-destructive"
-                        : "bg-primary-soft text-primary",
+                    "p-4 transition-all duration-200 border-border/50 hover:border-primary/30 hover:shadow-soft cursor-pointer",
+                    !n.is_read && "bg-primary-soft/10 border-primary/20",
                   )}
+                  onClick={() => handleOpenNotificationDetails(n)}
                 >
-                  {n.type === "arrival" ? (
-                    <Truck className="size-6" />
-                  ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
-                    <Package className="size-6" />
-                  ) : (
-                    <FileText className="size-6" />
-                  )}
-                </div>
->>>>>>> main
-
-            const isDamage =
-              n.title?.toLowerCase().includes("damage") ||
-              n.message?.toLowerCase().includes("damage");
-
-            return (
-              <Card
-                key={n.id}
-                onClick={() => handleOpenNotificationDetails(n)}
-                className={cn(
-                  "relative overflow-hidden border-border/50 p-5 cursor-pointer hover:border-primary/40 transition-all",
-                  !n.is_read && "bg-primary-soft/5 border-primary/20",
-                  isDamage && "border-rose-500/30 bg-rose-500/5 hover:border-rose-500/60",
-                )}
-              >
-                {!n.is_read && (
-                  <div
-                    className={cn(
-                      "absolute left-0 top-0 h-full w-1",
-                      isDamage ? "bg-rose-600" : "bg-primary",
-                    )}
-                  />
-                )}
-
-                <div className="flex items-start gap-4">
-                  <div
-                    className={cn(
-                      "grid size-12 shrink-0 place-items-center rounded-2xl",
-                      isDamage
-                        ? "bg-rose-500/10 text-rose-600"
-                        : n.title?.includes("Approved")
-                          ? "bg-success-soft text-success"
-                          : n.title?.includes("Rejected")
-                            ? "bg-destructive-soft text-destructive"
-                            : "bg-primary-soft text-primary",
-                    )}
-                  >
-                    {isDamage ? (
-                      <AlertTriangle className="size-6" />
-                    ) : n.type === "arrival" ? (
-                      <Truck className="size-6" />
-                    ) : (
-                      <FileText className="size-6" />
-                    )}
-                  </div>
-
-<<<<<<< HEAD
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <h3
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div
                         className={cn(
-                          "font-bold text-foreground",
-                          isDamage && "text-rose-700 font-extrabold flex items-center gap-1.5",
+                          "grid size-10 shrink-0 place-items-center rounded-xl text-primary bg-primary/10",
+                          n.title?.toLowerCase().includes("damage") && "bg-destructive/10 text-destructive",
                         )}
                       >
-                        {n.title}
-                      </h3>
-                      <span className="text-[10px] text-muted-foreground font-medium">
-                        {n.created_at && !Number.isNaN(new Date(n.created_at).getTime())
-                          ? new Date(n.created_at).toLocaleString()
-                          : "Date unavailable"}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
-                      {n.message}
-                    </p>
-
-                    <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
-                      <div className="flex flex-wrap gap-2">
-                        {n.po_number && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono font-bold">
-                            PO: {n.po_number}
-                          </span>
-                        )}
-                        {n.supplier_name && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-bold">
-                            {n.supplier_name}
-                          </span>
+                        {n.title?.toLowerCase().includes("damage") ? (
+                          <AlertTriangle className="size-5" />
+                        ) : (
+                          <Bell className="size-5" />
                         )}
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-foreground truncate">{n.title}</h4>
+                          {!n.is_read && (
+                            <span className="size-2 rounded-full bg-primary shrink-0" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                          {n.message}
+                        </p>
+                        <p className="text-[10px] font-mono text-muted-foreground/70 mt-2">
+                          {n.created_at || n.createdAt
+                            ? new Date(n.created_at || n.createdAt).toLocaleString()
+                            : "Just now"}
+                        </p>
+                      </div>
+                    </div>
 
+                    <div className="flex items-center gap-2 shrink-0">
                       <Button
                         size="sm"
-                        variant={isDamage ? "default" : "outline"}
-                        className={cn(
-                          "rounded-xl text-xs font-bold",
-                          isDamage && "bg-rose-600 hover:bg-rose-700 text-white shadow-sm",
-                        )}
+                        variant="ghost"
+                        className="h-8 rounded-lg text-xs text-primary hover:bg-primary-soft/30 font-bold"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenNotificationDetails(n);
                         }}
                       >
-                        <FileText className="mr-1.5 size-3.5" /> View Details
+                        <Eye className="size-3.5 mr-1" /> View Details
                       </Button>
-=======
-                  <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
-                    <div className="flex gap-2">
-                      {n.po_number && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">
-                          PO: {n.po_number}
-                        </span>
-                      )}
-                      {n.supplier_name && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted">
-                          {n.supplier_name}
-                        </span>
-                      )}
->>>>>>> main
                     </div>
                   </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Damaged Goods Evidence Modal */}
+      <Dialog open={showDamageModal} onOpenChange={setShowDamageModal}>
+        <DialogContent className="max-w-3xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+          {selectedDamageNotif && damageDetails && (
+            <div className="flex flex-col h-full max-h-[90vh]">
+              <div className="p-6 bg-destructive text-destructive-foreground flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <AlertTriangle className="size-5" />
+                    <DialogTitle className="text-xl font-bold">
+                      Damaged Goods Alert Notice
+                    </DialogTitle>
+                  </div>
+                  <p className="text-destructive-foreground/80 text-xs font-mono">
+                    GRN: {damageDetails.grnNumber} · PO: {damageDetails.poNumber}
+                  </p>
                 </div>
-              </Card>
-            );
-          })}
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 text-xs">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-muted-foreground">
+                      Supplier
+                    </span>
+                    <p className="font-bold mt-0.5">{damageDetails.supplierName}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-muted-foreground">
+                      Warehouse
+                    </span>
+                    <p className="font-bold mt-0.5">{damageDetails.warehouseName}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-muted-foreground">
+                      Reported By
+                    </span>
+                    <p className="font-bold mt-0.5">{damageDetails.reportedBy}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-muted-foreground">
+                      Report Date
+                    </span>
+                    <p className="font-bold mt-0.5">
+                      {selectedDamageNotif.created_at || selectedDamageNotif.createdAt
+                        ? new Date(
+                            selectedDamageNotif.created_at || selectedDamageNotif.createdAt,
+                          ).toLocaleDateString()
+                        : "Today"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase text-muted-foreground tracking-wider">
+                    Damaged Line Items &amp; Photo Evidence
+                  </h4>
+
+                  {damageLoading ? (
+                    <div className="flex items-center justify-center py-8 gap-2">
+                      <Loader2 className="size-5 animate-spin text-primary" />
+                      <span className="text-xs text-muted-foreground">
+                        Loading damage evidence photos...
+                      </span>
+                    </div>
+                  ) : (
+                    damageDetails.items.map((item, idx) => {
+                      const photos = getPhotosForMaterial(item.material);
+
+                      return (
+                        <div
+                          key={idx}
+                          className="p-4 rounded-2xl border border-destructive/20 bg-destructive/5 space-y-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-bold text-sm text-foreground">{item.material}</p>
+                              <p className="text-xs text-destructive font-semibold mt-0.5">
+                                Reason: {item.reason}
+                              </p>
+                            </div>
+                            <span className="text-xs font-black text-destructive bg-destructive/10 px-2.5 py-1 rounded-lg border border-destructive/20 font-mono">
+                              Qty: {item.quantity}
+                            </span>
+                          </div>
+
+                          {photos.length > 0 ? (
+                            <div>
+                              <p className="text-[10px] font-bold text-muted-foreground uppercase mb-2 flex items-center gap-1">
+                                <Camera className="size-3 text-destructive" /> Evidence Photos (
+                                {photos.length})
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {photos.map((photo: any, pIdx: number) => {
+                                  const rawPath = photo.filePath || photo.file_path || photo.url || "";
+                                  const fullUrl = rawPath.startsWith("http")
+                                    ? rawPath
+                                    : `${BUSINESS_API_URL}${rawPath.startsWith("/") ? "" : "/"}${rawPath}`;
+
+                                  return (
+                                    <div
+                                      key={pIdx}
+                                      className="relative group size-20 rounded-xl overflow-hidden border border-border/80 shadow-xs cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                                      onClick={() => setEnlargedPhoto(fullUrl)}
+                                    >
+                                      <img
+                                        src={fullUrl}
+                                        alt={`Evidence ${pIdx + 1}`}
+                                        className="size-full object-cover"
+                                      />
+                                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold">
+                                        View
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="text-[10px] text-muted-foreground italic">
+                              No photo evidence attached to this line item.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {damageDetails.customRemarks && (
+                  <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-1">
+                    <span className="text-[10px] font-black uppercase text-muted-foreground">
+                      Inspector Remarks
+                    </span>
+                    <p className="text-xs text-foreground font-medium italic">
+                      "{damageDetails.customRemarks}"
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-muted/10 border-t border-border/60 flex items-center justify-end gap-3">
+                <Button
+                  variant="ghost"
+                  className="rounded-xl text-xs font-semibold"
+                  onClick={() => setShowDamageModal(false)}
+                >
+                  Close
+                </Button>
+                {selectedDamageNotif.link && (
+                  <Button
+                    className="rounded-xl text-xs font-bold shadow-glow"
+                    onClick={() => {
+                      setShowDamageModal(false);
+                      window.location.href = selectedDamageNotif.link;
+                    }}
+                  >
+                    Open GRN Inspection <ExternalLink className="ml-1.5 size-3.5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Enlarged Photo Preview Modal */}
+      {enlargedPhoto && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in"
+          onClick={() => setEnlargedPhoto(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] overflow-hidden rounded-3xl bg-background border border-border/60 shadow-2xl p-2">
+            <button
+              className="absolute top-4 right-4 z-10 size-10 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black transition-colors"
+              onClick={() => setEnlargedPhoto(null)}
+            >
+              <X className="size-5" />
+            </button>
+            <img
+              src={enlargedPhoto}
+              alt="Enlarged evidence"
+              className="max-h-[85vh] w-auto max-w-full rounded-2xl object-contain mx-auto"
+            />
+          </div>
         </div>
       )}
 
-      {/* ✨ DAMAGED GOODS DETAILS MODAL (POPUP) */}
-      <Dialog open={showDamageModal} onOpenChange={setShowDamageModal}>
-        <DialogContent className="max-w-3xl rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto border shadow-2xl">
-          {/* HEADER */}
-          <DialogHeader className="border-b pb-4 flex flex-row items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-500/10 text-rose-700 border border-rose-500/20 flex items-center gap-1.5 uppercase tracking-wider">
-                  <AlertTriangle className="size-3.5" /> Damaged Goods Evidence Report
-                </span>
-                <span className="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-muted text-foreground">
-                  Ref: {damageDetails?.grnNumber}
-                </span>
-              </div>
-              <DialogTitle className="text-xl font-black text-foreground mt-2">
-                {selectedDamageNotif?.title || "Damaged Goods Reported"}
-              </DialogTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Reported Date & Time:{" "}
-                <b className="text-foreground">
-                  {selectedDamageNotif?.created_at
-                    ? new Date(selectedDamageNotif.created_at).toLocaleString()
-                    : new Date().toLocaleString()}
-                </b>
-              </p>
-            </div>
-          </DialogHeader>
-
-          {/* GENERAL DETAILS GRID */}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 bg-muted/30 rounded-2xl p-4 border text-xs font-sans">
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                GRN Number
-              </span>
-              <span className="font-mono text-sm font-black text-primary block">
-                {damageDetails?.grnNumber}
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                PO Reference
-              </span>
-              <span className="font-mono text-sm font-bold text-foreground block">
-                {damageDetails?.poNumber}
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                Supplier Name
-              </span>
-              <span className="text-xs font-bold text-foreground block">
-                {damageDetails?.supplierName}
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                Warehouse Name
-              </span>
-              <span className="text-xs font-bold text-foreground block">
-                {damageDetails?.warehouseName}
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                Damage Reported Date/Time
-              </span>
-              <span className="text-xs font-medium text-foreground block">
-                {selectedDamageNotif?.created_at
-                  ? new Date(selectedDamageNotif.created_at).toLocaleString()
-                  : new Date().toLocaleString()}
-              </span>
-            </div>
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                Reported / Received By
-              </span>
-              <span className="text-xs font-bold text-foreground block">
-                {damageDetails?.reportedBy}
-              </span>
-            </div>
-          </div>
-
-          {/* INSPECTOR CUSTOM REMARKS IF PRESENT */}
-          {damageDetails?.customRemarks && (
-            <div className="rounded-2xl border border-amber-300 bg-amber-500/10 p-3.5 text-xs text-amber-900">
-              <span className="font-black uppercase tracking-wider block text-[10px] text-amber-700">
-                Inspector Custom Remarks & Instructions
-              </span>
-              <p className="font-medium mt-1 leading-relaxed">{damageDetails.customRemarks}</p>
-            </div>
-          )}
-
-          {/* DAMAGED MATERIAL DETAILS & PHOTO EVIDENCE */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-black uppercase text-foreground tracking-wider flex items-center justify-between">
-              <span>Damaged Materials & Photo Evidence</span>
-              <span className="text-[10px] font-bold text-rose-600 bg-rose-500/10 px-2.5 py-0.5 rounded-full border border-rose-500/20">
-                {damageDetails?.items.length || 0} Line Item(s) Flagged
-              </span>
-            </h4>
-
-            <div className="space-y-4">
-              {damageDetails?.items.map((item, idx) => {
-                const linePhotos = getPhotosForMaterial(item.material);
-
-                return (
-                  <div
-                    key={idx}
-                    className="rounded-2xl border border-border/80 bg-card/70 p-4 space-y-3 shadow-xs"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
-                      <div>
-                        <span className="font-bold text-foreground text-sm block">
-                          {item.material}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          Reason: <b className="text-rose-700 dark:text-rose-400 font-semibold">{item.reason}</b>
-                        </span>
-                      </div>
-                      <span className="font-mono text-xs font-black text-rose-600 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
-                        Damaged: {item.quantity}
-                      </span>
-                    </div>
-
-                    {/* PHOTO EVIDENCE (PICS) GALLERY - Rendered only when photos exist */}
-                    {linePhotos.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                            <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
-                          </span>
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                            ✓ {linePhotos.length} Photo(s) Attached
-                          </span>
-                        </div>
-
-                        {damageLoading ? (
-                          <div className="flex items-center justify-center p-6 bg-muted/20 rounded-xl border border-dashed">
-                            <Loader2 className="size-4 animate-spin text-rose-500 mr-2" />
-                            <span className="text-xs text-muted-foreground font-medium">
-                              Loading damage photos...
-                            </span>
-                          </div>
-                        ) : (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                            {linePhotos.map((photo: any, pIdx: number) => {
-                              const filePath = photo.filePath || photo.file_path || "";
-                              const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
-                              const fullUrl = filePath.startsWith("http")
-                                ? filePath
-                                : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
-
-                              return (
-                                <div
-                                  key={photo.evidenceId || photo.evidence_id || pIdx}
-                                  className="group relative cursor-pointer overflow-hidden rounded-xl border bg-muted/30 shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
-                                  onClick={() => setEnlargedPhoto(fullUrl)}
-                                >
-                                  <div className="aspect-4/3 w-full overflow-hidden bg-black/5 flex items-center justify-center">
-                                    <img
-                                      src={fullUrl}
-                                      alt={fileName}
-                                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                      onError={(e) => {
-                                        // Fallback on missing or invalid image path
-                                        const target = e.target as HTMLImageElement;
-                                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
-                                      }}
-                                    />
-                                  </div>
-                                  <div className="absolute inset-0 bg-rose-950/70 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white p-2 text-center gap-1">
-                                    <Eye className="size-5 text-rose-200" />
-                                    <span className="text-[10px] font-bold">View Full Picture</span>
-                                  </div>
-                                  <div className="p-1.5 bg-background/90 border-t text-[10px] font-mono text-muted-foreground truncate">
-                                    {fileName}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* FOOTER */}
-          <DialogFooter className="pt-4 border-t flex justify-end">
-            <Button
-              variant="outline"
-              className="rounded-xl font-bold px-6 border-muted-foreground/30 hover:bg-muted"
-              onClick={() => setShowDamageModal(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ✨ GRN & QUALITY NOTIFICATION DETAILS MODAL */}
+      {/* GRN & Quality Notification Details Modal */}
       <Dialog open={showGrnModal} onOpenChange={setShowGrnModal}>
-        <DialogContent className="max-w-2xl rounded-3xl p-6 space-y-6 max-h-[90vh] overflow-y-auto border shadow-2xl">
-          {/* HEADER */}
-          <DialogHeader className="border-b pb-4 flex flex-row items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full text-xs font-black bg-primary/10 text-primary border border-primary/20 flex items-center gap-1.5 uppercase tracking-wider">
-                  <FileText className="size-3.5" /> {grnDetails?.statusText || "GRN Details"}
-                </span>
-                {grnDetails?.grnNumber && (
-                  <span className="px-2.5 py-0.5 rounded-md font-mono text-xs font-bold bg-muted text-foreground">
-                    {grnDetails.grnNumber}
+        <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+          {selectedGrnNotif && grnDetails && (
+            <div className="flex flex-col h-full max-h-[90vh]">
+              <div className="p-6 bg-primary text-primary-foreground flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Package className="size-5" />
+                    <DialogTitle className="text-xl font-bold tracking-tight">
+                      {grnDetails.title || "Receiving & GRN Notification"}
+                    </DialogTitle>
+                  </div>
+                  <p className="text-primary-foreground/80 text-xs font-mono">
+                    Status: {grnDetails.statusText}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40 text-xs">
+                  {grnDetails.grnNumber && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        GRN Number
+                      </span>
+                      <p className="font-bold mt-0.5 font-mono text-primary">
+                        {grnDetails.grnNumber}
+                      </p>
+                    </div>
+                  )}
+                  {grnDetails.poNumber && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        PO Number
+                      </span>
+                      <p className="font-bold mt-0.5 font-mono">{grnDetails.poNumber}</p>
+                    </div>
+                  )}
+                  {grnDetails.supplierName && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        Supplier
+                      </span>
+                      <p className="font-bold mt-0.5">{grnDetails.supplierName}</p>
+                    </div>
+                  )}
+                  {grnDetails.vehicleNumber && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        Vehicle Number
+                      </span>
+                      <p className="font-bold mt-0.5 font-mono">{grnDetails.vehicleNumber}</p>
+                    </div>
+                  )}
+                  {grnDetails.dockCode && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        Dock Location
+                      </span>
+                      <p className="font-bold mt-0.5 font-mono text-primary">
+                        {grnDetails.dockCode}
+                      </p>
+                    </div>
+                  )}
+                  {grnDetails.created_at && (
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-muted-foreground">
+                        Timestamp
+                      </span>
+                      <p className="font-bold mt-0.5">
+                        {new Date(grnDetails.created_at).toLocaleString()}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-muted-foreground">
+                    Message Details
                   </span>
+                  <p className="text-xs text-foreground font-medium leading-relaxed whitespace-pre-line">
+                    {grnDetails.message}
+                  </p>
+                </div>
+              </div>
+
+              <div className="p-4 bg-muted/10 border-t border-border/60 flex items-center justify-end gap-3">
+                <Button
+                  variant="ghost"
+                  className="rounded-xl text-xs font-semibold"
+                  onClick={() => setShowGrnModal(false)}
+                >
+                  Close
+                </Button>
+                {grnDetails.link && (
+                  <Button
+                    className="rounded-xl text-xs font-bold shadow-glow"
+                    onClick={() => {
+                      setShowGrnModal(false);
+                      window.location.href = grnDetails.link;
+                    }}
+                  >
+                    Open Details <ExternalLink className="ml-1.5 size-3.5" />
+                  </Button>
                 )}
               </div>
-              <DialogTitle className="text-xl font-black text-foreground mt-2">
-                {selectedGrnNotif?.title || "GRN Notification Details"}
-              </DialogTitle>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Date & Time:{" "}
-                <b className="text-foreground">
-                  {selectedGrnNotif?.created_at
-                    ? new Date(selectedGrnNotif.created_at).toLocaleString()
-                    : new Date().toLocaleString()}
-                </b>
-              </p>
             </div>
-          </DialogHeader>
-
-          {/* DETAILS GRID */}
-          <div className="grid gap-3 sm:grid-cols-2 bg-muted/30 rounded-2xl p-4 border text-xs font-sans">
-            {grnDetails?.grnNumber && (
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                  GRN Number
-                </span>
-                <span className="font-mono text-sm font-black text-primary block">
-                  {grnDetails.grnNumber}
-                </span>
-              </div>
-            )}
-
-            {grnDetails?.poNumber && (
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                  PO Reference
-                </span>
-                <span className="font-mono text-sm font-bold text-foreground block">
-                  {grnDetails.poNumber}
-                </span>
-              </div>
-            )}
-
-            {grnDetails?.supplierName && (
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                  Supplier Name
-                </span>
-                <span className="text-xs font-bold text-foreground block">
-                  {grnDetails.supplierName}
-                </span>
-              </div>
-            )}
-
-            {grnDetails?.vehicleNumber && (
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                  Vehicle Number
-                </span>
-                <span className="font-mono text-xs font-bold text-foreground block">
-                  {grnDetails.vehicleNumber}
-                </span>
-              </div>
-            )}
-
-            {grnDetails?.dockCode && (
-              <div className="space-y-0.5">
-                <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                  Dock Code
-                </span>
-                <span className="font-mono text-xs font-bold text-teal-600 block">
-                  {grnDetails.dockCode}
-                </span>
-              </div>
-            )}
-
-            <div className="space-y-0.5">
-              <span className="text-[10px] font-extrabold uppercase text-muted-foreground tracking-wider block">
-                Notification Type
-              </span>
-              <span className="text-xs font-bold text-foreground block">
-                {grnDetails?.statusText || "Goods Receiving"}
-              </span>
-            </div>
-          </div>
-
-          {/* MESSAGE BODY */}
-          <div className="rounded-2xl border bg-card p-4 space-y-1">
-            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block">
-              Notification Message
-            </span>
-            <p className="text-sm font-medium text-foreground whitespace-pre-line leading-relaxed">
-              {selectedGrnNotif?.message}
-            </p>
-          </div>
-
-          {/* FOOTER */}
-          <DialogFooter className="pt-4 border-t flex flex-wrap items-center justify-between gap-3">
-            <Button
-              variant="default"
-              className="rounded-xl font-bold text-xs bg-primary hover:bg-primary/90 text-primary-foreground"
-              onClick={() => {
-                setShowGrnModal(false);
-                window.location.href = "/grn";
-              }}
-            >
-              <FileText className="mr-1.5 size-4" /> Open GRN Management (/grn)
-            </Button>
-
-            <Button
-              variant="outline"
-              className="rounded-xl font-bold text-xs px-6"
-              onClick={() => setShowGrnModal(false)}
-            >
-              Close
-            </Button>
-          </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
-
-      {/* ENLARGED PHOTO LIGHTBOX MODAL IF CLICKED */}
-      {enlargedPhoto && (
-        <Dialog open={!!enlargedPhoto} onOpenChange={() => setEnlargedPhoto(null)}>
-          <DialogContent className="max-w-2xl rounded-2xl p-4 bg-black/95 text-white border-none">
-            <div className="flex justify-between items-center pb-2 border-b border-white/20">
-              <span className="text-xs font-bold uppercase tracking-wider text-rose-400">
-                Damage Photo Evidence
-              </span>
-              <button
-                onClick={() => setEnlargedPhoto(null)}
-                className="text-white/70 hover:text-white"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <div className="mt-3 overflow-hidden rounded-xl bg-black flex items-center justify-center max-h-[70vh]">
-              <img src={enlargedPhoto} alt="Enlarged damage evidence" className="max-h-[70vh] object-contain" />
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
     </AppShell>
   );
 }

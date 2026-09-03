@@ -53,14 +53,9 @@ export const Route = createFileRoute("/warehouse-dashboard")({
 });
 
 const quickActions = [
-<<<<<<< HEAD
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
   { label: "Goods Receiving", to: "/grn", icon: PackageCheck },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
-=======
-  { label: "Receiving", to: "/receiving", icon: PackageCheck },
->>>>>>> main
 ];
 
 function WarehouseDashboard() {

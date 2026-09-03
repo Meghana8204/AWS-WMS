@@ -31,11 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
-<<<<<<< HEAD
 import { cn } from "@/lib/utils";
-=======
-
->>>>>>> main
 export const Route = createFileRoute("/receiving")({ component: Receiving });
 type Material = {
   item_code: string;

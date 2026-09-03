@@ -168,7 +168,6 @@ function GateEntry() {
   const [driverPhone, setDriverPhone] = useState("");
   const [extractedDetails, setExtractedDetails] = useState<Record<string, unknown> | null>(null);
   const [lastCreatedEntry, setLastCreatedEntry] = useState<GateEntryRecord | null>(null);
-<<<<<<< HEAD
   const [availablePos, setAvailablePos] = useState<any[]>([]);
   const [autoFetchingPo, setAutoFetchingPo] = useState(false);
   const [fieldSources, setFieldSources] = useState<{
@@ -177,7 +176,6 @@ function GateEntry() {
     materials?: "system" | "generated";
     dates?: "system" | "generated";
   }>({});
-=======
   const [lastQrCode, setLastQrCode] = useState<string | null>(null);
   const [isDockModalOpen, setIsDockModalOpen] = useState(false);
   const [qrModalEntry, setQrModalEntry] = useState<GateEntryRecord | null>(null);

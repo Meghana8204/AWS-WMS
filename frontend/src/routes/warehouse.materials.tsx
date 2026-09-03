@@ -63,7 +63,6 @@ export const Route = createFileRoute("/warehouse/materials")({
   component: WarehouseMaterials,
 });
 
-<<<<<<< HEAD
 const DEFAULT_UOMS = [
   "INGOT",
   "ROLL",
@@ -89,9 +88,6 @@ export const formatSpecCode = (code?: string): string => {
   if (!code) return "";
   return code.replace(/-V(\d+)$/i, "-S$1");
 };
-
-=======
->>>>>>> main
 interface VariantItem {
   variant_code?: string;
   size: string;
