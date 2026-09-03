@@ -529,10 +529,23 @@ function SubmitQuotation() {
               <div key={idx} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h4 className="text-sm font-bold text-foreground">{item.materialName}</h4>
-                    <span className="text-[10px] font-mono text-muted-foreground uppercase">
-                      {item.materialCode} · {item.category}
-                    </span>
+                    <h4 className="text-base font-semibold tracking-tight text-foreground">
+                      {item.materialName}
+                    </h4>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-primary/20 bg-primary-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                        Material <strong className="ml-1 font-mono text-primary">{item.materialCode}</strong>
+                      </span>
+                      <span className="rounded-md border border-teal-500/20 bg-teal-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                        Variant{" "}
+                        <strong className="ml-1 font-mono text-teal-600">
+                          {item.variantCode || item.variant_code || "—"}
+                        </strong>
+                      </span>
+                      <span className="rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                        Category <strong className="ml-1 text-foreground">{item.category || "—"}</strong>
+                      </span>
+                    </div>
                   </div>
                   <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
                     Requested: {Math.floor(item.quantity)} {item.uom}
@@ -796,51 +809,54 @@ function SubmitQuotation() {
 
         {/* Quotation Summary Modal */}
         <Dialog open={showSummaryModal} onOpenChange={setShowSummaryModal}>
-          <DialogContent className="max-w-2xl rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
-            <div className="bg-success p-6 text-white">
+          <DialogContent className="max-w-2xl gap-0 overflow-hidden rounded-2xl border-none p-0 shadow-2xl [&>button]:right-4 [&>button]:top-4 [&>button]:text-white/75 [&>button]:hover:text-white">
+            <div className="bg-success px-6 py-4 text-white">
               <DialogHeader>
-                <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                  <ShieldCheck className="size-6" /> Quotation Final Review
+                <DialogTitle className="flex items-center gap-2.5 text-xl font-semibold tracking-tight">
+                  <span className="grid size-8 place-items-center rounded-lg bg-white/15">
+                    <ShieldCheck className="size-5" />
+                  </span>
+                  Quotation Final Review
                 </DialogTitle>
-                <DialogDescription className="text-white/80 font-medium">
+                <DialogDescription className="mt-0.5 max-w-xl text-sm font-normal leading-snug text-white/85">
                   Please review your quotation summary before final submission. This action is
                   irreversible.
                 </DialogDescription>
               </DialogHeader>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="space-y-4 p-5">
               {/* Financial Breakdown */}
-              <div className="rounded-2xl border border-border/60 bg-muted/5 p-5">
-                <h4 className="text-xs font-black uppercase text-muted-foreground tracking-widest mb-4">
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+                <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Financial Summary
                 </h4>
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-muted-foreground font-medium">Subtotal</span>
-                    <span className="font-bold">{formatCurrency(quotationSummary.subtotal)}</span>
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-6 text-sm">
+                    <span className="font-medium text-muted-foreground">Subtotal</span>
+                    <span className="text-right font-semibold tabular-nums">{formatCurrency(quotationSummary.subtotal)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-6 text-sm">
                     <span className="text-muted-foreground font-medium">
                       Discount ({quotationSummary.discountPercentage}%)
                     </span>
-                    <span className="font-bold text-success">
+                    <span className="text-right font-semibold text-success tabular-nums">
                       − {formatCurrency(quotationSummary.discount)}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-6 text-sm">
                     <span className="text-muted-foreground font-medium">
                       GST ({quotationSummary.taxRate}%)
                     </span>
-                    <span className="font-bold">{formatCurrency(quotationSummary.taxAmount)}</span>
+                    <span className="text-right font-semibold tabular-nums">{formatCurrency(quotationSummary.taxAmount)}</span>
                   </div>
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="grid grid-cols-[1fr_auto] items-center gap-6 text-sm">
                     <span className="text-muted-foreground font-medium">Freight Charges</span>
-                    <span className="font-bold">{formatCurrency(quotationSummary.freight)}</span>
+                    <span className="text-right font-semibold tabular-nums">{formatCurrency(quotationSummary.freight)}</span>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-border flex justify-between items-center">
-                    <span className="text-base font-black uppercase">Final Total</span>
-                    <span className="text-2xl font-black text-primary">
+                  <div className="mt-3 grid grid-cols-[1fr_auto] items-center gap-6 border-t border-border pt-3">
+                    <span className="text-sm font-semibold uppercase tracking-wide">Final Total</span>
+                    <span className="text-right text-xl font-bold tracking-tight text-primary tabular-nums">
                       {formatCurrency(quotationSummary.total)}
                     </span>
                   </div>
@@ -848,32 +864,32 @@ function SubmitQuotation() {
               </div>
 
               {/* Logistics Summary */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-border/70 bg-background p-3">
+                  <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Delivery Time
                   </Label>
-                  <p className="font-bold text-sm">{metaData.deliveryTime || "Not Specified"}</p>
+                  <p className="mt-1 text-sm font-semibold">{metaData.deliveryTime || "Not Specified"}</p>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                <div className="rounded-xl border border-border/70 bg-background p-3">
+                  <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Expected Delivery
                   </Label>
-                  <p className="font-bold text-sm tabular-nums">
+                  <p className="mt-1 text-sm font-semibold tabular-nums">
                     {metaData.expectedDeliveryDate || "Not Specified"}
                   </p>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                <div className="rounded-xl border border-border/70 bg-background p-3">
+                  <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Payment Terms
                   </Label>
-                  <p className="font-bold text-sm">{metaData.paymentTerms || "Not Specified"}</p>
+                  <p className="mt-1 text-sm font-semibold">{metaData.paymentTerms || "Not Specified"}</p>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                <div className="rounded-xl border border-border/70 bg-background p-3">
+                  <Label className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Items Quoted
                   </Label>
-                  <p className="font-bold text-sm">
+                  <p className="mt-1 text-sm font-semibold">
                     {quotationSummary.quotedItems} of {rfq.items?.length} Items
                   </p>
                 </div>
@@ -885,25 +901,25 @@ function SubmitQuotation() {
                   <Label className="text-[10px] uppercase font-black text-muted-foreground">
                     Special Remarks / Terms
                   </Label>
-                  <div className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-xl border border-border/40 italic leading-relaxed">
+                  <div className="rounded-xl border border-border/40 bg-muted/30 p-2.5 text-xs italic leading-snug text-muted-foreground">
                     {metaData.remarks}
                   </div>
                 </div>
               )}
             </div>
 
-            <DialogFooter className="p-6 bg-muted/10 border-t border-border/60">
-              <div className="flex w-full items-center justify-between gap-4">
+            <DialogFooter className="border-t border-border/70 bg-muted/10 p-4">
+              <div className="flex w-full flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   variant="ghost"
-                  className="rounded-2xl h-11 px-6 font-bold text-xs uppercase"
+                  className="h-11 rounded-xl px-6 text-xs font-semibold uppercase"
                   onClick={() => setShowSummaryModal(false)}
                   disabled={submitting}
                 >
                   Go Back & Edit
                 </Button>
                 <Button
-                  className="rounded-2xl h-11 px-8 shadow-glow font-bold text-xs uppercase bg-success hover:bg-success/90 text-white"
+                  className="h-11 rounded-xl bg-success px-8 text-xs font-semibold uppercase text-white shadow-glow hover:bg-success/90"
                   onClick={() => handleSave("SUBMITTED")}
                   disabled={submitting}
                 >

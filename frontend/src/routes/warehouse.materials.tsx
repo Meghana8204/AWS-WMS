@@ -24,6 +24,7 @@ import {
   Info,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
+import { StatCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -62,26 +63,6 @@ export const Route = createFileRoute("/warehouse/materials")({
   component: WarehouseMaterials,
 });
 
-const DEFAULT_UOMS = [
-  "INGOT",
-  "ROLL",
-  "COIL",
-  "LENGTH",
-  "BUNDLE",
-  "TON",
-  "PCS",
-  "MTR",
-  "KG",
-  "LTR",
-  "BOX",
-  "PKT",
-  "ROL",
-  "SQM",
-  "SET",
-  "NOS",
-  "DRUM",
-];
-
 interface VariantItem {
   variant_code?: string;
   size: string;
@@ -100,7 +81,7 @@ function WarehouseMaterials() {
   const [selectedCategory, setSelectedCategory] = useState("ALL");
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [categories, setCategories] = useState<string[]>([]);
-  const [uoms, setUoms] = useState<string[]>(DEFAULT_UOMS);
+  const [uoms, setUoms] = useState<string[]>([]);
 
   // Modals & Dialog states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -114,10 +95,10 @@ function WarehouseMaterials() {
   // Form states for creating Material
   const [materialCode, setMaterialCode] = useState("");
   const [materialName, setMaterialName] = useState("");
-  const [category, setCategory] = useState("Electrical");
+  const [category, setCategory] = useState("");
   const [customCategory, setCustomCategory] = useState("");
   const [description, setDescription] = useState("");
-  const [baseUom, setBaseUom] = useState("PCS");
+  const [baseUom, setBaseUom] = useState("");
   const [materialStatus, setMaterialStatus] = useState("Active");
 
   // Multi-variants builder inside Create Material
@@ -128,7 +109,7 @@ function WarehouseMaterials() {
       color: "",
       grade: "",
       specification: "",
-      uom: "PCS",
+      uom: "",
       attributes: {},
       status: "Active",
     },
@@ -143,7 +124,7 @@ function WarehouseMaterials() {
   const [newVarColor, setNewVarColor] = useState("");
   const [newVarGrade, setNewVarGrade] = useState("");
   const [newVarSpec, setNewVarSpec] = useState("");
-  const [newVarUom, setNewVarUom] = useState("PCS");
+  const [newVarUom, setNewVarUom] = useState("");
   const [newVarCode, setNewVarCode] = useState("");
   const [newVarAttrs, setNewVarAttrs] = useState<Record<string, string>>({});
 
@@ -157,7 +138,7 @@ function WarehouseMaterials() {
           status: selectedStatus !== "ALL" ? selectedStatus : undefined,
         }),
         api.getMaterialCategories().catch(() => []),
-        api.getMaterialUoms().catch(() => DEFAULT_UOMS),
+        api.getMaterialUoms().catch(() => []),
       ]);
       setMaterials(matData);
       if (catData.length > 0) setCategories(catData);
@@ -189,7 +170,7 @@ function WarehouseMaterials() {
       setMaterialCode(code);
       setMaterialName("");
       setDescription("");
-      setBaseUom("PCS");
+      setBaseUom(uoms[0] || "");
       setMaterialStatus("Active");
       setCustomCategory("");
       setVariantsList([
@@ -199,7 +180,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: "PCS",
+          uom: uoms[0] || "",
           attributes: {},
           status: "Active",
         },
@@ -214,7 +195,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: "PCS",
+          uom: uoms[0] || "",
           attributes: {},
           status: "Active",
         },
@@ -403,7 +384,7 @@ function WarehouseMaterials() {
     setNewVarColor("");
     setNewVarGrade("");
     setNewVarSpec("");
-    setNewVarUom(selectedMaterial.base_uom || "PCS");
+    setNewVarUom(selectedMaterial.base_uom || uoms[0] || "");
     setNewVarAttrs({});
     setAttrKey("");
     setAttrVal("");
@@ -487,76 +468,33 @@ function WarehouseMaterials() {
       }
     >
       {/* Metric Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Base Materials
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums">
-                {loading ? "..." : totalMaterials}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
-              <Database className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Total Variants
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-teal-600">
-                {loading ? "..." : totalVariants}
-              </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Stockable SKUs / Specs
-              </p>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-teal-soft text-teal">
-              <Layers className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Active Materials
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-success">
-                {loading ? "..." : `${activeCount} / ${totalMaterials}`}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-success-soft text-success">
-              <CheckCircle2 className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Categories
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-orange-600">
-                {loading ? "..." : distinctCategories}
-              </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Material classifications
-              </p>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-orange-soft/40 text-orange-600">
-              <Tag className="size-6" />
-            </div>
-          </div>
-        </Card>
+      <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Base Materials"
+          value={loading ? "..." : String(totalMaterials)}
+          icon={Database}
+          tone="primary"
+        />
+        <StatCard
+          label="Total Variants"
+          value={loading ? "..." : String(totalVariants)}
+          delta="Stockable SKUs / Specs"
+          icon={Layers}
+          tone="teal"
+        />
+        <StatCard
+          label="Active Materials"
+          value={loading ? "..." : `${activeCount} / ${totalMaterials}`}
+          icon={CheckCircle2}
+          tone="success"
+        />
+        <StatCard
+          label="Categories"
+          value={loading ? "..." : String(distinctCategories)}
+          delta="Material classifications"
+          icon={Tag}
+          tone="warning"
+        />
       </div>
 
       {/* Filter and Search Bar */}

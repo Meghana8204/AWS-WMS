@@ -18,7 +18,7 @@ import {
   Send,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
-import { Field, SectionCard, StepRail } from "@/components/wms/primitives";
+import { Field, SectionCard } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";

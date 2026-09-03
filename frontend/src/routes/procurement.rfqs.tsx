@@ -167,13 +167,13 @@ function Rfqs() {
 
       {/* Detail & Review Modal */}
       {selectedRfq && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm transition-all duration-200">
-          <Card className="flex max-h-[85vh] w-full max-w-4xl flex-col border-border/80 bg-card shadow-soft animate-in fade-in zoom-in-95">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm transition-all duration-200 sm:p-6">
+          <Card className="flex max-h-[90vh] w-full max-w-6xl flex-col gap-0 overflow-hidden rounded-2xl border-border/80 bg-card p-0 shadow-2xl animate-in fade-in zoom-in-95">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-border/60 p-6">
+            <div className="flex shrink-0 items-center justify-between border-b border-border/70 px-6 py-5">
               <div>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold">{selectedRfq.rfqNumber}</h2>
+                  <h2 className="text-xl font-semibold tracking-tight">{selectedRfq.rfqNumber}</h2>
                   <StatusBadge status={selectedRfq.status} />
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
@@ -191,24 +191,24 @@ function Rfqs() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
               {/* Metadata Grid */}
-              <div className="grid gap-4 rounded-xl border border-border/60 bg-muted/10 p-4 sm:grid-cols-3">
+              <div className="grid gap-x-8 gap-y-5 rounded-xl border border-border/70 bg-muted/20 p-5 sm:grid-cols-2 lg:grid-cols-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     Procurement Officer
                   </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.procurementOfficer}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     Warehouse
                   </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.warehouse}</p>
                 </div>
                 {selectedRfq.materialRequestNumber && (
                   <div>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       Material Request Ref
                     </p>
                     <p className="mt-1 text-sm font-semibold">
@@ -217,13 +217,13 @@ function Rfqs() {
                   </div>
                 )}
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     RFQ Date
                   </p>
                   <p className="mt-1 text-sm font-semibold">{selectedRfq.rfqDate}</p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     Required Delivery Date
                   </p>
                   <p className="mt-1 text-sm font-semibold">
@@ -231,7 +231,7 @@ function Rfqs() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     Supplier Email(s)
                   </p>
                   <p
@@ -244,53 +244,49 @@ function Rfqs() {
               </div>
 
               {/* Items Section */}
-              <div>
-                <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
+              <section className="overflow-hidden rounded-xl border border-border/70">
+                <h3 className="flex items-center gap-2 border-b border-border/70 bg-muted/15 px-5 py-4 text-sm font-semibold">
                   <Package className="size-4 text-primary" /> Material Requirements
                 </h3>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-left text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border/60 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="py-2.5 font-medium">Material</th>
-                        <th className="py-2.5 font-medium">Category</th>
-                        <th className="py-2.5 font-medium text-right">Quantity</th>
-                        <th className="py-2.5 font-medium">UOM</th>
-                        <th className="py-2.5 font-medium">Delivery Date</th>
-                        <th className="py-2.5 font-medium">Warehouse</th>
-                        <th className="py-2.5 font-medium">Special Requirements</th>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[780px] border-collapse text-left text-xs">
+                    <thead className="bg-muted/20">
+                      <tr className="border-b border-border/70 text-[10px] uppercase tracking-wide text-muted-foreground">
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">Material Code</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">Variant Code</th>
+                        <th className="min-w-56 px-4 py-3 font-medium">Material Name &amp; Specs</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">Category</th>
+                        <th className="whitespace-nowrap px-4 py-3 text-right font-medium">Quantity</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">UOM</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">Warehouse</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedRfq.items && selectedRfq.items.length > 0 ? (
                         selectedRfq.items.map((item: any, idx: number) => (
-                          <tr key={idx} className="border-b border-border/40 hover:bg-muted/5">
-                            <td className="py-3 pr-2">
-                              <p className="font-semibold text-foreground">{item.materialName}</p>
-                              <span className="font-mono text-[10px] text-muted-foreground">
-                                {item.materialCode}
-                              </span>
+                          <tr key={idx} className="border-b border-border/50 last:border-0 hover:bg-muted/15">
+                            <td className="whitespace-nowrap px-4 py-3.5 font-mono font-semibold text-primary">
+                              {item.materialCode || item.material_code}
                             </td>
-                            <td className="py-3 text-muted-foreground">{item.category}</td>
-                            <td className="py-3 text-right font-mono font-bold pr-4">
-                              {Math.floor(item.quantity)}
+                            <td className="whitespace-nowrap px-4 py-3.5 font-mono font-semibold text-teal-600">
+                              {item.variantCode || item.variant_code || "—"}
                             </td>
-                            <td className="py-3 font-semibold text-muted-foreground">{item.uom}</td>
-                            <td className="py-3 text-muted-foreground">
-                              {item.requiredDeliveryDate}
+                            <td className="px-4 py-3.5 font-medium text-foreground">
+                              {item.materialName || item.material_name}
                             </td>
-                            <td className="py-3 text-muted-foreground">{item.warehouse}</td>
-                            <td
-                              className="py-3 text-muted-foreground italic max-w-[200px] truncate"
-                              title={item.specialRequirements || ""}
-                            >
-                              {item.specialRequirements || "None"}
+                            <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">{item.category}</td>
+                            <td className="whitespace-nowrap px-4 py-3.5 text-right font-mono font-semibold tabular-nums">
+                              {item.quantity}
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3.5 font-medium text-muted-foreground">{item.uom}</td>
+                            <td className="whitespace-nowrap px-4 py-3.5 text-muted-foreground">
+                              {item.warehouse || selectedRfq.warehouse || "—"}
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-muted-foreground">
+                          <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
                             No material requirements listed for this RFQ.
                           </td>
                         </tr>
@@ -298,31 +294,31 @@ function Rfqs() {
                     </tbody>
                   </table>
                 </div>
-              </div>
+              </section>
 
               {/* Invited Suppliers List */}
               {selectedRfq.suppliers && selectedRfq.suppliers.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="flex items-center gap-2 text-sm font-bold border-b border-border/50 pb-2">
+                <section className="overflow-hidden rounded-xl border border-border/70">
+                  <h3 className="flex items-center gap-2 border-b border-border/70 bg-muted/15 px-5 py-4 text-sm font-semibold">
                     <Building2 className="size-4 text-primary" /> Invited Suppliers
                   </h3>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 p-4">
                     {selectedRfq.suppliers.map((sup: any) => (
                       <Badge
                         key={sup.supplierId}
                         variant="outline"
-                        className="rounded-lg py-1 px-2.5 bg-muted/10 border-border/60"
+                        className="rounded-lg border-border/70 bg-background px-3 py-1.5 font-medium"
                       >
                         <Building2 className="mr-1.5 size-3.5 text-muted-foreground animate-pulse" />
                         {sup.supplierName}
                       </Badge>
                     ))}
                   </div>
-                </div>
+                </section>
               )}
 
               {/* Suppliers count info */}
-              <div className="flex items-start gap-3 rounded-xl border border-warning/20 bg-warning-soft/10 p-4">
+              <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning-soft/15 p-4">
                 <Info className="size-5 text-warning shrink-0 mt-0.5" />
                 <div>
                   <p className="text-xs font-semibold text-warning-foreground">Invitation Scope</p>
@@ -347,7 +343,7 @@ function Rfqs() {
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-end gap-3 border-t border-border/60 p-6 bg-muted/5">
+            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-border/70 bg-card px-6 py-4">
               <Button variant="outline" className="rounded-xl" onClick={() => setSelectedRfq(null)}>
                 Close
               </Button>

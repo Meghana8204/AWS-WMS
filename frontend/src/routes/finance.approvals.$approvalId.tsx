@@ -14,6 +14,8 @@ import {
   Info,
   Download,
   MessageSquare,
+  History,
+  Clock,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -220,6 +222,91 @@ function ApprovalDetail() {
                   <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
                     {po.procurementComments}
                   </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* PO Approval History & Audit Trail */}
+          <Card className="border-border/40 shadow-soft overflow-hidden">
+            <CardHeader className="bg-muted/10 border-b border-border/60">
+              <div className="flex items-center gap-2">
+                <History className="size-4 text-primary" />
+                <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                  PO Approval History &amp; Audit Trail
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {!po.history || po.history.length === 0 ? (
+                <div className="p-4 rounded-xl bg-muted/20 border border-border/40 text-center text-xs text-muted-foreground italic">
+                  No approval history events recorded yet.
+                </div>
+              ) : (
+                <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-border/60">
+                  {po.history.map((h: any, idx: number) => {
+                    const status = String(h.status || "").toUpperCase();
+                    const isApproved = status.includes("APPROV") || status.includes("APPROVED");
+                    const isRejected = status.includes("REJECT");
+
+                    return (
+                      <div key={h.id || idx} className="relative flex items-start gap-4">
+                        <div
+                          className={cn(
+                            "absolute -left-6 top-1 size-5 rounded-full border-2 bg-background flex items-center justify-center",
+                            isApproved
+                              ? "border-emerald-600 text-emerald-600"
+                              : isRejected
+                                ? "border-rose-600 text-rose-600"
+                                : "border-amber-500 text-amber-500",
+                          )}
+                        >
+                          {isApproved ? (
+                            <CheckCircle2 className="size-3" />
+                          ) : isRejected ? (
+                            <XCircle className="size-3" />
+                          ) : (
+                            <Clock className="size-3" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1 bg-muted/20 border border-border/40 rounded-xl p-3.5 space-y-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span
+                              className={cn(
+                                "text-[10px] font-black uppercase px-2 py-0.5 rounded-md",
+                                isApproved
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : isRejected
+                                    ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                    : "bg-amber-50 text-amber-700 border border-amber-200",
+                              )}
+                            >
+                              {h.status}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground">
+                              {h.createdAt || h.created_at
+                                ? new Date(h.createdAt || h.created_at).toLocaleString()
+                                : "—"}
+                            </span>
+                          </div>
+
+                          <p className="text-xs font-bold text-foreground">
+                            Action by:{" "}
+                            <span className="text-primary font-mono">
+                              {h.actorName || h.actor_name || "System / Officer"}
+                            </span>
+                          </p>
+
+                          {h.comments && (
+                            <p className="text-xs text-muted-foreground leading-relaxed italic bg-background/60 p-2.5 rounded-lg border border-border/30 mt-1">
+                              "{h.comments}"
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

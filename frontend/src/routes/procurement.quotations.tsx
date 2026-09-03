@@ -517,17 +517,34 @@ function Quotations() {
                         <span className="text-xs font-bold">Tax (GST %)</span>
                       </div>
                     </td>
-                    {comparisonQuotations.map((q) => (
-                      <td
-                        key={`${q.id}-tax`}
-                        className={cn(
-                          "p-4 border-r border-border/40 font-bold text-sm tabular-nums",
-                          (bestQuotationId === q.id || q.status === "Selected") && "bg-primary/[0.02]",
-                        )}
-                      >
-                        {parseFloat(q.tax || 0)}%
-                      </td>
-                    ))}
+                    {comparisonQuotations.map((q) => {
+                      const baseTotal = (q.lines || []).reduce(
+                        (sum: number, l: any) =>
+                          sum +
+                          parseFloat(l.quantity || 1) *
+                            parseFloat(l.unitPrice || l.unit_price || 0),
+                        0,
+                      );
+                      const disc = parseFloat(q.discount || 0);
+                      const afterDisc = Math.max(0, baseTotal - disc);
+                      const taxRate = parseFloat(q.tax || 0);
+                      const taxMoney = afterDisc * (taxRate / 100);
+
+                      return (
+                        <td
+                          key={`${q.id}-tax`}
+                          className={cn(
+                            "p-4 border-r border-border/40 font-bold text-sm tabular-nums",
+                            (bestQuotationId === q.id || q.status === "Selected") && "bg-primary/[0.02]",
+                          )}
+                        >
+                          ₹{taxMoney.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          <span className="text-xs font-medium text-muted-foreground ml-1">
+                            ({taxRate}%)
+                          </span>
+                        </td>
+                      );
+                    })}
                   </tr>
 
                   <tr className="hover:bg-muted/5">

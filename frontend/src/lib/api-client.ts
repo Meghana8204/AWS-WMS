@@ -36,6 +36,36 @@ function getApiErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * PostgreSQL Decimal values are serialized by the API as strings (for example,
+ * "1.0000"). Convert only quantity-shaped response fields to numbers so every
+ * screen renders whole quantities as "1" while retaining real fractions such
+ * as "1.5". Storage and request precision are not changed.
+ */
+function normalizeQuantityValues(value: unknown, key = ""): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeQuantityValues(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([entryKey, entryValue]) => [
+        entryKey,
+        normalizeQuantityValues(entryValue, entryKey),
+      ]),
+    );
+  }
+
+  const isQuantityField = /(?:^|_)(?:qty|quantity|quantities)$/i.test(key) ||
+    /(?:Qty|Quantity|Quantities)$/.test(key);
+  if (isQuantityField && typeof value === "string" && value.trim() !== "") {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? numericValue : value;
+  }
+
+  return value;
+}
+
 // Request helper with automatic header injection
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const token = getAuthToken();
@@ -83,7 +113,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     return undefined as T;
   }
 
-  return JSON.parse(responseText) as T;
+  return normalizeQuantityValues(JSON.parse(responseText)) as T;
 }
 
 export const api = {
@@ -213,6 +243,9 @@ export const api = {
   },
   async getDockOverviewMetrics(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
+  },
+  async getDockTypes(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-types`);
   },
 
   async createDock(payload: {
@@ -724,6 +757,19 @@ export const api = {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/suppliers/check-existence?${searchParams.toString()}`,
     );
+  },
+
+  async getBankDetailsByIfsc(ifsc: string): Promise<{
+    ifsc: string;
+    bank_name: string;
+    branch_name: string;
+  }> {
+    const response = await fetch(`https://ifsc.razorpay.com/${encodeURIComponent(ifsc)}`);
+    if (response.status === 404) throw new Error("IFSC code was not found");
+    if (!response.ok) throw new Error("IFSC lookup service is unavailable");
+    const details = await response.json();
+    if (!details.BANK || !details.BRANCH) throw new Error("Incomplete bank details received");
+    return { ifsc: details.IFSC, bank_name: details.BANK, branch_name: details.BRANCH };
   },
 
   async getSuppliers(filters?: {

@@ -77,7 +77,6 @@ const supplierNav = [
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
 const gateSecurityNav = [
@@ -262,7 +261,6 @@ export function AppShell({
       "/notifications",
       "/receiving",
       "/grn",
-      "/reports",
     ].some((p) => path.startsWith(p));
 
   // Keep each module's navigation isolated. The current route takes precedence

@@ -1414,13 +1414,13 @@ function GateEntry() {
 
       {/* Dock Selection Modal */}
       <Dialog open={isDockModalOpen} onOpenChange={setIsDockModalOpen}>
-        <DialogContent className="max-w-3xl rounded-[32px] p-0 overflow-hidden border-none shadow-2xl">
-          <div className="bg-primary p-8 text-white">
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col rounded-[32px] p-0 overflow-hidden border-none shadow-2xl">
+          <div className="shrink-0 bg-primary p-6 text-white">
             <DialogHeader>
               <DialogTitle className="text-2xl font-black flex items-center gap-3">
                 <TableIcon className="size-7" /> Dock Allocation
               </DialogTitle>
-              <DialogDescription className="text-white/80 font-medium text-base mt-2">
+              <DialogDescription className="text-white/80 font-medium text-base mt-1.5">
                 Select an available unloading bay for{" "}
                 <span className="text-white font-black underline underline-offset-4">
                   {vehicleNumber}
@@ -1429,7 +1429,7 @@ function GateEntry() {
             </DialogHeader>
           </div>
 
-          <div className="p-8 space-y-8">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Status Legend */}
             <div className="flex flex-wrap gap-4 p-4 rounded-2xl bg-muted/30 border border-border/40">
               <div className="flex items-center gap-2">
@@ -1464,15 +1464,16 @@ function GateEntry() {
                   const isAvailable = status === "AVAILABLE";
                   const isOccupied = status === "OCCUPIED" || status === "UNLOADING";
                   const isMaintenance = status === "MAINTENANCE";
+                  const dockIdentifier = dock.dock_number || dock.dock_code || dock.id;
 
                   return (
                     <button
                       key={dock.id}
                       disabled={!isAvailable}
-                      onClick={() => setSelectedDockId(dock.id)}
+                      onClick={() => setSelectedDockId(dockIdentifier)}
                       className={cn(
-                        "relative flex flex-col p-5 rounded-2xl border-2 text-left transition-all duration-300 group overflow-hidden",
-                        selectedDockId === dock.id
+                        "relative flex flex-col p-4 rounded-2xl border-2 text-left transition-all duration-300 group overflow-hidden",
+                        selectedDockId === dockIdentifier
                           ? "border-primary bg-primary-soft/20 ring-2 ring-primary shadow-xl"
                           : isAvailable
                             ? "border-success/20 bg-success/5 hover:border-success hover:bg-success/10 hover:shadow-lg hover:-translate-y-1 cursor-pointer"
@@ -1481,11 +1482,11 @@ function GateEntry() {
                               : "border-orange-200 bg-orange-50/50 opacity-60 cursor-not-allowed",
                       )}
                     >
-                      {(isAvailable || selectedDockId === dock.id) && (
+                      {(isAvailable || selectedDockId === dockIdentifier) && (
                         <div
                           className={cn(
                             "absolute top-2 right-2 transition-opacity",
-                            selectedDockId === dock.id
+                            selectedDockId === dockIdentifier
                               ? "opacity-100"
                               : "opacity-0 group-hover:opacity-100",
                           )}
@@ -1493,7 +1494,7 @@ function GateEntry() {
                           <CheckCircle2
                             className={cn(
                               "size-4",
-                              selectedDockId === dock.id ? "text-primary" : "text-success",
+                              selectedDockId === dockIdentifier ? "text-primary" : "text-success",
                             )}
                           />
                         </div>
@@ -1503,7 +1504,7 @@ function GateEntry() {
                       </span>
                       <span
                         className={cn(
-                          "text-2xl font-black mb-3",
+                          "text-xl font-black mb-2 truncate",
                           isAvailable
                             ? "text-success"
                             : isOccupied
@@ -1511,10 +1512,10 @@ function GateEntry() {
                               : "text-orange-600",
                         )}
                       >
-                        {dock.dock_number}
+                        {dock.dock_number || dock.dock_code || dock.dock_name || "Bay"}
                       </span>
 
-                      <div className="mt-auto pt-4 border-t border-border/20 flex flex-col gap-1">
+                      <div className="mt-auto pt-3 border-t border-border/20 flex flex-col gap-1">
                         <span className="text-[9px] font-bold text-muted-foreground truncate uppercase">
                           {dock.dock_type || "General"}
                         </span>
@@ -1538,7 +1539,7 @@ function GateEntry() {
             )}
           </div>
 
-          <DialogFooter className="p-8 bg-muted/10 border-t border-border/60 flex items-center justify-between">
+          <DialogFooter className="shrink-0 p-6 bg-muted/10 border-t border-border/60 flex items-center justify-between">
             <Button
               variant="ghost"
               className="rounded-xl font-bold uppercase text-xs tracking-widest"
@@ -1552,7 +1553,7 @@ function GateEntry() {
               Cancel
             </Button>
             <Button
-              className="rounded-xl font-bold uppercase text-xs tracking-widest shadow-glow h-12 px-8"
+              className="rounded-xl font-bold uppercase text-xs tracking-widest shadow-glow h-11 px-8"
               disabled={!selectedDockId || submitting}
               onClick={() => selectedDockId && handleDockAssignment(selectedDockId)}
             >

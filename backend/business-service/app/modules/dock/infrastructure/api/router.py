@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.database.session import UnitOfWork, get_uow
 from app.modules.dock.application.service import DockAllocationService
+from app.modules.dock.domain.enums import DockType
 from app.modules.dock.infrastructure.api.schemas import (
     AllocateDockRequest,
     AllocationRequestResponse,
@@ -30,6 +31,11 @@ from app.modules.dock.infrastructure.persistence.models import (
 from app.security.dependencies import CurrentUser, require_permission
 
 router = APIRouter(prefix="/api/v1/warehouse", tags=["dock-management"])
+
+
+@router.get("/dock-types", response_model=List[str])
+async def list_dock_types() -> List[str]:
+    return [dock_type.value for dock_type in DockType]
 
 
 @router.get("/docks/availability", response_model=DockOverviewMetrics)
@@ -65,9 +71,6 @@ async def list_docks(
             if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
                 if ge:
                     mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
-            if not mat_ref:
-                mat_ref = "Raw Material / Goods"
-
             vendor_ref = alloc_req.vendor_reference
             if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
                 if ge and ge.ocr_supplier_name:
@@ -160,9 +163,6 @@ async def get_dock_by_id(dock_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow))
         if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
             if ge:
                 mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
-        if not mat_ref:
-            mat_ref = "Raw Material / Goods"
-
         vendor_ref = alloc_req.vendor_reference
         if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
             if ge and ge.ocr_supplier_name:
@@ -340,9 +340,6 @@ async def list_pending_allocation_requests(uow: UnitOfWork = Depends(get_uow)):
         if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
             if ge:
                 mat_ref = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else None)
-        if not mat_ref:
-            mat_ref = "Raw Material / Goods"
-
         vendor_ref = r.vendor_reference
         if not vendor_ref or vendor_ref in ("Approved Vendor", "Vendor"):
             if ge and ge.ocr_supplier_name:

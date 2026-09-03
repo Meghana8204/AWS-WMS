@@ -14,7 +14,6 @@ from app.modules.dock.domain.enums import (
     AllocationPriority,
     AllocationStatus,
     DockStatus,
-    DockType,
 )
 from app.modules.dock.infrastructure.persistence.models import (
     DockAllocationHistoryModel,
@@ -29,137 +28,8 @@ class DockAllocationService:
 
     @staticmethod
     async def seed_default_docks_if_empty(session: AsyncSession) -> None:
-        """Seed initial 9 docks across 5 categories if no master data exists, or migrate legacy default docks."""
-        result = await session.execute(select(func.count(DockMasterModel.id)))
-        if result.scalar() == 0:
-            initial_docks = [
-                # Raw Material Docks (2)
-                {
-                    "code": "RM-01",
-                    "name": "Raw Material Dock 01",
-                    "type": DockType.RAW_MATERIAL.value,
-                    "location": "North Warehouse",
-                },
-                {
-                    "code": "RM-02",
-                    "name": "Raw Material Dock 02",
-                    "type": DockType.RAW_MATERIAL.value,
-                    "location": "East Warehouse",
-                },
-                # Chemical/Hazardous Docks (2)
-                {
-                    "code": "CH-01",
-                    "name": "Chemical/Hazardous Dock 01",
-                    "type": DockType.CHEMICAL_HAZARDOUS.value,
-                    "location": "South Warehouse",
-                },
-                {
-                    "code": "CH-02",
-                    "name": "Chemical/Hazardous Dock 02",
-                    "type": DockType.CHEMICAL_HAZARDOUS.value,
-                    "location": "South Warehouse",
-                },
-                # Electrical Docks (2)
-                {
-                    "code": "EL-01",
-                    "name": "Electrical Dock 01",
-                    "type": DockType.ELECTRICAL.value,
-                    "location": "North Warehouse",
-                },
-                {
-                    "code": "EL-02",
-                    "name": "Electrical Dock 02",
-                    "type": DockType.ELECTRICAL.value,
-                    "location": "North Warehouse",
-                },
-                # Electronics Docks (2)
-                {
-                    "code": "EC-01",
-                    "name": "Electronics Dock 01",
-                    "type": DockType.ELECTRONICS.value,
-                    "location": "West Warehouse",
-                },
-                {
-                    "code": "EC-02",
-                    "name": "Electronics Dock 02",
-                    "type": DockType.ELECTRONICS.value,
-                    "location": "West Warehouse",
-                },
-                # Main Receiving Dock (1)
-                {
-                    "code": "MR-01",
-                    "name": "Main Receiving Dock",
-                    "type": DockType.MAIN_RECEIVING.value,
-                    "location": "North Warehouse",
-                },
-            ]
-            for d in initial_docks:
-                dock = DockMasterModel(
-                    dock_code=d["code"],
-                    dock_name=d["name"],
-                    dock_type=d["type"],
-                    location=d["location"],
-                    status=DockStatus.AVAILABLE.value,
-                    is_active=True,
-                )
-                session.add(dock)
-            await session.commit()
-        else:
-            # Auto-migrate legacy seeded docks if present
-            docks_res = await session.execute(select(DockMasterModel))
-            existing_docks = docks_res.scalars().all()
-            existing_codes = {d.dock_code for d in existing_docks if d.is_active}
-            updated = False
-            for d in existing_docks:
-                if d.dock_code == "CH-01" and (d.dock_type in ("CHEMICAL", "CHEMICAL_HAZARDOUS") or d.dock_name == "Chemical Dock 01"):
-                    d.dock_name = "Chemical/Hazardous Dock 01"
-                    d.dock_type = DockType.CHEMICAL_HAZARDOUS.value
-                    updated = True
-                elif d.dock_code == "CH-02" and (d.dock_type in ("CHEMICAL", "CHEMICAL_HAZARDOUS") or d.dock_name == "Chemical Dock 02"):
-                    d.dock_name = "Chemical/Hazardous Dock 02"
-                    d.dock_type = DockType.CHEMICAL_HAZARDOUS.value
-                    updated = True
-                elif d.dock_code == "EL-01" and d.dock_name in ("Electronics Dock 01", "Electrical Dock 01"):
-                    d.dock_name = "Electrical Dock 01"
-                    d.dock_type = DockType.ELECTRICAL.value
-                    updated = True
-                elif d.dock_code == "EL-02" and d.dock_name in ("Electronics Dock 02", "Electrical Dock 02"):
-                    d.dock_name = "Electrical Dock 02"
-                    d.dock_type = DockType.ELECTRICAL.value
-                    updated = True
-                elif d.dock_code in ("HZ-01", "HZ-02") and d.dock_type == "HAZARDOUS_ITEMS":
-                    # Deactivate legacy redundant HZ docks if chemical and hazardous are unified
-                    d.is_active = False
-                    updated = True
-
-            # Ensure EC-01 and EC-02 exist for Electronics
-            if "EC-01" not in existing_codes:
-                session.add(
-                    DockMasterModel(
-                        dock_code="EC-01",
-                        dock_name="Electronics Dock 01",
-                        dock_type=DockType.ELECTRONICS.value,
-                        location="West Warehouse",
-                        status=DockStatus.AVAILABLE.value,
-                        is_active=True,
-                    )
-                )
-                updated = True
-            if "EC-02" not in existing_codes:
-                session.add(
-                    DockMasterModel(
-                        dock_code="EC-02",
-                        dock_name="Electronics Dock 02",
-                        dock_type=DockType.ELECTRONICS.value,
-                        location="West Warehouse",
-                        status=DockStatus.AVAILABLE.value,
-                        is_active=True,
-                    )
-                )
-                updated = True
-
-            if updated:
-                await session.commit()
+        """Compatibility hook; dock master data must be created explicitly."""
+        return None
 
     @staticmethod
     async def sync_pending_gate_entries(session: AsyncSession) -> None:
@@ -175,10 +45,12 @@ class DockAllocationService:
             entries = gate_entries_res.scalars().all()
             for ge in entries:
                 ge_num = ge.gate_entry_number or str(ge.id)
-                veh_plate = getattr(ge, "vehicle_number", None) or getattr(ge, "vehicle_plate", None) or "Vehicle"
-                supplier = ge.ocr_supplier_name or getattr(ge, "supplier_name", None) or "Approved Vendor"
-                mat_name = ge.ocr_product_material or getattr(ge, "material_description", None) or (f"PO: {ge.po_number}" if ge.po_number else "Raw Material / Goods")
-                qty = Decimal(str(ge.ocr_quantity)) if ge.ocr_quantity is not None else (Decimal(str(ge.total_quantity)) if getattr(ge, "total_quantity", None) else Decimal("100.0"))
+                veh_plate = getattr(ge, "vehicle_number", None) or getattr(ge, "vehicle_plate", None)
+                if not veh_plate:
+                    continue
+                supplier = ge.ocr_supplier_name or getattr(ge, "supplier_name", None)
+                mat_name = ge.ocr_product_material or getattr(ge, "material_description", None)
+                qty = Decimal(str(ge.ocr_quantity)) if ge.ocr_quantity is not None else (Decimal(str(ge.total_quantity)) if getattr(ge, "total_quantity", None) is not None else None)
                 
                 check_stmt = select(DockAllocationRequestModel).where(
                     (DockAllocationRequestModel.existing_gate_pass_id == ge_num) |
@@ -298,10 +170,10 @@ class DockAllocationService:
         request_model = DockAllocationRequestModel(
             existing_gate_pass_id=gate_pass_id,
             vehicle_number=vehicle_number,
-            vendor_reference=vendor_reference or "Approved Vendor",
-            material_reference=material_reference or "General Material",
-            material_description=material_description or "Inbound Material Shipment",
-            quantity=Decimal(str(quantity)) if quantity is not None else Decimal("100.0"),
+            vendor_reference=vendor_reference,
+            material_reference=material_reference,
+            material_description=material_description,
+            quantity=Decimal(str(quantity)) if quantity is not None else None,
             security_approved_at=datetime.now(timezone.utc),
             priority=priority.upper(),
             status="AWAITING_DOCK",
@@ -455,8 +327,10 @@ class DockAllocationService:
         )
         session.add(dock_hist)
 
-        mat_name = req.material_reference or req.material_description or "Inbound Material"
-        notif_msg = f"Dock {dock.dock_code} has been assigned to vehicle {req.vehicle_number} for material {mat_name}."
+        material_text = req.material_reference or req.material_description
+        notif_msg = f"Dock {dock.dock_code} has been assigned to vehicle {req.vehicle_number}."
+        if material_text:
+            notif_msg = f"{notif_msg[:-1]} for material {material_text}."
         
         # Mandatory Notification to Quality Inspector
         session.add(
@@ -588,29 +462,6 @@ class DockAllocationService:
         req = req_query.scalars().first()
 
         if not req:
-            # Check if it's a direct DockMasterModel ID
-            dock = (await session.execute(select(DockMasterModel).where(DockMasterModel.id == allocation_request_id).with_for_update())).scalar_one_or_none()
-            if dock:
-                old_st = dock.status
-                dock.status = DockStatus.OCCUPIED.value
-                session.add(
-                    DockStatusHistoryModel(
-                        dock_id=dock.id,
-                        previous_status=old_st,
-                        new_status=DockStatus.OCCUPIED.value,
-                        reason="Vehicle marked arrived directly by Warehouse Manager",
-                        changed_by=performed_by,
-                        changed_at=datetime.now(timezone.utc),
-                    )
-                )
-                await session.commit()
-                return DockAllocationRequestModel(
-                    id=dock.id,
-                    existing_gate_pass_id="GP-2026-00125",
-                    vehicle_number="KA-01-AB-1234",
-                    status="OCCUPIED",
-                    assigned_dock_id=dock.id,
-                )
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Allocation request not found")
 
         dock_code = "N/A"
@@ -746,29 +597,6 @@ class DockAllocationService:
         req = req_query.scalars().first()
 
         if not req:
-            # Check if it's a direct DockMasterModel ID
-            dock = (await session.execute(select(DockMasterModel).where(DockMasterModel.id == allocation_request_id).with_for_update())).scalar_one_or_none()
-            if dock:
-                old_st = dock.status
-                dock.status = DockStatus.AVAILABLE.value
-                session.add(
-                    DockStatusHistoryModel(
-                        dock_id=dock.id,
-                        previous_status=old_st,
-                        new_status=DockStatus.AVAILABLE.value,
-                        reason="Dock released directly by Warehouse Manager",
-                        changed_by=performed_by,
-                        changed_at=datetime.now(timezone.utc),
-                    )
-                )
-                await session.commit()
-                return DockAllocationRequestModel(
-                    id=dock.id,
-                    existing_gate_pass_id="GP-2026-00125",
-                    vehicle_number="KA-01-AB-1234",
-                    status="RELEASED",
-                    assigned_dock_id=dock.id,
-                )
             raise HTTPException(status_code=404, detail="Allocation request or dock not found")
 
         dock_code = "N/A"

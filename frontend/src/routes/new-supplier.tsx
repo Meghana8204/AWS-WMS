@@ -59,6 +59,7 @@ function NewSupplier() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = React.useState(1);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isLookingUpIfsc, setIsLookingUpIfsc] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   // Vendor Types state
@@ -170,6 +171,37 @@ function NewSupplier() {
           return newErrors;
         });
       }
+    }
+  };
+
+  const lookupIfsc = async (ifsc: string) => {
+    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc)) return;
+    setIsLookingUpIfsc(true);
+    try {
+      const details = await api.getBankDetailsByIfsc(ifsc);
+      setFormData((previous) => ({
+        ...previous,
+        bankInfo: {
+          ...previous.bankInfo,
+          ifsc: details.ifsc,
+          bankName: details.bank_name,
+          branch: details.branch_name,
+        },
+      }));
+      setErrors((previous) => {
+        const next = { ...previous };
+        delete next["bankInfo.ifsc"];
+        delete next["bankInfo.bankName"];
+        delete next["bankInfo.branch"];
+        return next;
+      });
+    } catch (error) {
+      setErrors((previous) => ({
+        ...previous,
+        "bankInfo.ifsc": error instanceof Error ? error.message : "Unable to find IFSC code",
+      }));
+    } finally {
+      setIsLookingUpIfsc(false);
     }
   };
 
@@ -1194,27 +1226,38 @@ function NewSupplier() {
                   <Label htmlFor="ifsc">
                     IFSC Code <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    id="ifsc"
-                    value={formData.bankInfo.ifsc}
-                    maxLength={11}
-                    onChange={(e) => {
-                      const val = e.target.value
-                        .replace(/[^a-zA-Z0-9]/g, "")
-                        .substring(0, 11)
-                        .toUpperCase();
-                      updateFormData("bankInfo", "ifsc", val);
-                    }}
-                    className={cn(
-                      "font-mono",
-                      errors["bankInfo.ifsc"] &&
-                        "border-destructive focus-visible:ring-destructive",
+                  <div className="relative">
+                    <Input
+                      id="ifsc"
+                      value={formData.bankInfo.ifsc}
+                      maxLength={11}
+                      onChange={(e) => {
+                        const val = e.target.value
+                          .replace(/[^a-zA-Z0-9]/g, "")
+                          .substring(0, 11)
+                          .toUpperCase();
+                        updateFormData("bankInfo", "ifsc", val);
+                        if (val.length === 11) void lookupIfsc(val);
+                      }}
+                      className={cn(
+                        "pr-10 font-mono",
+                        errors["bankInfo.ifsc"] &&
+                          "border-destructive focus-visible:ring-destructive",
+                      )}
+                      placeholder="e.g. SBIN0012345"
+                    />
+                    {isLookingUpIfsc && (
+                      <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-primary" />
                     )}
-                    placeholder="e.g. SBIN0012345"
-                  />
+                  </div>
                   {errors["bankInfo.ifsc"] && (
                     <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
                       <AlertCircle className="size-3" /> {errors["bankInfo.ifsc"]}
+                    </p>
+                  )}
+                  {!errors["bankInfo.ifsc"] && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Bank and branch are filled automatically after 11 characters.
                     </p>
                   )}
                 </div>

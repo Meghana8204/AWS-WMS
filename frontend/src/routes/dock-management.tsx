@@ -105,23 +105,13 @@ type DockHistory = {
   remarks?: string | null;
 };
 
-const DOCK_TYPE_CONFIG: Record<string, { prefix: string; namePrefix: string }> = {
-  RAW_MATERIAL: { prefix: "RM", namePrefix: "Raw Material Dock" },
-  CHEMICAL_HAZARDOUS: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
-  ELECTRICAL: { prefix: "EL", namePrefix: "Electrical Dock" },
-  ELECTRONICS: { prefix: "EC", namePrefix: "Electronics Dock" },
-  MAIN_RECEIVING: { prefix: "MR", namePrefix: "Main Receiving Dock" },
-  CHEMICAL: { prefix: "CH", namePrefix: "Chemical/Hazardous Dock" },
-  HAZARDOUS_ITEMS: { prefix: "HZ", namePrefix: "Chemical/Hazardous Dock" },
-};
+function formatDockType(value: string) {
+  return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
-  const config = DOCK_TYPE_CONFIG[dockType] || {
-    prefix: dockType.slice(0, 2).toUpperCase(),
-    namePrefix: `${dockType.replaceAll("_", " ")} Dock`,
-  };
-
-  const prefix = config.prefix;
+  const words = dockType.split("_").filter(Boolean);
+  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : dockType.slice(0, 2)).toUpperCase();
   const regex = new RegExp(`^${prefix}-?(\\d+)`, "i");
   let maxNum = 0;
 
@@ -139,7 +129,7 @@ function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: 
   const nextNumStr = String(maxNum + 1).padStart(2, "0");
   return {
     code: `${prefix}-${nextNumStr}`,
-    name: `${config.namePrefix} ${nextNumStr}`,
+    name: `${formatDockType(dockType)} Dock ${nextNumStr}`,
   };
 }
 
@@ -162,6 +152,7 @@ export function DockManagement() {
   });
   const [pendingRequests, setPendingRequests] = useState<AllocationRequest[]>([]);
   const [history, setHistory] = useState<DockHistory[]>([]);
+  const [dockTypes, setDockTypes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filter & tab controls
@@ -185,7 +176,7 @@ export function DockManagement() {
   const [showCreateDock, setShowCreateDock] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  const [createDockType, setCreateDockType] = useState("RAW_MATERIAL");
+  const [createDockType, setCreateDockType] = useState("");
   const [createDockCode, setCreateDockCode] = useState("");
   const [createDockName, setCreateDockName] = useState("");
 
@@ -207,16 +198,19 @@ export function DockManagement() {
   const loadAll = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [docksRes, overviewRes, pendingRes, historyRes] = await Promise.all([
+      const [docksRes, overviewRes, pendingRes, historyRes, dockTypesRes] = await Promise.all([
         api.getDocks(),
         api.getDockOverviewMetrics().catch(() => null),
         api.getPendingAllocations().catch(() => []),
         api.getDockHistory().catch(() => []),
+        api.getDockTypes(),
       ]);
 
       setDocks(docksRes);
       setPendingRequests(pendingRes);
       setHistory(historyRes);
+      setDockTypes(dockTypesRes);
+      setCreateDockType((current) => current || dockTypesRes[0] || "");
 
       if (overviewRes) {
         setMetrics(overviewRes);
@@ -454,7 +448,7 @@ export function DockManagement() {
         </div>
       }
     >
-      {/* 1. Full Edge-to-Edge Status Coloured Summary Cards (5 Cards) */}
+      {/* Summary cards use the same neutral surfaces and semantic tokens as the rest of the app. */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           label="Total Docks"
@@ -527,7 +521,7 @@ export function DockManagement() {
               >
                 {tab === "ALL" ? "TOTAL DOCKS" : tab === "MAINTENANCE" ? "UNDER MAINTENANCE" : tab === "PENDING" ? "PENDING ALLOCATIONS" : tab}
                 {tab === "PENDING" && pendingRequests.length > 0 && (
-                  <span className="rounded-full bg-purple-500 text-white px-1.5 py-0.5 text-[10px] font-mono font-black">
+                  <span className="rounded-full bg-primary text-primary-foreground px-1.5 py-0.5 text-[10px] font-mono font-black">
                     {pendingRequests.length}
                   </span>
                 )}
@@ -545,11 +539,7 @@ export function DockManagement() {
               className="h-9 rounded-xl border border-border bg-background px-3 text-xs font-medium"
             >
               <option value="ALL">All Types</option>
-              <option value="RAW_MATERIAL">Raw Material</option>
-              <option value="CHEMICAL_HAZARDOUS">Chemical/Hazardous</option>
-              <option value="ELECTRICAL">Electrical</option>
-              <option value="ELECTRONICS">Electronics</option>
-              <option value="MAIN_RECEIVING">Main Receiving</option>
+              {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
             </select>
           </div>
         )}
@@ -577,11 +567,7 @@ export function DockManagement() {
                 onChange={(e) => handleDockTypeChange(e.target.value)}
                 className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
               >
-                <option value="RAW_MATERIAL">RAW_MATERIAL (Raw Material — RM)</option>
-                <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS (Chemical/Hazardous — CH)</option>
-                <option value="ELECTRICAL">ELECTRICAL (Electrical — EL)</option>
-                <option value="ELECTRONICS">ELECTRONICS (Electronics — EC)</option>
-                <option value="MAIN_RECEIVING">MAIN_RECEIVING (Main Receiving — MR)</option>
+                {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
               </select>
             </div>
 
@@ -674,11 +660,7 @@ export function DockManagement() {
                   defaultValue={editingDock.dock_type}
                   className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium"
                 >
-                  <option value="RAW_MATERIAL">RAW_MATERIAL</option>
-                  <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS</option>
-                  <option value="ELECTRICAL">ELECTRICAL</option>
-                  <option value="ELECTRONICS">ELECTRONICS</option>
-                  <option value="MAIN_RECEIVING">MAIN_RECEIVING</option>
+                  {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
                 </select>
               </div>
               <Field name="location" label="Location" defaultValue={editingDock.location || ""} />
@@ -804,11 +786,7 @@ export function DockManagement() {
                       <td className="px-4 py-3 text-xs font-medium">{req.vendor_reference || "Vendor"}</td>
                       <td className="px-4 py-3 text-xs">
                         <div className="font-semibold text-foreground">
-                          {req.material_reference && req.material_reference !== "General Material" && req.material_reference !== "Material"
-                            ? req.material_reference
-                            : (req.material_description && req.material_description !== "Inbound Material Shipment"
-                              ? req.material_description
-                              : "Raw Material / Goods")}
+                          {req.material_reference || req.material_description || "—"}
                         </div>
                         {req.quantity && <div className="text-[11px] text-muted-foreground tabular-nums">Qty: {req.quantity}</div>}
                       </td>
@@ -879,7 +857,7 @@ export function DockManagement() {
                 <StatusBadge status={selectedDetailsDock.status === "MAINTENANCE" ? "Under Maintenance" : selectedDetailsDock.status} />
               </div>
               <DialogDescription className="text-xs">
-                {selectedDetailsDock.dock_name} · {selectedDetailsDock.location || "Main DC Facade"}
+                {selectedDetailsDock.dock_name}{selectedDetailsDock.location ? ` · ${selectedDetailsDock.location}` : ""}
               </DialogDescription>
             </DialogHeader>
 
@@ -897,7 +875,7 @@ export function DockManagement() {
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Dock Type</span>
                     <span className="font-semibold text-foreground">
-                      {selectedDetailsDock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : selectedDetailsDock.dock_type === "ELECTRICAL" ? "Electrical" : selectedDetailsDock.dock_type === "ELECTRONICS" ? "Electronics" : selectedDetailsDock.dock_type.replaceAll("_", " ")}
+                      {formatDockType(selectedDetailsDock.dock_type)}
                     </span>
                   </div>
                   <div>
@@ -941,7 +919,7 @@ export function DockManagement() {
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Vehicle Number</span>
                         <span className="font-mono font-black text-sm text-primary">
-                          {selectedDetailsDock.current_allocation?.vehicle_number || "KA-01-AB-1234"}
+                          {selectedDetailsDock.current_allocation?.vehicle_number || "—"}
                         </span>
                       </div>
                       <div>
@@ -976,11 +954,7 @@ export function DockManagement() {
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Material Code / Name</span>
                         <span className="font-semibold text-foreground">
-                          {selectedDetailsDock.current_allocation?.material_reference && selectedDetailsDock.current_allocation.material_reference !== "General Material" && selectedDetailsDock.current_allocation.material_reference !== "Material"
-                            ? selectedDetailsDock.current_allocation.material_reference
-                            : (selectedDetailsDock.current_allocation?.material_description && selectedDetailsDock.current_allocation.material_description !== "Inbound Material Shipment"
-                              ? selectedDetailsDock.current_allocation.material_description
-                              : "Raw Material / Goods")}
+                          {selectedDetailsDock.current_allocation?.material_reference || selectedDetailsDock.current_allocation?.material_description || "—"}
                         </span>
                       </div>
                       <div>
@@ -992,13 +966,13 @@ export function DockManagement() {
                       <div>
                         <span className="text-muted-foreground block text-[11px]">Quantity</span>
                         <span className="font-mono font-bold text-foreground">
-                          {selectedDetailsDock.current_allocation?.quantity || "100.0"} PCS
+                          {selectedDetailsDock.current_allocation?.quantity ?? "—"}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-[11px]">PO Reference</span>
                         <span className="font-mono font-bold text-primary">
-                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "PO-2026-1001"}
+                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}
                         </span>
                       </div>
                     </div>
@@ -1154,11 +1128,7 @@ export function DockManagement() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Material:</span>
                   <span className="font-semibold text-foreground">
-                    {allocateModalPendingReq.material_reference && allocateModalPendingReq.material_reference !== "General Material"
-                      ? allocateModalPendingReq.material_reference
-                      : (allocateModalPendingReq.material_description && allocateModalPendingReq.material_description !== "Inbound Material Shipment"
-                        ? allocateModalPendingReq.material_description
-                        : "Raw Material / Goods")}
+                    {allocateModalPendingReq.material_reference || allocateModalPendingReq.material_description || "—"}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1168,7 +1138,7 @@ export function DockManagement() {
                 {allocateModalPendingReq.quantity && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Quantity:</span>
-                    <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.quantity} PCS</span>
+                    <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.quantity ?? "—"}</span>
                   </div>
                 )}
               </div>
@@ -1206,7 +1176,7 @@ export function DockManagement() {
                             <StatusBadge status="AVAILABLE" />
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")} · {dock.location || "Main Facade"}
+                            {formatDockType(dock.dock_type)}{dock.location ? ` · ${dock.location}` : ""}
                           </p>
                         </div>
                         <input
@@ -1347,40 +1317,33 @@ function SummaryCard({
   active: boolean;
   onClick: () => void;
 }) {
-  const cardStyles = {
-    TOTAL: "bg-blue-500/10 border-blue-500/30 text-blue-950 dark:text-blue-200 hover:border-blue-500/60",
-    AVAILABLE: "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200 hover:border-emerald-500/60",
-    RESERVED: "bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200 hover:border-amber-500/60",
-    OCCUPIED: "bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-200 hover:border-rose-500/60",
-    MAINTENANCE: "bg-slate-500/10 border-slate-500/30 text-slate-900 dark:text-slate-200 hover:border-slate-500/60",
-    PENDING: "bg-purple-500/10 border-purple-500/30 text-purple-950 dark:text-purple-200 hover:border-purple-500/60",
+  const presentation = {
+    TOTAL: { icon: Warehouse, tone: "bg-primary-soft text-primary" },
+    AVAILABLE: { icon: CheckCircle2, tone: "bg-success-soft text-success" },
+    RESERVED: { icon: History, tone: "bg-warning-soft text-warning-foreground" },
+    OCCUPIED: { icon: Truck, tone: "bg-danger-soft text-destructive" },
+    MAINTENANCE: { icon: Wrench, tone: "bg-muted text-muted-foreground" },
+    PENDING: { icon: Package, tone: "bg-primary-soft text-primary" },
   };
-
-  const countColors = {
-    TOTAL: "text-blue-600 dark:text-blue-400",
-    AVAILABLE: "text-emerald-600 dark:text-emerald-400",
-    RESERVED: "text-amber-600 dark:text-amber-400",
-    OCCUPIED: "text-rose-600 dark:text-rose-400",
-    MAINTENANCE: "text-slate-600 dark:text-slate-400",
-    PENDING: "text-purple-600 dark:text-purple-400",
-  };
+  const Icon = presentation[status].icon;
 
   return (
     <Card
       onClick={onClick}
       className={cn(
-        "cursor-pointer rounded-2xl border-2 p-4 transition-all hover:shadow-md",
-        cardStyles[status],
-        active && "ring-2 ring-primary border-primary shadow-glow",
+        "group cursor-pointer gap-0 rounded-2xl border border-border/70 bg-card p-4 text-card-foreground shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
+        active && "border-primary/50 ring-2 ring-primary/20",
       )}
     >
-      <p className="text-[11px] font-extrabold uppercase tracking-wider font-mono opacity-85">
-        {label}
-      </p>
-      <p className={cn("mt-1 text-3xl font-black tabular-nums tracking-tight", countColors[status])}>
-        {value}
-      </p>
-      <p className="mt-1 text-[10px] font-semibold opacity-70">Click to filter</p>
+      <div className="flex items-center justify-between">
+        <span className={cn("grid size-9 place-items-center rounded-xl", presentation[status].tone)}>
+          <Icon className="size-4" />
+        </span>
+        <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+      </div>
+      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
+      <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">Click to filter</p>
     </Card>
   );
 }
@@ -1440,7 +1403,7 @@ function DockCard({
 
         <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
         <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-          {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")}
+          {formatDockType(dock.dock_type)}
         </span>
 
         {/* Assigned Vehicle Preview */}

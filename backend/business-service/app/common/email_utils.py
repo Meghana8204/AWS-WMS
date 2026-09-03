@@ -38,6 +38,7 @@ def render_premium_email(
     intro: str,
     details: Iterable[tuple[str, str]] = (),
     items: Iterable[dict[str, str]] = (),
+    items_heading: str | None = "Requested materials",
     credentials: Iterable[tuple[str, str]] = (),
     primary_cta: tuple[str, str] | None = None,
     secondary_cta: tuple[str, str] | None = None,
@@ -57,7 +58,12 @@ def render_premium_email(
         f'<tr><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#0f172a;font-weight:700">{escape(str(item.get("material", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("quantity", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("delivery", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("warehouse", "—")))}</td></tr>'
         for item in items
     )
-    items_html = f'''<div style="margin:24px 0"><div style="font-size:14px;font-weight:800;color:#2563eb;margin-bottom:12px;text-decoration:underline">Requested materials</div><div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px"><tr style="background:#f1f5f9"><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Material</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Quantity</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Required by</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Warehouse</th></tr>{item_rows}</table></div></div>''' if item_rows else ""
+    items_title_html = (
+        f'<div style="font-size:14px;font-weight:800;color:#2563eb;margin-bottom:12px;text-decoration:underline">{escape(items_heading)}</div>'
+        if items_heading
+        else ""
+    )
+    items_html = f'''<div style="margin:24px 0">{items_title_html}<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px"><tr style="background:#f1f5f9"><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Material</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Quantity</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Required by</th><th align="left" style="padding:11px 12px;color:#475569;font-weight:700">Warehouse</th></tr>{item_rows}</table></div></div>''' if item_rows else ""
     credential_rows = "".join(
         f'<tr><td style="padding:5px 0;color:#64748b;font-size:13px">{escape(label)}</td><td align="right" style="padding:5px 0;color:#0f172a;font:700 14px monospace">{escape(str(value))}</td></tr>'
         for label, value in credentials

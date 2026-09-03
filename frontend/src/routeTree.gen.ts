@@ -10,8 +10,6 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AcceptArrivalRouteImport } from './routes/accept-arrival'
-import { Route as ArrivalSuccessRouteImport } from './routes/arrival-success'
 import { Route as AssemblyDashboardRouteImport } from './routes/assembly-dashboard'
 import { Route as AssemblyFinishedGoodsRouteImport } from './routes/assembly-finished-goods'
 import { Route as AssemblyMaterialConsumptionRouteImport } from './routes/assembly-material-consumption'
@@ -28,10 +26,8 @@ import { Route as AssemblyScrapWastageRouteImport } from './routes/assembly-scra
 import { Route as AssemblyWorkOrdersRouteImport } from './routes/assembly-work-orders'
 import { Route as AssemblyWorkforceRouteImport } from './routes/assembly-workforce'
 import { Route as DamageClaimsRouteImport } from './routes/damage-claims'
-import { Route as DockAssignmentRouteImport } from './routes/dock-assignment'
 import { Route as DockManagementRouteImport } from './routes/dock-management'
 import { Route as DockMasterRouteImport } from './routes/dock-master'
-import { Route as DriverVerificationRouteImport } from './routes/driver-verification'
 import { Route as FinanceDashboardRouteImport } from './routes/finance-dashboard'
 import { Route as GateDashboardRouteImport } from './routes/gate-dashboard'
 import { Route as GateEntryRouteImport } from './routes/gate-entry'
@@ -46,14 +42,12 @@ import { Route as ProcurementDashboardRouteImport } from './routes/procurement-d
 import { Route as PurchaseOrderRouteImport } from './routes/purchase-order'
 import { Route as PutawayTasksRouteImport } from './routes/putaway-tasks'
 import { Route as ReceivingRouteImport } from './routes/receiving'
-import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
 import { Route as SupplierDashboardRouteImport } from './routes/supplier-dashboard'
 import { Route as UnscheduledArrivalsRouteImport } from './routes/unscheduled-arrivals'
 import { Route as VehicleExitRouteImport } from './routes/vehicle-exit'
 import { Route as VehicleQueueRouteImport } from './routes/vehicle-queue'
-import { Route as VehicleVerificationRouteImport } from './routes/vehicle-verification'
 import { Route as WarehouseDashboardRouteImport } from './routes/warehouse-dashboard'
 import { Route as WarehouseStorageRouteImport } from './routes/warehouse-storage'
 import { Route as FinanceApprovalsRouteImport } from './routes/finance.approvals'
@@ -78,16 +72,6 @@ import { Route as FinanceApprovalsCompareRfqIdRouteImport } from './routes/finan
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AcceptArrivalRoute = AcceptArrivalRouteImport.update({
-  id: '/accept-arrival',
-  path: '/accept-arrival',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ArrivalSuccessRoute = ArrivalSuccessRouteImport.update({
-  id: '/arrival-success',
-  path: '/arrival-success',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AssemblyDashboardRoute = AssemblyDashboardRouteImport.update({
@@ -175,11 +159,6 @@ const DamageClaimsRoute = DamageClaimsRouteImport.update({
   path: '/damage-claims',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DockAssignmentRoute = DockAssignmentRouteImport.update({
-  id: '/dock-assignment',
-  path: '/dock-assignment',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DockManagementRoute = DockManagementRouteImport.update({
   id: '/dock-management',
   path: '/dock-management',
@@ -188,11 +167,6 @@ const DockManagementRoute = DockManagementRouteImport.update({
 const DockMasterRoute = DockMasterRouteImport.update({
   id: '/dock-master',
   path: '/dock-master',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const DriverVerificationRoute = DriverVerificationRouteImport.update({
-  id: '/driver-verification',
-  path: '/driver-verification',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FinanceDashboardRoute = FinanceDashboardRouteImport.update({
@@ -265,11 +239,6 @@ const ReceivingRoute = ReceivingRouteImport.update({
   path: '/receiving',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ReportsRoute = ReportsRouteImport.update({
-  id: '/reports',
-  path: '/reports',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -298,11 +267,6 @@ const VehicleExitRoute = VehicleExitRouteImport.update({
 const VehicleQueueRoute = VehicleQueueRouteImport.update({
   id: '/vehicle-queue',
   path: '/vehicle-queue',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const VehicleVerificationRoute = VehicleVerificationRouteImport.update({
-  id: '/vehicle-verification',
-  path: '/vehicle-verification',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WarehouseDashboardRoute = WarehouseDashboardRouteImport.update({
@@ -414,8 +378,6 @@ const FinanceApprovalsCompareRfqIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/accept-arrival': typeof AcceptArrivalRoute
-  '/arrival-success': typeof ArrivalSuccessRoute
   '/assembly-dashboard': typeof AssemblyDashboardRoute
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
@@ -432,10 +394,8 @@ export interface FileRoutesByFullPath {
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
   '/damage-claims': typeof DamageClaimsRoute
-  '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/dock-master': typeof DockMasterRoute
-  '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
@@ -450,14 +410,12 @@ export interface FileRoutesByFullPath {
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
   '/receiving': typeof ReceivingRoute
-  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
-  '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
   '/warehouse-storage': typeof WarehouseStorageRoute
   '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
@@ -481,8 +439,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/accept-arrival': typeof AcceptArrivalRoute
-  '/arrival-success': typeof ArrivalSuccessRoute
   '/assembly-dashboard': typeof AssemblyDashboardRoute
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
@@ -499,10 +455,8 @@ export interface FileRoutesByTo {
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
   '/damage-claims': typeof DamageClaimsRoute
-  '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/dock-master': typeof DockMasterRoute
-  '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
@@ -517,14 +471,12 @@ export interface FileRoutesByTo {
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
   '/receiving': typeof ReceivingRoute
-  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
-  '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
   '/warehouse-storage': typeof WarehouseStorageRoute
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
@@ -547,8 +499,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/accept-arrival': typeof AcceptArrivalRoute
-  '/arrival-success': typeof ArrivalSuccessRoute
   '/assembly-dashboard': typeof AssemblyDashboardRoute
   '/assembly-finished-goods': typeof AssemblyFinishedGoodsRoute
   '/assembly-material-consumption': typeof AssemblyMaterialConsumptionRoute
@@ -565,10 +515,8 @@ export interface FileRoutesById {
   '/assembly-work-orders': typeof AssemblyWorkOrdersRoute
   '/assembly-workforce': typeof AssemblyWorkforceRoute
   '/damage-claims': typeof DamageClaimsRoute
-  '/dock-assignment': typeof DockAssignmentRoute
   '/dock-management': typeof DockManagementRoute
   '/dock-master': typeof DockMasterRoute
-  '/driver-verification': typeof DriverVerificationRoute
   '/finance-dashboard': typeof FinanceDashboardRoute
   '/gate-dashboard': typeof GateDashboardRoute
   '/gate-entry': typeof GateEntryRoute
@@ -583,14 +531,12 @@ export interface FileRoutesById {
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
   '/receiving': typeof ReceivingRoute
-  '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
   '/supplier-dashboard': typeof SupplierDashboardRoute
   '/unscheduled-arrivals': typeof UnscheduledArrivalsRoute
   '/vehicle-exit': typeof VehicleExitRoute
   '/vehicle-queue': typeof VehicleQueueRoute
-  '/vehicle-verification': typeof VehicleVerificationRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
   '/warehouse-storage': typeof WarehouseStorageRoute
   '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
@@ -616,8 +562,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/accept-arrival'
-    | '/arrival-success'
     | '/assembly-dashboard'
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
@@ -634,10 +578,8 @@ export interface FileRouteTypes {
     | '/assembly-work-orders'
     | '/assembly-workforce'
     | '/damage-claims'
-    | '/dock-assignment'
     | '/dock-management'
     | '/dock-master'
-    | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
     | '/gate-entry'
@@ -652,14 +594,12 @@ export interface FileRouteTypes {
     | '/purchase-order'
     | '/putaway-tasks'
     | '/receiving'
-    | '/reports'
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
     | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
-    | '/vehicle-verification'
     | '/warehouse-dashboard'
     | '/warehouse-storage'
     | '/finance/approvals'
@@ -683,8 +623,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/accept-arrival'
-    | '/arrival-success'
     | '/assembly-dashboard'
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
@@ -701,10 +639,8 @@ export interface FileRouteTypes {
     | '/assembly-work-orders'
     | '/assembly-workforce'
     | '/damage-claims'
-    | '/dock-assignment'
     | '/dock-management'
     | '/dock-master'
-    | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
     | '/gate-entry'
@@ -719,14 +655,12 @@ export interface FileRouteTypes {
     | '/purchase-order'
     | '/putaway-tasks'
     | '/receiving'
-    | '/reports'
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
     | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
-    | '/vehicle-verification'
     | '/warehouse-dashboard'
     | '/warehouse-storage'
     | '/procurement/material-requests'
@@ -748,8 +682,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/accept-arrival'
-    | '/arrival-success'
     | '/assembly-dashboard'
     | '/assembly-finished-goods'
     | '/assembly-material-consumption'
@@ -766,10 +698,8 @@ export interface FileRouteTypes {
     | '/assembly-work-orders'
     | '/assembly-workforce'
     | '/damage-claims'
-    | '/dock-assignment'
     | '/dock-management'
     | '/dock-master'
-    | '/driver-verification'
     | '/finance-dashboard'
     | '/gate-dashboard'
     | '/gate-entry'
@@ -784,14 +714,12 @@ export interface FileRouteTypes {
     | '/purchase-order'
     | '/putaway-tasks'
     | '/receiving'
-    | '/reports'
     | '/settings'
     | '/submit-quotation'
     | '/supplier-dashboard'
     | '/unscheduled-arrivals'
     | '/vehicle-exit'
     | '/vehicle-queue'
-    | '/vehicle-verification'
     | '/warehouse-dashboard'
     | '/warehouse-storage'
     | '/finance/approvals'
@@ -816,8 +744,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AcceptArrivalRoute: typeof AcceptArrivalRoute
-  ArrivalSuccessRoute: typeof ArrivalSuccessRoute
   AssemblyDashboardRoute: typeof AssemblyDashboardRoute
   AssemblyFinishedGoodsRoute: typeof AssemblyFinishedGoodsRoute
   AssemblyMaterialConsumptionRoute: typeof AssemblyMaterialConsumptionRoute
@@ -834,10 +760,8 @@ export interface RootRouteChildren {
   AssemblyWorkOrdersRoute: typeof AssemblyWorkOrdersRoute
   AssemblyWorkforceRoute: typeof AssemblyWorkforceRoute
   DamageClaimsRoute: typeof DamageClaimsRoute
-  DockAssignmentRoute: typeof DockAssignmentRoute
   DockManagementRoute: typeof DockManagementRoute
   DockMasterRoute: typeof DockMasterRoute
-  DriverVerificationRoute: typeof DriverVerificationRoute
   FinanceDashboardRoute: typeof FinanceDashboardRoute
   GateDashboardRoute: typeof GateDashboardRoute
   GateEntryRoute: typeof GateEntryRoute
@@ -852,14 +776,12 @@ export interface RootRouteChildren {
   PurchaseOrderRoute: typeof PurchaseOrderRoute
   PutawayTasksRoute: typeof PutawayTasksRoute
   ReceivingRoute: typeof ReceivingRoute
-  ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
   SubmitQuotationRoute: typeof SubmitQuotationRoute
   SupplierDashboardRoute: typeof SupplierDashboardRoute
   UnscheduledArrivalsRoute: typeof UnscheduledArrivalsRoute
   VehicleExitRoute: typeof VehicleExitRoute
   VehicleQueueRoute: typeof VehicleQueueRoute
-  VehicleVerificationRoute: typeof VehicleVerificationRoute
   WarehouseDashboardRoute: typeof WarehouseDashboardRoute
   WarehouseStorageRoute: typeof WarehouseStorageRoute
   FinanceApprovalsRoute: typeof FinanceApprovalsRouteWithChildren
@@ -884,20 +806,6 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accept-arrival': {
-      id: '/accept-arrival'
-      path: '/accept-arrival'
-      fullPath: '/accept-arrival'
-      preLoaderRoute: typeof AcceptArrivalRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/arrival-success': {
-      id: '/arrival-success'
-      path: '/arrival-success'
-      fullPath: '/arrival-success'
-      preLoaderRoute: typeof ArrivalSuccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/assembly-dashboard': {
@@ -1012,13 +920,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DamageClaimsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/dock-assignment': {
-      id: '/dock-assignment'
-      path: '/dock-assignment'
-      fullPath: '/dock-assignment'
-      preLoaderRoute: typeof DockAssignmentRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/dock-management': {
       id: '/dock-management'
       path: '/dock-management'
@@ -1031,13 +932,6 @@ declare module '@tanstack/react-router' {
       path: '/dock-master'
       fullPath: '/dock-master'
       preLoaderRoute: typeof DockMasterRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/driver-verification': {
-      id: '/driver-verification'
-      path: '/driver-verification'
-      fullPath: '/driver-verification'
-      preLoaderRoute: typeof DriverVerificationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/finance-dashboard': {
@@ -1138,13 +1032,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ReceivingRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/reports': {
-      id: '/reports'
-      path: '/reports'
-      fullPath: '/reports'
-      preLoaderRoute: typeof ReportsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -1185,13 +1072,6 @@ declare module '@tanstack/react-router' {
       path: '/vehicle-queue'
       fullPath: '/vehicle-queue'
       preLoaderRoute: typeof VehicleQueueRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/vehicle-verification': {
-      id: '/vehicle-verification'
-      path: '/vehicle-verification'
-      fullPath: '/vehicle-verification'
-      preLoaderRoute: typeof VehicleVerificationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/warehouse-dashboard': {
@@ -1368,8 +1248,6 @@ const ProcurementAsnsRouteWithChildren = ProcurementAsnsRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AcceptArrivalRoute: AcceptArrivalRoute,
-  ArrivalSuccessRoute: ArrivalSuccessRoute,
   AssemblyDashboardRoute: AssemblyDashboardRoute,
   AssemblyFinishedGoodsRoute: AssemblyFinishedGoodsRoute,
   AssemblyMaterialConsumptionRoute: AssemblyMaterialConsumptionRoute,
@@ -1386,10 +1264,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssemblyWorkOrdersRoute: AssemblyWorkOrdersRoute,
   AssemblyWorkforceRoute: AssemblyWorkforceRoute,
   DamageClaimsRoute: DamageClaimsRoute,
-  DockAssignmentRoute: DockAssignmentRoute,
   DockManagementRoute: DockManagementRoute,
   DockMasterRoute: DockMasterRoute,
-  DriverVerificationRoute: DriverVerificationRoute,
   FinanceDashboardRoute: FinanceDashboardRoute,
   GateDashboardRoute: GateDashboardRoute,
   GateEntryRoute: GateEntryRoute,
@@ -1404,14 +1280,12 @@ const rootRouteChildren: RootRouteChildren = {
   PurchaseOrderRoute: PurchaseOrderRoute,
   PutawayTasksRoute: PutawayTasksRoute,
   ReceivingRoute: ReceivingRoute,
-  ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
   SubmitQuotationRoute: SubmitQuotationRoute,
   SupplierDashboardRoute: SupplierDashboardRoute,
   UnscheduledArrivalsRoute: UnscheduledArrivalsRoute,
   VehicleExitRoute: VehicleExitRoute,
   VehicleQueueRoute: VehicleQueueRoute,
-  VehicleVerificationRoute: VehicleVerificationRoute,
   WarehouseDashboardRoute: WarehouseDashboardRoute,
   WarehouseStorageRoute: WarehouseStorageRoute,
   FinanceApprovalsRoute: FinanceApprovalsRouteWithChildren,

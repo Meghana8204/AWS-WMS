@@ -28,20 +28,19 @@ import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api-client";
-import { activity, arrivalTrend, docks } from "@/lib/wms-data";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/warehouse-dashboard")({
   head: () => ({
     meta: [
-      { title: "Warehouse Dashboard · NexusWMS Pune DC" },
+      { title: "Warehouse Dashboard · NexusWMS" },
       {
         name: "description",
         content:
-          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress at Pune Distribution Centre.",
+          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress.",
       },
-      { property: "og:title", content: "Warehouse Dashboard · NexusWMS Pune DC" },
+      { property: "og:title", content: "Warehouse Dashboard · NexusWMS" },
       {
         property: "og:description",
         content:
@@ -54,7 +53,6 @@ export const Route = createFileRoute("/warehouse-dashboard")({
 
 const quickActions = [
   { label: "Receiving", to: "/receiving", icon: PackageCheck },
-  { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
 function WarehouseDashboard() {
@@ -84,7 +82,7 @@ function WarehouseDashboard() {
     totalArrivals: 0,
     verifiedArrivals: 0,
     unscheduledArrivals: 0,
-    occupiedDocks: "0/8",
+    occupiedDocks: "0/0",
     vehiclesWaiting: 0,
   };
 
@@ -113,12 +111,12 @@ function WarehouseDashboard() {
 
   const activeTrend = dashboardData?.arrivalTrend || [];
   const activeActivity = dashboardData?.activity || [];
-  const targetProgress = dashboardData?.targetProgress || { current: 0, target: 10, percentage: 0 };
+  const targetProgress = dashboardData?.targetProgress || { current: 0, target: 0, percentage: 0 };
 
   return (
     <AppShell
       title="Warehouse Dashboard"
-      subtitle="Pune Distribution Centre · Real-time Inbound & Operations Overview"
+      subtitle="Real-time inbound and operations overview"
       actions={
         <>
           <Button variant="outline" className="rounded-xl" asChild>
@@ -169,16 +167,16 @@ function WarehouseDashboard() {
         />
         <StatCard
           label="Dock occupancy"
-          value={loading ? ".../8" : (stats.occupiedDocks || "0/8")}
+          value={loading ? "..." : (stats.occupiedDocks || "0/0")}
           delta="Real-time status"
           icon={Warehouse}
           tone="teal"
-          to="/dock-assignment"
+          to="/dock-management"
         />
         <StatCard
           label="Vehicles waiting"
           value={loading ? "..." : String(stats.vehiclesWaiting || 0)}
-          delta="Avg wait 12 min"
+          delta="Currently in queue"
           icon={ListOrdered}
           tone="danger"
           to="/receiving"

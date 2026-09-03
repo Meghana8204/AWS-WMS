@@ -37,8 +37,38 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
+import { getUserInfo } from "@/lib/auth-utils";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+function formatDisplayDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const clean = String(dateStr).split("T")[0];
+  const parts = clean.split("-");
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    const mIdx = parseInt(month, 10) - 1;
+    if (mIdx >= 0 && mIdx < 12) {
+      return `${parseInt(day, 10)} ${months[mIdx]} ${year}`;
+    }
+  }
+  return clean;
+}
+
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
 });
@@ -47,21 +77,6 @@ export const Route = createFileRoute("/warehouse/material-requests")({
 export function MaterialRequestsPage({ mode: _mode }: { mode?: "assembly" } = {}) {
   return <WarehouseMaterialRequests />;
 }
-const UOM_OPTIONS = [
-  "PCS",
-  "MTR",
-  "KG",
-  "LTR",
-  "BOX",
-  "PKT",
-  "ROL",
-  "SQM",
-  "SET",
-  "NOS",
-  "TON",
-  "BUNDLE",
-];
-
 function MaterialMasterSearchCombobox({
   value,
   onSelect,
@@ -239,6 +254,8 @@ function MaterialMasterSearchCombobox({
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
+  const [warehouses, setWarehouses] = useState<string[]>([]);
+  const [uoms, setUoms] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -249,9 +266,9 @@ function WarehouseMaterialRequests() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     request_number: "",
-    warehouse_id: "Main Warehouse",
+    warehouse_id: "",
     department: "Inventory",
-    requested_by: "Warehouse Manager",
+    requested_by: "",
     required_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
     remarks: "",
   });
@@ -263,18 +280,27 @@ function WarehouseMaterialRequests() {
       variant_code: "",
       material_name: "",
       quantity: 1,
-      uom: "PCS",
+      uom: "",
     },
   ]);
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [reqData, matData] = await Promise.all([
+      const [reqData, matData, locationData, uomData] = await Promise.all([
         api.getMaterialRequests(),
         api.getMaterials({ status: "Active" }).catch(() => []),
+        api.getStorageLocations(undefined, true).catch(() => []),
+        api.getMaterialUoms().catch(() => []),
       ]);
       setRequests(reqData);
       setMasterMaterials(matData);
+      const warehouseIds = [...new Set(locationData.map((row: any) => row.warehouse_id).filter(Boolean))] as string[];
+      setWarehouses(warehouseIds.sort());
+      setUoms(uomData);
+      setFormData((prev) => ({
+        ...prev,
+        warehouse_id: prev.warehouse_id || warehouseIds[0] || "",
+      }));
     } catch (error) {
       toast.error("Failed to load requests");
     } finally {
@@ -283,11 +309,8 @@ function WarehouseMaterialRequests() {
   };
   useEffect(() => {
     fetchData();
-    const info = localStorage.getItem("user_info");
-    if (info) {
-      const user = JSON.parse(info);
-      setFormData((prev) => ({ ...prev, requested_by: user.username || "Warehouse Manager" }));
-    }
+    const user = getUserInfo();
+    setFormData((prev) => ({ ...prev, requested_by: user?.username?.trim() || "" }));
   }, []);
   const addItem = () => {
     const nextSeq = baseMaterialSequence + items.length;
@@ -301,7 +324,7 @@ function WarehouseMaterialRequests() {
         variant_code: "",
         material_name: "",
         quantity: 1,
-        uom: "PCS",
+        uom: "",
       },
     ]);
   };
@@ -334,7 +357,7 @@ function WarehouseMaterialRequests() {
               material_code: foundMat.material_code,
               variant_code: defaultVariant?.variant_code || "",
               material_name: nameWithSpec,
-              uom: defaultVariant?.uom || foundMat.base_uom || "PCS",
+              uom: defaultVariant?.uom || foundMat.base_uom || "",
             }
           : it,
       ),
@@ -359,7 +382,7 @@ function WarehouseMaterialRequests() {
               material_variant_id: foundVar.id,
               variant_code: foundVar.variant_code,
               material_name: nameWithSpec,
-              uom: foundVar.uom || foundMat.base_uom || "PCS",
+              uom: foundVar.uom || foundMat.base_uom || "",
             }
           : it,
       ),
@@ -402,7 +425,7 @@ function WarehouseMaterialRequests() {
       materialCode: foundMat.material_code,
       variantCode: defaultVariant?.variant_code || "",
       materialName: nameWithSpec,
-      uom: defaultVariant?.uom || foundMat.base_uom || "PCS",
+      uom: defaultVariant?.uom || foundMat.base_uom || "",
     };
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
@@ -426,7 +449,7 @@ function WarehouseMaterialRequests() {
       materialVariantId: foundVar.id,
       variantCode: foundVar.variant_code,
       materialName: nameWithSpec,
-      uom: foundVar.uom || foundMat.base_uom || "PCS",
+      uom: foundVar.uom || foundMat.base_uom || "",
     };
     setSelectedRequest({ ...selectedRequest, items: newItems });
   };
@@ -441,7 +464,7 @@ function WarehouseMaterialRequests() {
       variantCode: "",
       materialName: "",
       quantity: 1,
-      uom: "PCS",
+      uom: "",
     };
     setSelectedRequest({ ...selectedRequest, items: [...selectedRequest.items, newItem] });
   };
@@ -452,6 +475,11 @@ function WarehouseMaterialRequests() {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const requester = formData.requested_by.trim() || getUserInfo()?.username?.trim() || "";
+    if (!requester) {
+      toast.error("Your user session is missing. Please sign in again before submitting.");
+      return;
+    }
     if (!items || items.length === 0) {
       toast.error("Please add at least one material item");
       return;
@@ -466,7 +494,7 @@ function WarehouseMaterialRequests() {
     }
     setSubmitting(true);
     try {
-      await api.createMaterialRequest({ ...formData, items });
+      await api.createMaterialRequest({ ...formData, requested_by: requester, items });
       toast.success("Material request submitted to Procurement");
       setIsCreating(false);
       setItems([
@@ -477,7 +505,7 @@ function WarehouseMaterialRequests() {
           variant_code: "",
           material_name: "",
           quantity: 1,
-          uom: "PCS",
+          uom: "",
         },
       ]);
       setFormData((prev) => ({ ...prev, request_number: "" }));
@@ -504,7 +532,7 @@ function WarehouseMaterialRequests() {
           variant_code: "",
           material_name: "",
           quantity: 1,
-          uom: "PCS",
+          uom: "",
         },
       ]);
       setIsCreating(true);
@@ -537,7 +565,7 @@ function WarehouseMaterialRequests() {
         variantCode: it.variantCode || it.variant_code || "",
         materialName: it.materialName || it.material_name || "",
         quantity: it.quantity,
-        uom: it.uom || "PCS",
+        uom: it.uom,
       };
     });
     setSelectedRequest({
@@ -612,10 +640,10 @@ function WarehouseMaterialRequests() {
       }
     >
       {isCreating ? (
-        <Card className="mb-8 border-primary/20 shadow-soft animate-in slide-in-from-top-4">
-          <CardHeader className="border-b border-border/60 bg-muted/10">
+        <Card className="mb-8 overflow-hidden rounded-2xl border-border/70 shadow-soft animate-in slide-in-from-top-4">
+          <CardHeader className="border-b border-border/70 bg-muted/20 px-5 py-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-bold uppercase tracking-wider">
+              <CardTitle className="text-sm font-semibold tracking-tight">
                 Create Stock Requirement
               </CardTitle>
               <Button
@@ -628,52 +656,64 @@ function WarehouseMaterialRequests() {
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="p-6">
+          <CardContent className="p-5 sm:p-6">
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-6 sm:grid-cols-4">
-                <div className="space-y-1.5">
-                  <Label>Request Number</Label>
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Request Number</Label>
                   <Input
                     value={formData.request_number}
                     readOnly
-                    className="rounded-xl font-mono bg-muted/50"
+                    className="h-10 rounded-xl bg-muted/50 font-mono text-sm"
                     placeholder="MR-2026-XXXX"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Warehouse</Label>
-                  <Input value={formData.warehouse_id} readOnly className="bg-muted/50" />
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Warehouse</Label>
+                  <Select
+                    value={formData.warehouse_id}
+                    onValueChange={(warehouse_id) => setFormData({ ...formData, warehouse_id })}
+                  >
+                    <SelectTrigger className="h-10 w-full rounded-xl bg-background text-sm">
+                      <SelectValue placeholder="Select warehouse" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouses.map((warehouse) => (
+                        <SelectItem key={warehouse} value={warehouse}>{warehouse}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Department</Label>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Department</Label>
                   <Input
                     value={formData.department}
                     onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                    className="rounded-xl"
+                    className="h-10 rounded-xl text-sm"
                   />
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Required Date</Label>
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Required Date</Label>
                   <Input
                     type="date"
                     min={new Date().toISOString().split("T")[0]}
                     value={formData.required_date}
                     onChange={(e) => setFormData({ ...formData, required_date: e.target.value })}
-                    className="rounded-xl"
+                    className="h-10 rounded-xl text-sm"
                   />
                 </div>
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[10px] font-black uppercase text-muted-foreground">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <Label className="text-xs font-semibold text-foreground">
                     Material Items
                   </Label>
                   <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 rounded-lg text-[10px] font-bold"
+                    className="h-9 rounded-xl px-3 text-xs font-medium"
                     onClick={addItem}
                   >
                     <Plus className="size-3 mr-1" /> Add Item
@@ -686,11 +726,10 @@ function WarehouseMaterialRequests() {
                     return (
                       <div
                         key={idx}
-                        className="flex flex-col sm:flex-row gap-3 items-end p-3 rounded-xl border border-border/60 bg-muted/10"
+                        className="grid gap-x-3 gap-y-4 rounded-xl border border-border/70 bg-muted/10 p-4 md:grid-cols-2 xl:grid-cols-12 xl:items-start"
                       >
-                        {masterMaterials.length > 0 && (
-                          <div className="w-full sm:w-60 space-y-1">
-                            <Label className="text-[10px] font-bold">Select Material Master</Label>
+                          <div className="flex min-w-0 flex-col gap-2 xl:col-span-3">
+                            <Label className="flex h-4 items-center text-xs font-medium">Material Master</Label>
                             <MaterialMasterSearchCombobox
                               value={item.material_id || "CUSTOM"}
                               onSelect={(val) => {
@@ -712,24 +751,22 @@ function WarehouseMaterialRequests() {
                                 }
                               }}
                               masterMaterials={masterMaterials}
+                              className="h-10"
                             />
                           </div>
-                        )}
 
-                        {selectedMat && selectedMat.variants && selectedMat.variants.length > 0 && (
-                          <div className="w-full sm:w-48 space-y-1">
-                            <Label className="text-[10px] font-bold text-teal-600">
-                              Select Variant
-                            </Label>
+                          <div className="flex min-w-0 flex-col gap-2 xl:col-span-2">
+                            <Label className="flex h-4 items-center text-xs font-medium">Variant</Label>
                             <Select
-                              value={item.material_variant_id || selectedMat.variants[0]?.id}
+                              value={item.material_variant_id || selectedMat?.variants?.[0]?.id || ""}
                               onValueChange={(val) => handleSelectVariant(idx, val)}
+                              disabled={!selectedMat?.variants?.length}
                             >
-                              <SelectTrigger className="h-9 rounded-lg text-xs bg-background border-teal-500/30">
-                                <SelectValue placeholder="Select Variant" />
+                              <SelectTrigger className="h-10 w-full rounded-xl bg-background text-xs">
+                                <SelectValue placeholder="No variant" />
                               </SelectTrigger>
                               <SelectContent className="rounded-xl">
-                                {selectedMat.variants.map((v: any) => {
+                                {selectedMat?.variants?.map((v: any) => {
                                   const spec = [v.size, v.color, v.grade]
                                     .filter(Boolean)
                                     .join(" · ");
@@ -743,40 +780,39 @@ function WarehouseMaterialRequests() {
                               </SelectContent>
                             </Select>
                           </div>
-                        )}
 
-                        <div className="flex-1 space-y-1 w-full">
-                          <Label className="text-[10px]">Material Description</Label>
+                        <div className="flex min-w-0 flex-col gap-2 md:col-span-2 xl:col-span-4">
+                          <Label className="flex h-4 items-center text-xs font-medium">Material Description</Label>
                           <Input
                             placeholder="e.g. Wire 1.5mm Red PVC..."
-                            className="h-9 rounded-lg text-xs bg-background"
+                            className="h-10 rounded-xl bg-background text-sm"
                             value={item.material_name}
                             onChange={(e) => handleItemChange(idx, "material_name", e.target.value)}
                           />
                         </div>
 
-                        <div className="w-20 space-y-1">
-                          <Label className="text-[10px]">Qty</Label>
+                        <div className="flex min-w-0 flex-col gap-2 xl:col-span-1">
+                          <Label className="flex h-4 items-center text-xs font-medium">Quantity</Label>
                           <Input
                             type="number"
                             min="1"
-                            className="h-9 rounded-lg text-xs bg-background text-center"
+                            className="h-10 rounded-xl bg-background text-center text-sm tabular-nums"
                             value={item.quantity}
                             onChange={(e) => handleItemChange(idx, "quantity", e.target.value)}
                           />
                         </div>
 
-                        <div className="w-24 space-y-1">
-                          <Label className="text-[10px]">UOM</Label>
+                        <div className="flex min-w-0 flex-col gap-2 xl:col-span-1">
+                          <Label className="flex h-4 items-center text-xs font-medium">UOM</Label>
                           <Select
                             value={item.uom}
                             onValueChange={(value) => handleItemChange(idx, "uom", value)}
                           >
-                            <SelectTrigger className="h-9 rounded-lg text-xs bg-background">
+                            <SelectTrigger className="h-10 w-full rounded-xl bg-background text-xs">
                               <SelectValue placeholder="UOM" />
                             </SelectTrigger>
                             <SelectContent className="rounded-xl">
-                              {UOM_OPTIONS.map((uom) => (
+                              {uoms.map((uom) => (
                                 <SelectItem key={uom} value={uom} className="text-xs rounded-lg">
                                   {uom}
                                 </SelectItem>
@@ -785,42 +821,45 @@ function WarehouseMaterialRequests() {
                           </Select>
                         </div>
 
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-9 rounded-lg text-destructive disabled:opacity-30 disabled:pointer-events-none shrink-0"
-                          onClick={() => removeItem(idx)}
-                          disabled={items.length === 1}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <div className="flex h-[64px] items-end justify-end md:col-span-2 xl:col-span-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-10 rounded-xl text-destructive disabled:pointer-events-none disabled:opacity-30"
+                            onClick={() => removeItem(idx)}
+                            disabled={items.length === 1}
+                            aria-label={`Remove material item ${idx + 1}`}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Remarks / Justification</Label>
+              <div className="space-y-2">
+                <Label className="text-xs font-medium">Remarks / Justification</Label>
                 <Textarea
                   placeholder="Why is this stock needed?"
-                  className="rounded-xl min-h-[80px]"
+                  className="min-h-24 resize-y rounded-xl text-sm"
                   value={formData.remarks}
                   onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t">
+              <div className="flex flex-col-reverse gap-3 border-t border-border/70 pt-5 sm:flex-row sm:justify-end">
                 <Button
                   type="button"
                   variant="ghost"
-                  className="rounded-xl"
+                  className="h-10 rounded-xl px-5"
                   onClick={() => setIsCreating(false)}
                 >
                   Cancel
                 </Button>
-                <Button type="submit" className="rounded-xl shadow-glow px-8" disabled={submitting}>
+                <Button type="submit" className="h-10 rounded-xl px-8 shadow-glow" disabled={submitting}>
                   {submitting ? (
                     <Loader2 className="size-4 animate-spin mr-2" />
                   ) : (
@@ -882,7 +921,7 @@ function WarehouseMaterialRequests() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="size-3.5" /> Required by{" "}
-                        {new Date(req.requiredDate).toLocaleDateString()}
+                        {formatDisplayDate(req.requiredDate)}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -963,7 +1002,7 @@ function WarehouseMaterialRequests() {
                       />
                     ) : (
                       <p className="font-bold text-sm tabular-nums">
-                        {new Date(selectedRequest.requiredDate).toLocaleDateString()}
+                        {formatDisplayDate(selectedRequest.requiredDate)}
                       </p>
                     )}
                   </div>
@@ -1172,7 +1211,7 @@ function WarehouseMaterialRequests() {
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-xl">
-                                      {UOM_OPTIONS.map((uom) => (
+                                      {uoms.map((uom) => (
                                         <SelectItem
                                           key={uom}
                                           value={uom}

@@ -1098,11 +1098,52 @@ async def assign_arrival_dock(
     user: CurrentUser = Depends(require_permission("gate:verify")),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    dock_id = request.dock_id.strip().upper()
-    dock_result = await uow.session.execute(select(DockModel).where(DockModel.dock_number == dock_id))
-    dock = dock_result.scalar_one_or_none()
+    dock_id_raw = request.dock_id.strip()
+    dock = None
+
+    # 1. Search by UUID in DockModel
+    try:
+        val_uuid = uuid.UUID(dock_id_raw)
+        dock_res = await uow.session.execute(select(DockModel).where(DockModel.id == val_uuid))
+        dock = dock_res.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    # 2. Search by dock_number in DockModel
     if dock is None:
-        raise HTTPException(status_code=422, detail=f"Unknown dock '{dock_id}'")
+        dock_res = await uow.session.execute(
+            select(DockModel).where(
+                or_(
+                    DockModel.dock_number == dock_id_raw,
+                    DockModel.dock_number == dock_id_raw.upper(),
+                )
+            )
+        )
+        dock = dock_res.scalar_one_or_none()
+
+    # 3. Search in DockMasterModel to map dock_code
+    if dock is None:
+        try:
+            val_uuid = uuid.UUID(dock_id_raw)
+            dm_res = await uow.session.execute(select(DockMasterModel).where(DockMasterModel.id == val_uuid))
+            dm = dm_res.scalar_one_or_none()
+            if dm:
+                dock_res = await uow.session.execute(
+                    select(DockModel).where(
+                        or_(
+                            DockModel.dock_number == dm.dock_code,
+                            DockModel.dock_number == dm.dock_code.upper(),
+                        )
+                    )
+                )
+                dock = dock_res.scalar_one_or_none()
+        except ValueError:
+            pass
+
+    if dock is None:
+        raise HTTPException(status_code=422, detail=f"Unknown dock '{dock_id_raw}'")
+
+    dock_id = dock.dock_number
     if dock.status != "AVAILABLE":
         raise HTTPException(status_code=409, detail=f"Dock {dock_id} is {dock.status.lower()}")
     occupied = await uow.session.execute(

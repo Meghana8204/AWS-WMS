@@ -204,6 +204,8 @@ class QuotationLineSchema(ApiModel):
     variant_code: Optional[str] = None
     quantity: Decimal
     unit_price: Decimal
+    material_name: Optional[str] = None
+    uom: Optional[str] = None
 
 
 class QuotationDocumentSchema(ApiModel):
