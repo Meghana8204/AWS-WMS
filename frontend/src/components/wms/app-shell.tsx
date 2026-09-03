@@ -31,6 +31,7 @@ import {
   PanelLeft,
   PanelLeftClose,
   QrCode,
+  Inbox,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
