@@ -615,11 +615,19 @@ class CompleteGrnResponse(ApiModel):
     grn_number: str | None = None
 
     status: str
+    po_status: str | None = None
 
     posted_by: str | None = None
     posted_at: datetime | None = None
 
     message: str | None = None
+    procurement_notified: bool = False
+    vendor_email_sent: bool = False
+    total_ordered_qty: float | None = None
+    total_good_qty: float | None = None
+    total_damaged_qty: float | None = None
+    total_pending_delivery_qty: float | None = None
+    total_acceptable_qty_outstanding: float | None = None
 
 
 # ============================================================================

@@ -36,6 +36,10 @@ class NotificationResponse(ApiModel):
     driver_phone: Optional[str] = None
     asn_number: Optional[str] = None
     po_number: Optional[str] = None
+    grn_number: Optional[str] = None
+    supplier_name: Optional[str] = None
+    notification_type: Optional[str] = None
+    payload_json: Optional[str] = None
 
 
 

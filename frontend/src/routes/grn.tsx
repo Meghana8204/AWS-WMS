@@ -1747,8 +1747,8 @@ function GrnPageWorkflow() {
             {/* 1. TOTAL GRN RECEIPTS */}
             <Card
               className={`group relative overflow-hidden rounded-2xl border bg-card p-5 shadow-soft transition-all duration-300 cursor-pointer ${dashboardStatusFilter === "ALL"
-                  ? "border-primary ring-2 ring-primary/20 shadow-lift"
-                  : "border-border/70 hover:border-primary/50 hover:shadow-lift hover:-translate-y-0.5"
+                ? "border-primary ring-2 ring-primary/20 shadow-lift"
+                : "border-border/70 hover:border-primary/50 hover:shadow-lift hover:-translate-y-0.5"
                 }`}
               onClick={() => {
                 setDashboardStatusFilter("ALL");
@@ -1780,8 +1780,8 @@ function GrnPageWorkflow() {
             {/* 2. COMPLETED GRNS */}
             <Card
               className={`group relative overflow-hidden rounded-2xl border bg-card p-5 shadow-soft transition-all duration-300 cursor-pointer ${dashboardStatusFilter === "COMPLETED"
-                  ? "border-success ring-2 ring-success/20 shadow-lift"
-                  : "border-border/70 hover:border-success/50 hover:shadow-lift hover:-translate-y-0.5"
+                ? "border-success ring-2 ring-success/20 shadow-lift"
+                : "border-border/70 hover:border-success/50 hover:shadow-lift hover:-translate-y-0.5"
                 }`}
               onClick={() => {
                 setDashboardStatusFilter("COMPLETED");
@@ -1792,7 +1792,7 @@ function GrnPageWorkflow() {
                 <span className="text-xs font-black uppercase tracking-wider text-muted-foreground transition-colors group-hover:text-success">
                   Completed GRNs
                 </span>
-                <span className="grid size-10 place-items-center rounded-xl bg-success-soft text-success shadow-xs transition-all group-hover:bg-success group-hover:text-success-foreground">
+                <span className="grid size-10 place-items-center rounded-xl bg-success-dark text-success shadow-xs transition-all group-hover:bg-success group-hover:text-success-foreground">
                   <CheckCircle2 className="size-5" />
                 </span>
               </div>
@@ -1813,8 +1813,8 @@ function GrnPageWorkflow() {
             {/* 3. PARTIALLY COMPLETED */}
             <Card
               className={`group relative overflow-hidden rounded-2xl border bg-card p-5 shadow-soft transition-all duration-300 cursor-pointer ${dashboardStatusFilter === "PARTIALLY COMPLETED"
-                  ? "border-warning ring-2 ring-warning/20 shadow-lift"
-                  : "border-border/70 hover:border-warning/50 hover:shadow-lift hover:-translate-y-0.5"
+                ? "border-warning ring-2 ring-warning/20 shadow-lift"
+                : "border-border/70 hover:border-warning/50 hover:shadow-lift hover:-translate-y-0.5"
                 }`}
               onClick={() => {
                 setDashboardStatusFilter("PARTIALLY COMPLETED");
@@ -1895,12 +1895,12 @@ function GrnPageWorkflow() {
                     key={tab.key}
                     onClick={() => setDashboardStatusFilter(tab.key)}
                     className={`flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-bold transition-all ${dashboardStatusFilter === tab.key
-                        ? tab.key === "COMPLETED"
-                          ? "bg-success text-success-foreground shadow-sm"
-                          : tab.key === "PARTIALLY COMPLETED"
-                            ? "bg-warning text-warning-foreground shadow-sm"
-                            : "bg-primary text-primary-foreground shadow-sm"
-                        : "bg-muted/70 text-muted-foreground hover:bg-muted"
+                      ? tab.key === "COMPLETED"
+                        ? "bg-success text-success-foreground shadow-sm"
+                        : tab.key === "PARTIALLY COMPLETED"
+                          ? "bg-warning text-warning-foreground shadow-sm"
+                          : "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-muted/70 text-muted-foreground hover:bg-muted"
                       }`}
                   >
                     {tab.key === "COMPLETED" && <CheckCircle2 className="size-3.5" />}
@@ -2271,18 +2271,18 @@ function GrnPageWorkflow() {
                       if (isCompleted || isCurrent) setCurrentPage(pg.id);
                     }}
                     className={`flex flex-1 cursor-pointer flex-col items-center text-center transition-all ${isCurrent
-                        ? "scale-105 font-bold opacity-100"
-                        : isCompleted
-                          ? "opacity-80 hover:opacity-100"
-                          : "cursor-not-allowed opacity-40"
+                      ? "scale-105 font-bold opacity-100"
+                      : isCompleted
+                        ? "opacity-80 hover:opacity-100"
+                        : "cursor-not-allowed opacity-40"
                       }`}
                   >
                     <div
                       className={`flex size-8 items-center justify-center rounded-full text-xs font-bold transition-all ${isCompleted
-                          ? "bg-success text-success-foreground"
-                          : isCurrent
-                            ? "bg-primary text-primary-foreground shadow-glow ring-4 ring-primary/20"
-                            : "bg-muted text-muted-foreground"
+                        ? "bg-success text-success-foreground"
+                        : isCurrent
+                          ? "bg-primary text-primary-foreground shadow-glow ring-4 ring-primary/20"
+                          : "bg-muted text-muted-foreground"
                         }`}
                     >
                       {isCompleted ? <CheckCircle2 className="size-4" /> : pg.id}
@@ -2492,6 +2492,51 @@ function GrnPageWorkflow() {
           {/* PAGE 2 – ITEM RECEIVING DETAILS & MULTI-VEHICLE RECONCILIATION */}
           {currentPage === 2 && (
             <div className="space-y-6">
+              {/* BALANCE & RECONCILIATION KPI CARDS */}
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                <Card className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
+                  <span className="text-[10px] font-black uppercase text-muted-foreground tracking-wider block">
+                    1. PO Order Qty
+                  </span>
+                  <p className="mt-1 font-mono text-2xl font-black text-foreground">{totalPoQty.toLocaleString()}</p>
+                  <span className="text-[11px] text-muted-foreground">Across {materials.length} line item(s)</span>
+                </Card>
+
+                <Card className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
+                  <span className="text-[10px] font-black uppercase text-primary tracking-wider block">
+                    2. This Vehicle Total
+                  </span>
+                  <p className="mt-1 font-mono text-2xl font-black text-primary">{totalCurrentShipmentRec.toLocaleString()}</p>
+                  <span className="text-[11px] text-muted-foreground font-semibold">
+                    <span className="text-success">{totalGoodQty} Good</span> / <span className="text-destructive">{totalDamagedQty} Damaged</span>
+                  </span>
+                </Card>
+
+                <Card className="rounded-2xl border border-border/70 bg-card p-4 shadow-soft">
+                  <span className="text-[10px] font-black uppercase text-amber-600 tracking-wider block">
+                    3. Pending Delivery Qty
+                  </span>
+                  <p className="mt-1 font-mono text-2xl font-black text-amber-600">{totalPendingDeliveryQty.toLocaleString()}</p>
+                  <span className="text-[11px] text-muted-foreground">Physical units yet to arrive</span>
+                </Card>
+
+                <Card className="rounded-2xl border border-destructive/30 bg-destructive-soft/10 p-4 shadow-soft">
+                  <span className="text-[10px] font-black uppercase text-destructive tracking-wider block">
+                    4. Replacement Required
+                  </span>
+                  <p className="mt-1 font-mono text-2xl font-black text-destructive">{totalReplacementRequiredQty.toLocaleString()}</p>
+                  <span className="text-[11px] text-muted-foreground">Damaged units to replace</span>
+                </Card>
+
+                <Card className="rounded-2xl border border-primary/30 bg-primary-soft/10 p-4 shadow-soft">
+                  <span className="text-[10px] font-black uppercase text-primary tracking-wider block">
+                    5. Acceptable Outstanding
+                  </span>
+                  <p className="mt-1 font-mono text-2xl font-black text-primary">{totalAcceptableOutstandingQty.toLocaleString()}</p>
+                  <span className="text-[11px] text-muted-foreground">Needed for full QC pass</span>
+                </Card>
+              </div>
+
               {/* CURRENT VEHICLE SHIPMENT RECEIVING RECONCILIATION */}
               <Card className="rounded-2xl border border-border/70 bg-card p-6 shadow-soft space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
@@ -2525,12 +2570,12 @@ function GrnPageWorkflow() {
                     >
                       <Zap className="mr-1.5 size-3.5 fill-primary text-primary" /> Auto-Fill Live Balance
                     </Button>
-                    <span className="text-xs font-semibold text-muted-foreground">GRN Status:</span>
-                    <span className={`rounded-full px-3 py-1 text-xs font-bold border ${totalProjectedBalanceQty > 0
-                        ? "border-warning/30 bg-warning-soft text-warning"
-                        : "border-success/30 bg-success-soft text-success"
+                    <span className="text-xs font-semibold text-muted-foreground">PO Status:</span>
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold border ${totalAcceptableOutstandingQty > 0
+                      ? "border-warning/30 bg-warning-soft text-warning"
+                      : "border-success/30 bg-success-soft text-success"
                       }`}>
-                      {calculatedGrnStatus}
+                      {totalAcceptableOutstandingQty > 0 ? "PARTIALLY RECEIVED" : "FULLY RECEIVED"}
                     </span>
                   </div>
                 </div>
@@ -2544,21 +2589,26 @@ function GrnPageWorkflow() {
                         <th className="px-4 py-3">Material Code</th>
                         <th className="px-4 py-3 text-right">PO Qty</th>
                         <th className="px-4 py-3 text-right">Prev. Accepted</th>
-                        <th className="px-4 py-3 text-right">Live Available Bal.</th>
                         <th className="px-4 py-3 text-right">Good Qty (This Vehicle)</th>
                         <th className="px-4 py-3 text-right">Damaged Qty (This Vehicle)</th>
-                        <th className="px-4 py-3 text-right">Projected Balance</th>
+                        <th className="px-4 py-3 text-right text-amber-600">Pending Delivery</th>
+                        <th className="px-4 py-3 text-right text-destructive">Replacement Req.</th>
+                        <th className="px-4 py-3 text-right text-primary">Acceptable Out.</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60 font-medium">
                       {materials.map((m, idx) => {
-                        const liveBal = (m.balance_quantity !== undefined && m.balance_quantity !== null) ? m.balance_quantity : m.po_quantity;
+                        const prevReceived = m.cumulative_received_quantity || 0;
                         const prevAccepted = m.cumulative_accepted_quantity || 0;
                         const good = Number(m.good_quantity) || 0;
                         const damaged = Number(m.damaged_quantity) || 0;
                         const thisShipmentTotal = good + damaged;
+                        const liveBal = (m.balance_quantity !== undefined && m.balance_quantity !== null) ? m.balance_quantity : m.po_quantity;
                         const isOver = thisShipmentTotal > liveBal;
-                        const projectedBal = Math.max(liveBal - thisShipmentTotal, 0);
+
+                        const linePendingDelivery = Math.max(m.po_quantity - prevReceived - thisShipmentTotal, 0);
+                        const lineReplacementReq = damaged;
+                        const lineAcceptableOut = Math.max(m.po_quantity - (prevAccepted + good), 0);
 
                         return (
                           <tr key={m.item_code} className={`transition-colors ${isOver ? "bg-destructive-soft/20" : "hover:bg-muted/20"}`}>
@@ -2574,9 +2624,6 @@ function GrnPageWorkflow() {
                             </td>
                             <td className="px-4 py-3 text-right font-bold text-success">
                               {prevAccepted.toLocaleString()}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono font-extrabold text-primary">
-                              {liveBal.toLocaleString()}
                             </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex flex-col items-end gap-1">
@@ -2596,8 +2643,8 @@ function GrnPageWorkflow() {
                                     );
                                   }}
                                   className={`w-28 rounded-xl text-right font-bold focus:ring-2 ${isOver
-                                      ? "border-destructive text-destructive focus:ring-destructive/30"
-                                      : "text-success focus:ring-success/20"
+                                    ? "border-destructive text-destructive focus:ring-destructive/30"
+                                    : "text-success focus:ring-success/20"
                                     }`}
                                 />
                                 <button
@@ -2636,10 +2683,14 @@ function GrnPageWorkflow() {
                                 className="ml-auto w-28 rounded-xl text-right font-bold text-destructive focus:ring-destructive/20"
                               />
                             </td>
-                            <td className="px-4 py-3 font-mono font-bold text-muted-foreground text-right">
-                              <span className={projectedBal === 0 ? "text-success font-bold" : "text-primary font-bold"}>
-                                {projectedBal.toLocaleString()}
-                              </span>
+                            <td className="px-4 py-3 font-mono font-bold text-amber-600 text-right">
+                              {linePendingDelivery.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-destructive text-right">
+                              {lineReplacementReq.toLocaleString()}
+                            </td>
+                            <td className="px-4 py-3 font-mono font-bold text-primary text-right">
+                              {lineAcceptableOut.toLocaleString()}
                             </td>
                           </tr>
                         );
@@ -2651,10 +2702,11 @@ function GrnPageWorkflow() {
                         <td colSpan={2} className="px-4 py-3 text-xs uppercase text-muted-foreground">Totals</td>
                         <td className="px-4 py-3 text-right">{totalPoQty.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-success">{totalPrevAccepted.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-primary font-mono">{totalAvailableBalQty.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-success">{totalGoodQty.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-destructive">{totalDamagedQty.toLocaleString()}</td>
-                        <td className="px-4 py-3 font-mono text-primary text-right">{totalProjectedBalanceQty.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono text-amber-600 text-right">{totalPendingDeliveryQty.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono text-destructive text-right">{totalReplacementRequiredQty.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono text-primary text-right">{totalAcceptableOutstandingQty.toLocaleString()}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -2830,8 +2882,8 @@ function GrnPageWorkflow() {
                             <span className="font-mono text-[11px] font-bold text-primary">({m.item_code})</span>
                           </div>
                           <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase ${isSound
-                              ? "border-success/30 bg-success-soft text-success"
-                              : "border-destructive/30 bg-danger-soft text-destructive"
+                            ? "border-success/30 bg-success-soft text-success"
+                            : "border-destructive/30 bg-danger-soft text-destructive"
                             }`}>
                             {isSound ? "PASSED ✓" : "REJECTED ✗"}
                           </span>
@@ -2931,8 +2983,8 @@ function GrnPageWorkflow() {
                     <Card
                       key={m.item_code}
                       className={`rounded-xl border p-4 shadow-2xs ${isValid
-                          ? "border-success/30 bg-success-soft/10"
-                          : "border-destructive/30 bg-danger-soft/10"
+                        ? "border-success/30 bg-success-soft/10"
+                        : "border-destructive/30 bg-danger-soft/10"
                         }`}
                     >
                       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-2">
@@ -2944,8 +2996,8 @@ function GrnPageWorkflow() {
                           <span>Quality-Approved Qty: <b className="text-success">{appQty}</b> {m.uom}</span>
                           <span>Total Batch Qty: <b className={isValid ? "text-success" : "text-destructive"}>{totalBatchQty}</b> {m.uom}</span>
                           <span className={`rounded-md border px-2 py-0.5 text-[11px] font-bold ${isValid
-                              ? "border-success/30 bg-success-soft text-success"
-                              : "border-destructive/30 bg-danger-soft text-destructive"
+                            ? "border-success/30 bg-success-soft text-success"
+                            : "border-destructive/30 bg-danger-soft text-destructive"
                             }`}>
                             {isValid ? "VALID ✓" : "MISMATCH ✗"}
                           </span>
@@ -4133,8 +4185,8 @@ function GrnPageWorkflow() {
 
             {/* STATUS RECONCILIATION RULE BANNER */}
             <div className={`flex items-center justify-between rounded-xl border p-3 text-xs font-semibold ${selectedGrnDetail.status === "COMPLETED"
-                ? "border-success/30 bg-success-soft text-success"
-                : "border-warning/30 bg-warning-soft text-warning"
+              ? "border-success/30 bg-success-soft text-success"
+              : "border-warning/30 bg-warning-soft text-warning"
               }`}>
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="size-4 shrink-0 text-success" />

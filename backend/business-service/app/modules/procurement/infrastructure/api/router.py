@@ -3567,6 +3567,10 @@ async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(g
             driver_phone=getattr(n, "driver_phone", None),
             asn_number=getattr(n, "asn_number", None),
             po_number=getattr(n, "po_number", None),
+            grn_number=getattr(n, "grn_number", None),
+            supplier_name=getattr(n, "supplier_name", None),
+            notification_type=getattr(n, "notification_type", None),
+            payload_json=getattr(n, "payload_json", None),
         )
         for n in notifications
     ]

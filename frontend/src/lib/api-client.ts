@@ -1277,6 +1277,9 @@ export const api = {
       body: JSON.stringify({ verification_notes }),
     });
   },
+  async postGrn(grnId: string, verification_notes?: string): Promise<any> {
+    return this.completeGrn(grnId, verification_notes);
+  },
   async getGrnDetail(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
   },

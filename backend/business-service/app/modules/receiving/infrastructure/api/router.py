@@ -1078,6 +1078,379 @@ async def upload_grn_document(
 # PAGE 8 - POST / COMPLETE GRN
 # ============================================================================
 
+async def dispatch_grn_notifications_and_email(
+    grn_id: uuid.UUID,
+    uow: UnitOfWork,
+    verification_notes: str | None = None,
+) -> dict:
+    import json
+    import base64
+    from html import escape as html_escape
+    from app.modules.procurement.infrastructure.persistence.models import NotificationModel
+    from sqlalchemy import and_
+
+    stmt = (
+        select(GrnModel)
+        .options(
+            selectinload(GrnModel.lines).selectinload(GrnLineModel.batches).selectinload(GrnBatchModel.qr_code),
+            selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_lots).selectinload(GrnDamageLotModel.qr_code),
+            selectinload(GrnModel.lines).selectinload(GrnLineModel.damage_evidence),
+            selectinload(GrnModel.documents),
+        )
+        .where(GrnModel.id == grn_id)
+    )
+    res = await uow.session.execute(stmt)
+    grn = res.scalar_one_or_none()
+    if not grn:
+        return {}
+
+    # Fetch parent Purchase Order and prior completed GRNs
+    parent_po = None
+    if grn.po_id or grn.po_number:
+        po_query = select(PurchaseOrderModel).options(selectinload(PurchaseOrderModel.items))
+        if grn.po_id:
+            po_query = po_query.where(PurchaseOrderModel.id == grn.po_id)
+        else:
+            po_query = po_query.where(PurchaseOrderModel.po_number == str(grn.po_number).strip())
+        po_res = await uow.session.execute(po_query)
+        parent_po = po_res.scalar_one_or_none()
+
+    prior_grns = []
+    if parent_po or grn.po_number:
+        prior_stmt = (
+            select(GrnModel)
+            .options(selectinload(GrnModel.lines))
+            .where(
+                and_(
+                    or_(
+                        GrnModel.po_id == (parent_po.id if parent_po else None),
+                        GrnModel.po_number == (parent_po.po_number if parent_po else grn.po_number),
+                    ),
+                    GrnModel.id != grn.id,
+                    GrnModel.status.in_(["COMPLETED", "CONFIRMED", "POSTED"]),
+                )
+            )
+        )
+        prior_res = await uow.session.execute(prior_stmt)
+        prior_grns = prior_res.scalars().all()
+
+    prior_accepted_by_item: dict[str, Decimal] = {}
+    prior_received_by_item: dict[str, Decimal] = {}
+    for p_grn in prior_grns:
+        for p_line in p_grn.lines:
+            good = Decimal(str(p_line.good_quantity or p_line.quality_approved_quantity or p_line.received_quantity or 0))
+            dmg = Decimal(str(p_line.damaged_quantity or p_line.rejected_quantity or 0))
+            prior_accepted_by_item[p_line.item_code] = prior_accepted_by_item.get(p_line.item_code, Decimal("0")) + good
+            prior_received_by_item[p_line.item_code] = prior_received_by_item.get(p_line.item_code, Decimal("0")) + (good + dmg)
+
+    lines_summary = []
+    tot_ordered = Decimal("0")
+    tot_prev_accepted = Decimal("0")
+    tot_curr_good = Decimal("0")
+    tot_curr_damaged = Decimal("0")
+    tot_curr_received = Decimal("0")
+    tot_pending_delivery = Decimal("0")
+    tot_replacement_required = Decimal("0")
+    tot_acceptable_outstanding = Decimal("0")
+
+    damage_materials_for_email = []
+
+    for line in grn.lines:
+        item_code = line.item_code
+        po_item = next((pi for pi in (parent_po.items if parent_po else []) if pi.material_code == item_code), None)
+        ordered_qty = Decimal(str(po_item.quantity if po_item else (line.ordered_quantity or line.po_quantity or line.received_quantity or 0)))
+        prev_accepted = prior_accepted_by_item.get(item_code, Decimal("0"))
+        prev_received = prior_received_by_item.get(item_code, Decimal("0"))
+
+        curr_good = Decimal(str(line.quality_approved_quantity if (line.quality_approved_quantity is not None and line.quality_approved_quantity > Decimal("0")) else (line.good_quantity or line.received_quantity or 0)))
+        curr_damaged = Decimal(str(line.damaged_quantity or line.rejected_quantity or 0))
+        curr_received = curr_good + curr_damaged
+        cumulative_good = prev_accepted + curr_good
+        pending_delivery = max(ordered_qty - prev_received - curr_received, Decimal("0"))
+        replacement_required = curr_damaged
+        acceptable_outstanding = max(ordered_qty - cumulative_good, Decimal("0"))
+
+        batch_num = line.batches[0].batch_number if line.batches else f"BATCH-{item_code}-001"
+        std_qr_ref = line.batches[0].qr_code.qr_id if (line.batches and line.batches[0].qr_code) else f"QR-MAT-{item_code}"
+        dmg_lot_num = line.damage_lots[0].damage_lot_number if line.damage_lots else (f"DMG-LOT-{grn.grn_number}-{item_code}" if curr_damaged > 0 else None)
+        dmg_qr_ref = line.damage_lots[0].qr_code.qr_id if (line.damage_lots and line.damage_lots[0].qr_code) else (f"DMG-QR-{item_code}" if curr_damaged > 0 else None)
+
+        damage_reason = getattr(line, "damage_reason", None) or (line.damage_evidence[0].reason if line.damage_evidence else None) or ("Damaged during inbound delivery" if curr_damaged > 0 else None)
+        photos = [ev.file_path for ev in line.damage_evidence if ev.file_path]
+
+        tot_ordered += ordered_qty
+        tot_prev_accepted += prev_accepted
+        tot_curr_good += curr_good
+        tot_curr_damaged += curr_damaged
+        tot_curr_received += curr_received
+        tot_pending_delivery += pending_delivery
+        tot_replacement_required += replacement_required
+        tot_acceptable_outstanding += acceptable_outstanding
+
+        line_dict = {
+            "item_code": item_code,
+            "material_name": line.material_name or item_code,
+            "category": line.material_category or "Raw Materials",
+            "uom": line.uom or "PCS",
+            "ordered_qty": float(ordered_qty),
+            "prev_accepted_qty": float(prev_accepted),
+            "current_received_qty": float(curr_received),
+            "current_good_qty": float(curr_good),
+            "current_damaged_qty": float(curr_damaged),
+            "pending_delivery_qty": float(pending_delivery),
+            "replacement_required_qty": float(replacement_required),
+            "acceptable_qty_outstanding": float(acceptable_outstanding),
+            "batch_number": batch_num,
+            "standard_qr_ref": std_qr_ref,
+            "damage_lot_number": dmg_lot_num,
+            "quarantine_qr_ref": dmg_qr_ref,
+            "damage_reason": damage_reason,
+            "photo_count": len(photos),
+            "photos": photos,
+        }
+        lines_summary.append(line_dict)
+
+        if curr_damaged > Decimal("0"):
+            damage_materials_for_email.append({
+                "line": line_dict,
+                "evidence_models": line.damage_evidence,
+            })
+
+    if tot_acceptable_outstanding > Decimal("0"):
+        po_status = "PARTIALLY_RECEIVED"
+    else:
+        po_status = "FULLY_RECEIVED" if tot_ordered > Decimal("0") else "COMPLETED"
+
+    if parent_po:
+        parent_po.status = "COMPLETED" if po_status == "FULLY_RECEIVED" else "PARTIALLY_RECEIVED"
+
+    if tot_curr_damaged > Decimal("0"):
+        notif_type = "GRN_DAMAGE_RECORDED"
+        notif_title = f"Partial Receipt & Damage Recorded – PO {grn.po_number or 'PO-UNKNOWN'}"
+    elif po_status == "FULLY_RECEIVED":
+        notif_type = "GRN_RECEIPT_COMPLETED"
+        notif_title = f"Goods Receipt Completed – PO {grn.po_number or 'PO-UNKNOWN'}"
+    else:
+        notif_type = "GRN_PARTIAL_RECEIPT"
+        notif_title = f"Partial Goods Receipt – PO {grn.po_number or 'PO-UNKNOWN'}"
+
+    totals_dict = {
+        "ordered_qty": float(tot_ordered),
+        "prev_accepted_qty": float(tot_prev_accepted),
+        "current_received_qty": float(tot_curr_received),
+        "current_good_qty": float(tot_curr_good),
+        "current_damaged_qty": float(tot_curr_damaged),
+        "pending_delivery_qty": float(tot_pending_delivery),
+        "replacement_required_qty": float(tot_replacement_required),
+        "acceptable_qty_outstanding": float(tot_acceptable_outstanding),
+    }
+
+    full_payload = {
+        "po_number": grn.po_number,
+        "grn_number": grn.grn_number,
+        "gate_entry_number": grn.gate_entry_number,
+        "supplier_name": grn.supplier_name,
+        "vehicle_number": grn.vehicle_number,
+        "dock_number": grn.dock_number,
+        "warehouse_name": grn.warehouse_name,
+        "receipt_date": grn.receipt_date.isoformat() if isinstance(grn.receipt_date, datetime) else str(grn.receipt_date or ""),
+        "grn_status": grn.status,
+        "po_status": po_status,
+        "verification_notes": verification_notes or grn.verification_notes,
+        "totals": totals_dict,
+        "items": lines_summary,
+    }
+
+    mat_summary_lines = []
+    for it in lines_summary:
+        mat_summary_lines.append(
+            f"• {it['item_code']} ({it['material_name']}) | Rec: {it['current_received_qty']} {it['uom']} (Good: {it['current_good_qty']}, Dmg: {it['current_damaged_qty']}) | Pending: {it['pending_delivery_qty']} | Out: {it['acceptable_qty_outstanding']}"
+            + (f" | Reason: {it['damage_reason']}" if it['current_damaged_qty'] > 0 else "")
+        )
+
+    text_msg = (
+        f"Goods Receiving Summary for GRN {grn.grn_number} against PO {grn.po_number}.\n"
+        f"Supplier: {grn.supplier_name or 'N/A'} | Vehicle: {grn.vehicle_number or 'N/A'} | Dock: {grn.dock_number or 'DOCK-01'}\n"
+        f"Warehouse: {grn.warehouse_name or 'Main Warehouse'} | GRN Status: {grn.status} | PO Status: {po_status}\n\n"
+        f"📊 Overall Summary Totals:\n"
+        f"• Total PO Ordered Qty: {tot_ordered}\n"
+        f"• Prev. Accepted Qty: {tot_prev_accepted}\n"
+        f"• Current Vehicle Delivered: {tot_curr_received} ({tot_curr_good} Good / {tot_curr_damaged} Damaged)\n"
+        f"• Pending Delivery Qty (Remaining Physical): {tot_pending_delivery}\n"
+        f"• Replacement Required Qty (Damaged Units): {tot_replacement_required}\n"
+        f"• Acceptable Qty Outstanding (Needed for Full QC Pass): {tot_acceptable_outstanding}\n\n"
+        f"📦 Material Breakdown:\n"
+        + "\n".join(mat_summary_lines)
+    )
+
+    procurement_idempotency = f"{grn.id}:{notif_type}:PROCUREMENT"
+    existing_notif_res = await uow.session.execute(
+        select(NotificationModel).where(NotificationModel.idempotency_key == procurement_idempotency)
+    )
+    existing_notif = existing_notif_res.scalar_one_or_none()
+
+    if not existing_notif:
+        proc_notif = NotificationModel(
+            id=uuid.uuid4(),
+            user_role="PROCUREMENT",
+            title=notif_title,
+            message=text_msg,
+            link=f"/notifications?grn_id={grn.id}&po_number={grn.po_number}",
+            is_read=False,
+            created_at=datetime.now(),
+            dock_code=grn.dock_number,
+            warehouse_name=grn.warehouse_name,
+            vehicle_number=grn.vehicle_number,
+            driver_name=grn.driver_name,
+            po_number=grn.po_number,
+            grn_number=grn.grn_number,
+            supplier_name=grn.supplier_name,
+            notification_type=notif_type,
+            idempotency_key=procurement_idempotency,
+            payload_json=json.dumps(full_payload),
+        )
+        uow.session.add(proc_notif)
+
+    vendor_email_sent = False
+    if tot_curr_damaged > Decimal("0") and damage_materials_for_email:
+        vendor_email = "spoorthiharakuni@gmail.com"
+        if grn.supplier_name:
+            sup_res = await uow.session.execute(
+                select(SupplierModel)
+                .options(selectinload(SupplierModel.contact))
+                .where(
+                    or_(
+                        SupplierModel.supplier_name == grn.supplier_name,
+                        SupplierModel.registered_company_name == grn.supplier_name,
+                    )
+                )
+            )
+            sup = sup_res.scalar_one_or_none()
+            if sup and sup.contact and getattr(sup.contact, "primary_email", None):
+                email_val = sup.contact.primary_email
+                if "@" in email_val and not email_val.endswith("@supplier.com"):
+                    vendor_email = email_val
+
+        vendor_idempotency = f"{grn.id}:VENDOR_DAMAGE_EMAIL:{vendor_email}"
+        existing_vendor_notif_res = await uow.session.execute(
+            select(NotificationModel).where(NotificationModel.idempotency_key == vendor_idempotency)
+        )
+        existing_vendor_notif = existing_vendor_notif_res.scalar_one_or_none()
+
+        if not existing_vendor_notif:
+            email_items = []
+            attachments = []
+            photos_cards = []
+
+            for dmg_item in damage_materials_for_email:
+                l_info = dmg_item["line"]
+                email_items.append({
+                    "material": f"{l_info['item_code']} – {l_info['material_name']}",
+                    "quantity": f"{l_info['current_damaged_qty']} {l_info['uom']} (Damaged) / {l_info['current_good_qty']} {l_info['uom']} (Accepted)",
+                    "delivery": f"Reason: {l_info['damage_reason'] or 'Damaged during transit'} | Lot: {l_info['damage_lot_number'] or 'N/A'} | QR: {l_info['quarantine_qr_ref'] or 'N/A'} | Repl. Needed: {l_info['replacement_required_qty']} {l_info['uom']} | Outstanding: {l_info['acceptable_qty_outstanding']} {l_info['uom']}",
+                })
+
+                for ev in dmg_item["evidence_models"]:
+                    if ev.file_path:
+                        local_path = ev.file_path.lstrip("/").replace("/", os.sep)
+                        if os.path.exists(local_path):
+                            try:
+                                with open(local_path, "rb") as pf:
+                                    p_bytes = pf.read()
+                                p_mime = "image/png" if local_path.lower().endswith(".png") else "image/jpeg"
+                                p_filename = f"{l_info['item_code']}_{os.path.basename(local_path)}"
+                                attachments.append((p_filename, p_bytes, p_mime))
+
+                                b64_data = base64.b64encode(p_bytes).decode("ascii")
+                                data_uri = f"data:{p_mime};base64,{b64_data}"
+                                photos_cards.append(
+                                    f'<div style="display:inline-block;margin:6px;border:1px solid #fecdd3;border-radius:12px;overflow:hidden;background:#ffffff;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.05)">'
+                                    f'<img src="{data_uri}" alt="{html_escape(p_filename)}" style="width:240px;height:160px;object-fit:cover;display:block" />'
+                                    f'<div style="padding:6px 8px;font-size:11px;font-family:monospace;font-weight:bold;color:#9f1239;background:#fff1f2;border-top:1px solid #fecdd3">{html_escape(l_info["item_code"])} ({l_info["current_damaged_qty"]} {l_info["uom"]})</div>'
+                                    f'</div>'
+                                )
+                            except Exception as read_err:
+                                print("Error reading photo for email:", read_err)
+
+            photos_html_gallery = ""
+            if photos_cards:
+                photos_html_gallery = (
+                    f'<div style="margin:20px 0;padding:16px;background:#fff1f2;border:1px solid #fecdd3;border-radius:14px">'
+                    f'<div style="font-size:13px;font-weight:800;color:#9f1239;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">📸 Damage Photographs Evidence ({len(photos_cards)} photo(s))</div>'
+                    f'<div style="text-align:center">{"".join(photos_cards)}</div>'
+                    f'</div>'
+                )
+
+            vendor_email_details = [
+                ("PO Number", grn.po_number or "N/A"),
+                ("GRN Number", grn.grn_number or "N/A"),
+                ("Vehicle Number", grn.vehicle_number or "N/A"),
+                ("Warehouse", grn.warehouse_name or "Main Warehouse"),
+                ("Receipt Date", str(grn.receipt_date or datetime.now().date())),
+                ("Total Damaged Qty", f"{tot_curr_damaged} Units"),
+                ("Replacement Required", f"{tot_replacement_required} Units"),
+                ("Acceptable Balance Still Outstanding", f"{tot_acceptable_outstanding} Units"),
+            ]
+
+            vendor_email_html = render_premium_email(
+                eyebrow="SUPPLIER DAMAGE & REPLACEMENT NOTICE",
+                title=f"Damage & Replacement Required – PO {grn.po_number or ''}",
+                greeting=f"Dear {grn.supplier_name or 'Supplier'} Team,",
+                intro=(
+                    f"Damaged goods were identified and quarantined during receiving inspection for vehicle {grn.vehicle_number or 'N/A'} under GRN {grn.grn_number}.\n\n"
+                    f"A total of {tot_curr_damaged} units were marked as damaged and moved to Quarantine Zone.\n"
+                    f"Please arrange prompt replacement of {tot_replacement_required} units to fulfill the remaining balance of {tot_acceptable_outstanding} units for PO {grn.po_number}."
+                ),
+                details=vendor_email_details,
+                items=email_items,
+                items_title="Damaged Material Line-Wise Breakdown",
+                col_headers=("Material Code & Name", "Quantities", "Quarantine Details & Replacement"),
+                custom_html=photos_html_gallery,
+                signoff="NexusWMS Inbound Receiving & Quality Assurance Team",
+            )
+
+            email_status = "SENT"
+            try:
+                subject_line = f"Damage & Replacement Required – PO {grn.po_number} / GRN {grn.grn_number}"
+                vendor_email_sent = await send_email(
+                    to_email=vendor_email,
+                    subject=subject_line,
+                    body=f"Damage & Replacement Required for PO {grn.po_number} / GRN {grn.grn_number}. Please review the attached report and photographs.",
+                    html_body=vendor_email_html,
+                    attachments=attachments,
+                )
+                email_status = "SENT" if vendor_email_sent else "FAILED"
+            except Exception as email_err:
+                print("Vendor email sending failed:", email_err)
+                email_status = "FAILED"
+
+            vendor_audit_notif = NotificationModel(
+                id=uuid.uuid4(),
+                user_role="SUPPLIER",
+                title=f"Damage Notice Sent: {grn.grn_number}",
+                message=f"Vendor damage email dispatched to {vendor_email} for GRN {grn.grn_number} (PO: {grn.po_number}). Status: {email_status}",
+                link=f"/grn?grn_number={grn.grn_number}",
+                is_read=True,
+                created_at=datetime.now(),
+                po_number=grn.po_number,
+                grn_number=grn.grn_number,
+                supplier_name=grn.supplier_name,
+                notification_type="VENDOR_DAMAGE_EMAIL",
+                idempotency_key=vendor_idempotency,
+                payload_json=json.dumps({"vendor_email": vendor_email, "email_status": email_status, "attachments_count": len(attachments)}),
+            )
+            uow.session.add(vendor_audit_notif)
+
+    await uow.commit()
+
+    return {
+        "po_status": po_status,
+        "totals": totals_dict,
+        "procurement_notified": True,
+        "vendor_email_sent": vendor_email_sent,
+    }
+
+
 @router.post("/{grn_id}/complete", response_model=CompleteGrnResponse)
 async def complete_grn(
     grn_id: str,
@@ -1094,13 +1467,29 @@ async def complete_grn(
         verification_notes=notes,
     )
 
+    notif_summary = await dispatch_grn_notifications_and_email(
+        grn_id=grn.id,
+        uow=uow,
+        verification_notes=notes,
+    )
+
+    totals = notif_summary.get("totals", {})
+
     return CompleteGrnResponse(
         grn_id=str(grn.id),
         grn_number=grn.grn_number,
         status=grn.status,
+        po_status=notif_summary.get("po_status", "PARTIALLY_RECEIVED"),
         posted_by=grn.posted_by,
         posted_at=grn.posted_at,
-        message="GRN posted successfully. Material stock updated and putaway tasks created.",
+        procurement_notified=notif_summary.get("procurement_notified", True),
+        vendor_email_sent=notif_summary.get("vendor_email_sent", False),
+        total_ordered_qty=totals.get("ordered_qty"),
+        total_good_qty=totals.get("current_good_qty"),
+        total_damaged_qty=totals.get("current_damaged_qty"),
+        total_pending_delivery_qty=totals.get("pending_delivery_qty"),
+        total_acceptable_qty_outstanding=totals.get("acceptable_qty_outstanding"),
+        message="GRN posted successfully. In-app procurement notification generated, vendor damage email dispatched (if damaged), material stock updated, and putaway tasks created.",
     )
 
 
