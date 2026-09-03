@@ -87,6 +87,7 @@ export function getSafeRedirectPath(redirectPath: unknown): string | null {
 }
 
 export function getDefaultRouteForUser(user = getUserInfo()): string {
+  if (user?.roles.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer") return "/grn";
   if (user?.roles.includes("FINANCE")) return "/finance-dashboard";
   if (user?.roles.includes("PROCUREMENT")) return "/procurement-dashboard";
   if (user?.roles.includes("GATE_SECURITY")) return "/gate-entry";
