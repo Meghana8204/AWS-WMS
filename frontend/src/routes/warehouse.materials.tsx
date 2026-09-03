@@ -523,11 +523,6 @@ function WarehouseMaterials() {
           tone="amber"
         />
       </div>
-          icon={Tag}
-          tone="warning"
-        />
->>>>>>> main
-      </div>
 
       {/* Filter and Search Bar */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">

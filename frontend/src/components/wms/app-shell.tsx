@@ -474,9 +474,6 @@ export function AppShell({
             >
               <Menu className="size-5" />
             </button>
-            >
-              <Menu className="size-5" />
-            </button>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input

@@ -219,7 +219,6 @@ function GateEntry() {
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, [lastCreatedEntry]);
->>>>>>> main
 
   const handleVehicleNumberChange = (rawVal: string) => {
     setVehicleNumber(formatVehicleNumber(rawVal));

@@ -675,24 +675,6 @@ function Receiving() {
                                   </button>
                                 )}
                               </div>
-=======
-                            <td className="min-w-44 px-4 py-3">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="any"
-                                disabled={s.status !== "UNLOADING_IN_PROGRESS"}
-                                value={raw}
-                                onChange={(e) =>
-                                  setQuantities((q) => ({
-                                    ...q,
-                                    [`${s.id}:${m.item_code}`]: e.target.value,
-                                  }))
-                                }
-                                placeholder={`Received ${m.uom}`}
-                                aria-label={`Received quantity for ${m.material_name || m.item_code}`}
-                              />
->>>>>>> main
                             </td>
                             <td className="px-4 py-3">
                               {result === "PENDING" ? (
