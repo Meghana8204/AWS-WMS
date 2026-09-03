@@ -144,6 +144,38 @@ function isActiveNavItem(
   return siblingSearchKeys.every((key) => currentSearch[key] == null);
 }
 
+const ICON_MAP: Record<string, any> = {
+  LayoutDashboard,
+  Building2,
+  ClipboardList,
+  FileQuestion,
+  FileBadge,
+  FileText,
+  Truck,
+  AlertTriangle,
+  FileCheck2,
+  DoorOpen,
+  LogOut,
+  ListOrdered,
+  Boxes,
+  Factory,
+  Users,
+  BarChart3,
+  Settings,
+  Warehouse,
+  Database,
+  PackageCheck,
+  ShieldCheck,
+  QrCode,
+  Bell,
+  Inbox,
+};
+
+function getIconComponent(iconName: any) {
+  if (typeof iconName !== "string") return iconName || LayoutDashboard;
+  return ICON_MAP[iconName] || LayoutDashboard;
+}
+
 export function AppShell({
   children,
   title,
@@ -159,6 +191,9 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [backendNav, setBackendNav] = useState<any[] | null>(null);
+  const [backendModuleLabel, setBackendModuleLabel] = useState<string | null>(null);
+
   const { path, currentSearch } = useRouterState({
     select: (s) => ({
       path: s.location.pathname,
@@ -258,6 +293,35 @@ export function AppShell({
       if (cleanup) cleanup();
     };
   }, [dark]);
+
+  // Fetch dynamic module navigation and user profile from backend
+  useEffect(() => {
+    let isMounted = true;
+    const fetchBackendNavigation = async () => {
+      try {
+        const navData = await api.getUserNavigation();
+        if (isMounted && navData && Array.isArray(navData.navigation)) {
+          setBackendNav(
+            navData.navigation.map((item: any) => ({
+              ...item,
+              icon: getIconComponent(item.icon),
+            })),
+          );
+          if (navData.module_label) setBackendModuleLabel(navData.module_label);
+          if (typeof navData.unread_notifications === "number") {
+            setUnreadNotifications(navData.unread_notifications);
+          }
+        }
+      } catch (err) {
+        // Fallback to client-side nav resolution
+      }
+    };
+    void fetchBackendNavigation();
+    return () => {
+      isMounted = false;
+    };
+  }, [path]);
+
   const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn");
   const isGrnRoute = path === "/grn" || path.startsWith("/grn");
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
@@ -309,9 +373,10 @@ export function AppShell({
             ? assemblyNav
             : warehouseNav;
 
-  const nav = routeNav ?? (mounted ? roleNav : warehouseNav);
+  const fallbackNav = routeNav ?? (mounted ? roleNav : warehouseNav);
+  const activeNav = backendNav ?? fallbackNav;
 
-  const moduleLabel = isSupplierRoute
+  const fallbackModuleLabel = isSupplierRoute
     ? "Supplier Portal"
     : isProcurementRoute
       ? "Procurement Portal"
@@ -322,6 +387,7 @@ export function AppShell({
           : isAssemblyRoute
             ? "Assembly Portal"
             : "Warehouse navigation";
+  const activeModuleLabel = backendModuleLabel ?? fallbackModuleLabel;
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
@@ -362,8 +428,9 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {nav.map((item) => {
-            const active = isActiveNavItem(path, currentSearch, item, nav);
+          {activeNav.map((item) => {
+            const active = isActiveNavItem(path, currentSearch, item, activeNav);
+            const ItemIcon = typeof item.icon === "function" || (typeof item.icon === "object" && item.icon !== null) ? item.icon : getIconComponent(item.icon);
             return (
               <Link
                 key={`${item.label}-${item.to}`}
@@ -377,7 +444,7 @@ export function AppShell({
                   active && "bg-primary-soft text-primary shadow-soft",
                 )}
               >
-                <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} />
+                <ItemIcon className={cn("size-[18px] shrink-0", active && "text-primary")} />
                 {!collapsed && <span className="truncate">{item.label}</span>}
                 {!collapsed && (item as any).badge && (
                   <span className="ml-auto grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground">
@@ -419,7 +486,7 @@ export function AppShell({
 
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="flex w-[300px] flex-col gap-0 border-sidebar-border bg-sidebar p-0 sm:max-w-[320px]">
-          <SheetTitle className="sr-only">{moduleLabel}</SheetTitle>
+          <SheetTitle className="sr-only">{activeModuleLabel}</SheetTitle>
           <SheetDescription className="sr-only">Navigate within the current module</SheetDescription>
           <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
             <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
@@ -431,8 +498,9 @@ export function AppShell({
             </div>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-            {nav.map((item) => {
-              const active = isActiveNavItem(path, currentSearch, item, nav);
+            {activeNav.map((item) => {
+              const active = isActiveNavItem(path, currentSearch, item, activeNav);
+              const ItemIcon = typeof item.icon === "function" || (typeof item.icon === "object" && item.icon !== null) ? item.icon : getIconComponent(item.icon);
               return (
                 <Link
                   key={`${item.label}-${item.to}`}
@@ -445,7 +513,7 @@ export function AppShell({
                     active && "bg-primary-soft text-primary",
                   )}
                 >
-                  <item.icon className="size-[18px] shrink-0" />
+                  <ItemIcon className="size-[18px] shrink-0" />
                   <span>{item.label}</span>
                 </Link>
               );

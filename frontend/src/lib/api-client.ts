@@ -1621,6 +1621,17 @@ export const api = {
     });
   },
 
+  async getUserNavigation(): Promise<{
+    username: string;
+    roles: string[];
+    active_role: string;
+    module_label: string;
+    navigation: Array<{ label: string; to: string; search?: Record<string, unknown>; icon: string }>;
+    unread_notifications: number;
+  }> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/user/navigation`);
+  },
+
   async updateMaterialVariantStatus(
     materialId: string,
     variantId: string,
