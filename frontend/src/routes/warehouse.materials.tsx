@@ -495,75 +495,6 @@ function WarehouseMaterials() {
       }
     >
       {/* Metric Cards */}
-<<<<<<< HEAD
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Material Masters
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums">
-                {loading ? "..." : totalMaterials}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
-              <Database className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Total Specifications
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-teal-600">
-                {loading ? "..." : totalVariants}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-teal-soft text-teal">
-              <Layers className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Active Materials
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-success">
-                {loading ? "..." : `${activeCount} / ${totalMaterials}`}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-success-soft text-success">
-              <CheckCircle2 className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Categories
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-orange-600">
-                {loading ? "..." : distinctCategories}
-              </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Material classifications
-              </p>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-orange-soft/40 text-orange-600">
-              <Tag className="size-6" />
-            </div>
-          </div>
-        </Card>
-=======
       <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Base Materials"
@@ -572,7 +503,7 @@ function WarehouseMaterials() {
           tone="primary"
         />
         <StatCard
-          label="Total Variants"
+          label="Total Specifications"
           value={loading ? "..." : String(totalVariants)}
           delta="Stockable SKUs / Specs"
           icon={Layers}
@@ -588,6 +519,10 @@ function WarehouseMaterials() {
           label="Categories"
           value={loading ? "..." : String(distinctCategories)}
           delta="Material classifications"
+          icon={Tag}
+          tone="amber"
+        />
+      </div>
           icon={Tag}
           tone="warning"
         />

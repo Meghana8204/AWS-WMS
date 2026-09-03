@@ -39,7 +39,8 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { getUserInfo } from "@/lib/auth-utils";
 import { toast } from "sonner";
-<<<<<<< HEAD
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+
 const grnNav = [
   { label: "GRN Operations Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
   { label: "GRN Records History", to: "/grn?tab=records", icon: ClipboardList },
@@ -51,10 +52,6 @@ const grnNav = [
   { label: "Batch QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
 ];
-=======
-import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-
->>>>>>> main
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
@@ -162,19 +159,13 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-<<<<<<< HEAD
-  const location = useRouterState({ select: (s) => s.location });
-  const path = location.pathname;
-  const searchStr = location.searchStr || "";
-  const fullHref = path + searchStr;
-=======
   const { path, currentSearch } = useRouterState({
     select: (s) => ({
       path: s.location.pathname,
       currentSearch: s.location.search as Record<string, unknown>,
     }),
   });
->>>>>>> main
+  const fullHref = path;
   const navigate = useNavigate();
   const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -267,32 +258,8 @@ export function AppShell({
       if (cleanup) cleanup();
     };
   }, [dark]);
-<<<<<<< HEAD
   const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn");
   const isGrnRoute = path === "/grn" || path.startsWith("/grn");
-  const isProcurementRoute =
-    path === "/procurement-dashboard" ||
-    path.startsWith("/procurement/") ||
-    path === "/master-data" ||
-    path === "/new-supplier" ||
-    (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
-  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
-  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
-  const isSharedFinanceRoute = path.startsWith("/reports");
-  const isFinanceRoute =
-    path === "/finance-dashboard" ||
-    path.startsWith("/finance/") ||
-    (isFinanceUser && isSharedFinanceRoute);
-  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
-  const isNotificationsRoute = path.startsWith("/notifications");
-  const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
-    (route) => path.startsWith(route),
-  );
-=======
-
-  // The current route is available during server rendering, so each module
-  // pages can select their sidebar immediately rather than waiting for the
-  // client-side localStorage role lookup.
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
@@ -303,7 +270,6 @@ export function AppShell({
     path === "/vehicle-queue" ||
     path === "/unscheduled-arrivals";
   const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
->>>>>>> main
   const isWarehouseRoute =
     path === "/warehouse-dashboard" ||
     [
@@ -314,59 +280,22 @@ export function AppShell({
       "/receiving",
       "/grn",
     ].some((p) => path.startsWith(p));
-<<<<<<< HEAD
-  const isGateSecurityRoute =
-    [
-      "/gate-entry",
-      "/gate-dashboard",
-      "/accept-arrival",
-      "/driver-verification",
-      "/vehicle-verification",
-      "/dock-assignment",
-      "/arrival-success",
-    ].some((route) => path.startsWith(route)) ||
-    (isGateSecurityUser && (isSharedOperationsRoute || isNotificationsRoute));
-  const resolvedNav = (isGrnUser || isGrnRoute)
+
+  const routeNav = (isGrnUser || isGrnRoute)
     ? grnNav
     : isSupplierRoute
       ? supplierNav
-      : isFinanceRoute
-        ? financeNav
-        : isProcurementRoute
-          ? procurementNav
+      : isProcurementRoute
+        ? procurementNav
+        : isFinanceRoute
+          ? financeNav
           : isGateSecurityRoute
             ? gateSecurityNav
-            : isWarehouseRoute
-              ? warehouseNav
-              : mounted && user?.roles?.includes("SUPPLIER")
-                ? supplierNav
-                : mounted && user?.roles?.includes("FINANCE")
-                  ? financeNav
-                  : mounted && user?.roles?.includes("PROCUREMENT")
-                    ? procurementNav
-                    : isGateSecurityUser
-                      ? gateSecurityNav
-                      : warehouseNav;
-  const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
-  const nav = navigationPending ? [] : resolvedNav;
-=======
-
-  // Keep each module's navigation isolated. The current route takes precedence
-  // over role order so multi-role (or stale localStorage) users do not see the
-  // Supplier menu on Procurement pages, or vice versa.
-  const routeNav = isSupplierRoute
-    ? supplierNav
-    : isProcurementRoute
-      ? procurementNav
-      : isFinanceRoute
-        ? financeNav
-        : isGateSecurityRoute
-          ? gateSecurityNav
-          : isAssemblyRoute
-            ? assemblyNav
-            : isWarehouseRoute
-              ? warehouseNav
-              : null;
+            : isAssemblyRoute
+              ? assemblyNav
+              : isWarehouseRoute
+                ? warehouseNav
+                : null;
 
   const roleNav = user?.roles?.includes("SUPPLIER")
     ? supplierNav
@@ -393,8 +322,6 @@ export function AppShell({
           : isAssemblyRoute
             ? "Assembly Portal"
             : "Warehouse navigation";
-
->>>>>>> main
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
@@ -436,13 +363,7 @@ export function AppShell({
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {nav.map((item) => {
-<<<<<<< HEAD
-            const active = item.to.includes("?")
-              ? fullHref === item.to || (searchStr ? fullHref.startsWith(item.to) : item.to === "/grn?tab=dashboard")
-              : path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
-=======
             const active = isActiveNavItem(path, currentSearch, item, nav);
->>>>>>> main
             return (
               <Link
                 key={`${item.label}-${item.to}`}
@@ -545,17 +466,14 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-<<<<<<< HEAD
-            <Link
-              to={isGrnRoute || isGrnUser ? "/grn" : (nav[0]?.to ?? "/grn")}
-              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
-=======
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
               aria-label="Open navigation menu"
               className="grid size-10 shrink-0 place-items-center rounded-xl border border-border bg-card text-foreground shadow-sm md:hidden"
->>>>>>> main
+            >
+              <Menu className="size-5" />
+            </button>
             >
               <Menu className="size-5" />
             </button>

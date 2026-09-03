@@ -559,7 +559,6 @@ function Receiving() {
                     </div>
                   </div>
                 </div>
-<<<<<<< HEAD
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold">Physical Receiving Comparison</h3>
@@ -591,22 +590,11 @@ function Receiving() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-3">Material Nameplate & Code</th>
+                        <th className="px-4 py-3">Material Nameplate &amp; Code</th>
                         <th className="px-4 py-3">Actual PO Detail Qty</th>
                         <th className="px-4 py-3">ASN Shipped Qty</th>
                         <th className="px-4 py-3">Physical Received Qty</th>
                         <th className="px-4 py-3">Verification Result</th>
-=======
-                <div className="overflow-x-auto rounded-xl border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-3">Material</th>
-                        <th className="px-4 py-3">PO Quantity</th>
-                        <th className="px-4 py-3">Shipped</th>
-                        <th className="px-4 py-3">Received Quantity</th>
-                        <th className="px-4 py-3">Verification</th>
->>>>>>> main
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -614,13 +602,9 @@ function Receiving() {
                         const targetPoQty = m.po_quantity && m.po_quantity > 0 ? m.po_quantity : m.quantity;
                         const raw = quantities[`${s.id}:${m.item_code}`] ?? "",
                           received = raw === "" ? null : Number(raw),
-<<<<<<< HEAD
                           variance = received == null ? null : received - targetPoQty,
                           shortage = Number(policy.shortage_tolerance) || 0,
                           excess = Number(policy.excess_tolerance) || 0,
-=======
-                          variance = received == null ? null : received - m.po_quantity,
->>>>>>> main
                           result =
                             variance == null
                               ? "PENDING"
@@ -659,7 +643,6 @@ function Receiving() {
                             <td className="px-4 py-3 font-semibold text-foreground">
                               {m.quantity.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
                             </td>
-<<<<<<< HEAD
                             <td className="min-w-48 px-4 py-3">
                               <div className="space-y-1">
                                 <Input

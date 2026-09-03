@@ -83,31 +83,7 @@ function LoginPage() {
 
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
-<<<<<<< HEAD
-    const isGrn = data.roles?.includes("GRN") || data.username?.toLowerCase() === "grn" || employeeId.toLowerCase() === "grn";
-    const isSupplier = data.roles?.includes("SUPPLIER");
-    const isProcurement = data.roles?.includes("PROCUREMENT");
-    const isFinance = data.roles?.includes("FINANCE");
-    const isGate = data.roles?.includes("GATE_SECURITY");
-
-    let targetPath = "/warehouse-dashboard";
-    if (isGrn) {
-      targetPath = "/grn";
-    } else if (isSupplier) {
-      targetPath = redirect || "/submit-quotation";
-    } else if (isProcurement) {
-      targetPath = redirect || "/procurement-dashboard";
-    } else if (isFinance) {
-      targetPath = redirect || "/finance-dashboard";
-    } else if (isGate) {
-      targetPath = redirect || "/gate-dashboard";
-    } else {
-      targetPath = redirect || "/warehouse-dashboard";
-    }
-=======
     const targetPath = redirectPath || getDefaultRouteForUser(data);
-
->>>>>>> main
     setTimeout(() => {
       // Keep route transitions internal. `redirectPath` has already rejected external URLs.
       const target = new URL(targetPath, window.location.origin);

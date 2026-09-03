@@ -111,21 +111,7 @@ export function requireRole(roles: string[] | string) {
   if (typeof window === "undefined") return;
   requireAuth();
   if (!hasRole(roles)) {
-    // If they are authenticated but don't have the role, send them to their primary dashboard
     const user = getUserInfo();
-    const primaryRole = user?.roles[0];
-<<<<<<< HEAD
-    let target = "/grn";
-    if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
-    else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
-    else if (user?.roles?.includes("PROCUREMENT")) target = "/procurement-dashboard";
-    else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
-    else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
-    else target = "/grn";
-    throw redirect({ to: target as any });
-=======
-
     throw redirect({ to: getDefaultRouteForUser(user) as any });
->>>>>>> main
   }
 }

@@ -46,10 +46,6 @@ export function StatCard({
           {delta || "No additional detail"}
         </p>
       </Card>
-  );
-<<<<<<< HEAD
-=======
-
   if (to) {
     return (
       <Link to={to} className="group block h-full">
@@ -58,7 +54,6 @@ export function StatCard({
     );
   }
   return <div className="group block h-full">{cardContent}</div>;
->>>>>>> main
 }
 export function Field({ label, value, mono, icon: Icon }: { label: string; value: ReactNode; mono?: boolean; icon?: LucideIcon }) {
   return (

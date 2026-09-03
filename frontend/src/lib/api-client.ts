@@ -5,19 +5,13 @@
  */
 import QRCode from "qrcode";
 
-<<<<<<< HEAD
 export const BUSINESS_API_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_BUSINESS_API_URL) ||
+  (typeof import.meta !== "undefined" && (import.meta.env?.VITE_BUSINESS_SERVICE_URL || import.meta.env?.VITE_BUSINESS_API_URL)) ||
   (typeof window !== "undefined"
     ? window.location.hostname.includes("loca.lt")
       ? "https://wms-mobile-backend-8000.loca.lt"
       : `http://${window.location.hostname}:8000`
     : "http://localhost:8000");
-=======
-const BUSINESS_API_URL =
-  import.meta.env.VITE_BUSINESS_SERVICE_URL ||
-  (typeof window === "undefined"
-    ? "http://localhost:8000"
     : `${window.location.protocol}//${window.location.hostname}:8000`);
 import { clearAuthSession, getAuthToken, storeAuthSession } from "./auth-utils";
 
@@ -179,11 +173,9 @@ export const api = {
       const isFinance = username.toLowerCase().includes("finance");
       const isWarehouse = username.toLowerCase().includes("warehouse");
       const isGate = username.toLowerCase().includes("gate");
-<<<<<<< HEAD
+      const isGate = username.toLowerCase().includes("gate");
       const isGrn = username.toLowerCase().includes("grn") || username.toLowerCase().includes("receiving");
-=======
       const isAssembly = username.toLowerCase().includes("assembly");
->>>>>>> main
       const mockUser = {
         token: isFinance
           ? "mock-jwt-finance-token"
@@ -193,14 +185,11 @@ export const api = {
               ? "mock-jwt-warehouse-token"
               : isGate
                 ? "mock-jwt-gate-entry-token"
-<<<<<<< HEAD
                 : isGrn
                   ? "mock-jwt-grn-token"
-=======
-                : isAssembly
-                  ? "mock-jwt-assembly-manager-token"
->>>>>>> main
-                  : "mock-jwt-admin-token",
+                  : isAssembly
+                    ? "mock-jwt-assembly-manager-token"
+                    : "mock-jwt-admin-token",
         username,
         roles: isFinance
           ? ["FINANCE"]
@@ -210,14 +199,11 @@ export const api = {
               ? ["WAREHOUSE"]
               : isGate
                 ? ["GATE_SECURITY"]
-<<<<<<< HEAD
                 : isGrn
                   ? ["GRN"]
-=======
-                : isAssembly
-                  ? ["ASSEMBLY_MANAGER"]
->>>>>>> main
-                  : ["ADMIN"],
+                  : isAssembly
+                    ? ["ASSEMBLY_MANAGER"]
+                    : ["ADMIN"],
       };
       storeAuthSession(mockUser, rememberMe);
       return mockUser;
@@ -251,7 +237,13 @@ export const api = {
   async getInboundArrivals(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/inbound-arrivals`);
   },
-<<<<<<< HEAD
+  async createUnscheduledGateEntry(formData: FormData): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/unscheduled`, {
+      method: "POST",
+      body: formData,
+    });
+  },
+
   async getDocks(statusOrParams?: string | { dock_type?: string; status?: string }, type?: string): Promise<any[]> {
     const query = new URLSearchParams();
     if (typeof statusOrParams === "object" && statusOrParams !== null) {
@@ -263,29 +255,16 @@ export const api = {
     }
     const qs = query.toString();
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${qs ? `?${qs}` : ""}`);
-=======
-  async createUnscheduledGateEntry(formData: FormData): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/unscheduled`, {
-      method: "POST",
-      body: formData,
-    });
   },
 
-  async getDocks(status?: string, type?: string): Promise<any[]> {
-    const params = new URLSearchParams();
-    if (status) params.append("status", status);
-    if (type) params.append("dock_type", type);
-    const query = params.toString();
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/docks${query ? `?${query}` : ""}`);
->>>>>>> main
-  },
   async getDockOverviewMetrics(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
   },
-<<<<<<< HEAD
+
   async getPendingAllocations(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
-=======
+  },
+
   async getDockTypes(): Promise<string[]> {
     return request<string[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-types`);
   },
@@ -600,7 +579,6 @@ export const api = {
       method: "POST",
     });
   },
-<<<<<<< HEAD
   async getGrnDrafts(status?: string, search?: string): Promise<any[]> {
     const params = new URLSearchParams();
     if (status) params.set("status", status);
@@ -609,11 +587,6 @@ export const api = {
     const url = `${BUSINESS_API_URL}/api/gate-entries/grn-drafts${query ? `?${query}` : ""}`;
     const res = await request<any>(url);
     return Array.isArray(res) ? res : res?.items || [];
-=======
-
-  async getGrnDrafts(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/grn-drafts`);
->>>>>>> main
   },
 
   async postGrn(grnId: string, verificationNotes?: string): Promise<any> {
@@ -843,7 +816,6 @@ export const api = {
   async getGrn(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
   },
-<<<<<<< HEAD
   async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
     const params = new URLSearchParams();
     if (typeof input === "object" && input !== null) {
@@ -857,18 +829,8 @@ export const api = {
     }
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/context?${params.toString()}`);
   },
-  async confirmGrn(
-    poId: string,
-    lines: {
-      itemCode: string;
-      quantity: number;
-    }[],
-  ): Promise<any> {
-=======
 
-  // Inbound Receiving / GRN Use Cases
   async confirmGrn(poId: string, lines: { itemCode: string; quantity: number }[]): Promise<any> {
->>>>>>> main
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn`, {
       method: "POST",
       headers: {
@@ -1248,15 +1210,11 @@ export const api = {
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/by-number/${encodeURIComponent(poNumber)}`,
     );
   },
-<<<<<<< HEAD
   async getPoDamagedGoods(poIdentifier: string): Promise<any> {
     return request<any>(
       `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders/${encodeURIComponent(poIdentifier)}/damaged-goods`,
     );
   },
-=======
-
->>>>>>> main
   async downloadPoPdf(id: string, poNumber?: string): Promise<void> {
     const token = getAuthToken();
     const headers = new Headers();
@@ -1390,14 +1348,6 @@ export const api = {
       `${BUSINESS_API_URL}/api/v1/procurement/global-search?q=${encodeURIComponent(q)}`,
     );
   },
-<<<<<<< HEAD
-  // ============================
-  // WAREHOUSE MATERIAL MASTER
-  // ============================
-  // ============================
-  // WAREHOUSE MATERIAL MASTER
-  // ============================
-=======
   async getAssemblyDashboard(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/dashboard`);
   },
@@ -1555,8 +1505,6 @@ export const api = {
       },
     );
   },
-<<<<<<< HEAD
-
   async updateMaterial(
     id: string,
     data: any,
@@ -1600,34 +1548,11 @@ export const api = {
         headers: {
           "Content-Type": "application/json",
         },
-=======
-  async getAssemblyFinishedGoods(): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/v1/assembly/finished-goods`);
-  },
-
-  async getAssemblyRework(orderId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework`);
-  },
-
-  async createAssemblyRework(orderId: string, data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  },
-
-  async updateAssemblyRework(orderId: string, reworkId: string, data: any): Promise<any> {
-    return request<any>(
-      `${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework/${reworkId}`,
-      {
-        method: "PATCH",
->>>>>>> main
         body: JSON.stringify(data),
       },
     );
   },
 
-<<<<<<< HEAD
   async createMaterialVariant(
     materialId: string,
     data: any,
@@ -1650,7 +1575,33 @@ export const api = {
         body: JSON.stringify(data),
       },
     );
-=======
+  },
+
+  async getAssemblyFinishedGoods(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/assembly/finished-goods`);
+  },
+
+  async getAssemblyRework(orderId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework`);
+  },
+
+  async createAssemblyRework(orderId: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateAssemblyRework(orderId: string, reworkId: string, data: any): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/assembly/orders/${orderId}/rework/${reworkId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      },
+    );
+  },
+
   async getAssemblyTeams(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/assembly/teams`);
   },
@@ -1673,7 +1624,7 @@ export const api = {
     return request<any>(`${BUSINESS_API_URL}/api/v1/assembly/orders/${id}/material-request`, {
       method: "POST",
     });
->>>>>>> main
+  },
   },
 
   async updateMaterialVariantStatus(
