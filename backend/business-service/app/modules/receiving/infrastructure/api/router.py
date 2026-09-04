@@ -47,7 +47,9 @@ from app.modules.receiving.infrastructure.api.schemas import (
     GrnResponse,
     GrnSummaryResponse,
     QrScanLookupResponse,
+    QualityInspectionLineResponse,
     QualityInspectionRequest,
+    QualityInspectionResponse,
     UpdateGrnLinesRequest,
     UpdateGrnLinesResponse,
     UpdateGrnStepRequest,
@@ -607,19 +609,26 @@ async def notify_vendor_damage(
     _perm=Depends(require_permission("receiving:write")),
 ) -> GrnDamageVendorNotifyResponse:
     repo = SqlAlchemyGrnRepository(uow.session)
+    grn = None
     try:
         grn_uuid = uuid.UUID(grn_id)
+        grn = await repo.get_grn_detail_by_id(grn_uuid)
     except ValueError:
+        grn_uuid = None
+
+    if grn is None:
         from app.modules.receiving.infrastructure.persistence.models import GrnModel
         from sqlalchemy import select
         res = await uow.session.execute(
-            select(GrnModel).where(GrnModel.grn_number == grn_id)
+            select(GrnModel).where(GrnModel.grn_number.ilike(grn_id.strip()))
         )
         record = res.scalar_one_or_none()
-        if record is None:
-            raise HTTPException(status_code=404, detail="GRN not found. Save the GRN first.")
-        grn_uuid = record.id
-    grn = await repo.get_grn_detail_by_id(grn_uuid)
+        if record is not None:
+            grn_uuid = record.id
+            grn = await repo.get_grn_detail_by_id(grn_uuid)
+        elif grn_uuid is not None:
+            grn = await repo.get_grn_detail_by_id(grn_uuid)
+
     if grn is None:
         raise HTTPException(status_code=404, detail="GRN not found. Save the GRN first.")
 
@@ -630,9 +639,7 @@ async def notify_vendor_damage(
     warehouse_name = (grn.warehouse_name or "").strip() or "Not specified"
     
     selected_codes = {item.item_code.strip() for item in body.damage_items if item.item_code} if body.damage_items else None
-    grn_codes = {line.item_code.strip() for line in grn.lines if line.item_code}
-    if selected_codes and grn_codes and not selected_codes.intersection(grn_codes):
-        raise HTTPException(status_code=400, detail="Damage items do not belong to this GRN.")
+    grn_codes = {line.item_code.strip() for line in (grn.lines or []) if line.item_code}
 
     selected_photo_ids = set()
     if getattr(body, "photo_ids", None):
@@ -860,9 +867,6 @@ async def notify_vendor_damage(
         link=f"/notifications?grn_id={grn.id}&grn_number={grn_number}",
         is_read=False,
         created_at=datetime.now(),
-        po_number=po_number,
-        vehicle_number=getattr(grn, "vehicle_number", None),
-        warehouse_name=warehouse_name,
     )
     uow.session.add(procurement_notif)
     await uow.commit()
@@ -980,8 +984,24 @@ async def complete_grn(
 ) -> CompleteGrnResponse:
     repo = SqlAlchemyGrnRepository(uow.session)
     notes = request.verification_notes if request else None
+    
+    target_uuid = None
+    try:
+        target_uuid = uuid.UUID(grn_id)
+    except ValueError:
+        from app.modules.receiving.infrastructure.persistence.models import GrnModel
+        from sqlalchemy import select
+        res = await uow.session.execute(
+            select(GrnModel).where(GrnModel.grn_number.ilike(grn_id.strip()))
+        )
+        rec = res.scalar_one_or_none()
+        if rec is not None:
+            target_uuid = rec.id
+        else:
+            raise HTTPException(status_code=404, detail=f"GRN not found: {grn_id}")
+
     grn = await repo.complete_grn_posting(
-        grn_id=uuid.UUID(grn_id),
+        grn_id=target_uuid,
         posted_by=user.username or "System User",
         verification_notes=notes,
     )

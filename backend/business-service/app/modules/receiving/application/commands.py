@@ -20,3 +20,10 @@ class ConfirmGrnLine:
 class ConfirmGrnCommand:
     po_id: str
     lines: list[ConfirmGrnLine]
+
+
+@dataclass(frozen=True)
+class GetGrnContextQuery:
+    po_id: str | None = None
+    po_number: str | None = None
+    gate_entry_id: str | None = None

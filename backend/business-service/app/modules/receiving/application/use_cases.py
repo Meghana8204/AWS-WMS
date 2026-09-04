@@ -7,9 +7,19 @@ never business rules.
 """
 from __future__ import annotations
 
-from app.modules.receiving.application.commands import ConfirmGrnCommand
+from decimal import Decimal
+from typing import Any
+
+from app.modules.receiving.application.commands import (
+    ConfirmGrnCommand,
+    GetGrnContextQuery,
+)
 from app.modules.receiving.application.exceptions import PurchaseOrderNotFoundException
-from app.modules.receiving.application.repository import GrnRepository
+from app.modules.receiving.application.repository import (
+    GrnContextLineSnapshot,
+    GrnContextSnapshot,
+    GrnRepository,
+)
 from app.modules.receiving.domain.grn import GoodsReceiptNote
 from app.modules.receiving.domain.receipt_line import ReceiptLine
 from app.modules.receiving.domain.value_objects import GrnId, PurchaseOrderId
@@ -49,3 +59,60 @@ class GetGrnUseCase:
         if grn is None:
             raise NotFoundException(f"GRN not found: {grn_id}")
         return grn
+
+
+class GetGrnContextUseCase:
+    def __init__(self, grn_repository: Any) -> None:
+        self._grn_repository = grn_repository
+
+    async def handle(self, query: GetGrnContextQuery) -> GrnContextSnapshot:
+        po = None
+        if query.po_id:
+            po = await self._grn_repository.find_purchase_order(PurchaseOrderId.of(query.po_id))
+        elif query.po_number:
+            po = await self._grn_repository.find_purchase_order_by_number(query.po_number)
+
+        if po is None:
+            raise PurchaseOrderNotFoundException(query.po_id or query.po_number or "unknown")
+
+        po_str_id = str(po.id.value) if hasattr(po.id, "value") else str(po.id)
+        asn = await self._grn_repository.find_latest_asn_for_po(po_id=po_str_id, po_number=po.po_number)
+        gate_entry = None
+        if not gate_entry and asn:
+            gate_entry = await self._grn_repository.find_latest_gate_entry_for_asn(asn.id)
+        if not gate_entry and po.po_number:
+            gate_entry = await self._grn_repository.find_latest_gate_entry_for_po(po.po_number)
+
+        existing_grn = await self._grn_repository.find_grn_header_by_po(po_id=po_str_id, po_number=po.po_number)
+
+        dock_options = []
+        if po.warehouse_id:
+            dock_options = await self._grn_repository.list_docks_for_warehouse(po.warehouse_id)
+
+        lines = [
+            GrnContextLineSnapshot(
+                item_code=l.item_code,
+                material_name=l.material_name,
+                material_category=l.material_category,
+                uom=l.uom,
+                ordered_quantity=l.ordered_quantity,
+                received_quantity=Decimal("0"),
+                balance_quantity=l.ordered_quantity,
+            )
+            for l in po.lines
+        ]
+
+        return GrnContextSnapshot(
+            receipt_type="PO_RECEIPT",
+            po_id=po_str_id,
+            po_number=po.po_number,
+            supplier_name=po.supplier_name,
+            supplier_company_name=po.supplier_company_name,
+            warehouse_id=po.warehouse_id,
+            warehouse_name=po.warehouse_name,
+            asn=asn,
+            gate_entry=gate_entry,
+            existing_grn=existing_grn,
+            dock_options=dock_options,
+            lines=lines,
+        )

@@ -491,6 +491,7 @@ function GrnPageWorkflow() {
         received_by: loggedInUserName,
       });
 
+      setDamagePhotos({});
       setGrnId(ctx.grn_id || ctx.grnId || null);
       if (ctx.dock_options && ctx.dock_options.length > 0) {
         setDockOptions(ctx.dock_options);
@@ -2382,6 +2383,7 @@ function GrnPageWorkflow() {
                               variant="outline"
                               className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
                               onClick={() => {
+                                setSelectedGrnDetail(r);
                                 setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
                                 setGrnId(r.grn_id || r.id || r.grn_number || "");
                                 setShowNotifyVendorModal(true);
@@ -3087,22 +3089,16 @@ function GrnPageWorkflow() {
                                 damagedQuantity={m.damaged_quantity}
                                 reason={m.damage_reason}
                                 onSuccess={(ev) => {
-                                  setDamagePhotos((prev) => {
-                                    const existing = prev[m.item_code] || {};
-                                    const existingIds = (existing as any).evidenceIds || (existing.evidenceId ? [existing.evidenceId] : []);
-                                    const newIds = Array.from(new Set([...existingIds, ev.evidenceId])).filter(Boolean);
-                                    return {
-                                      ...prev,
-                                      [m.item_code]: {
-                                        ...existing,
-                                        evidenceId: ev.evidenceId,
-                                        evidenceIds: newIds,
-                                        reason: m.damage_reason,
-                                        previewUrl: ev.filePath,
-                                        file: ev.file,
-                                      },
-                                    };
-                                  });
+                                  setDamagePhotos((prev) => ({
+                                    ...prev,
+                                    [m.item_code]: {
+                                      evidenceId: ev.evidenceId,
+                                      evidenceIds: [ev.evidenceId],
+                                      reason: m.damage_reason,
+                                      previewUrl: ev.filePath,
+                                      file: ev.file,
+                                    },
+                                  }));
                                 }}
                               />
                             </td>
@@ -3941,6 +3937,50 @@ function GrnPageWorkflow() {
                         console.log("postGrn API fallback to local state:", apiErr);
                       }
 
+                      // Auto-dispatch damage notification to vendor and procurement if damaged materials exist
+                      const damagedLines = processedMaterials.filter((m) => (m.damaged_quantity || 0) > 0);
+                      if (damagedLines.length > 0 && (grnId || grnNumber)) {
+                        const targetId = grnId || grnNumber;
+                        const currentPhotoIds = damagedLines
+                          .map((m) => {
+                            const photo = damagePhotos[m.item_code] as any;
+                            return photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                          })
+                          .filter((id): id is string => Boolean(id && id.trim()));
+
+                        const damagePayloadItems = damagedLines.map((m) => {
+                          const photo = damagePhotos[m.item_code] as any;
+                          const activeId = photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                          const pIds = activeId ? [activeId] : [];
+                          return {
+                            item_code: m.item_code,
+                            material_name: m.material_name,
+                            damaged_quantity: Number(m.damaged_quantity || 0),
+                            uom: m.uom || "PCS",
+                            reason: m.damage_reason || "Damaged during receiving inspection",
+                            photo_ids: pIds,
+                          };
+                        });
+
+                        try {
+                          const res = await api.notifyVendorDamage(targetId, {
+                            supplier_email: header.supplier_email || "spoorthiharakuni@gmail.com",
+                            custom_remarks: "Automated damaged goods report dispatched on GRN completion.",
+                            notify_procurement: true,
+                            photo_ids: currentPhotoIds,
+                            damage_items: damagePayloadItems,
+                          });
+                          toast.success("Damage Report Email Dispatched!", {
+                            description: `Notice dispatched to ${res?.vendor_email || header.supplier_email || "Vendor"} and Procurement team.`,
+                          });
+                        } catch (emailErr: any) {
+                          console.warn("Auto damage notification warning:", emailErr);
+                          toast.warning("Damage Notification Notice", {
+                            description: emailErr?.message || "Could not auto-dispatch damage email. Check SMTP settings.",
+                          });
+                        }
+                      }
+
                       // Update grnRecords state so it appears immediately on Dashboard & Records table
                       setGrnRecords((prev) => [
                         newRecord,
@@ -4265,21 +4305,38 @@ function GrnPageWorkflow() {
               <div>
                 <label className="text-xs font-bold uppercase text-muted-foreground">Damaged & Rejected Items Breakdown</label>
                 <div className="max-h-40 overflow-y-auto border rounded-xl p-3 bg-muted/20 space-y-2 mt-1">
-                  {damageQrLabels.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">No damaged items listed.</p>
-                  ) : (
-                    damageQrLabels.map((d) => (
-                      <div key={d.damage_lot_number} className="text-xs font-mono flex items-center justify-between border-b pb-1">
-                        <div>
-                          <span className="font-bold text-foreground">{d.item_code} ({d.material_name})</span>
-                          <p className="text-[10px] text-muted-foreground">Lot: {d.damage_lot_number} | Reason: {d.reason}</p>
+                  {(() => {
+                    const activeDamageList = (selectedGrnDetail && selectedGrnDetail.materials && selectedGrnDetail.materials.length > 0)
+                      ? selectedGrnDetail.materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)
+                      : (damagedMaterials.length > 0
+                          ? damagedMaterials
+                          : (damageQrLabels.length > 0 ? damageQrLabels : materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)));
+
+                    if (activeDamageList.length === 0) {
+                      return <p className="text-xs text-muted-foreground italic">No damaged items listed.</p>;
+                    }
+
+                    return activeDamageList.map((d: any, idx: number) => {
+                      const code = d.item_code || d.itemCode || `ITEM-${idx + 1}`;
+                      const name = d.material_name || d.materialName || "Material";
+                      const qty = Number(d.damaged_quantity || d.rejected_quantity || d.quantity || 0);
+                      const uom = d.uom || "PCS";
+                      const reason = d.damage_reason || d.reason || "Damaged during receiving inspection";
+                      const lot = d.damage_lot_number || d.batch_number || "";
+
+                      return (
+                        <div key={d.damage_lot_number || `${code}-${idx}`} className="text-xs font-mono flex items-center justify-between border-b pb-1">
+                          <div>
+                            <span className="font-bold text-foreground">{code} ({name})</span>
+                            <p className="text-[10px] text-muted-foreground">{lot ? `Lot: ${lot} | ` : ""}Reason: {reason}</p>
+                          </div>
+                          <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            {qty} {uom}
+                          </span>
                         </div>
-                        <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                          {d.damaged_quantity} {d.uom}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
@@ -4305,44 +4362,38 @@ function GrnPageWorkflow() {
                 onClick={async () => {
                   setSendingVendorNotify(true);
                   try {
-                    const currentPhotoIds = Object.values(damagePhotos)
-                      .flatMap((p: any) => (p.evidenceIds && p.evidenceIds.length > 0 ? p.evidenceIds : (p.evidenceId ? [p.evidenceId] : [])))
+                    const activeDamageList = (selectedGrnDetail && selectedGrnDetail.materials && selectedGrnDetail.materials.length > 0)
+                      ? selectedGrnDetail.materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)
+                      : (damagedMaterials.length > 0
+                          ? damagedMaterials
+                          : (damageQrLabels.length > 0 ? damageQrLabels : materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)));
+
+                    const currentPhotoIds = activeDamageList
+                      .map((m: any) => {
+                        const code = m.item_code || m.itemCode || "ITEM";
+                        const photo = damagePhotos[code] as any;
+                        return photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                      })
                       .filter((id): id is string => Boolean(id && id.trim()));
 
-                    const damagePayloadItems = damagedMaterials.length > 0
-                      ? damagedMaterials.map((m) => {
-                          const photo = damagePhotos[m.item_code] as any;
-                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
-                            ? photo.evidenceIds
-                            : (photo?.evidenceId ? [photo.evidenceId] : []);
-                          return {
-                            item_code: m.item_code,
-                            material_name: m.material_name,
-                            damaged_quantity: Number(m.damaged_quantity || 0),
-                            uom: m.uom || "PCS",
-                            reason: m.damage_reason || "Damaged during receiving inspection",
-                            photo_ids: pIds,
-                          };
-                        })
-                      : (damageQrLabels || []).map((d: any) => {
-                          const code = d.item_code || d.itemCode || "ITEM";
-                          const photo = damagePhotos[code] as any;
-                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
-                            ? photo.evidenceIds
-                            : (photo?.evidenceId ? [photo.evidenceId] : []);
-                          return {
-                            item_code: code,
-                            material_name: d.material_name || d.materialName || "Material",
-                            damaged_quantity: Number(d.damaged_quantity || d.quantity || 0),
-                            uom: d.uom || "PCS",
-                            reason: d.reason || "Damaged / Rejected",
-                            damage_lot_number: d.damage_lot_number || "",
-                            quarantine_location: d.quarantine_location || "",
-                            photo_ids: pIds,
-                          };
-                        });
+                    const damagePayloadItems = activeDamageList.map((m: any, idx: number) => {
+                      const code = m.item_code || m.itemCode || `ITEM-${idx + 1}`;
+                      const photo = damagePhotos[code] as any;
+                      const activeId = photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                      const pIds = activeId ? [activeId] : (m.photo_ids || []);
+                      return {
+                        item_code: code,
+                        material_name: m.material_name || m.materialName || "Material",
+                        damaged_quantity: Number(m.damaged_quantity || m.rejected_quantity || m.quantity || 0),
+                        uom: m.uom || "PCS",
+                        reason: m.damage_reason || m.reason || "Damaged during receiving quality inspection",
+                        damage_lot_number: m.damage_lot_number || "",
+                        quarantine_location: m.quarantine_location || "",
+                        photo_ids: pIds,
+                      };
+                    });
 
-                    const targetGrnId = grnId || (selectedGrnDetail && (selectedGrnDetail.grn_id || selectedGrnDetail.id));
+                    const targetGrnId = grnId || (selectedGrnDetail && (selectedGrnDetail.grn_id || selectedGrnDetail.id || selectedGrnDetail.grn_number)) || header.grn_number;
                     if (!targetGrnId) {
                       toast.error("GRN must be saved before sending damage notification.");
                       return;

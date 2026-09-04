@@ -124,12 +124,15 @@ async def get_current_user(
 
 
 
-def require_permission(permission: str):
+def require_permission(*permissions: str):
     async def _checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if permission not in user.permissions and "ADMIN" not in user.roles:
+        if "ADMIN" in user.roles:
+            return user
+        if permissions and not any(p in user.permissions for p in permissions):
+            req_str = ", ".join(permissions)
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission}",
+                detail=f"Missing required permission: {req_str}",
             )
         return user
 
