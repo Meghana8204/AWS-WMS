@@ -323,7 +323,7 @@ export function AppShell({
     };
   }, [path]);
 
-  const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn");
+  const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer");
   const isGrnRoute = path === "/grn" || path.startsWith("/grn");
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
@@ -343,7 +343,6 @@ export function AppShell({
       "/warehouse/material-requests",
       "/notifications",
       "/receiving",
-      "/grn",
     ].some((p) => path.startsWith(p));
 
   const routeNav = (isGrnUser || isGrnRoute)
@@ -362,33 +361,37 @@ export function AppShell({
                 ? warehouseNav
                 : null;
 
-  const roleNav = user?.roles?.includes("SUPPLIER")
-    ? supplierNav
-    : user?.roles?.includes("FINANCE")
-      ? financeNav
-      : user?.roles?.includes("PROCUREMENT")
-        ? procurementNav
-        : user?.roles?.includes("GATE_SECURITY")
-          ? gateSecurityNav
-          : user?.roles?.includes("ASSEMBLY_MANAGER")
-            ? assemblyNav
-            : warehouseNav;
+  const roleNav = isGrnUser
+    ? grnNav
+    : user?.roles?.includes("SUPPLIER")
+      ? supplierNav
+      : user?.roles?.includes("FINANCE")
+        ? financeNav
+        : user?.roles?.includes("PROCUREMENT")
+          ? procurementNav
+          : user?.roles?.includes("GATE_SECURITY")
+            ? gateSecurityNav
+            : user?.roles?.includes("ASSEMBLY_MANAGER")
+              ? assemblyNav
+              : warehouseNav;
 
   const fallbackNav = routeNav ?? (mounted ? roleNav : warehouseNav);
-  const activeNav = backendNav ?? fallbackNav;
+  const activeNav = (isGrnRoute || isGrnUser) ? grnNav : (backendNav ?? fallbackNav);
 
-  const fallbackModuleLabel = isSupplierRoute
-    ? "Supplier Portal"
-    : isProcurementRoute
-      ? "Procurement Portal"
-      : isFinanceRoute
-        ? "Finance Portal"
-        : isGateSecurityRoute
-          ? "Gate Security Portal"
-          : isAssemblyRoute
-            ? "Assembly Portal"
-            : "Warehouse navigation";
-  const activeModuleLabel = backendModuleLabel ?? fallbackModuleLabel;
+  const fallbackModuleLabel = (isGrnRoute || isGrnUser)
+    ? "GRN Operations"
+    : isSupplierRoute
+      ? "Supplier Portal"
+      : isProcurementRoute
+        ? "Procurement Portal"
+        : isFinanceRoute
+          ? "Finance Portal"
+          : isGateSecurityRoute
+            ? "Gate Security Portal"
+            : isAssemblyRoute
+              ? "Assembly Portal"
+              : "Warehouse navigation";
+  const activeModuleLabel = (isGrnRoute || isGrnUser) ? "GRN Operations" : (backendModuleLabel ?? fallbackModuleLabel);
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
