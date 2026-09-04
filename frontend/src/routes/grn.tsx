@@ -281,74 +281,14 @@ function GrnPageWorkflow() {
     setLoadingRecords(true);
     try {
       const items = await api.getGrnDrafts(undefined, searchTerm || undefined);
-      if (Array.isArray(items) && items.length > 0) {
-        setGrnRecords(items);
-      } else {
-        setGrnRecords((prev) =>
-          prev.length > 0
-            ? prev
-            : [
-                {
-                  grn_id: "grn-2026-0001",
-                  grn_number: "GRN-2026-0001",
-                  po_number: "PO-1001",
-                  supplier_name: "ABC Supplier Ltd",
-                  supplier_company_name: "ABC Supplier Ltd",
-                  supplier_email: "spoorthiharakuni@gmail.com",
-                  vehicle_number: "AP02AB1234",
-                  driver_name: "Ramesh",
-                  dock_number: "DOCK-02",
-                  status: "PARTIALLY COMPLETED",
-                  receipt_date: "2026-08-30",
-                  received_by: loggedInUserName || "Officer Obaiah",
-                  materials: [
-                    {
-                      item_code: "MAT-STEEL-001",
-                      material_name: "High-Tensile Steel Coil 2mm",
-                      po_quantity: 100,
-                      good_quantity: 80,
-                      damaged_quantity: 5,
-                      combined_received: 85,
-                      balance_quantity: 15,
-                      uom: "MT",
-                    },
-                  ],
-                },
-                {
-                  grn_id: "grn-2026-0002",
-                  grn_number: "GRN-2026-0002",
-                  po_number: "PO-1002",
-                  supplier_name: "XYZ Industrial Supplies",
-                  supplier_company_name: "XYZ Industrial Supplies",
-                  supplier_email: "xyz@industrial.com",
-                  vehicle_number: "KA01EQ9921",
-                  driver_name: "Suresh",
-                  dock_number: "DOCK-01",
-                  status: "COMPLETED",
-                  receipt_date: "2026-08-29",
-                  received_by: loggedInUserName || "Officer Obaiah",
-                  materials: [
-                    {
-                      item_code: "MAT-ALU-002",
-                      material_name: "Aluminum Ingot Grade A",
-                      po_quantity: 500,
-                      good_quantity: 480,
-                      damaged_quantity: 20,
-                      combined_received: 500,
-                      balance_quantity: 0,
-                      uom: "Kg",
-                    },
-                  ],
-                },
-              ]
-        );
-      }
+      setGrnRecords(Array.isArray(items) ? items : []);
     } catch (err: any) {
-      console.log("API loadRecords fallback:", err);
+      console.log("API loadRecords error:", err);
+      setGrnRecords([]);
     } finally {
       setLoadingRecords(false);
     }
-  }, [searchTerm, loggedInUserName]);
+  }, [searchTerm]);
 
   const [availablePos, setAvailablePos] = useState<any[]>([]);
 
@@ -1872,25 +1812,25 @@ function GrnPageWorkflow() {
                 {/* 2. Supplier Name */}
                 <div className="rounded-xl border bg-muted/10 p-3">
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">2. Supplier Name</span>
-                  <p className="text-sm font-bold text-foreground">{header.supplier_name || "ABC Supplier"}</p>
+                  <p className="text-sm font-bold text-foreground">{header.supplier_name || "—"}</p>
                 </div>
 
                 {/* 3. Supplier Company Name */}
                 <div className="rounded-xl border bg-muted/10 p-3">
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">3. Supplier Company Name</span>
-                  <p className="text-sm font-bold text-foreground">{header.supplier_company_name || "ABC Industrial Supplies Pvt. Ltd."}</p>
+                  <p className="text-sm font-bold text-foreground">{header.supplier_company_name || "—"}</p>
                 </div>
 
                 {/* 4. ASN Number */}
                 <div className="rounded-xl border bg-muted/10 p-3">
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">4. ASN Number</span>
-                  <p className="font-mono text-sm font-bold text-foreground">{header.asn_number || "ASN-001"}</p>
+                  <p className="font-mono text-sm font-bold text-foreground">{header.asn_number || "—"}</p>
                 </div>
 
                 {/* 5. Gate Entry Number */}
                 <div className="rounded-xl border bg-muted/10 p-3">
                   <span className="text-[11px] font-semibold uppercase text-muted-foreground">5. Gate Entry Number</span>
-                  <p className="font-mono text-sm font-bold text-foreground">{header.gate_entry_number || "GE-001"}</p>
+                  <p className="font-mono text-sm font-bold text-foreground">{header.gate_entry_number || "—"}</p>
                 </div>
 
                 {/* 6. Warehouse Name */}

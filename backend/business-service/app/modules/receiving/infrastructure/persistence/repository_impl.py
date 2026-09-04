@@ -212,9 +212,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
             po_number=entity.po_number,
             status=entity.status,
             supplier_id=_string_or_none(entity.supplier_id),
-            supplier_name=entity.supplier_name or "ABC Supplier",
+            supplier_name=entity.supplier_name or "—",
             supplier_company_name=(
-                supplier_company_name or entity.supplier_name or "ABC Industrial Supplies Pvt. Ltd."
+                supplier_company_name or entity.supplier_name or "—"
             ),
             warehouse_id=entity.warehouse_id,
             warehouse_name=entity.delivery_warehouse_name or "Main Warehouse – Bangalore",
