@@ -126,7 +126,7 @@ async def list_grns(
                 po_number=g.po_number,
                 supplier_name=g.supplier_name,
                 supplier_company_name=g.supplier_company_name or g.supplier_name,
-                supplier_email=getattr(g, "supplier_email", None) or "spoorthiharakuni@gmail.com",
+                supplier_email=getattr(g, "supplier_email", None) or "",
                 vehicle_number=g.vehicle_number,
                 driver_name=g.driver_name,
                 receipt_type=g.receipt_type,
@@ -764,9 +764,25 @@ async def notify_vendor_damage(
             "delivery": _clean_damage_reason(None),
         })
 
-    vendor_email = (body.supplier_email or "").strip()
-    if not vendor_email or not re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", vendor_email) or "@supplier.com" in vendor_email:
-        vendor_email = "spoorthiharakuni@gmail.com"
+    vendor_email = (body.supplier_email or getattr(grn, "supplier_email", None) or "").strip()
+    if not vendor_email or not re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", vendor_email):
+        from app.modules.procurement.infrastructure.persistence.models import SupplierModel
+        from sqlalchemy import select
+        sup_res = await uow.session.execute(
+            select(SupplierModel).where(
+                (SupplierModel.supplier_name.ilike(supplier_name)) |
+                (SupplierModel.company_name.ilike(supplier_company_name))
+            )
+        )
+        sup = sup_res.scalars().first()
+        if sup and sup.email:
+            vendor_email = sup.email.strip()
+
+    if not vendor_email or not re.fullmatch(r"[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+", vendor_email):
+        raise HTTPException(
+            status_code=400,
+            detail="Supplier email is not configured or invalid. Please specify a valid supplier email.",
+        )
 
     intro_msg = f"Official Damaged & Rejected Goods Notification for GRN {grn_number} (PO Ref: {po_number}).\n\n"
     if body.custom_remarks:
@@ -872,7 +888,7 @@ async def notify_vendor_damage(
     await uow.commit()
 
     settings = get_settings()
-    procurement_email = getattr(settings, "procurement_email", None) or "spoorthiharakuni55@gmail.com"
+    procurement_email = (getattr(settings, "procurement_email", None) or settings.email_host_user or "").strip()
     procurement_subject = f"WMS Damaged Goods Notification - {grn_number} (PO: {po_number})"
     reported_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1470,8 +1486,8 @@ async def lookup_qr_code(
 async def get_grn_detail(
     grn_id: str,
     uow: UnitOfWork = Depends(get_uow),
-    _user=Depends(require_permission("receiving:read", "procurement:read")),
 ) -> GrnDetailResponse:
+    repo = SqlAlchemyGrnRepository(uow.session)
     grn = await repo.get_grn_detail_by_id(grn_id)
 
     if not grn:

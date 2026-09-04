@@ -147,20 +147,20 @@ function normalizeGrnRecord(r: any) {
     ...r,
     id: r.id || r.grn_id || r.grnId || "",
     grn_id: r.grn_id || r.grnId || r.id || "",
-    grn_number: r.grn_number || r.grnNumber || "GRN-2026-0001",
-    po_number: r.po_number || r.poNumber || "PO-2026-0001",
+    grn_number: r.grn_number || r.grnNumber || "",
+    po_number: r.po_number || r.poNumber || "",
     po_id: r.po_id || r.poId || "",
     asn_id: r.asn_id || r.asnId || "",
     asn_number: r.asn_number || r.asnNumber || "",
-    supplier_name: r.supplier_name || r.supplierName || r.supplier_company_name || r.supplierCompanyName || "Supplier",
-    supplier_company_name: r.supplier_company_name || r.supplierCompanyName || r.supplier_name || r.supplierName || "Supplier",
-    supplier_email: r.supplier_email || r.supplierEmail || "spoorthiharakuni@gmail.com",
-    warehouse_name: r.warehouse_name || r.warehouseName || "Main Logistics Center",
-    dock_number: r.dock_number || r.dockNumber || "DOCK-01",
-    vehicle_number: r.vehicle_number || r.vehicleNumber || "KA-04-MB-7777",
-    driver_name: r.driver_name || r.driverName || "Ramesh Kumar",
+    supplier_name: r.supplier_name || r.supplierName || r.supplier_company_name || r.supplierCompanyName || "",
+    supplier_company_name: r.supplier_company_name || r.supplierCompanyName || r.supplier_name || r.supplierName || "",
+    supplier_email: r.supplier_email || r.supplierEmail || "",
+    warehouse_name: r.warehouse_name || r.warehouseName || "",
+    dock_number: r.dock_number || r.dockNumber || "",
+    vehicle_number: r.vehicle_number || r.vehicleNumber || "",
+    driver_name: r.driver_name || r.driverName || "",
     receipt_date: r.receipt_date || r.receiptDate || r.created_at || r.createdAt || new Date().toISOString(),
-    received_by: r.received_by || r.receivedBy || "localdev",
+    received_by: r.received_by || r.receivedBy || "",
     receipt_type: r.receipt_type || r.receiptType || "PO_RECEIPT",
     status: r.status || "COMPLETED",
     lines: r.lines || [],
@@ -274,7 +274,7 @@ function GrnPageWorkflow() {
   const [enlargedQr, setEnlargedQr] = useState<{ title: string; qr_id: string; data_url: string; payload: string; batch: BatchEntry; itemCode: string } | null>(null);
   const [showQualityPassModal, setShowQualityPassModal] = useState(false);
   const [showNotifyVendorModal, setShowNotifyVendorModal] = useState(false);
-  const [notifyVendorEmail, setNotifyVendorEmail] = useState("spoorthiharakuni@gmail.com");
+  const [notifyVendorEmail, setNotifyVendorEmail] = useState("");
   const [notifyVendorRemarks, setNotifyVendorRemarks] = useState("");
   const [sendingVendorNotify, setSendingVendorNotify] = useState(false);
 
@@ -463,13 +463,13 @@ function GrnPageWorkflow() {
     try {
       const ctx = await api.getGrnContext(numToFetch);
       if (requestId !== contextRequest.current) return;
-      const supplierName = ctx.supplier_name || ctx.supplierName || "Supplier";
+      const supplierName = ctx.supplier_name || ctx.supplierName || "";
       const supplierComp = ctx.supplier_company_name || ctx.supplierCompanyName || supplierName;
-      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "spoorthiharakuni@gmail.com";
-      const asnNum = ctx.asn_number || ctx.asnNumber || ctx.asn?.asn_number || ctx.asn?.asnNumber || `ASN-${numToFetch}`;
-      const gateNum = ctx.gate_entry_number || ctx.gateEntryNumber || ctx.gate_entry?.gate_entry_number || ctx.gate_entry?.gateEntryNumber || `GE-${numToFetch}`;
-      const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || `KA01EQ${numToFetch.replace(/\D/g, "") || "1001"}`;
-      const driverName = ctx.driver_name || ctx.driverName || ctx.asn?.driver_name || ctx.asn?.driverName || ctx.gate_entry?.driver_name || ctx.gate_entry?.driverName || "Ramesh Kumar";
+      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "";
+      const asnNum = ctx.asn_number || ctx.asnNumber || ctx.asn?.asn_number || ctx.asn?.asnNumber || "";
+      const gateNum = ctx.gate_entry_number || ctx.gateEntryNumber || ctx.gate_entry?.gate_entry_number || ctx.gate_entry?.gateEntryNumber || "";
+      const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || "";
+      const driverName = ctx.driver_name || ctx.driverName || ctx.asn?.driver_name || ctx.asn?.driverName || ctx.gate_entry?.driver_name || ctx.gate_entry?.driverName || "";
       const warehouseName = ctx.warehouse_name || ctx.warehouseName || "Main Warehouse";
       const prefilledDock = ctx.prefilled_dock_number || ctx.prefilledDockNumber || (ctx.dock_options && ctx.dock_options[0]?.dock_number) || "DOCK-01";
       const generatedGrnNum = ctx.grn_number || ctx.grnNumber || `GRN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -567,14 +567,14 @@ function GrnPageWorkflow() {
         po_number: detail.po_number || "",
         supplier_name: detail.supplier_name || "",
         supplier_company_name: detail.supplier_company_name || detail.supplier_name || "",
-        supplier_email: detail.supplier_email || "spoorthiharakuni@gmail.com",
-        asn_number: detail.asn_number || `ASN-${detail.po_number || "1001"}`,
-        gate_entry_number: detail.gate_entry_number || `GE-${detail.po_number || "1001"}`,
+        supplier_email: detail.supplier_email || "",
+        asn_number: detail.asn_number || "",
+        gate_entry_number: detail.gate_entry_number || (detail.po_number ? `GE-${detail.po_number}` : ""),
         warehouse_name: detail.warehouse_name || "Main Warehouse",
         grn_number: detail.grn_number || "",
         vehicle_number: detail.vehicle_number || "",
         driver_name: detail.driver_name || "",
-        receiving_dock: detail.dock_number || "DOCK-01",
+        receiving_dock: detail.dock_number || "",
         invoice_number: detail.invoice_number || "",
         received_by: detail.received_by || loggedInUserName,
       });
@@ -667,9 +667,10 @@ function GrnPageWorkflow() {
       toast.success(`Resumed in-progress GRN ${detail.grn_number || resolvedId}`);
       navigate({ to: "/grn", search: { tab: "wizard", page: targetStep, grn_id: resolvedId } });
     } catch (err: any) {
-      console.error("Failed to load existing GRN session:", err);
-      setSaveStatus("error");
-      toast.error("Could not load in-progress GRN: " + (err.message || "Unknown error"));
+      console.warn("Existing GRN session not found or deleted, resetting active session:", err);
+      localStorage.removeItem("active_grn_id");
+      setGrnId(null);
+      setSaveStatus("idle");
     } finally {
       setLoadingContext(false);
     }
@@ -1013,7 +1014,7 @@ function GrnPageWorkflow() {
   const [damageQrLabels, setDamageQrLabels] = useState<DamageQrEntry[]>([]);
 
   function buildDamageQrPayload(m: GrnLineItem, reasonText: string) {
-    const lotNum = `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`;
+    const lotNum = `DMG-LOT-${header.grn_number || grnId || "GRN"}-${m.item_code}`;
     const damagedQty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
     const variantInfo = getMaterialVariantInfo(m.item_code, m.variant_code);
     const uom = m.uom || "BUNDLE";
@@ -1181,13 +1182,13 @@ function GrnPageWorkflow() {
       toast.error("Please allow popups to print GRN document");
       return;
     }
-    const grnNum = norm.grn_number || header.grn_number || "GRN-20260901-0001";
-    const poNum = norm.po_number || header.po_number || "PO-2026-0001";
-    const supplier = norm.supplier_name || norm.supplier_company_name || header.supplier_name || "Supplier";
-    const dock = norm.dock_number || header.receiving_dock || "DOCK-01";
-    const vehicle = norm.vehicle_number || header.vehicle_number || "KA-04-MB-7777";
-    const driver = norm.driver_name || header.driver_name || "Ramesh Kumar";
-    const receivedBy = norm.received_by || header.received_by || "localdev";
+    const grnNum = norm.grn_number || header.grn_number || "—";
+    const poNum = norm.po_number || header.po_number || "—";
+    const supplier = norm.supplier_name || norm.supplier_company_name || header.supplier_name || "—";
+    const dock = norm.dock_number || header.receiving_dock || "—";
+    const vehicle = norm.vehicle_number || header.vehicle_number || "—";
+    const driver = norm.driver_name || header.driver_name || "—";
+    const receivedBy = norm.received_by || header.received_by || loggedInUserName || "—";
     const dateStr = formatCardDate(norm.receipt_date || norm.created_at);
 
     let rowsHtml = "";
@@ -1292,10 +1293,10 @@ function GrnPageWorkflow() {
       }
     }
 
-    const grnNum = record.grn_number || header.grn_number || "GRN-20260901-0001";
-    const poNum = record.po_number || header.po_number || "PO-2026-0001";
-    const supplier = record.supplier_name || record.supplier_company_name || "Supplier";
-    const warehouse = record.warehouse_name || "Main Logistics Center";
+    const grnNum = record.grn_number || header.grn_number || "";
+    const poNum = record.po_number || header.po_number || "";
+    const supplier = record.supplier_name || record.supplier_company_name || "";
+    const warehouse = record.warehouse_name || header.warehouse_name || "";
 
     const labelsToPrint: Array<{
       type: "BATCH" | "QUARANTINE" | "TEMPLATE";
@@ -1770,8 +1771,8 @@ function GrnPageWorkflow() {
       if (matchedDamageEntry) {
         setScanResultData({
           qr_id: matchedDamageEntry.qr_code,
-          grn_number: header.grn_number || "GRN-2026-0001",
-          po_number: header.po_number || "PO-2026-0001",
+          grn_number: header.grn_number || "",
+          po_number: header.po_number || "",
           material_code: matchedDamageEntry.item_code,
           material_name: matchedDamageEntry.material_name,
           variant_code: `${matchedDamageEntry.item_code}-V001`,
@@ -1779,10 +1780,10 @@ function GrnPageWorkflow() {
           color: "Standard",
           grade: "Standard Industrial Grade",
           uom: matchedDamageEntry.uom || "PCS",
-          supplier_code: "SUP-00001",
-          supplier_name: header.supplier_name || "Supplier",
+          supplier_code: "",
+          supplier_name: header.supplier_name || header.supplier_company_name || "",
           receipt_date: new Date().toLocaleDateString("en-GB"),
-          warehouse_name: header.warehouse_name || "Main Warehouse",
+          warehouse_name: header.warehouse_name || "",
           category: "Quarantine / Damaged Goods",
           batch_number: matchedDamageEntry.damage_lot_number,
           received_quantity: matchedDamageEntry.damaged_quantity,
@@ -1806,8 +1807,8 @@ function GrnPageWorkflow() {
         };
         setScanResultData({
           qr_id: `QR-MAT-${matchedWizardMaterial.item_code}`,
-          grn_number: header.grn_number || "GRN-2026-0001",
-          po_number: header.po_number || "PO-2026-0001",
+          grn_number: header.grn_number || "",
+          po_number: header.po_number || "",
           material_code: matchedWizardMaterial.item_code,
           material_name: matchedWizardMaterial.material_name,
           variant_code: `${matchedWizardMaterial.item_code}-V001`,
@@ -1815,10 +1816,10 @@ function GrnPageWorkflow() {
           color: "Standard",
           grade: "Standard Industrial Grade",
           uom: matchedWizardMaterial.uom || "PCS",
-          supplier_code: "SUP-00001",
-          supplier_name: header.supplier_name || "Supplier",
+          supplier_code: "",
+          supplier_name: header.supplier_name || header.supplier_company_name || "",
           receipt_date: new Date().toLocaleDateString("en-GB"),
-          warehouse_name: header.warehouse_name || "Main Warehouse",
+          warehouse_name: header.warehouse_name || "",
           category: matchedWizardMaterial.material_category || "Raw Materials",
           batch_number: b.batch_number,
           received_quantity:
@@ -1903,7 +1904,7 @@ function GrnPageWorkflow() {
           const reasonText = (photo && photo.reason)
             ? photo.reason
             : (m.damage_reason || "Damaged/Rejected during receiving inspection");
-          const qrCodeStr = `DMG-${header.grn_number || "GRN-2026-0001"}-${m.item_code}-01`;
+          const qrCodeStr = `DMG-${header.grn_number || grnId || "GRN"}-${m.item_code}-01`;
           const payload = buildDamageQrPayload(m, reasonText);
           let dataUrl = "";
           try {
@@ -1919,7 +1920,7 @@ function GrnPageWorkflow() {
           const qty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
           damageGenerated.push({
             damage_lot_id: `dmg_lot_${m.item_code}`,
-            damage_lot_number: `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`,
+            damage_lot_number: `DMG-LOT-${header.grn_number || grnId || "GRN"}-${m.item_code}`,
             item_code: m.item_code,
             material_name: m.material_name,
             damaged_quantity: qty,
@@ -1989,14 +1990,44 @@ function GrnPageWorkflow() {
       }
     >
       {/* 📊 GRN OPERATIONS DASHBOARD TAB */}
-      {activeTab === "dashboard" && (
+      {activeTab === "dashboard" && (() => {
+        const totalQuarantineLots = grnRecords.reduce((acc, r) => {
+          const lots = r.damage_lots || r.damageLots || [];
+          if (Array.isArray(lots) && lots.length > 0) return acc + lots.length;
+          const lines = r.lines || r.materials || [];
+          const damagedLineCount = lines.filter((l: any) => (Number(l.damaged_quantity || l.damagedQuantity || 0) > 0)).length;
+          return acc + damagedLineCount;
+        }, 0);
+
+        let soundUnits = 0;
+        let quarantinedUnits = 0;
+        let lotsCount = 0;
+        for (const r of grnRecords) {
+          const lines = r.lines || r.materials || [];
+          for (const l of lines) {
+            const g = Number(l.good_quantity ?? l.goodQuantity ?? 0);
+            const d = Number(l.damaged_quantity ?? l.damagedQuantity ?? 0);
+            soundUnits += g;
+            quarantinedUnits += d;
+          }
+          const dLots = r.damage_lots || r.damageLots || [];
+          if (Array.isArray(dLots) && dLots.length > 0) {
+            lotsCount += dLots.length;
+          } else {
+            lotsCount += lines.filter((l: any) => Number(l.damaged_quantity ?? l.damagedQuantity ?? 0) > 0).length;
+          }
+        }
+        const totalUnits = soundUnits + quarantinedUnits;
+        const healthPercent = totalUnits > 0 ? Number(((soundUnits / totalUnits) * 100).toFixed(1)) : 100;
+
+        return (
         <div className="space-y-6">
           {/* TOP STAT CARDS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Total GRN receipts"
               value={loadingRecords ? "..." : String(totalRecordCount || grnRecords.length)}
-              delta="+12.5% vs last month"
+              delta={grnRecords.length > 0 ? "All recorded entries" : "No receipts yet"}
               icon={ClipboardList}
               tone="primary"
               to="/grn"
@@ -2004,7 +2035,7 @@ function GrnPageWorkflow() {
             <StatCard
               label="Fully completed"
               value={loadingRecords ? "..." : String(grnRecords.filter((r) => isRecordMatchingStatus(r.status, "COMPLETED")).length)}
-              delta="100% sound lines posted"
+              delta={grnRecords.length > 0 ? "100% sound lines posted" : "0 completed"}
               icon={CheckCircle2}
               tone="success"
               to="/grn"
@@ -2012,15 +2043,15 @@ function GrnPageWorkflow() {
             <StatCard
               label="Partially completed"
               value={loadingRecords ? "..." : String(grnRecords.filter((r) => isRecordMatchingStatus(r.status, "PARTIAL")).length)}
-              delta="Pending balance receipts"
+              delta={grnRecords.length > 0 ? "Pending balance receipts" : "0 pending"}
               icon={Clock3}
               tone="warning"
               to="/grn"
             />
             <StatCard
               label="Quarantine lots"
-              value="4 Lots"
-              delta="Zone A · Damage QR"
+              value={loadingRecords ? "..." : `${totalQuarantineLots} Lot${totalQuarantineLots === 1 ? "" : "s"}`}
+              delta={totalQuarantineLots > 0 ? "Zone A · Damage QR" : "0 quarantine lots"}
               icon={AlertTriangle}
               tone="danger"
               to="/grn"
@@ -2167,13 +2198,21 @@ function GrnPageWorkflow() {
               <SectionCard title="Quality Inspection Health" icon={ShieldCheck}>
                 <div className="space-y-3">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-2xl font-bold font-mono tracking-tight text-emerald-600">99.3%</span>
-                    <span className="text-xs font-semibold text-muted-foreground">18,450 Sound Units</span>
+                    <span className="text-2xl font-bold font-mono tracking-tight text-emerald-600">
+                      {totalUnits > 0 ? `${healthPercent}%` : "100%"}
+                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {soundUnits.toLocaleString()} Sound Units
+                    </span>
                   </div>
-                  <Progress value={99.3} className="h-2 rounded-full" />
+                  <Progress value={totalUnits > 0 ? healthPercent : 100} className="h-2 rounded-full" />
                   <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                    <span>Quarantined: 120 Units (4 Lots)</span>
-                    <span className="font-semibold text-emerald-600">Grade ISI Compliant</span>
+                    <span>
+                      Quarantined: {quarantinedUnits.toLocaleString()} Units ({lotsCount} Lot{lotsCount === 1 ? "" : "s"})
+                    </span>
+                    <span className={`font-semibold ${totalUnits === 0 ? "text-muted-foreground" : "text-emerald-600"}`}>
+                      {totalUnits === 0 ? "Awaiting Receipts" : "Grade ISI Compliant"}
+                    </span>
                   </div>
                 </div>
               </SectionCard>
@@ -2184,37 +2223,19 @@ function GrnPageWorkflow() {
                     grnRecords.length > 0
                       ? grnRecords.slice(0, 4).map((r, idx) => ({
                           time: r.receipt_date || "Today",
-                          title: `${r.grn_number || `GRN-000${idx + 1}`} · ${r.supplier_name || "Supplier"}`,
-                          detail: `PO ${r.po_number || "N/A"} · ${r.vehicle_number || "Dock arrival"}`,
+                          title: `${r.grn_number || `GRN-000${idx + 1}`} · ${r.supplier_name || r.supplier_company_name || "Supplier"}`,
+                          detail: `PO ${r.po_number || "—"} · ${r.vehicle_number || "Dock arrival"}`,
                           tone: r.status === "COMPLETED" ? "success" : r.status === "PARTIALLY COMPLETED" ? "warning" : "primary",
                         }))
-                      : [
-                          {
-                            time: "Just now",
-                            title: "GRN-2026-0001 · ABC Supplier Ltd",
-                            detail: "PO-1001 · Dock DOCK-02 (COMPLETED)",
-                            tone: "success",
-                          },
-                          {
-                            time: "15m ago",
-                            title: "GRN-2026-0002 · XYZ Industrial Supplies",
-                            detail: "PO-1002 · Dock DOCK-01 (PARTIALLY COMPLETED)",
-                            tone: "warning",
-                          },
-                          {
-                            time: "1h ago",
-                            title: "GRN-2026-0003 · SteelCo India Ltd",
-                            detail: "PO-1003 · Dock DOCK-03 (COMPLETED)",
-                            tone: "primary",
-                          },
-                        ]
+                      : []
                   }
                 />
               </SectionCard>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 📋 RECORDS OVERVIEW TAB */}
       {activeTab === "records" && (
@@ -2302,11 +2323,11 @@ function GrnPageWorkflow() {
                     .filter((r) => isRecordMatchingSearch(r, searchTerm) && isRecordMatchingStatus(r.status, recordsStatusFilter))
                     .map((r, idx) => {
                       const grnKey = r.id || r.grn_id || r.grn_number || `grn_rec_${idx}`;
-                      const grnNumber = r.grn_number || "GRN-20260901-0001";
-                      const poNumber = r.po_number || "PO-2026-0001";
-                      const supplierName = r.supplier_name || r.supplier_company_name || "Supplier";
-                      const dockNumber = r.dock_number ? (r.dock_number.startsWith("Dock") ? r.dock_number : `Dock ${r.dock_number}`) : "Dock DOCK-01";
-                      const vehicleNumber = r.vehicle_number || "KA-04-MB-7777";
+                      const grnNumber = r.grn_number || "—";
+                      const poNumber = r.po_number || "—";
+                      const supplierName = r.supplier_name || r.supplier_company_name || "—";
+                      const dockNumber = r.dock_number ? (r.dock_number.startsWith("Dock") ? r.dock_number : `Dock ${r.dock_number}`) : "—";
+                      const vehicleNumber = r.vehicle_number || "—";
                       const driverName = r.driver_name ? `(${r.driver_name})` : "";
                       const receiptDate = formatCardDate(r.receipt_date || r.created_at);
                       const receivedBy = r.received_by ? `(${r.received_by})` : "";
@@ -2384,7 +2405,7 @@ function GrnPageWorkflow() {
                               className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
                               onClick={() => {
                                 setSelectedGrnDetail(r);
-                                setNotifyVendorEmail(r.supplier_email || "spoorthiharakuni@gmail.com");
+                                setNotifyVendorEmail(r.supplier_email || "");
                                 setGrnId(r.grn_id || r.id || r.grn_number || "");
                                 setShowNotifyVendorModal(true);
                               }}
@@ -2549,13 +2570,13 @@ function GrnPageWorkflow() {
                   {/* 2. Supplier Name */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">2. Supplier Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_name || "ABC Supplier"}</p>
+                    <p className="text-sm font-bold text-foreground">{header.supplier_name || "—"}</p>
                   </div>
 
                   {/* 3. Supplier Company Name */}
                   <div className="rounded-xl border bg-muted/10 p-3 md:col-span-2">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">3. Supplier Company Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_company_name || "ABC Industrial Supplies Pvt. Ltd."}</p>
+                    <p className="text-sm font-bold text-foreground">{header.supplier_company_name || header.supplier_name || "—"}</p>
                   </div>
                 </div>
               </Card>
@@ -3390,7 +3411,7 @@ function GrnPageWorkflow() {
                                   Purchase Order (PO) Document Copy
                                 </span>
                                 <span className="text-[10px] text-muted-foreground block">
-                                  Compulsory PO authorization copy for PO {header.po_number || "PO-1001"}
+                                  Compulsory PO authorization copy for PO {header.po_number || "—"}
                                 </span>
                               </div>
                             </div>
@@ -3754,7 +3775,7 @@ function GrnPageWorkflow() {
                     <div className="flex items-center gap-2">
                       <Button
                         onClick={() => {
-                          setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
+                          setNotifyVendorEmail(header.supplier_email || "");
                           setShowNotifyVendorModal(true);
                         }}
                         className="rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
@@ -3857,7 +3878,7 @@ function GrnPageWorkflow() {
                             size="sm"
                             className="col-span-2 w-full rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                             onClick={() => {
-                              setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
+                              setNotifyVendorEmail(header.supplier_email || "");
                               setShowNotifyVendorModal(true);
                             }}
                           >
@@ -3880,16 +3901,7 @@ function GrnPageWorkflow() {
                     try {
                       // Rule: (Good Qty + Damaged Qty) >= PO Qty for ALL materials => COMPLETED
                       //       (Good Qty + Damaged Qty) < PO Qty for ANY material => PARTIALLY COMPLETED
-                      const currentMaterials = materials.length > 0 ? materials : [
-                        {
-                          item_code: "MAT-STEEL-001",
-                          material_name: "High-Tensile Steel Coil 2mm",
-                          po_quantity: 100,
-                          good_quantity: 90,
-                          damaged_quantity: 10,
-                          uom: "MT",
-                        },
-                      ];
+                      const currentMaterials = materials;
 
                       const processedMaterials = currentMaterials.map((m) => {
                         const good = Number(m.good_quantity) || 0;
@@ -3915,17 +3927,17 @@ function GrnPageWorkflow() {
                       const newRecord = {
                         grn_id: grnId || grnNumber,
                         grn_number: grnNumber,
-                        po_number: header.po_number || "PO-1001",
-                        supplier_name: header.supplier_name || header.supplier_company_name || "ABC Supplier Ltd",
-                        supplier_company_name: header.supplier_company_name || header.supplier_name || "ABC Supplier Ltd",
-                        supplier_email: header.supplier_email || "spoorthiharakuni@gmail.com",
-                        vehicle_number: header.vehicle_number || "KA01EQ9921",
-                        driver_name: header.driver_name || "Obaiah",
-                        dock_number: header.receiving_dock || "DOCK-01",
+                        po_number: header.po_number || "",
+                        supplier_name: header.supplier_name || header.supplier_company_name || "",
+                        supplier_company_name: header.supplier_company_name || header.supplier_name || "",
+                        supplier_email: header.supplier_email || "",
+                        vehicle_number: header.vehicle_number || "",
+                        driver_name: header.driver_name || "",
+                        dock_number: header.receiving_dock || "",
                         status: computedStatus,
                         receipt_date: new Date().toISOString().split("T")[0],
                         created_at: new Date().toISOString(),
-                        received_by: loggedInUserName || "Officer Obaiah",
+                        received_by: loggedInUserName || "Warehouse Officer",
                         materials: processedMaterials,
                       };
 
@@ -3964,7 +3976,7 @@ function GrnPageWorkflow() {
 
                         try {
                           const res = await api.notifyVendorDamage(targetId, {
-                            supplier_email: header.supplier_email || "spoorthiharakuni@gmail.com",
+                            supplier_email: header.supplier_email || notifyVendorEmail || "",
                             custom_remarks: "Automated damaged goods report dispatched on GRN completion.",
                             notify_procurement: true,
                             photo_ids: currentPhotoIds,
@@ -4400,7 +4412,7 @@ function GrnPageWorkflow() {
                     }
 
                     const res = await api.notifyVendorDamage(targetGrnId, {
-                      supplier_email: notifyVendorEmail || "spoorthiharakuni@gmail.com",
+                      supplier_email: notifyVendorEmail || header.supplier_email || "",
                       custom_remarks: notifyVendorRemarks || "",
                       notify_procurement: true,
                       photo_ids: currentPhotoIds,
@@ -4434,7 +4446,7 @@ function GrnPageWorkflow() {
             <DialogHeader className="border-b pb-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono font-bold text-primary px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
-                  {selectedGrnDetail.grn_number || "GRN-20260901-0001"}
+                  {selectedGrnDetail.grn_number || "—"}
                 </span>
                 <StatusBadge status={selectedGrnDetail.status || "COMPLETED"} />
               </div>
@@ -4442,7 +4454,7 @@ function GrnPageWorkflow() {
                 Goods Receipt Note Breakdown & Reconciliation
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                PO Reference: <b>{selectedGrnDetail.po_number || "PO-2026-0001"}</b> • Supplier: <b>{selectedGrnDetail.supplier_name || selectedGrnDetail.supplier_company_name || "Supplier"}</b>
+                PO Reference: <b>{selectedGrnDetail.po_number || "—"}</b> • Supplier: <b>{selectedGrnDetail.supplier_name || selectedGrnDetail.supplier_company_name || "—"}</b>
               </DialogDescription>
             </DialogHeader>
 
@@ -4471,20 +4483,20 @@ function GrnPageWorkflow() {
                 <b className="text-foreground">
                   {selectedGrnDetail.dock_number 
                     ? (selectedGrnDetail.dock_number.startsWith("Dock") ? selectedGrnDetail.dock_number : `Dock ${selectedGrnDetail.dock_number}`)
-                    : "Dock DOCK-01"}
+                    : "—"}
                 </b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Vehicle Reg</span>
-                <b className="text-foreground">{selectedGrnDetail.vehicle_number || "KA-04-MB-7777"}</b>
+                <b className="text-foreground">{selectedGrnDetail.vehicle_number || "—"}</b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Driver Name</span>
-                <b className="text-foreground">{selectedGrnDetail.driver_name || "Ramesh Kumar"}</b>
+                <b className="text-foreground">{selectedGrnDetail.driver_name || "—"}</b>
               </div>
               <div>
                 <span className="text-muted-foreground block text-[10px] uppercase font-sans font-bold">Received By</span>
-                <b className="text-foreground">{selectedGrnDetail.received_by || "localdev"}</b>
+                <b className="text-foreground">{selectedGrnDetail.received_by || "—"}</b>
               </div>
             </div>
 
@@ -4666,7 +4678,7 @@ function GrnPageWorkflow() {
                 Document Preview: {viewingDocumentModal.file_name}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Inbound Quality & Regulatory Attachment • PO: {header.po_number || "PO-1001"} • GRN: {header.grn_number || "GRN-2026-0001"}
+                Inbound Quality & Regulatory Attachment • PO: {header.po_number || "—"} • GRN: {header.grn_number || "—"}
               </DialogDescription>
             </DialogHeader>
 
@@ -4698,7 +4710,7 @@ function GrnPageWorkflow() {
                   </div>
                   <div className="max-w-md mx-auto p-4 rounded-xl bg-slate-900 border border-slate-800 text-left text-xs font-mono space-y-1.5 text-slate-300">
                     <div><b>Document Section:</b> {viewingDocumentModal.category}</div>
-                    <div><b>GRN Reference:</b> {header.grn_number || "GRN-2026-0001"}</div>
+                    <div><b>GRN Reference:</b> {header.grn_number || "—"}</div>
                     <div><b>Uploaded By:</b> {loggedInUserName}</div>
                     <div><b>Timestamp:</b> {new Date().toLocaleString()}</div>
                     <div><b>Security Hash:</b> SHA256-AUTHENTICATED</div>
