@@ -2781,7 +2781,6 @@ async def get_user_navigation(
             "items": [
                 {"label": "GRN Operations Dashboard", "to": "/grn", "search": {"tab": "dashboard"}, "icon": "LayoutDashboard"},
                 {"label": "GRN Records History", "to": "/grn", "search": {"tab": "records"}, "icon": "ClipboardList"},
-                {"label": "Header Details & Entry", "to": "/grn", "search": {"tab": "wizard", "page": 1}, "icon": "ShieldCheck"},
                 {"label": "Material Receiving", "to": "/grn", "search": {"tab": "wizard", "page": 2}, "icon": "PackageCheck"},
                 {"label": "Quality & Photos", "to": "/grn", "search": {"tab": "wizard", "page": 3}, "icon": "AlertTriangle"},
                 {"label": "Batch Allocation", "to": "/grn", "search": {"tab": "wizard", "page": 4}, "icon": "Boxes"},
@@ -4089,7 +4088,6 @@ async def check_upcoming_arrivals():
                 )
                 session.add(new_notif)
                 logger.info(f"Generated 5-day arrival reminder for ASN {asn.asn_number}")
-
 
     except Exception as e:
         logger.error(f"Background arrival check failed: {e}")

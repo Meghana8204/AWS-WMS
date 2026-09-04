@@ -44,7 +44,6 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/
 const grnNav = [
   { label: "GRN Operations Dashboard", to: "/grn", search: { tab: "dashboard" }, icon: LayoutDashboard },
   { label: "GRN Records History", to: "/grn", search: { tab: "records" }, icon: ClipboardList },
-  { label: "Header Details & Entry", to: "/grn", search: { tab: "wizard", page: 1 }, icon: ShieldCheck },
   { label: "Material Receiving", to: "/grn", search: { tab: "wizard", page: 2 }, icon: PackageCheck },
   { label: "Quality & Photos", to: "/grn", search: { tab: "wizard", page: 3 }, icon: AlertTriangle },
   { label: "Batch Allocation", to: "/grn", search: { tab: "wizard", page: 4 }, icon: Boxes },

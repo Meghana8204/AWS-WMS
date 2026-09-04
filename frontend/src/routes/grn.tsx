@@ -1291,23 +1291,23 @@ function GrnPageWorkflow() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Total GRN receipts"
-              value={loadingRecords ? "..." : String(grnRecords.length || 48)}
-              delta="+12.5% vs last month"
+              value={loadingRecords ? "..." : String(grnRecords.length)}
+              delta={grnRecords.length > 0 ? `${grnRecords.length} recorded receipts` : "No receipts recorded"}
               icon={ClipboardList}
               tone="primary"
               to="/grn"
             />
             <StatCard
               label="Fully completed"
-              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "COMPLETED").length || 45)}
-              delta="100% sound lines posted"
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "COMPLETED").length)}
+              delta="Sound lines posted"
               icon={CheckCircle2}
               tone="success"
               to="/grn"
             />
             <StatCard
               label="Partially completed"
-              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "PARTIALLY COMPLETED").length || 3)}
+              value={loadingRecords ? "..." : String(grnRecords.filter((r) => r.status === "PARTIALLY COMPLETED" || r.status === "DRAFT").length)}
               delta="Pending balance receipts"
               icon={Clock3}
               tone="warning"
@@ -1315,8 +1315,8 @@ function GrnPageWorkflow() {
             />
             <StatCard
               label="Quarantine lots"
-              value="4 Lots"
-              delta="Zone A · Damage QR"
+              value={loadingRecords ? "..." : `${grnRecords.filter((r) => r.status === "REJECTED" || r.status === "QUARANTINE").length} Lots`}
+              delta="Damage QR / Quarantine"
               icon={AlertTriangle}
               tone="danger"
               to="/grn"
@@ -1428,44 +1428,11 @@ function GrnPageWorkflow() {
                           </tr>
                         ))}
                         {grnRecords.length === 0 && (
-                          <>
-                            <tr className="hover:bg-accent/40">
-                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0001</td>
-                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1001</td>
-                              <td className="px-4 py-3 font-medium text-foreground">ABC Supplier Ltd</td>
-                              <td className="px-4 py-3 font-mono text-muted-foreground">AP02AB1234</td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status="PARTIALLY COMPLETED" />
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-lg text-xs h-7"
-                                  onClick={() => {
-                                    setActiveTab("wizard");
-                                    setCurrentPage(grnId ? 2 : 1);
-                                  }}
-                                >
-                                  Open Entry
-                                </Button>
-                              </td>
-                            </tr>
-                            <tr className="hover:bg-accent/40">
-                              <td className="px-4 py-3 font-mono font-bold text-primary">GRN-2026-0002</td>
-                              <td className="px-4 py-3 font-mono font-semibold text-foreground">PO-1002</td>
-                              <td className="px-4 py-3 font-medium text-foreground">XYZ Industrial Supplies</td>
-                              <td className="px-4 py-3 font-mono text-muted-foreground">KA01EQ9921</td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status="COMPLETED" />
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <Button size="sm" variant="ghost" className="rounded-lg text-xs h-7 text-muted-foreground">
-                                  Posted
-                                </Button>
-                              </td>
-                            </tr>
-                          </>
+                          <tr>
+                            <td colSpan={6} className="p-8 text-center text-xs text-muted-foreground italic">
+                              No GRN receipts recorded yet. Click "New GRN Entry" to start receiving.
+                            </td>
+                          </tr>
                         )}
                       </tbody>
                     </table>
@@ -1502,12 +1469,27 @@ function GrnPageWorkflow() {
               <SectionCard title="Quality Inspection Health" icon={ShieldCheck}>
                 <div className="space-y-3">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-2xl font-bold font-mono tracking-tight text-emerald-600">99.3%</span>
-                    <span className="text-xs font-semibold text-muted-foreground">18,450 Sound Units</span>
+                    <span className="text-2xl font-bold font-mono tracking-tight text-emerald-600">
+                      {grnRecords.length > 0
+                        ? `${((grnRecords.filter((r) => r.status === "COMPLETED").length / grnRecords.length) * 100).toFixed(1)}%`
+                        : "0.0%"}
+                    </span>
+                    <span className="text-xs font-semibold text-muted-foreground">
+                      {grnRecords.length} Receipts Processed
+                    </span>
                   </div>
-                  <Progress value={99.3} className="h-2 rounded-full" />
+                  <Progress
+                    value={
+                      grnRecords.length > 0
+                        ? (grnRecords.filter((r) => r.status === "COMPLETED").length / grnRecords.length) * 100
+                        : 0
+                    }
+                    className="h-2 rounded-full"
+                  />
                   <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
-                    <span>Quarantined: 120 Units (4 Lots)</span>
+                    <span>
+                      Quarantined: {grnRecords.filter((r) => r.status === "REJECTED" || r.status === "QUARANTINE").length} Lots
+                    </span>
                     <span className="font-semibold text-emerald-600">Grade ISI Compliant</span>
                   </div>
                 </div>
@@ -1519,30 +1501,11 @@ function GrnPageWorkflow() {
                     grnRecords.length > 0
                       ? grnRecords.slice(0, 4).map((r, idx) => ({
                           time: r.receipt_date || "Today",
-                          title: `${r.grn_number || `GRN-000${idx + 1}`} · ${r.supplier_name || "Supplier"}`,
+                          title: `${r.grn_number || "GRN"} · ${r.supplier_name || "Supplier"}`,
                           detail: `PO ${r.po_number || "N/A"} · ${r.vehicle_number || "Dock arrival"}`,
                           tone: r.status === "COMPLETED" ? "success" : r.status === "PARTIALLY COMPLETED" ? "warning" : "primary",
                         }))
-                      : [
-                          {
-                            time: "Just now",
-                            title: "GRN-2026-0001 · ABC Supplier Ltd",
-                            detail: "PO-1001 · Dock DOCK-02 (COMPLETED)",
-                            tone: "success",
-                          },
-                          {
-                            time: "15m ago",
-                            title: "GRN-2026-0002 · XYZ Industrial Supplies",
-                            detail: "PO-1002 · Dock DOCK-01 (PARTIALLY COMPLETED)",
-                            tone: "warning",
-                          },
-                          {
-                            time: "1h ago",
-                            title: "GRN-2026-0003 · SteelCo India Ltd",
-                            detail: "PO-1003 · Dock DOCK-03 (COMPLETED)",
-                            tone: "primary",
-                          },
-                        ]
+                      : []
                   }
                 />
               </SectionCard>
