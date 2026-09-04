@@ -18,7 +18,14 @@ class GrnId:
 
     @staticmethod
     def of(value: str | uuid.UUID) -> "GrnId":
-        return GrnId(value if isinstance(value, uuid.UUID) else uuid.UUID(value))
+        if isinstance(value, uuid.UUID):
+            return GrnId(value)
+        try:
+            return GrnId(uuid.UUID(str(value).strip()))
+        except (ValueError, TypeError, AttributeError):
+            import hashlib
+            h = hashlib.md5(str(value).strip().encode("utf-8")).digest()
+            return GrnId(uuid.UUID(bytes=h))
 
     def __str__(self) -> str:
         return str(self.value)
@@ -30,7 +37,14 @@ class PurchaseOrderId:
 
     @staticmethod
     def of(value: str | uuid.UUID) -> "PurchaseOrderId":
-        return PurchaseOrderId(value if isinstance(value, uuid.UUID) else uuid.UUID(value))
+        if isinstance(value, uuid.UUID):
+            return PurchaseOrderId(value)
+        try:
+            return PurchaseOrderId(uuid.UUID(str(value).strip()))
+        except (ValueError, TypeError, AttributeError):
+            import hashlib
+            h = hashlib.md5(str(value).strip().encode("utf-8")).digest()
+            return PurchaseOrderId(uuid.UUID(bytes=h))
 
     def __str__(self) -> str:
         return str(self.value)
