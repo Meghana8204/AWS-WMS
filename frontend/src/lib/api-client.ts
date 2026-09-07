@@ -952,6 +952,18 @@ export const api = {
     });
   },
 
+  async getFinishedGoodsRequests(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/finished-goods-requests`);
+  },
+
+  async createFinishedGoodsRequest(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/finished-goods-requests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+
   async updateMaterialRequest(id: string, data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/material-requests/${id}`, {
       method: "PUT",
@@ -1191,9 +1203,17 @@ export const api = {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/quotations/${id}`);
   },
 
-  async getPurchaseOrders(search?: string, signal?: AbortSignal): Promise<any[]> {
-    const url = search
-      ? `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders?search=${encodeURIComponent(search)}`
+  async getPurchaseOrders(
+    searchOrOptions?: string | { search?: string; supplierId?: string },
+    signal?: AbortSignal,
+  ): Promise<any[]> {
+    const options = typeof searchOrOptions === "string" ? { search: searchOrOptions } : searchOrOptions;
+    const params = new URLSearchParams();
+    if (options?.search) params.set("search", options.search);
+    if (options?.supplierId) params.set("supplier_id", options.supplierId);
+    const query = params.toString();
+    const url = query
+      ? `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders?${query}`
       : `${BUSINESS_API_URL}/api/v1/procurement/purchase-orders`;
     return request<any[]>(url, { cache: "no-store", signal });
   },

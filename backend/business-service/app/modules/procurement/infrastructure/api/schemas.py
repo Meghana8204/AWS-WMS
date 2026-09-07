@@ -476,6 +476,46 @@ class MaterialRequestResponse(ApiModel):
     created_at: datetime
 
 
+class CreateFinishedGoodsRequest(ApiModel):
+    warehouse_id: str = Field(..., min_length=1, description="Warehouse identifier")
+    finished_goods_code: Optional[str] = None
+    finished_goods_name: str = Field(..., min_length=1, description="Finished goods name")
+    quantity: Decimal = Field(..., gt=0, description="Quantity must be strictly greater than zero")
+    uom: str = Field("PCS", min_length=1, description="Unit of measurement")
+    required_date: date
+    requested_by: str = Field(..., min_length=1, description="Requester user name")
+    remarks: Optional[str] = None
+
+    @field_validator("warehouse_id", "finished_goods_name", "requested_by", "uom")
+    @classmethod
+    def validate_required_text(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("Field cannot be empty")
+        return clean
+
+    @field_validator("uom")
+    @classmethod
+    def normalize_uom(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class FinishedGoodsRequestResponse(ApiModel):
+    id: str
+    request_number: str
+    warehouse_id: str
+    finished_goods_code: Optional[str] = None
+    finished_goods_name: str
+    quantity: Decimal
+    uom: str
+    required_date: date
+    requested_by: str
+    status: str
+    remarks: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class MaterialStockResponse(ApiModel):
     id: str
     material_id: Optional[str] = None

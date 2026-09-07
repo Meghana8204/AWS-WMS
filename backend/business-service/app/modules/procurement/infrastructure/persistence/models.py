@@ -492,6 +492,24 @@ class MaterialRequestItemModel(Base):
     variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
 
 
+class FinishedGoodsRequestModel(Base):
+    __tablename__ = "finished_goods_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    request_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    finished_goods_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    finished_goods_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+    required_date: Mapped[date] = mapped_column(Date, nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class StockReservationModel(Base):
     __tablename__ = "stock_reservation"
     __table_args__ = (UniqueConstraint("request_item_id", name="uq_stock_reservation_request_item"),)

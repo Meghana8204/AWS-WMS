@@ -52,6 +52,7 @@ import { Route as WarehouseDashboardRouteImport } from './routes/warehouse-dashb
 import { Route as WarehouseStorageRouteImport } from './routes/warehouse-storage'
 import { Route as FinanceApprovalsRouteImport } from './routes/finance.approvals'
 import { Route as ProcurementAsnsRouteImport } from './routes/procurement.asns'
+import { Route as ProcurementFinishedGoodsRouteImport } from './routes/procurement.finished-goods'
 import { Route as ProcurementMaterialRequestsRouteImport } from './routes/procurement.material-requests'
 import { Route as ProcurementNewRfqRouteImport } from './routes/procurement.new-rfq'
 import { Route as ProcurementPurchaseOrdersRouteImport } from './routes/procurement.purchase-orders'
@@ -289,6 +290,12 @@ const ProcurementAsnsRoute = ProcurementAsnsRouteImport.update({
   path: '/procurement/asns',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProcurementFinishedGoodsRoute =
+  ProcurementFinishedGoodsRouteImport.update({
+    id: '/procurement/finished-goods',
+    path: '/procurement/finished-goods',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ProcurementMaterialRequestsRoute =
   ProcurementMaterialRequestsRouteImport.update({
     id: '/procurement/material-requests',
@@ -420,6 +427,7 @@ export interface FileRoutesByFullPath {
   '/warehouse-storage': typeof WarehouseStorageRoute
   '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
   '/procurement/asns': typeof ProcurementAsnsRouteWithChildren
+  '/procurement/finished-goods': typeof ProcurementFinishedGoodsRoute
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
@@ -479,6 +487,7 @@ export interface FileRoutesByTo {
   '/vehicle-queue': typeof VehicleQueueRoute
   '/warehouse-dashboard': typeof WarehouseDashboardRoute
   '/warehouse-storage': typeof WarehouseStorageRoute
+  '/procurement/finished-goods': typeof ProcurementFinishedGoodsRoute
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
@@ -541,6 +550,7 @@ export interface FileRoutesById {
   '/warehouse-storage': typeof WarehouseStorageRoute
   '/finance/approvals': typeof FinanceApprovalsRouteWithChildren
   '/procurement/asns': typeof ProcurementAsnsRouteWithChildren
+  '/procurement/finished-goods': typeof ProcurementFinishedGoodsRoute
   '/procurement/material-requests': typeof ProcurementMaterialRequestsRoute
   '/procurement/new-rfq': typeof ProcurementNewRfqRoute
   '/procurement/purchase-orders': typeof ProcurementPurchaseOrdersRoute
@@ -604,6 +614,7 @@ export interface FileRouteTypes {
     | '/warehouse-storage'
     | '/finance/approvals'
     | '/procurement/asns'
+    | '/procurement/finished-goods'
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
@@ -663,6 +674,7 @@ export interface FileRouteTypes {
     | '/vehicle-queue'
     | '/warehouse-dashboard'
     | '/warehouse-storage'
+    | '/procurement/finished-goods'
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
@@ -724,6 +736,7 @@ export interface FileRouteTypes {
     | '/warehouse-storage'
     | '/finance/approvals'
     | '/procurement/asns'
+    | '/procurement/finished-goods'
     | '/procurement/material-requests'
     | '/procurement/new-rfq'
     | '/procurement/purchase-orders'
@@ -786,6 +799,7 @@ export interface RootRouteChildren {
   WarehouseStorageRoute: typeof WarehouseStorageRoute
   FinanceApprovalsRoute: typeof FinanceApprovalsRouteWithChildren
   ProcurementAsnsRoute: typeof ProcurementAsnsRouteWithChildren
+  ProcurementFinishedGoodsRoute: typeof ProcurementFinishedGoodsRoute
   ProcurementMaterialRequestsRoute: typeof ProcurementMaterialRequestsRoute
   ProcurementNewRfqRoute: typeof ProcurementNewRfqRoute
   ProcurementPurchaseOrdersRoute: typeof ProcurementPurchaseOrdersRoute
@@ -1102,6 +1116,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProcurementAsnsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/procurement/finished-goods': {
+      id: '/procurement/finished-goods'
+      path: '/procurement/finished-goods'
+      fullPath: '/procurement/finished-goods'
+      preLoaderRoute: typeof ProcurementFinishedGoodsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/procurement/material-requests': {
       id: '/procurement/material-requests'
       path: '/procurement/material-requests'
@@ -1290,6 +1311,7 @@ const rootRouteChildren: RootRouteChildren = {
   WarehouseStorageRoute: WarehouseStorageRoute,
   FinanceApprovalsRoute: FinanceApprovalsRouteWithChildren,
   ProcurementAsnsRoute: ProcurementAsnsRouteWithChildren,
+  ProcurementFinishedGoodsRoute: ProcurementFinishedGoodsRoute,
   ProcurementMaterialRequestsRoute: ProcurementMaterialRequestsRoute,
   ProcurementNewRfqRoute: ProcurementNewRfqRoute,
   ProcurementPurchaseOrdersRoute: ProcurementPurchaseOrdersRoute,

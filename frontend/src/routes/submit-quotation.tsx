@@ -261,7 +261,7 @@ function SubmitQuotation() {
 
   // Auto-save logic
   useEffect(() => {
-    if (!rfq || isLocked || loading || submitting) return;
+    if (!rfq || !supplierId || isLocked || loading || submitting) return;
 
     // Don't auto-save if form is empty/initial
     if (Object.keys(itemsData).length === 0) return;
@@ -309,6 +309,11 @@ function SubmitQuotation() {
 
   const handleSave = async (status: "SUBMITTED") => {
     if (!rfq || isLocked) return;
+    if (!supplierId) {
+      toast.error("Supplier session is missing. Please log out and sign in again.");
+      setShowSummaryModal(false);
+      return;
+    }
 
     // Validation for submission
     const lineCodes = Object.keys(itemsData);

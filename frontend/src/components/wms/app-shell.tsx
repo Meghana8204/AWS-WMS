@@ -70,12 +70,11 @@ const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
+  { label: "Finished Goods", to: "/procurement/finished-goods", icon: PackageCheck },
   { label: "RFQs", to: "/procurement/rfqs", icon: FileQuestion },
   { label: "Quotations", to: "/procurement/quotations", icon: FileBadge },
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
-  { label: "Quality Issues", to: "/procurement/quality-issues", icon: AlertTriangle },
-  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
 const supplierNav = [
@@ -97,7 +96,6 @@ const gateSecurityNav = [
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Unscheduled Arrivals", to: "/unscheduled-arrivals", icon: FileQuestion },
-  { label: "Replacement Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
 
 const assemblyNav = [
@@ -322,15 +320,24 @@ export function AppShell({
     };
   }, [path]);
 
+  const hasSupplierRole = mounted && !!user?.roles?.includes("SUPPLIER");
+  const hasFinanceRole = mounted && !!user?.roles?.includes("FINANCE");
+  const hasProcurementRole = mounted && !!user?.roles?.includes("PROCUREMENT");
+  const hasGateSecurityRole = mounted && !!user?.roles?.includes("GATE_SECURITY");
+  const hasAssemblyRole = mounted && !!user?.roles?.includes("ASSEMBLY_MANAGER");
   const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer");
   const isGrnRoute = path === "/grn" || path.startsWith("/grn");
   const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
-  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation" || path.startsWith("/supplier/");
+  const isSupplierRoute =
+    path === "/supplier-dashboard" ||
+    path === "/submit-quotation" ||
+    path.startsWith("/supplier/") ||
+    (path === "/damage-claims" && hasSupplierRole);
   const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
   const isGateSecurityRoute =
     path === "/gate-dashboard" ||
     path === "/gate-entry" ||
-    path === "/vehicle-exit" ||
+    (path === "/vehicle-exit" && hasGateSecurityRole) ||
     path === "/vehicle-queue" ||
     path === "/unscheduled-arrivals";
   const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
@@ -338,11 +345,17 @@ export function AppShell({
     path === "/warehouse-dashboard" ||
     [
       "/inventory",
-      "/warehouse-storage",
+      "/warehouse/materials",
       "/warehouse/material-requests",
-      "/notifications",
+      "/warehouse-storage",
+      "/putaway-tasks",
+      "/pick-tasks",
+      "/dock-management",
       "/receiving",
-    ].some((p) => path.startsWith(p));
+      "/notifications",
+    ].some((p) => path.startsWith(p)) ||
+    (path === "/vehicle-exit" && !hasGateSecurityRole) ||
+    (path === "/damage-claims" && !hasSupplierRole);
 
   const routeNav = (isGrnUser || isGrnRoute)
     ? grnNav
@@ -362,20 +375,20 @@ export function AppShell({
 
   const roleNav = isGrnUser
     ? grnNav
-    : user?.roles?.includes("SUPPLIER")
+    : hasSupplierRole
       ? supplierNav
-      : user?.roles?.includes("FINANCE")
+      : hasFinanceRole
         ? financeNav
-        : user?.roles?.includes("PROCUREMENT")
+        : hasProcurementRole
           ? procurementNav
-          : user?.roles?.includes("GATE_SECURITY")
+          : hasGateSecurityRole
             ? gateSecurityNav
-            : user?.roles?.includes("ASSEMBLY_MANAGER")
+            : hasAssemblyRole
               ? assemblyNav
               : warehouseNav;
 
   const fallbackNav = routeNav ?? (mounted ? roleNav : warehouseNav);
-  const activeNav = (isGrnRoute || isGrnUser) ? grnNav : (backendNav ?? fallbackNav);
+  const activeNav = (isGrnRoute || isGrnUser) ? grnNav : (routeNav ?? backendNav ?? fallbackNav);
 
   const fallbackModuleLabel = (isGrnRoute || isGrnUser)
     ? "GRN Operations"
@@ -390,7 +403,11 @@ export function AppShell({
             : isAssemblyRoute
               ? "Assembly Portal"
               : "Warehouse navigation";
-  const activeModuleLabel = (isGrnRoute || isGrnUser) ? "GRN Operations" : (backendModuleLabel ?? fallbackModuleLabel);
+  const activeModuleLabel = (isGrnRoute || isGrnUser)
+    ? "GRN Operations"
+    : routeNav
+      ? fallbackModuleLabel
+      : (backendModuleLabel ?? fallbackModuleLabel);
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");

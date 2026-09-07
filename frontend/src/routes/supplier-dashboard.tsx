@@ -40,6 +40,7 @@ function SupplierDashboard() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
   const [asns, setAsns] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [qualityIssues, setQualityIssues] = useState<any[]>([]);
 
   useEffect(() => {
@@ -62,16 +63,18 @@ function SupplierDashboard() {
     const fetchAllData = async () => {
       try {
         const sid = userInfo.supplierId || "";
-        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedQualityIssues] = await Promise.all([
+        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedPurchaseOrders, fetchedQualityIssues] = await Promise.all([
           api.getRfqs(sid),
           api.getQuotations(undefined, sid),
           api.getAsns(sid),
+          api.getPurchaseOrders({ supplierId: sid }),
           api.getQualityIssues(),
         ]);
 
         setRfqs(fetchedRfqs);
         setQuotations(fetchedQuotes);
         setAsns(fetchedAsns);
+        setPurchaseOrders(fetchedPurchaseOrders);
         setQualityIssues(fetchedQualityIssues);
       } catch (error: any) {
         toast.error("Error loading dashboard data: " + error.message);
@@ -98,6 +101,12 @@ function SupplierDashboard() {
   const rfqsPending = rfqs.filter((r) => !bidRfqIds.has(r.id)).length;
   const quotesSubmitted = quotations.length;
   const asnsDispatched = asns.length;
+  const asnsByPoId = asns.reduce<Record<string, any[]>>((groups, asn) => {
+    const key = asn.po_id || asn.poId || asn.po_number || asn.poNumber;
+    if (!key) return groups;
+    groups[String(key)] = [...(groups[String(key)] || []), asn];
+    return groups;
+  }, {});
 
   return (
     <AppShell title="Supplier Portal" subtitle={`Welcome back, ${username}`}>
@@ -356,12 +365,57 @@ function SupplierDashboard() {
           <TabsContent value="asns">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
-                <CardTitle className="text-base font-bold">Advance Shipping Notices</CardTitle>
+                <CardTitle className="text-base font-bold">Purchase Orders & Advance Shipping Notices</CardTitle>
                 <CardDescription className="text-xs">
-                  Track shipment transit notifications and vehicle arrivals.
+                  Create multiple shipment notices against the same purchase order and track dispatched ASNs.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="border-b border-border/60">
+                  {purchaseOrders.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No issued purchase orders available for ASN creation.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/60">
+                      {purchaseOrders.map((po, idx) => {
+                        const poAsns = [
+                          ...(asnsByPoId[String(po.id)] || []),
+                          ...(asnsByPoId[String(po.poNumber || po.po_number)] || []),
+                        ];
+                        return (
+                          <div
+                            key={po.id || `po-${idx}`}
+                            className="flex flex-col gap-4 p-5 transition-colors hover:bg-muted/10 lg:flex-row lg:items-center lg:justify-between"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="font-mono text-sm font-bold">{po.poNumber || po.po_number}</h4>
+                                <span className="rounded-full bg-primary-soft/40 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                                  {po.status}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>{po.items?.length || 0} items</span>
+                                <span>ASNs created: {poAsns.length}</span>
+                                <span>
+                                  Delivery: {po.expectedDeliveryDate || po.expected_delivery_date || "N/A"}
+                                </span>
+                              </div>
+                            </div>
+                            <Button asChild size="sm" className="rounded-xl text-xs">
+                              <Link to="/supplier/asns/new" search={{ poId: po.id }}>
+                                <Plus className="mr-1.5 size-3.5" />
+                                {poAsns.length > 0 ? "Add ASN" : "Create ASN"}
+                              </Link>
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {asns.length === 0 ? (
                   <div className="p-8 text-center text-xs text-muted-foreground">
                     No ASNs dispatched.
