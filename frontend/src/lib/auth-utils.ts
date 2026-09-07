@@ -92,6 +92,17 @@ export function getDefaultRouteForUser(user = getUserInfo()): string {
   if (user?.roles.includes("GATE_SECURITY")) return "/gate-entry";
   if (user?.roles.includes("SUPPLIER")) return "/submit-quotation";
   if (user?.roles.includes("ASSEMBLY_MANAGER")) return "/assembly-dashboard";
+  if (
+    user?.roles.includes("GRN") ||
+    user?.roles.includes("GRN_MANAGER") ||
+    user?.roles.includes("OPERATIONS_MANAGER") ||
+    user?.roles.includes("OPERATIONS") ||
+    user?.roles.includes("RECEIVING") ||
+    user?.username?.toLowerCase() === "grn" ||
+    user?.username?.toLowerCase()?.includes("grn")
+  ) {
+    return "/grn";
+  }
   return "/warehouse-dashboard";
 }
 

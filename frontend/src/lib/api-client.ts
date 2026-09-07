@@ -122,7 +122,10 @@ export const api = {
       const isFinance = username.toLowerCase().includes("finance");
       const isWarehouse = username.toLowerCase().includes("warehouse");
       const isGate = username.toLowerCase().includes("gate");
-      const isGrn = username.toLowerCase().includes("grn") || username.toLowerCase().includes("receiving");
+      const isGrn =
+        username.toLowerCase().includes("grn") ||
+        username.toLowerCase().includes("receiving") ||
+        username.toLowerCase().includes("operations");
       const mockUser = {
         token: isFinance
           ? "mock-jwt-finance-token"
@@ -578,12 +581,14 @@ export const api = {
   async getGrn(grnId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
   },
-  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
+  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string; vehicleNumber?: string; receiptType?: string }, poId?: string, gateEntryId?: string): Promise<any> {
     const params = new URLSearchParams();
     if (typeof input === "object" && input !== null) {
       if (input.poNumber) params.set("po_number", input.poNumber);
       if (input.poId) params.set("po_id", input.poId);
       if (input.gateEntryId) params.set("gate_entry_id", input.gateEntryId);
+      if (input.vehicleNumber) params.set("vehicle_number", input.vehicleNumber);
+      if (input.receiptType) params.set("receipt_type", input.receiptType);
     } else if (typeof input === "string") {
       params.set("po_number", input);
       if (poId) params.set("po_id", poId);

@@ -96,6 +96,75 @@ def _string_or_none(value: object | None) -> str | None:
     return str(value)
 
 
+def _is_uuid_string(val: str | None) -> bool:
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val).strip())
+        return True
+    except Exception:
+        return False
+
+
+async def _resolve_real_supplier_names(
+    session: AsyncSession,
+    po_id: str | uuid.UUID | None = None,
+    po_number: str | None = None,
+    raw_supplier_name: str | None = None,
+    raw_supplier_company: str | None = None,
+    is_unexpected: bool = False,
+) -> tuple[str, str]:
+    supplier_name = (raw_supplier_name or "").strip()
+    supplier_company = (raw_supplier_company or "").strip()
+
+    # If supplier_name is a valid human name, keep it
+    if supplier_name and not _is_uuid_string(supplier_name) and supplier_name.lower() not in ("none", "null", "unknown"):
+        if not supplier_company or _is_uuid_string(supplier_company):
+            supplier_company = supplier_name
+        return supplier_name, supplier_company
+
+    # 1. Try resolving via PurchaseOrderModel
+    if po_number or po_id:
+        po_cond = (PurchaseOrderModel.po_number == str(po_number).strip()) if po_number else (PurchaseOrderModel.id == _uuid_or_none(po_id))
+        po_res = await session.execute(select(PurchaseOrderModel).where(po_cond))
+        po_obj = po_res.scalars().first()
+        if po_obj:
+            if po_obj.supplier_name and not _is_uuid_string(po_obj.supplier_name):
+                supplier_name = po_obj.supplier_name
+            if po_obj.supplier_id:
+                sup_res = await session.execute(select(SupplierModel).where(SupplierModel.id == po_obj.supplier_id))
+                sup_obj = sup_res.scalars().first()
+                if sup_obj:
+                    supplier_name = sup_obj.supplier_name or supplier_name
+                    supplier_company = sup_obj.registered_company_name or sup_obj.supplier_name or supplier_company
+
+    # 2. Try resolving via UUID lookup on SupplierModel
+    if (not supplier_name or _is_uuid_string(supplier_name)) and raw_supplier_name and _is_uuid_string(raw_supplier_name):
+        sup_uuid = _uuid_or_none(raw_supplier_name)
+        if sup_uuid:
+            sup_res = await session.execute(select(SupplierModel).where(SupplierModel.id == sup_uuid))
+            sup_obj = sup_res.scalars().first()
+            if sup_obj:
+                supplier_name = sup_obj.supplier_name
+                supplier_company = sup_obj.registered_company_name or sup_obj.supplier_name
+
+    if (not supplier_company or _is_uuid_string(supplier_company)) and raw_supplier_company and _is_uuid_string(raw_supplier_company):
+        sup_uuid = _uuid_or_none(raw_supplier_company)
+        if sup_uuid:
+            sup_res = await session.execute(select(SupplierModel).where(SupplierModel.id == sup_uuid))
+            sup_obj = sup_res.scalars().first()
+            if sup_obj:
+                supplier_company = sup_obj.registered_company_name or sup_obj.supplier_name
+
+    # 3. Fallbacks
+    if not supplier_name or _is_uuid_string(supplier_name):
+        supplier_name = "Unexpected Supplier" if is_unexpected else "Supplier"
+    if not supplier_company or _is_uuid_string(supplier_company):
+        supplier_company = "Unexpected Delivery" if is_unexpected else supplier_name
+
+    return supplier_name, supplier_company
+
+
 # ============================================================================
 # REPOSITORY
 # ============================================================================
@@ -193,10 +262,14 @@ class SqlAlchemyGrnRepository(GrnRepository):
             )
 
         supplier_company_name: str | None = None
+        supplier_email: str | None = entity.supplier_email
+        supplier_contact_person: str | None = entity.supplier_contact_person
 
         if entity.supplier_id is not None:
             supplier_result = await self._session.execute(
-                select(SupplierModel).where(
+                select(SupplierModel)
+                .options(selectinload(SupplierModel.contact))
+                .where(
                     (SupplierModel.id == entity.supplier_id) | (SupplierModel.id == str(entity.supplier_id))
                 )
             )
@@ -205,6 +278,23 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
             if supplier is not None:
                 supplier_company_name = getattr(supplier, 'registered_company_name', None) or getattr(supplier, 'supplier_name', None)
+                if getattr(supplier, "contact", None) and supplier.contact:
+                    supplier_email = supplier.contact.primary_email or supplier.contact.secondary_email or supplier_email
+                    supplier_contact_person = supplier.contact.primary_contact_name or supplier_contact_person
+
+        if not supplier_email and (entity.supplier_name or supplier_company_name):
+            sup_res2 = await self._session.execute(
+                select(SupplierModel)
+                .options(selectinload(SupplierModel.contact))
+                .where(
+                    (SupplierModel.supplier_name.ilike(entity.supplier_name or "")) |
+                    (SupplierModel.registered_company_name.ilike(supplier_company_name or ""))
+                )
+            )
+            sup2 = sup_res2.scalars().first()
+            if sup2 and getattr(sup2, "contact", None) and sup2.contact:
+                supplier_email = sup2.contact.primary_email or sup2.contact.secondary_email or supplier_email
+                supplier_contact_person = sup2.contact.primary_contact_name or supplier_contact_person
 
         return PurchaseOrderSnapshot(
             id=PurchaseOrderId.of(entity.id),
@@ -216,6 +306,8 @@ class SqlAlchemyGrnRepository(GrnRepository):
             supplier_company_name=(
                 supplier_company_name or entity.supplier_name or ""
             ),
+            supplier_email=supplier_email,
+            supplier_contact_person=supplier_contact_person,
             warehouse_id=entity.warehouse_id,
             warehouse_name=entity.delivery_warehouse_name or "Main Warehouse",
             expected_delivery_date=entity.expected_delivery_date,
@@ -409,6 +501,44 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         return self._to_gate_entry_snapshot(entity)
 
+    async def find_gate_entry_by_id(
+        self,
+        gate_entry_id: str,
+    ) -> Optional[GateEntrySnapshot]:
+        gate_uuid = _uuid_or_none(gate_entry_id)
+        if gate_uuid is None:
+            return None
+
+        result = await self._session.execute(
+            select(GateEntryModel).where(GateEntryModel.id == gate_uuid).limit(1)
+        )
+        entity = result.scalar_one_or_none()
+        if entity is None:
+            return None
+        return self._to_gate_entry_snapshot(entity)
+
+    async def find_latest_gate_entry_for_vehicle(
+        self,
+        vehicle_number: str,
+    ) -> Optional[GateEntrySnapshot]:
+        normalized = vehicle_number.strip()
+        if not normalized:
+            return None
+
+        result = await self._session.execute(
+            select(GateEntryModel)
+            .where(GateEntryModel.vehicle_number.ilike(normalized))
+            .order_by(
+                GateEntryModel.created_at.desc(),
+                GateEntryModel.id.desc(),
+            )
+            .limit(1)
+        )
+        entity = result.scalar_one_or_none()
+        if entity is None:
+            return None
+        return self._to_gate_entry_snapshot(entity)
+
     @staticmethod
     def _to_gate_entry_snapshot(
         entity: GateEntryModel,
@@ -502,7 +632,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
     async def list_docks_for_warehouse(
         self,
-        warehouse_id: str,
+        warehouse_id: str | None = None,
     ) -> list[WarehouseDockSnapshot]:
         """
         Return valid dock options.
@@ -514,20 +644,12 @@ class SqlAlchemyGrnRepository(GrnRepository):
         Crucially, this does not copy Gate Entry assigned_dock_id into GRN.
         """
 
-        normalized = warehouse_id.strip()
+        stmt = select(DockModel).where(DockModel.status != "MAINTENANCE")
+        if warehouse_id and warehouse_id.strip():
+            stmt = stmt.where(DockModel.warehouse_id == warehouse_id.strip())
 
-        if not normalized:
-            return []
-
-        result = await self._session.execute(
-            select(DockModel)
-            .where(
-                DockModel.warehouse_id == normalized,
-                DockModel.status != "MAINTENANCE",
-            )
-            .order_by(DockModel.dock_number.asc())
-        )
-
+        stmt = stmt.order_by(DockModel.dock_number.asc())
+        result = await self._session.execute(stmt)
         docks = result.scalars().all()
 
         return [
@@ -661,8 +783,11 @@ class SqlAlchemyGrnRepository(GrnRepository):
         *,
         receipt_type: str,
         dock_number: str,
+        grn_id: str | None = None,
         po_id: str | None = None,
         po_number: str | None = None,
+        gate_entry_id: str | None = None,
+        gate_entry_number: str | None = None,
         invoice_number: str | None = None,
         supplier_name: str | None = None,
         supplier_company_name: str | None = None,
@@ -674,10 +799,20 @@ class SqlAlchemyGrnRepository(GrnRepository):
         verification_notes: str | None = None,
     ) -> GrnModel:
         now = datetime.now(timezone.utc)
-        grn_uuid: uuid.UUID | None = None
+        grn_uuid: uuid.UUID | None = _uuid_or_none(grn_id) if grn_id else None
         existing: GrnModel | None = None
+        is_unexpected = receipt_type == "UNEXPECTED_DELIVERY"
 
-        if po_id or po_number:
+        resolved_sup_name, resolved_sup_company = await _resolve_real_supplier_names(
+            self._session,
+            po_id=po_id,
+            po_number=po_number,
+            raw_supplier_name=supplier_name,
+            raw_supplier_company=supplier_company_name,
+            is_unexpected=is_unexpected,
+        )
+
+        if not grn_uuid and (po_id or po_number):
             existing_snapshot = await self.find_grn_header_by_po(po_id=po_id, po_number=po_number)
             if existing_snapshot:
                 grn_uuid = _uuid_or_none(existing_snapshot.id)
@@ -690,14 +825,22 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         if existing:
             existing.dock_number = dock_number
-            if invoice_number: existing.invoice_number = invoice_number
-            if supplier_name: existing.supplier_name = supplier_name
-            if supplier_company_name: existing.supplier_company_name = supplier_company_name
-            if warehouse_id: existing.warehouse_id = warehouse_id
-            if warehouse_name: existing.warehouse_name = warehouse_name
-            if vehicle_number: existing.vehicle_number = vehicle_number
-            if driver_name: existing.driver_name = driver_name
-            if verification_notes: existing.verification_notes = verification_notes
+            existing.receipt_type = receipt_type
+            if receipt_type == "UNEXPECTED_DELIVERY":
+                existing.po_id = None
+                existing.po_number = None
+                existing.asn_id = None
+                existing.asn_number = None
+            if invoice_number is not None: existing.invoice_number = invoice_number
+            existing.supplier_name = resolved_sup_name
+            existing.supplier_company_name = resolved_sup_company
+            if warehouse_id is not None: existing.warehouse_id = warehouse_id
+            if warehouse_name is not None: existing.warehouse_name = warehouse_name
+            if vehicle_number is not None: existing.vehicle_number = vehicle_number
+            if driver_name is not None: existing.driver_name = driver_name
+            if gate_entry_id is not None: existing.gate_entry_id = _uuid_or_none(gate_entry_id)
+            if gate_entry_number is not None: existing.gate_entry_number = gate_entry_number
+            if verification_notes is not None: existing.verification_notes = verification_notes
             existing.updated_at = now
             await self._session.flush()
             return existing
@@ -707,18 +850,18 @@ class SqlAlchemyGrnRepository(GrnRepository):
         total_count = len(count_res.scalars().all()) + 1
         grn_num = f"GRN-{datestr}-{total_count:04d}"
 
-        po_uuid = _uuid_or_none(po_id)
+        po_uuid = None if is_unexpected else _uuid_or_none(po_id)
+        po_num_val = None if is_unexpected else po_number
         asn_id_val: uuid.UUID | None = None
         asn_num_val: str | None = None
-        gate_id_val: uuid.UUID | None = None
-        gate_num_val: str | None = None
+        gate_id_val: uuid.UUID | None = _uuid_or_none(gate_entry_id) if gate_entry_id else None
+        gate_num_val: str | None = gate_entry_number
 
-        if po_uuid or po_number:
+        if not is_unexpected and (po_uuid or po_number):
             asn = await self.find_latest_asn_for_po(po_id=po_id, po_number=po_number)
             if asn:
                 asn_id_val = _uuid_or_none(asn.id)
                 asn_num_val = asn.asn_number
-                supplier_name = supplier_name or asn.supplier_id
                 vehicle_number = vehicle_number or asn.vehicle_number
                 driver_name = driver_name or asn.driver_name
                 warehouse_id = warehouse_id or asn.warehouse_id
@@ -727,8 +870,14 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     gate_id_val = _uuid_or_none(gate.id)
                     gate_num_val = gate.gate_entry_number
 
-        if not gate_id_val and po_number:
+        if not is_unexpected and not gate_id_val and po_number:
             gate = await self.find_latest_gate_entry_for_po(po_number)
+            if gate:
+                gate_id_val = _uuid_or_none(gate.id)
+                gate_num_val = gate.gate_entry_number
+
+        if is_unexpected and not gate_id_val and vehicle_number:
+            gate = await self.find_latest_gate_entry_for_vehicle(vehicle_number)
             if gate:
                 gate_id_val = _uuid_or_none(gate.id)
                 gate_num_val = gate.gate_entry_number
@@ -736,14 +885,14 @@ class SqlAlchemyGrnRepository(GrnRepository):
         new_grn = GrnModel(
             id=uuid.uuid4(),
             po_id=po_uuid,
-            po_number=po_number,
+            po_number=po_num_val,
             grn_number=grn_num,
             asn_id=asn_id_val,
             asn_number=asn_num_val,
             gate_entry_id=gate_id_val,
             gate_entry_number=gate_num_val,
-            supplier_name=supplier_name or "Supplier",
-            supplier_company_name=supplier_company_name or supplier_name or "Supplier Co",
+            supplier_name=resolved_sup_name,
+            supplier_company_name=resolved_sup_company,
             warehouse_id=warehouse_id or "WH-MAIN",
             warehouse_name=warehouse_name or "Main Warehouse",
             dock_number=dock_number,
@@ -759,7 +908,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
             updated_at=now,
         )
 
-        if po_uuid or po_number:
+        if not is_unexpected and (po_uuid or po_number):
             po_snap = None
             if po_uuid:
                 try:
@@ -769,6 +918,9 @@ class SqlAlchemyGrnRepository(GrnRepository):
             if not po_snap and po_number:
                 po_snap = await self.find_purchase_order_by_number(po_number)
             if po_snap:
+                if not new_grn.supplier_name or _is_uuid_string(new_grn.supplier_name):
+                    new_grn.supplier_name = po_snap.supplier_name
+                    new_grn.supplier_company_name = po_snap.supplier_company_name or po_snap.supplier_name
                 for line in po_snap.lines:
                     new_grn.lines.append(
                         GrnLineModel(
@@ -803,9 +955,13 @@ class SqlAlchemyGrnRepository(GrnRepository):
         if not grn:
             raise ValueError(f"GRN not found: {grn_id}")
 
+        is_unexpected = grn.receipt_type == "UNEXPECTED_DELIVERY"
         line_map = {l.item_code: l for l in grn.lines}
+        submitted_codes = set()
+
         for item in lines_data:
             code = item["item_code"]
+            submitted_codes.add(code)
             if item.get("received_quantity") is not None:
                 received = Decimal(str(item["received_quantity"]))
                 good = Decimal(str(item["good_quantity"])) if item.get("good_quantity") is not None else received
@@ -817,13 +973,22 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
             if code in line_map:
                 line = line_map[code]
+                if item.get("material_name"): line.material_name = item["material_name"]
+                if item.get("material_category"): line.material_category = item["material_category"]
+                if item.get("variant_code"): line.variant_code = item["variant_code"]
+                if item.get("uom"): line.uom = item["uom"]
                 line.received_quantity = received
                 line.good_quantity = good
                 line.damaged_quantity = damaged
-                ordered = line.ordered_quantity or Decimal("0")
-                line.balance_quantity = max(ordered - received, Decimal("0"))
+                line.quality_approved_quantity = good
+                if is_unexpected:
+                    line.ordered_quantity = None
+                    line.balance_quantity = Decimal("0")
+                else:
+                    ordered = line.ordered_quantity or Decimal("0")
+                    line.balance_quantity = max(ordered - received, Decimal("0"))
             else:
-                ordered = Decimal("0")
+                ordered = None if is_unexpected else Decimal("0")
                 grn.lines.append(
                     GrnLineModel(
                         id=uuid.uuid4(),
@@ -831,16 +996,24 @@ class SqlAlchemyGrnRepository(GrnRepository):
                         item_code=code,
                         material_name=item.get("material_name", code),
                         material_category=item.get("material_category", "General"),
+                        variant_code=item.get("variant_code"),
                         uom=item.get("uom", "PCS"),
                         ordered_quantity=ordered,
                         received_quantity=received,
                         good_quantity=good,
                         damaged_quantity=damaged,
                         rejected_quantity=Decimal("0"),
-                        quality_approved_quantity=Decimal("0"),
+                        quality_approved_quantity=good,
                         balance_quantity=Decimal("0"),
                     )
                 )
+
+        if is_unexpected and submitted_codes:
+            lines_to_keep = [l for l in grn.lines if l.item_code in submitted_codes]
+            for l in list(grn.lines):
+                if l.item_code not in submitted_codes:
+                    await self._session.delete(l)
+            grn.lines = lines_to_keep
 
         grn.status = "PARTIALLY_COMPLETED"
         grn.updated_at = datetime.now(timezone.utc)
@@ -885,14 +1058,24 @@ class SqlAlchemyGrnRepository(GrnRepository):
             raise ValueError(f"GRN not found: {grn_id}")
 
         line_id_map = {str(l.id): l for l in grn.lines}
+        line_code_map = {l.item_code: l for l in grn.lines}
+
         for item in quality_data:
-            line_id = str(item["grn_line_id"])
-            if line_id in line_id_map:
-                line = line_id_map[line_id]
-                line.quality_result = item["quality_result"]
-                line.accepted_quantity = Decimal(str(item.get("accepted_quantity", 0)))
-                line.rejected_quantity = Decimal(str(item.get("rejected_quantity", 0)))
-                line.quality_approved_quantity = Decimal(str(item.get("quality_approved_quantity", 0)))
+            line = None
+            if "grn_line_id" in item and str(item["grn_line_id"]) in line_id_map:
+                line = line_id_map[str(item["grn_line_id"])]
+            elif "item_code" in item and item["item_code"] in line_code_map:
+                line = line_code_map[item["item_code"]]
+
+            if line is not None:
+                line.quality_result = item.get("quality_result", "ACCEPTED")
+                good_val = item.get("good_quantity") if item.get("good_quantity") is not None else item.get("accepted_quantity", 0)
+                dmg_val = item.get("damaged_quantity") if item.get("damaged_quantity") is not None else item.get("rejected_quantity", 0)
+                line.accepted_quantity = Decimal(str(good_val or 0))
+                line.rejected_quantity = Decimal(str(dmg_val or 0))
+                line.quality_approved_quantity = line.accepted_quantity
+                line.good_quantity = line.accepted_quantity
+                line.damaged_quantity = line.rejected_quantity
 
         grn.updated_at = datetime.now(timezone.utc)
         await self._session.flush()
@@ -913,8 +1096,15 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         now = datetime.now(timezone.utc)
 
-        if line.good_quantity <= Decimal("0"):
+        approved_qty = line.quality_approved_quantity if (line.quality_approved_quantity is not None and line.quality_approved_quantity > Decimal("0")) else line.good_quantity
+        if approved_qty <= Decimal("0"):
             return []
+
+        # Fetch warehouse name for QR payload
+        wh_res = await self._session.execute(
+            select(GrnModel.warehouse_name).where(GrnModel.id == line.grn_id)
+        )
+        wh_name = wh_res.scalar_one_or_none() or "Main Warehouse"
 
         # 1. Reuse existing QR for material if present, otherwise create a new material QR
         qr_res = await self._session.execute(
@@ -922,20 +1112,19 @@ class SqlAlchemyGrnRepository(GrnRepository):
         )
         qr = qr_res.scalar_one_or_none()
         if not qr:
-            wh_name = grn.warehouse_name if grn and grn.warehouse_name else "Main Warehouse"
             qr_payload = "\n".join([
                 f"Material Code: {line.item_code}",
                 f"Material Name: {line.material_name or line.item_code}",
                 f"Material Category: {line.material_category or 'Raw Materials'}",
-                f"Material Variant Code: {line.item_code}-V001",
+                f"Material Variant Code: {line.variant_code or f'{line.item_code}-V001'}",
                 f"Batch: BATCH-{line.item_code}-001",
                 "Size: 25 mm × 3 m",
                 "Color: White",
                 f"Warehouse: {wh_name}",
                 "Grade: ISI",
-                f"UOM: {line.uom or 'BUNDLE'}",
+                f"UOM: {line.uom or 'PCS'}",
                 "Inspection Status: COMPLETED",
-                f"Batch Quantity: {line.good_quantity} {line.uom or 'BUNDLE'}",
+                f"Batch Quantity: {approved_qty} {line.uom or 'PCS'}",
             ])
             qr = GrnBatchQrModel(
                 id=uuid.uuid4(),
@@ -1042,6 +1231,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                         generated_at=now,
                     )
                     self._session.add(qr)
+                    lot.qr_code = qr
                 else:
                     lot.qr_code.qr_payload = qr_payload
                     lot.qr_code.item_code = line.item_code
@@ -1100,6 +1290,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 generated_at=now,
             )
             self._session.add(qr)
+            lot.qr_code = qr
             await self._session.flush()
 
             damage_lots.append(lot)
@@ -1293,7 +1484,23 @@ class SqlAlchemyGrnRepository(GrnRepository):
 
         stmt = stmt.order_by(GrnModel.created_at.desc()).limit(limit).offset(offset)
         result = await self._session.execute(stmt)
-        return list(result.scalars().all()), total
+        grn_list = list(result.scalars().all())
+
+        for g in grn_list:
+            if not g.supplier_name or _is_uuid_string(g.supplier_name) or _is_uuid_string(g.supplier_company_name):
+                s_name, s_comp = await _resolve_real_supplier_names(
+                    self._session,
+                    po_id=g.po_id,
+                    po_number=g.po_number,
+                    raw_supplier_name=g.supplier_name,
+                    raw_supplier_company=g.supplier_company_name,
+                    is_unexpected=(g.receipt_type == "UNEXPECTED_DELIVERY"),
+                )
+                g.supplier_name = s_name
+                g.supplier_company_name = s_comp
+                await self._session.flush()
+
+        return grn_list, total
 
     async def get_grn_detail_by_id(self, grn_id_or_number: str | uuid.UUID) -> GrnModel | None:
         def _to_uuid(val):
@@ -1315,4 +1522,17 @@ class SqlAlchemyGrnRepository(GrnRepository):
             .where(cond)
         )
         res = await self._session.execute(stmt)
-        return res.scalar_one_or_none()
+        g = res.scalar_one_or_none()
+        if g and (not g.supplier_name or _is_uuid_string(g.supplier_name) or _is_uuid_string(g.supplier_company_name)):
+            s_name, s_comp = await _resolve_real_supplier_names(
+                self._session,
+                po_id=g.po_id,
+                po_number=g.po_number,
+                raw_supplier_name=g.supplier_name,
+                raw_supplier_company=g.supplier_company_name,
+                is_unexpected=(g.receipt_type == "UNEXPECTED_DELIVERY"),
+            )
+            g.supplier_name = s_name
+            g.supplier_company_name = s_comp
+            await self._session.flush()
+        return g

@@ -27,3 +27,5 @@ class GetGrnContextQuery:
     po_id: str | None = None
     po_number: str | None = None
     gate_entry_id: str | None = None
+    vehicle_number: str | None = None
+    receipt_type: str | None = None

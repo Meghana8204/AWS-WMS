@@ -144,6 +144,7 @@ class GrnContextResponse(ApiModel):
 
     supplier_name: str | None = None
     supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     warehouse_id: str | None = None
     warehouse_name: str | None = None
@@ -176,8 +177,12 @@ class CreateGrnHeaderRequest(ApiModel):
 
     receipt_type: ReceiptType = "PO_RECEIPT"
 
+    grn_id: str | None = None
     po_id: str | None = None
     po_number: str | None = Field(default=None, max_length=64)
+
+    gate_entry_id: str | None = None
+    gate_entry_number: str | None = Field(default=None, max_length=64)
 
     # Manual receiving dock selected on the GRN page.
     dock_number: str = Field(min_length=1, max_length=32)
@@ -195,8 +200,11 @@ class CreateGrnHeaderRequest(ApiModel):
     verification_notes: str | None = None
 
     @field_validator(
+        "grn_id",
         "po_id",
         "po_number",
+        "gate_entry_id",
+        "gate_entry_number",
         "invoice_number",
         "supplier_name",
         "supplier_company_name",
@@ -277,6 +285,10 @@ class GrnLineReceivingRequest(ApiModel):
     """
 
     item_code: str = Field(min_length=1, max_length=64)
+    material_name: str | None = Field(default=None, max_length=256)
+    material_category: str | None = Field(default=None, max_length=128)
+    variant_code: str | None = Field(default=None, max_length=128)
+    uom: str | None = Field(default=None, max_length=32)
 
     received_quantity: NonNegativeQuantity | None = None
     good_quantity: NonNegativeQuantity | None = Decimal("0")
@@ -380,12 +392,15 @@ class QualityInspectionLineRequest(ApiModel):
     the allowed decisions in one central place.
     """
 
-    grn_line_id: str = Field(min_length=1)
+    grn_line_id: str | None = None
+    item_code: str | None = None
     quality_result: str = Field(min_length=1, max_length=32)
 
     accepted_quantity: NonNegativeQuantity = Decimal("0")
     rejected_quantity: NonNegativeQuantity = Decimal("0")
     quality_approved_quantity: NonNegativeQuantity = Decimal("0")
+    good_quantity: NonNegativeQuantity | None = None
+    damaged_quantity: NonNegativeQuantity | None = None
 
     @field_validator("quality_result")
     @classmethod
@@ -405,11 +420,10 @@ class QualityInspectionRequest(ApiModel):
 class QualityInspectionLineResponse(ApiModel):
     grn_line_id: str
     item_code: str
-
-    quality_result: str
+    quality_result: str | None = None
     accepted_quantity: Decimal | None = None
-    rejected_quantity: Decimal
-    quality_approved_quantity: Decimal
+    rejected_quantity: Decimal | None = None
+    quality_approved_quantity: Decimal | None = None
 
 
 class QualityInspectionResponse(ApiModel):
@@ -524,10 +538,16 @@ class GrnDamageVendorNotifyResponse(ApiModel):
     status: str
     grn_number: str
     vendor_email: str
+    supplier_email: str = ""
+    procurement_email: str = ""
+    supplier_status: str = "FAILED"  # SENT | FAILED | NOT_CONFIGURED
+    procurement_status: str = "FAILED"  # SENT | FAILED | NOT_CONFIGURED
+    supplier_error: str | None = None
+    procurement_error: str | None = None
     email_delivered: bool
     email_html_url: str | None = None
     procurement_notified: bool
-    summary: str
+    summary: str | None = None
 
 
 # ============================================================================
@@ -613,6 +633,7 @@ class GrnDetailResponse(ApiModel):
 
     supplier_name: str | None = None
     supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     warehouse_id: str | None = None
     warehouse_name: str | None = None

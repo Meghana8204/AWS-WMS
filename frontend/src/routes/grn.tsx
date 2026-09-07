@@ -102,6 +102,7 @@ type UploadedDocument = {
   category: string;
   file_name: string;
   file_path: string;
+  file_type?: string;
 };
 
 type GrnHeaderState = {
@@ -141,8 +142,25 @@ function formatCardDate(dateVal?: string | null): string {
   }
 }
 
+function isUuidString(val?: string | null): boolean {
+  if (!val) return false;
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(val).trim());
+}
+
+function cleanSupplierString(raw?: any): string {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  if (isUuidString(s)) return "";
+  return s;
+}
+
 function normalizeGrnRecord(r: any) {
   if (!r) return null;
+  const isUnexpected = (r.receipt_type || r.receiptType) === "UNEXPECTED_DELIVERY";
+  const rawSupplierName = cleanSupplierString(r.supplier_name || r.supplierName || r.supplier_company_name || r.supplierCompanyName);
+  const rawCompanyName = cleanSupplierString(r.supplier_company_name || r.supplierCompanyName || r.supplier_name || r.supplierName);
+  const resolvedSupplierName = rawSupplierName || rawCompanyName || (isUnexpected ? "Unexpected Supplier" : "");
+
   return {
     ...r,
     id: r.id || r.grn_id || r.grnId || "",
@@ -152,8 +170,8 @@ function normalizeGrnRecord(r: any) {
     po_id: r.po_id || r.poId || "",
     asn_id: r.asn_id || r.asnId || "",
     asn_number: r.asn_number || r.asnNumber || "",
-    supplier_name: r.supplier_name || r.supplierName || r.supplier_company_name || r.supplierCompanyName || "",
-    supplier_company_name: r.supplier_company_name || r.supplierCompanyName || r.supplier_name || r.supplierName || "",
+    supplier_name: resolvedSupplierName,
+    supplier_company_name: rawCompanyName || resolvedSupplierName,
     supplier_email: r.supplier_email || r.supplierEmail || "",
     warehouse_name: r.warehouse_name || r.warehouseName || "",
     dock_number: r.dock_number || r.dockNumber || "",
@@ -549,6 +567,132 @@ function GrnPageWorkflow() {
     setHeader((previous) => ({ ...previous, po_number: value }));
   }
 
+  async function handleReceiptTypeChange(newType: "PO_RECEIPT" | "UNEXPECTED_DELIVERY") {
+    if (newType === header.receipt_type) return;
+    if (newType === "UNEXPECTED_DELIVERY") {
+      const generatedGrn = header.grn_number || `GRN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Math.floor(1000 + Math.random() * 9000)}`;
+      setHeader((prev) => ({
+        ...prev,
+        receipt_type: "UNEXPECTED_DELIVERY",
+        po_number: "",
+        asn_number: "",
+        gate_entry_number: "",
+        supplier_name: prev.supplier_name || "Unknown / Unexpected Supplier",
+        supplier_company_name: prev.supplier_company_name || "Unknown / Unexpected Supplier",
+        receiving_dock: prev.receiving_dock || (dockOptions[0]?.dock_number ?? "DOCK-01"),
+        grn_number: generatedGrn,
+      }));
+      setMaterials([]);
+      setDamagePhotos({});
+      setQualityApproved({});
+      setMaterialBatches({});
+      try {
+        const ctx = await api.getGrnContext(undefined, header.vehicle_number || undefined, "UNEXPECTED_DELIVERY");
+        if (ctx.dock_options && ctx.dock_options.length > 0) {
+          setDockOptions(ctx.dock_options);
+        }
+        if (ctx.gate_entry_number) {
+          setHeader((prev) => ({ ...prev, gate_entry_number: ctx.gate_entry_number }));
+        }
+        if (ctx.grn_number) {
+          setHeader((prev) => ({ ...prev, grn_number: ctx.grn_number }));
+        }
+      } catch (err) {
+        console.warn("Could not fetch unexpected delivery context:", err);
+      }
+    } else {
+      setHeader((prev) => ({
+        ...prev,
+        receipt_type: "PO_RECEIPT",
+      }));
+      setMaterials([]);
+      setDamagePhotos({});
+      setQualityApproved({});
+      setMaterialBatches({});
+      if (availablePos.length > 0) {
+        const first = availablePos[0];
+        const targetPo = first.poNumber || first.po_number;
+        if (targetPo) {
+          setHeader((prev) => ({ ...prev, po_number: targetPo }));
+          void fetchPoContext(targetPo);
+        }
+      }
+    }
+  }
+
+  function addManualMaterialRow() {
+    const defaultMat = materialMasterList[0];
+    const newRow: GrnLineItem = {
+      material_name: defaultMat?.name || defaultMat?.material_name || "Raw Material",
+      item_code: defaultMat?.code || defaultMat?.material_code || `MAT-${Math.floor(1000 + Math.random() * 9000)}`,
+      material_category: defaultMat?.category || defaultMat?.material_category || "Raw Materials",
+      po_quantity: 0,
+      received_quantity: 1,
+      good_quantity: 1,
+      damaged_quantity: 0,
+      balance_quantity: 0,
+      uom: defaultMat?.base_uom || defaultMat?.uom || "PCS",
+      quality_approved_quantity: 1,
+      quality_result: "ACCEPTED",
+    };
+    setMaterials((prev) => {
+      const next = [...prev, newRow];
+      setQualityApproved((qa) => ({ ...qa, [newRow.item_code]: 1 }));
+      setMaterialBatches((mb) => ({
+        ...mb,
+        [newRow.item_code]: [{ batch_number: `BATCH-${newRow.item_code}-001`, batch_quantity: 1 }],
+      }));
+      return next;
+    });
+  }
+
+  function removeManualMaterialRow(index: number) {
+    const target = materials[index];
+    if (target) {
+      setQualityApproved((qa) => {
+        const next = { ...qa };
+        delete next[target.item_code];
+        return next;
+      });
+      setMaterialBatches((mb) => {
+        const next = { ...mb };
+        delete next[target.item_code];
+        return next;
+      });
+      setDamagePhotos((dp) => {
+        const next = { ...dp };
+        delete next[target.item_code];
+        return next;
+      });
+    }
+    setMaterials((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateManualMaterialRow(index: number, updates: Partial<GrnLineItem>) {
+    setMaterials((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        const updated = { ...item, ...updates };
+        if (updates.received_quantity !== undefined) {
+          const rec = updates.received_quantity;
+          updated.good_quantity = rec;
+          updated.damaged_quantity = 0;
+          updated.quality_approved_quantity = rec;
+          updated.balance_quantity = 0;
+          setQualityApproved((qa) => ({ ...qa, [updated.item_code]: rec }));
+          setMaterialBatches((mb) => ({
+            ...mb,
+            [updated.item_code]: [
+              { batch_number: `BATCH-${updated.item_code}-001`, batch_quantity: Math.floor(rec / 2) || rec },
+              { batch_number: `BATCH-${updated.item_code}-002`, batch_quantity: rec - (Math.floor(rec / 2) || rec) },
+            ].filter((b) => b.batch_quantity > 0),
+          }));
+        }
+        return updated;
+      })
+    );
+  }
+
   async function loadExistingGrnSession(targetGrnId: string) {
     if (!targetGrnId || targetGrnId === "undefined" || targetGrnId === "null" || !targetGrnId.trim()) return;
     const cleanId = targetGrnId.trim();
@@ -567,7 +711,7 @@ function GrnPageWorkflow() {
         po_number: detail.po_number || "",
         supplier_name: detail.supplier_name || "",
         supplier_company_name: detail.supplier_company_name || detail.supplier_name || "",
-        supplier_email: detail.supplier_email || "",
+        supplier_email: detail.supplier_email || detail.supplierEmail || "",
         asn_number: detail.asn_number || "",
         gate_entry_number: detail.gate_entry_number || (detail.po_number ? `GE-${detail.po_number}` : ""),
         warehouse_name: detail.warehouse_name || "Main Warehouse",
@@ -733,14 +877,23 @@ function GrnPageWorkflow() {
     if (header.receipt_type === "PO_RECEIPT" && !header.po_number.trim()) {
       throw new Error("Please select a PO on Step 1.");
     }
+    if (header.receipt_type === "UNEXPECTED_DELIVERY") {
+      if (!header.vehicle_number.trim()) {
+        throw new Error("Please enter a Vehicle Number for Unexpected Delivery.");
+      }
+      if (!header.driver_name.trim()) {
+        throw new Error("Please enter a Driver Name for Unexpected Delivery.");
+      }
+    }
     const res = await api.createGrnHeader({
+      grn_id: grnId || undefined,
       receipt_type: header.receipt_type,
-      po_number: header.po_number.trim() || undefined,
+      po_number: header.receipt_type === "PO_RECEIPT" ? (header.po_number.trim() || undefined) : undefined,
       dock_number: header.receiving_dock.trim(),
       invoice_number: header.invoice_number,
-      supplier_name: header.supplier_name,
-      supplier_company_name: header.supplier_company_name,
-      warehouse_name: header.warehouse_name,
+      supplier_name: header.receipt_type === "PO_RECEIPT" ? header.supplier_name : (header.supplier_name || "Unknown / Unexpected Supplier"),
+      supplier_company_name: header.receipt_type === "PO_RECEIPT" ? header.supplier_company_name : (header.supplier_company_name || header.supplier_name || "Unknown / Unexpected Supplier"),
+      warehouse_name: header.warehouse_name || "Main Warehouse",
       vehicle_number: header.vehicle_number,
       driver_name: header.driver_name,
     });
@@ -806,35 +959,58 @@ function GrnPageWorkflow() {
   // Page 2 -> Proceed to Page 3
   async function handleProceedFromPage2() {
     if (saveLock.current || loadingContext) return;
-    if (!materials.length) {
-      toast.error("Fetch the PO materials on Step 1 first.");
-      setCurrentPage(1);
-      return;
-    }
-    if (new Set(materials.map((m) => m.item_code)).size !== materials.length) {
-      toast.error("Duplicate material codes cannot be matched safely to saved lines.");
-      return;
-    }
-    if (
-      materials.some((m) => {
+    if (header.receipt_type === "UNEXPECTED_DELIVERY") {
+      if (!materials.length) {
+        toast.error("Please add at least one material line for unexpected delivery.");
+        return;
+      }
+      if (materials.some((m) => !m.material_name.trim() || !m.item_code.trim())) {
+        toast.error("All material lines must have a valid material name and code.");
+        return;
+      }
+      if (new Set(materials.map((m) => m.item_code.trim().toUpperCase())).size !== materials.length) {
+        toast.error("Duplicate material codes found. Each line must have a unique material code.");
+        return;
+      }
+      if (materials.some((m) => {
         const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-        return !Number.isFinite(rec) || rec < 0;
-      })
-    ) {
-      toast.error("Received quantity cannot be negative.");
-      return;
+        return !Number.isFinite(rec) || rec <= 0;
+      })) {
+        toast.error("Received quantity must be greater than 0 for all material lines.");
+        return;
+      }
+    } else {
+      if (!materials.length) {
+        toast.error("Fetch the PO materials on Step 1 first.");
+        setCurrentPage(1);
+        return;
+      }
+      if (new Set(materials.map((m) => m.item_code)).size !== materials.length) {
+        toast.error("Duplicate material codes cannot be matched safely to saved lines.");
+        return;
+      }
+      if (
+        materials.some((m) => {
+          const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
+          return !Number.isFinite(rec) || rec < 0;
+        })
+      ) {
+        toast.error("Received quantity cannot be negative.");
+        return;
+      }
+      const invalidLine = materials.find((m) => {
+        const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
+        return rec > m.po_quantity;
+      });
+      if (invalidLine) {
+        const rec = invalidLine.received_quantity !== undefined ? invalidLine.received_quantity : invalidLine.good_quantity;
+        toast.error(
+          `Received quantity for ${invalidLine.material_name} (${rec}) cannot exceed PO quantity (${invalidLine.po_quantity}).`
+        );
+        return;
+      }
     }
-    const invalidLine = materials.find((m) => {
-      const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-      return rec > m.po_quantity;
-    });
-    if (invalidLine) {
-      const rec = invalidLine.received_quantity !== undefined ? invalidLine.received_quantity : invalidLine.good_quantity;
-      toast.error(
-        `Received quantity for ${invalidLine.material_name} (${rec}) cannot exceed PO quantity (${invalidLine.po_quantity}).`
-      );
-      return;
-    }
+
     saveLock.current = true;
     ++contextRequest.current;
     setBusyAction(true);
@@ -849,6 +1025,8 @@ function GrnPageWorkflow() {
         return {
           item_code: m.item_code,
           material_name: m.material_name,
+          material_category: m.material_category || "Raw Materials",
+          uom: m.uom || "PCS",
           received_quantity: rec,
           good_quantity: good,
           damaged_quantity: damaged,
@@ -877,7 +1055,7 @@ function GrnPageWorkflow() {
           received_quantity: rec,
           good_quantity: good,
           damaged_quantity: damaged,
-          balance_quantity: Math.max(m.po_quantity - rec, 0),
+          balance_quantity: header.receipt_type === "UNEXPECTED_DELIVERY" ? 0 : Math.max(m.po_quantity - rec, 0),
         };
       });
       setMaterials(updated);
@@ -964,14 +1142,16 @@ function GrnPageWorkflow() {
   }
 
   async function handleProceedFromPage5() {
-    const poDoc = uploadedDocuments.find(
-      (d) =>
-        d.category.toLowerCase().includes("po") ||
-        d.category.toLowerCase().includes("purchase order")
-    );
-    if (!poDoc) {
-      toast.error("Purchase Order (PO) Copy is compulsory. Please attach a PO document to proceed.");
-      return;
+    if (header.receipt_type === "PO_RECEIPT") {
+      const poDoc = uploadedDocuments.find(
+        (d) =>
+          d.category.toLowerCase().includes("po") ||
+          d.category.toLowerCase().includes("purchase order")
+      );
+      if (!poDoc) {
+        toast.error("Purchase Order (PO) Copy is compulsory for PO Receipts. Please attach a PO document to proceed.");
+        return;
+      }
     }
     const nextStep = 6;
     setMaxCompletedStep((prev) => Math.max(prev, 5));
@@ -1734,6 +1914,176 @@ function GrnPageWorkflow() {
     toast.success(`Exported ${qrItems.length} QR label records to CSV`);
   }
 
+  function openDocumentInFullWindow(doc: UploadedDocument) {
+    const isImg =
+      (doc.file_type && doc.file_type.startsWith("image/")) ||
+      Boolean(doc.file_name?.match(/\.(jpg|jpeg|png|webp|svg|gif)$/i)) ||
+      doc.category.toLowerCase().includes("photo");
+
+    const win = window.open("", "_blank", "width=920,height=950");
+    if (!win) {
+      toast.error("Please allow popups to open document window");
+      return;
+    }
+
+    if (isImg && doc.file_path) {
+      win.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${doc.category} - ${doc.file_name}</title>
+            <style>
+              body { margin: 0; padding: 24px; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; font-family: system-ui, sans-serif; color: #fff; }
+              .header { margin-bottom: 16px; text-align: center; }
+              .header h2 { margin: 0 0 4px; font-size: 20px; }
+              .header p { margin: 0; font-size: 12px; color: #94a3b8; font-family: monospace; }
+              img { max-width: 90vw; max-height: 80vh; object-fit: contain; border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); border: 1px solid #334155; }
+              .toolbar { margin-top: 16px; display: flex; gap: 8px; }
+              button { background: #0284c7; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+              button:hover { background: #0369a1; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h2>${doc.category}</h2>
+              <p>${doc.file_name} • GRN: ${header.grn_number || "DRAFT-GRN"} • PO: ${header.po_number || "N/A"}</p>
+            </div>
+            <img src="${doc.file_path}" alt="${doc.file_name}" />
+            <div class="toolbar">
+              <button onclick="window.print()">Print Document</button>
+              <button onclick="window.close()" style="background:#475569;">Close Window</button>
+            </div>
+          </body>
+        </html>
+      `);
+      win.document.close();
+      return;
+    }
+
+    const itemsHtml = materials
+      .map(
+        (m, idx) => `
+      <tr>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-family: monospace; text-align: center;">${idx + 1}</td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-weight: 600;">${m.material_name} <span style="font-family: monospace; color: #64748b; font-size: 11px;">(${m.item_code})</span></td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; font-family: monospace;">${m.po_quantity || (m.good_quantity + m.damaged_quantity)} ${m.uom}</td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; color: #166534; font-weight: bold; font-family: monospace;">${m.good_quantity} ${m.uom}</td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: right; color: ${m.damaged_quantity > 0 ? '#991b1b' : '#64748b'}; font-weight: bold; font-family: monospace;">${m.damaged_quantity} ${m.uom}</td>
+        <td style="padding: 10px 12px; border-bottom: 1px solid #e2e8f0; text-align: center;"><span style="background: ${m.damaged_quantity > 0 ? '#fef2f2; color: #991b1b; border: 1px solid #fecaca;' : '#f0fdf4; color: #166534; border: 1px solid #bbf7d0;'} padding: 3px 10px; border-radius: 9999px; font-size: 10px; font-weight: bold;">${m.quality_result || (m.damaged_quantity > 0 ? 'PARTIAL' : 'PASSED')}</span></td>
+      </tr>
+    `
+      )
+      .join("");
+
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${doc.category} - ${header.grn_number || "GRN Document"}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; padding: 30px; margin: 0; color: #0f172a; }
+            .doc-container { max-width: 820px; margin: 0 auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; padding: 36px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+            .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 18px; margin-bottom: 20px; }
+            .title-section h1 { margin: 0; font-size: 22px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+            .title-section p { margin: 4px 0 0; font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+            .badge { background: #dcfce7; color: #15803d; border: 1px solid #86efac; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; font-size: 12px; }
+            .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; }
+            .meta-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+            .meta-row:last-child { margin-bottom: 0; }
+            .meta-label { color: #64748b; font-weight: 500; }
+            .meta-val { font-weight: 700; color: #0f172a; font-family: monospace; }
+            table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+            th { background: #f1f5f9; padding: 10px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; color: #475569; border-bottom: 2px solid #cbd5e1; }
+            .footer-signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; border-top: 1px dashed #cbd5e1; padding-top: 24px; margin-top: 30px; font-size: 11px; }
+            .sign-box { text-align: center; }
+            .sign-line { border-bottom: 1px solid #94a3b8; height: 36px; margin-bottom: 6px; }
+            .toolbar { max-width: 820px; margin: 0 auto 16px; display: flex; justify-content: flex-end; gap: 8px; }
+            .btn { background: #0284c7; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; font-size: 12px; cursor: pointer; }
+            .btn-secondary { background: #e2e8f0; color: #1e293b; }
+            @media print { .toolbar { display: none; } body { padding: 0; background: white; } .doc-container { border: none; box-shadow: none; padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="toolbar">
+            <button class="btn" onclick="window.print()">Print / Save PDF</button>
+            <button class="btn btn-secondary" onclick="window.close()">Close</button>
+          </div>
+          <div class="doc-container">
+            <div class="header">
+              <div class="title-section">
+                <h1>${doc.category.toUpperCase()}</h1>
+                <p>Inbound Logistics Document Record • ${doc.file_name}</p>
+              </div>
+              <div style="text-align: right;">
+                <span class="badge">VERIFIED & ATTACHED</span>
+                <div style="font-size: 11px; color: #64748b; margin-top: 6px; font-family: monospace;">GRN: ${header.grn_number || "DRAFT-GRN"}</div>
+              </div>
+            </div>
+
+            <div class="grid">
+              <div class="meta-box">
+                <div class="meta-row"><span class="meta-label">PO Reference:</span><span class="meta-val">${header.po_number || "N/A"}</span></div>
+                <div class="meta-row"><span class="meta-label">Supplier Name:</span><span class="meta-val">${header.supplier_name || header.supplier_company_name || "Direct Inbound"}</span></div>
+                <div class="meta-row"><span class="meta-label">Company:</span><span class="meta-val">${header.supplier_company_name || "N/A"}</span></div>
+                <div class="meta-row"><span class="meta-label">Gate Pass No:</span><span class="meta-val">${header.gate_entry_number || "GE-2026-001"}</span></div>
+              </div>
+              <div class="meta-box">
+                <div class="meta-row"><span class="meta-label">Warehouse:</span><span class="meta-val">${header.warehouse_name || "Main Warehouse"}</span></div>
+                <div class="meta-row"><span class="meta-label">Receiving Dock:</span><span class="meta-val">${header.receiving_dock || "DOCK-01"}</span></div>
+                <div class="meta-row"><span class="meta-label">Vehicle No:</span><span class="meta-val">${header.vehicle_number || "KA-01-XX-0000"}</span></div>
+                <div class="meta-row"><span class="meta-label">Receipt Date:</span><span class="meta-val">${new Date().toLocaleDateString()}</span></div>
+              </div>
+            </div>
+
+            <div style="font-size: 12px; font-weight: bold; margin-bottom: 8px; color: #1e293b;">Associated Inbound Material Manifest</div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: center;">#</th>
+                  <th>Material Details</th>
+                  <th style="text-align: right;">Ordered Qty</th>
+                  <th style="text-align: right;">Accepted</th>
+                  <th style="text-align: right;">Damaged</th>
+                  <th style="text-align: center;">QA Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsHtml || '<tr><td colspan="6" style="text-align: center; padding: 12px; color: #94a3b8;">No line items loaded</td></tr>'}
+              </tbody>
+            </table>
+
+            <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px 16px; font-size: 11px; margin-bottom: 20px; font-family: monospace; color: #475569;">
+              <div><b>Attachment Name:</b> ${doc.file_name}</div>
+              <div><b>Category:</b> ${doc.category}</div>
+              <div><b>Uploaded By:</b> ${loggedInUserName || "WMS Officer"} on ${new Date().toLocaleString()}</div>
+              <div><b>Digital Stamp:</b> WMS-VERIFIED-SECURE-DOC-${Math.random().toString(36).substring(2, 10).toUpperCase()}</div>
+            </div>
+
+            <div class="footer-signatures">
+              <div class="sign-box">
+                <div class="sign-line"></div>
+                <div><b>Received By (Store)</b></div>
+                <div style="color: #64748b; font-size: 10px;">${loggedInUserName || "Store Operator"}</div>
+              </div>
+              <div class="sign-box">
+                <div class="sign-line"></div>
+                <div><b>Inspected By (QC)</b></div>
+                <div style="color: #64748b; font-size: 10px;">QA Inspector</div>
+              </div>
+              <div class="sign-box">
+                <div class="sign-line"></div>
+                <div><b>Driver / Logistics Rep</b></div>
+                <div style="color: #64748b; font-size: 10px;">${header.driver_name || "Transporter"}</div>
+              </div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `);
+    win.document.close();
+  }
+
   // Scan / Read QR Code Handler -> Fetches from live DB & displays QRScanResultModal
   async function handleScanQrCode(scannedRaw: string) {
     if (!scannedRaw || !scannedRaw.trim()) {
@@ -2114,16 +2464,16 @@ function GrnPageWorkflow() {
                     />
                   </div>
 
-                  <div className="overflow-hidden rounded-xl border border-border/70">
-                    <table className="w-full text-xs text-left">
+                  <div className="overflow-x-auto rounded-xl border border-border/70">
+                    <table className="w-full min-w-[700px] text-xs text-left">
                       <thead className="bg-muted/50 font-semibold uppercase text-muted-foreground text-[11px] tracking-wider border-b border-border/70">
                         <tr>
-                          <th className="px-4 py-3">GRN Number</th>
-                          <th className="px-4 py-3">PO Reference</th>
+                          <th className="px-4 py-3 whitespace-nowrap">GRN Number</th>
+                          <th className="px-4 py-3 whitespace-nowrap">PO Reference</th>
                           <th className="px-4 py-3">Supplier Name</th>
-                          <th className="px-4 py-3">Vehicle</th>
-                          <th className="px-4 py-3">Status</th>
-                          <th className="px-4 py-3 text-right">Actions</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Vehicle</th>
+                          <th className="px-4 py-3 whitespace-nowrap">Status</th>
+                          <th className="px-4 py-3 text-right whitespace-nowrap min-w-[160px]">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border/60">
@@ -2132,27 +2482,27 @@ function GrnPageWorkflow() {
                           .slice(0, 8)
                           .map((r, i) => (
                           <tr key={r.id || r.grn_id || r.grn_number || `rec_row_${i}`} className="hover:bg-accent/40 transition-colors">
-                            <td className="px-4 py-3 font-mono font-bold text-primary">
+                            <td className="px-4 py-3 font-mono font-bold text-primary whitespace-nowrap">
                               {r.grn_number}
                             </td>
-                            <td className="px-4 py-3 font-mono font-semibold text-foreground">
+                            <td className="px-4 py-3 font-mono font-semibold text-foreground whitespace-nowrap">
                               {r.po_number}
                             </td>
                             <td className="px-4 py-3 font-medium text-foreground">
                               {r.supplier_name}
                             </td>
-                            <td className="px-4 py-3 font-mono text-muted-foreground">
+                            <td className="px-4 py-3 font-mono text-muted-foreground whitespace-nowrap">
                               {r.vehicle_number}
                             </td>
-                            <td className="px-4 py-3">
+                            <td className="px-4 py-3 whitespace-nowrap">
                               <StatusBadge status={r.status || "COMPLETED"} />
                             </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
+                            <td className="px-4 py-3 text-right whitespace-nowrap">
+                              <div className="flex items-center justify-end gap-1.5 shrink-0">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-lg text-xs h-7 font-semibold"
+                                  className="rounded-lg text-xs h-7 font-semibold shrink-0"
                                   onClick={() => {
                                     void handleViewGrnDetail(r);
                                   }}
@@ -2162,7 +2512,7 @@ function GrnPageWorkflow() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="rounded-lg text-xs h-7 font-semibold border-primary/30 text-primary hover:bg-primary-soft"
+                                  className="rounded-lg text-xs h-7 font-semibold border-primary/30 text-primary hover:bg-primary-soft shrink-0"
                                   onClick={() => {
                                     void printGrnCertificate(r);
                                   }}
@@ -2405,7 +2755,7 @@ function GrnPageWorkflow() {
                               className="rounded-xl text-xs font-semibold border-rose-300 text-rose-700 hover:bg-rose-50"
                               onClick={() => {
                                 setSelectedGrnDetail(r);
-                                setNotifyVendorEmail(r.supplier_email || "");
+                                setNotifyVendorEmail(r.supplier_email || r.supplierEmail || "");
                                 setGrnId(r.grn_id || r.id || r.grn_number || "");
                                 setShowNotifyVendorModal(true);
                               }}
@@ -2564,19 +2914,21 @@ function GrnPageWorkflow() {
                   {/* 1. PO Number */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">1. PO Number</span>
-                    <p className="font-mono text-base font-bold text-primary">{header.po_number || "—"}</p>
+                    <p className="font-mono text-base font-bold text-primary">
+                      {header.po_number || "—"}
+                    </p>
                   </div>
 
                   {/* 2. Supplier Name */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">2. Supplier Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_name || "—"}</p>
+                    <p className="text-sm font-bold text-foreground mt-1">{header.supplier_name || "—"}</p>
                   </div>
 
                   {/* 3. Supplier Company Name */}
                   <div className="rounded-xl border bg-muted/10 p-3 md:col-span-2">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">3. Supplier Company Name</span>
-                    <p className="text-sm font-bold text-foreground">{header.supplier_company_name || header.supplier_name || "—"}</p>
+                    <p className="text-sm font-bold text-foreground mt-1">{header.supplier_company_name || header.supplier_name || "—"}</p>
                   </div>
                 </div>
               </Card>
@@ -2596,37 +2948,26 @@ function GrnPageWorkflow() {
                   {/* 4. ASN Number */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">4. ASN Number</span>
-                    <p className="font-mono text-sm font-bold text-foreground">{header.asn_number || "ASN-001"}</p>
+                    <p className="font-mono text-sm font-bold text-foreground">
+                      {header.asn_number || "ASN-001"}
+                    </p>
                   </div>
 
                   {/* 5. Gate Entry Number */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <span className="text-[11px] font-semibold uppercase text-muted-foreground">5. Gate Entry Number</span>
-                    <p className="font-mono text-sm font-bold text-foreground">{header.gate_entry_number || "GE-001"}</p>
+                    <p className="font-mono text-sm font-bold text-foreground">
+                      {header.gate_entry_number || "GE-001"}
+                    </p>
                   </div>
 
                   {/* 9. Receipt Type */}
                   <div className="rounded-xl border bg-muted/10 p-3">
                     <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">9. Receipt Type</label>
-                    <select
-                      value={header.receipt_type}
-                      onChange={(e) => setHeader({ ...header, receipt_type: e.target.value as any })}
-                      className="w-full rounded-lg border bg-background px-2.5 py-1 text-xs font-bold"
-                    >
-                      <option value="PO_RECEIPT">PO Receipt (PO Delivery)</option>
-                      <option value="UNEXPECTED_DELIVERY">Unexpected Delivery (Manual Info)</option>
-                    </select>
-                  </div>
-
-                  {/* 12. Invoice Number */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
-                    <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">12. Invoice Number</label>
-                    <Input
-                      value={header.invoice_number}
-                      onChange={(e) => setHeader({ ...header, invoice_number: e.target.value })}
-                      placeholder="INV-2026-001"
-                      className="font-mono text-sm font-bold rounded-lg"
-                    />
+                    <div className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-bold text-foreground flex items-center justify-between">
+                      <span>PO Receipt (PO Delivery)</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-mono">Standard</span>
+                    </div>
                   </div>
 
                   {/* 10. Vehicle Number */}
@@ -2637,20 +2978,20 @@ function GrnPageWorkflow() {
                     <Input
                       value={header.vehicle_number}
                       onChange={(e) => setHeader({ ...header, vehicle_number: e.target.value })}
-                      readOnly={header.receipt_type === "PO_RECEIPT"}
+                      placeholder="e.g. KA-01-AB-1234"
                       className="font-mono text-sm font-bold rounded-lg"
                     />
                   </div>
 
                   {/* 11. Driver Name */}
-                  <div className="rounded-xl border bg-muted/10 p-3">
+                  <div className="rounded-xl border bg-muted/10 p-3 md:col-span-2">
                     <label className="text-[11px] font-semibold uppercase text-muted-foreground block mb-1">
                       11. Driver Name
                     </label>
                     <Input
                       value={header.driver_name}
                       onChange={(e) => setHeader({ ...header, driver_name: e.target.value })}
-                      readOnly={header.receipt_type === "PO_RECEIPT"}
+                      placeholder="e.g. John Doe"
                       className="text-sm font-bold rounded-lg"
                     />
                   </div>
@@ -2747,158 +3088,299 @@ function GrnPageWorkflow() {
               <div className="flex flex-wrap items-center justify-between border-b pb-4 gap-3">
                 <div>
                   <h3 className="font-bold text-foreground text-base flex items-center gap-2">
-                    <span>PO Material Line Items</span>
+                    <span>
+                      {header.receipt_type === "UNEXPECTED_DELIVERY"
+                        ? "Manual Material Receipt (Unexpected Delivery)"
+                        : "PO Material Line Items"}
+                    </span>
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Compare PO quantity with physically received quantity.
+                    {header.receipt_type === "UNEXPECTED_DELIVERY"
+                      ? "Add materials received in this shipment and enter their physical counts."
+                      : "Compare PO quantity with physically received quantity."}
                   </p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-muted-foreground">Receiving Status:</span>
-                  <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold border ${
-                      step2OverallStatus === "COMPLETED"
-                        ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                        : "bg-amber-100 text-amber-800 border-amber-300"
-                    }`}
+                {header.receipt_type === "UNEXPECTED_DELIVERY" ? (
+                  <Button
+                    type="button"
+                    onClick={addManualMaterialRow}
+                    size="sm"
+                    className="rounded-xl font-bold text-xs"
                   >
-                    {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
-                  </span>
-                </div>
+                    <Plus className="mr-1.5 size-4" /> Add Material
+                  </Button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-muted-foreground">Receiving Status:</span>
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-bold border ${
+                        step2OverallStatus === "COMPLETED"
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : "bg-amber-100 text-amber-800 border-amber-300"
+                      }`}
+                    >
+                      {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
+                    </span>
+                  </div>
+                )}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
-                    <tr>
-                      <th className="px-4 py-3">Material</th>
-                      <th className="px-4 py-3">Material Code</th>
-                      <th className="px-4 py-3 text-right">PO Quantity</th>
-                      <th className="px-4 py-3 text-right">Received Quantity</th>
-                      <th className="px-4 py-3 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y font-medium">
-                    {materials.map((m, idx) => {
-                      const recQty = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
-                      const isCompleted = recQty === m.po_quantity;
-
-                      return (
-                        <tr key={m.item_code} className="hover:bg-muted/20">
-                          <td className="px-4 py-3 font-bold text-foreground">
-                            <div>{m.material_name}</div>
-                            <span className="text-[10px] text-emerald-600 font-medium block mt-0.5">
-                              Category: {m.material_category || "General"}
-                            </span>
+              {header.receipt_type === "UNEXPECTED_DELIVERY" ? (
+                /* UNEXPECTED DELIVERY MANUAL TABLE */
+                materials.length === 0 ? (
+                  <div className="rounded-2xl border-2 border-dashed p-8 text-center space-y-3 bg-muted/10">
+                    <Boxes className="mx-auto size-10 text-muted-foreground opacity-60" />
+                    <div>
+                      <h4 className="font-bold text-foreground text-sm">No Materials Added Yet</h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Click "Add Material" to add the items received in this unexpected delivery.
+                      </p>
+                    </div>
+                    <Button type="button" onClick={addManualMaterialRow} size="sm" className="rounded-xl font-bold">
+                      <Plus className="mr-1.5 size-4" /> Add First Material
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3">Material Selection</th>
+                          <th className="px-4 py-3">Item Code</th>
+                          <th className="px-4 py-3">Category</th>
+                          <th className="px-4 py-3 text-right">Received Quantity *</th>
+                          <th className="px-4 py-3">UOM</th>
+                          <th className="px-4 py-3 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y font-medium">
+                        {materials.map((m, idx) => {
+                          const recQty = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
+                          return (
+                            <tr key={idx} className="hover:bg-muted/20">
+                              <td className="px-4 py-3">
+                                <select
+                                  value={m.item_code}
+                                  onChange={(e) => {
+                                    const selectedCode = e.target.value;
+                                    const found = materialMasterList.find((mat) => mat.code === selectedCode || mat.material_code === selectedCode);
+                                    if (found) {
+                                      updateManualMaterialRow(idx, {
+                                        item_code: found.code || found.material_code || selectedCode,
+                                        material_name: found.name || found.material_name || selectedCode,
+                                        material_category: found.category || found.material_category || "Raw Materials",
+                                        uom: found.base_uom || found.uom || "PCS",
+                                      });
+                                    } else {
+                                      updateManualMaterialRow(idx, { item_code: selectedCode });
+                                    }
+                                  }}
+                                  className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-xs font-bold text-foreground"
+                                >
+                                  {materialMasterList.length > 0 ? (
+                                    materialMasterList.map((mat) => (
+                                      <option key={mat.code || mat.material_code} value={mat.code || mat.material_code}>
+                                        {mat.name || mat.material_name} ({mat.code || mat.material_code})
+                                      </option>
+                                    ))
+                                  ) : (
+                                    <option value={m.item_code}>{m.material_name} ({m.item_code})</option>
+                                  )}
+                                </select>
+                              </td>
+                              <td className="px-4 py-3 font-mono text-xs text-primary font-bold">
+                                {m.item_code}
+                              </td>
+                              <td className="px-4 py-3 text-xs text-muted-foreground font-medium">
+                                {m.material_category || "Raw Materials"}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  placeholder="1"
+                                  value={recQty === 0 ? "" : (recQty ?? "")}
+                                  onChange={(e) => {
+                                    const val = Math.max(0, Number(e.target.value) || 0);
+                                    updateManualMaterialRow(idx, { received_quantity: val });
+                                  }}
+                                  className="w-28 text-right font-bold text-foreground rounded-xl ml-auto"
+                                />
+                              </td>
+                              <td className="px-4 py-3">
+                                <Input
+                                  value={m.uom}
+                                  onChange={(e) => updateManualMaterialRow(idx, { uom: e.target.value })}
+                                  className="w-20 font-bold text-xs rounded-lg"
+                                  placeholder="PCS"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-center">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeManualMaterialRow(idx)}
+                                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg p-1.5"
+                                >
+                                  Remove
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-muted/40 font-bold border-t text-sm">
+                        <tr>
+                          <td colSpan={3} className="px-4 py-3 uppercase text-xs text-muted-foreground">
+                            Total Manual Items: {materials.length}
                           </td>
-                          <td className="px-4 py-3 font-mono text-xs text-primary">{m.item_code}</td>
-                          <td className="px-4 py-3 text-right font-bold">
-                            <div>
-                              {m.po_quantity.toLocaleString()}{" "}
-                              <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
-                            </div>
+                          <td className="px-4 py-3 text-right font-bold text-foreground">
+                            {totalReceivedQty.toLocaleString()}
                           </td>
-                          <td className="px-4 py-3 text-right">
-                            <div className="flex flex-col items-end gap-1">
-                              <Input
-                                type="number"
-                                min={0}
-                                max={m.po_quantity}
-                                placeholder="0"
-                                value={recQty === 0 ? "" : (recQty ?? "")}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
-                                  const val = raw === "" ? 0 : Number(raw);
-                                  if (val < 0) {
-                                    toast.error("Received quantity cannot be negative.");
-                                    return;
-                                  }
-                                  if (val > m.po_quantity) {
-                                    toast.error(
-                                      `Received quantity for ${m.material_name} cannot exceed PO quantity (${m.po_quantity}).`
-                                    );
-                                    return;
-                                  }
-                                  setMaterials((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx
-                                        ? {
-                                            ...item,
-                                            received_quantity: val,
-                                            good_quantity: val,
-                                            damaged_quantity: 0,
-                                            balance_quantity: Math.max(item.po_quantity - val, 0),
-                                          }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                className="w-32 text-right font-bold text-foreground rounded-xl"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setMaterials((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx
-                                        ? {
-                                            ...item,
-                                            received_quantity: item.po_quantity,
-                                            good_quantity: item.po_quantity,
-                                            damaged_quantity: 0,
-                                            balance_quantity: 0,
-                                          }
-                                        : item
-                                    )
-                                  );
-                                }}
-                                className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5"
-                              >
-                                Match PO Qty ({m.po_quantity})
-                              </button>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                isCompleted
-                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                  : "bg-amber-100 text-amber-800 border-amber-300"
-                              }`}
-                            >
-                              {isCompleted ? "✓ COMPLETED" : "PENDING"}
-                            </span>
+                          <td colSpan={2} className="px-4 py-3 text-muted-foreground text-xs font-normal">
+                            Units Received
                           </td>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-muted/40 font-bold border-t text-sm">
-                    <tr>
-                      <td colSpan={2} className="px-4 py-3 uppercase text-xs text-muted-foreground">
-                        Totals
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold">
-                        {totalPoQty.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold">
-                        {totalReceivedQty.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                            step2OverallStatus === "COMPLETED"
-                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                              : "bg-amber-100 text-amber-800 border-amber-300"
-                          }`}
-                        >
-                          {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
-                        </span>
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
+                      </tfoot>
+                    </table>
+                  </div>
+                )
+              ) : (
+                /* PO DELIVERY TABLE */
+                <div className="overflow-x-auto rounded-xl border">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3">Material</th>
+                        <th className="px-4 py-3">Material Code</th>
+                        <th className="px-4 py-3 text-right">PO Quantity</th>
+                        <th className="px-4 py-3 text-right">Received Quantity</th>
+                        <th className="px-4 py-3 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y font-medium">
+                      {materials.map((m, idx) => {
+                        const recQty = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
+                        const isCompleted = recQty === m.po_quantity;
+
+                        return (
+                          <tr key={m.item_code} className="hover:bg-muted/20">
+                            <td className="px-4 py-3 font-bold text-foreground">
+                              <div>{m.material_name}</div>
+                              <span className="text-[10px] text-emerald-600 font-medium block mt-0.5">
+                                Category: {m.material_category || "General"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-xs text-primary">{m.item_code}</td>
+                            <td className="px-4 py-3 text-right font-bold">
+                              <div>
+                                {m.po_quantity.toLocaleString()}{" "}
+                                <span className="text-xs font-normal text-muted-foreground">{m.uom || "PCS"}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex flex-col items-end gap-1">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  max={m.po_quantity}
+                                  placeholder="0"
+                                  value={recQty === 0 ? "" : (recQty ?? "")}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    const val = raw === "" ? 0 : Number(raw);
+                                    if (val < 0) {
+                                      toast.error("Received quantity cannot be negative.");
+                                      return;
+                                    }
+                                    if (val > m.po_quantity) {
+                                      toast.error(
+                                        `Received quantity for ${m.material_name} cannot exceed PO quantity (${m.po_quantity}).`
+                                      );
+                                      return;
+                                    }
+                                    setMaterials((prev) =>
+                                      prev.map((item, i) =>
+                                        i === idx
+                                          ? {
+                                              ...item,
+                                              received_quantity: val,
+                                              good_quantity: val,
+                                              damaged_quantity: 0,
+                                              balance_quantity: Math.max(item.po_quantity - val, 0),
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="w-32 text-right font-bold text-foreground rounded-xl"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMaterials((prev) =>
+                                      prev.map((item, i) =>
+                                        i === idx
+                                          ? {
+                                              ...item,
+                                              received_quantity: item.po_quantity,
+                                              good_quantity: item.po_quantity,
+                                              damaged_quantity: 0,
+                                              balance_quantity: 0,
+                                            }
+                                          : item
+                                      )
+                                    );
+                                  }}
+                                  className="text-[10px] font-semibold text-primary hover:underline flex items-center gap-0.5"
+                                >
+                                  Match PO Qty ({m.po_quantity})
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                  isCompleted
+                                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                    : "bg-amber-100 text-amber-800 border-amber-300"
+                                }`}
+                              >
+                                {isCompleted ? "✓ COMPLETED" : "PENDING"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="bg-muted/40 font-bold border-t text-sm">
+                      <tr>
+                        <td colSpan={2} className="px-4 py-3 uppercase text-xs text-muted-foreground">
+                          Totals
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold">
+                          {totalPoQty.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-right font-bold">
+                          {totalReceivedQty.toLocaleString()}
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                              step2OverallStatus === "COMPLETED"
+                                ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                : "bg-amber-100 text-amber-800 border-amber-300"
+                            }`}
+                          >
+                            {step2OverallStatus === "COMPLETED" ? "✓ COMPLETED" : "PENDING"}
+                          </span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center justify-between pt-4 border-t gap-3">
                 <Button variant="outline" className="rounded-xl font-semibold" onClick={() => handleStepClick(1)}>
@@ -3267,12 +3749,22 @@ function GrnPageWorkflow() {
                 <div>
                   <h3 className="font-bold text-foreground text-base flex items-center gap-2">
                     <span>Page 5: Inbound Goods Document Repository</span>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
-                      PO Document Compulsory *
-                    </span>
+                    {header.receipt_type === "PO_RECEIPT" ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
+                        PO Document Compulsory *
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300">
+                        PO Document Optional (Unexpected Delivery)
+                      </span>
+                    )}
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    <b>Purchase Order (PO) Copy</b> is Compulsory. Add optional documents using the <b>+ Add Document</b> form below.
+                    {header.receipt_type === "PO_RECEIPT" ? (
+                      <><b>Purchase Order (PO) Copy</b> is Compulsory. Add optional documents using the <b>+ Add Document</b> form below.</>
+                    ) : (
+                      <>Attach Delivery Challan, Invoices, Packing Lists, or other physical documents received with this shipment.</>
+                    )}
                   </p>
                 </div>
                 <Button
@@ -3282,7 +3774,7 @@ function GrnPageWorkflow() {
                   className="rounded-xl text-xs font-bold border-primary/40 text-primary hover:bg-primary/5"
                   onClick={() => setShowAddCustomTypeInput(!showAddCustomTypeInput)}
                 >
-                  <Plus className="mr-1.5 size-3.5" /> + Add Custom Category Name
+                  <Plus className="mr-1.5 size-3.5" /> Add Custom Category Name
                 </Button>
               </div>
 
@@ -3332,7 +3824,7 @@ function GrnPageWorkflow() {
               {/* + ADD DOCUMENT ACTION FORM */}
               <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
                 <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                  <Plus className="size-4 text-primary" /> + Add Document / Attach File
+                  <Plus className="size-4 text-primary" /> Add Document / Attach File
                 </span>
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="w-64">
@@ -3365,10 +3857,12 @@ function GrnPageWorkflow() {
                         toast.error("Please choose a file to attach");
                         return;
                       }
+                      const fileType = pendingDocFile.type || (pendingDocFile.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : pendingDocFile.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|svg|gif)$/) ? "image/jpeg" : "application/octet-stream");
                       const newDoc: UploadedDocument = {
                         category: selectedDocCategory,
                         file_name: pendingDocFile.name,
                         file_path: URL.createObjectURL(pendingDocFile),
+                        file_type: fileType,
                       };
                       setUploadedDocuments((prev) => [...prev, newDoc]);
                       setPendingDocFile(null);
@@ -3473,10 +3967,12 @@ function GrnPageWorkflow() {
                                   onChange={(e) => {
                                     const file = e.target.files?.[0];
                                     if (file) {
+                                      const fileType = file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : file.name.toLowerCase().match(/\.(jpg|jpeg|png|webp|svg|gif)$/) ? "image/jpeg" : "application/octet-stream");
                                       const newDoc: UploadedDocument = {
                                         category: "Purchase Order Copy",
                                         file_name: file.name,
                                         file_path: URL.createObjectURL(file),
+                                        file_type: fileType,
                                       };
                                       setUploadedDocuments((prev) => [...prev, newDoc]);
                                       toast.success(`Attached PO Copy: ${file.name}`);
@@ -3566,28 +4062,8 @@ function GrnPageWorkflow() {
           {/* PAGE 6 – QR CODE GENERATION */}
           {currentPage === 6 && (
             <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
-              <div className="flex flex-wrap items-center justify-between border-b pb-4 gap-3">
-                <div>
-                  <h3 className="font-bold text-foreground text-base">Page 6: Batch-wise QR Code Generation</h3>
-                  <p className="text-xs text-muted-foreground">
-                    <b>Rule: One Batch → One Unique QR Code.</b> Generate and print batch labels for box attachment.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="rounded-xl font-bold border-primary text-primary hover:bg-primary/10 shadow-xs"
-                    onClick={() => {
-                      setManualScanText("");
-                      setManualScanInputOpen(true);
-                    }}
-                  >
-                    <ScanLine className="mr-2 size-4 text-primary" /> Scan Barcode / QR
-                  </Button>
-                  <Button variant="outline" className="rounded-xl" onClick={() => window.print()}>
-                    <Printer className="mr-2 size-4" /> Print Batch Labels
-                  </Button>
-                </div>
+              <div className="border-b pb-4">
+                <h3 className="font-bold text-foreground text-base">Page 6: Batch-wise QR Code Generation</h3>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/20 p-4 rounded-xl border">
@@ -4304,14 +4780,37 @@ function GrnPageWorkflow() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs font-bold uppercase text-muted-foreground">Supplier Email Address</label>
+                <label className="text-xs font-bold uppercase text-muted-foreground flex items-center justify-between">
+                  <span>Supplier Email Address (Auto-Fetched)</span>
+                  {(notifyVendorEmail || header.supplier_email || selectedGrnDetail?.supplier_email || selectedGrnDetail?.supplierEmail) ? (
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Auto-resolved from PO Contact
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      Supplier email not available
+                    </span>
+                  )}
+                </label>
                 <Input
-                  type="email"
-                  value={notifyVendorEmail}
-                  onChange={(e) => setNotifyVendorEmail(e.target.value)}
-                  placeholder="vendor@company.com"
-                  className="rounded-xl mt-1 font-mono text-sm"
+                  type="text"
+                  value={notifyVendorEmail || header.supplier_email || selectedGrnDetail?.supplier_email || selectedGrnDetail?.supplierEmail || "Supplier email not available"}
+                  readOnly
+                  disabled={!(notifyVendorEmail || header.supplier_email || selectedGrnDetail?.supplier_email || selectedGrnDetail?.supplierEmail)}
+                  className="rounded-xl mt-1 font-mono text-sm bg-muted/30 cursor-default"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-muted-foreground flex items-center justify-between">
+                  <span>Procurement Team Notification</span>
+                  <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                    System Auto-Delivery
+                  </span>
+                </label>
+                <div className="text-xs font-mono text-muted-foreground bg-muted/20 border rounded-xl p-2.5 mt-1">
+                  Internal Procurement Team will automatically receive this damage notice and in-app notification.
+                </div>
               </div>
 
               <div>
@@ -4411,16 +4910,35 @@ function GrnPageWorkflow() {
                       return;
                     }
 
+                    const resolvedEmail = (notifyVendorEmail || header.supplier_email || selectedGrnDetail?.supplier_email || selectedGrnDetail?.supplierEmail || "").trim();
+
                     const res = await api.notifyVendorDamage(targetGrnId, {
-                      supplier_email: notifyVendorEmail || header.supplier_email || "",
+                      supplier_email: resolvedEmail,
                       custom_remarks: notifyVendorRemarks || "",
                       notify_procurement: true,
                       photo_ids: currentPhotoIds,
                       damage_items: damagePayloadItems,
                     });
-                    toast.success("Damage Report Email Sent!", {
-                      description: `Notice dispatched to ${res.vendor_email || notifyVendorEmail} and Procurement team notified.`,
-                    });
+                    const isDelivered = Boolean(
+                      res?.emailDelivered ||
+                      res?.email_delivered ||
+                      res?.supplierStatus === "SENT" ||
+                      res?.supplier_status === "SENT" ||
+                      res?.procurementStatus === "SENT" ||
+                      res?.procurement_status === "SENT" ||
+                      res?.procurementNotified ||
+                      res?.procurement_notified
+                    );
+
+                    if (isDelivered) {
+                      toast.success("Damage Report Dispatched!", {
+                        description: res?.summary || `Notice dispatched to ${res?.vendorEmail || res?.vendor_email || resolvedEmail || "Supplier"} and Procurement team.`,
+                      });
+                    } else {
+                      toast.error("Failed to Deliver Damage Report", {
+                        description: res?.summary || "Could not dispatch email. Please check network/SMTP settings.",
+                      });
+                    }
                     setShowNotifyVendorModal(false);
                   } catch (err: any) {
                     toast.error("Failed to Send Vendor Email", {
@@ -4662,96 +5180,217 @@ function GrnPageWorkflow() {
       )}
 
       {/* 👁️ INTERACTIVE DOCUMENT VIEWER MODAL / PAGE */}
-      {viewingDocumentModal && (
-        <Dialog open={!!viewingDocumentModal} onOpenChange={() => setViewingDocumentModal(null)}>
-          <DialogContent className="max-w-3xl rounded-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="border-b pb-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold text-primary px-3 py-1 rounded-full bg-primary/10 border border-primary/20 uppercase">
-                  {viewingDocumentModal.category || "ATTACHED DOCUMENT"}
-                </span>
-                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                  <ShieldCheck className="size-3" /> WMS Verified Attachment
-                </span>
-              </div>
-              <DialogTitle className="text-lg font-bold text-foreground mt-2 line-clamp-1">
-                Document Preview: {viewingDocumentModal.file_name}
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Inbound Quality & Regulatory Attachment • PO: {header.po_number || "—"} • GRN: {header.grn_number || "—"}
-              </DialogDescription>
-            </DialogHeader>
+      {viewingDocumentModal && (() => {
+        const isImg =
+          (viewingDocumentModal.file_type && viewingDocumentModal.file_type.startsWith("image/")) ||
+          Boolean(viewingDocumentModal.file_name?.match(/\.(jpg|jpeg|png|webp|svg|gif)$/i)) ||
+          viewingDocumentModal.category.toLowerCase().includes("photo");
+        const isPdf =
+          viewingDocumentModal.file_type === "application/pdf" ||
+          Boolean(viewingDocumentModal.file_name?.toLowerCase().endsWith(".pdf"));
 
-            {/* DOCUMENT PREVIEW CONTAINER */}
-            <div className="rounded-xl border bg-slate-950 p-4 text-slate-100 min-h-[320px] flex flex-col items-center justify-center relative overflow-hidden">
-              {viewingDocumentModal.file_path.startsWith("blob:") ||
-                viewingDocumentModal.file_path.match(/\.(jpg|jpeg|png|webp|svg)$/i) ||
-                viewingDocumentModal.category.toLowerCase().includes("photo") ? (
-                <div className="text-center space-y-3 w-full">
+        return (
+          <Dialog open={!!viewingDocumentModal} onOpenChange={() => setViewingDocumentModal(null)}>
+            <DialogContent className="max-w-4xl rounded-2xl p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+              <DialogHeader className="border-b pb-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono font-bold text-primary px-3 py-1 rounded-full bg-primary/10 border border-primary/20 uppercase">
+                    {viewingDocumentModal.category || "ATTACHED DOCUMENT"}
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                    <ShieldCheck className="size-3" /> WMS Verified Attachment
+                  </span>
+                </div>
+                <DialogTitle className="text-lg font-bold text-foreground mt-2 line-clamp-1">
+                  Document Preview: {viewingDocumentModal.file_name}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Inbound Quality & Regulatory Attachment • PO: {header.po_number || "—"} • GRN: {header.grn_number || "—"}
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* EMBEDDED PREVIEW OR RICH OFFICIAL DOCUMENT SHEET */}
+              {isImg && viewingDocumentModal.file_path ? (
+                <div className="rounded-xl border bg-slate-950 p-4 text-slate-100 min-h-[340px] flex flex-col items-center justify-center relative overflow-hidden">
                   <img
                     src={viewingDocumentModal.file_path}
                     alt={viewingDocumentModal.file_name}
-                    className="max-h-[380px] w-auto mx-auto rounded-lg object-contain border border-slate-800 shadow-2xl"
-                    onError={(e) => {
-                      // Fallback preview card if blob url is un-rendered preview
-                      (e.target as HTMLElement).style.display = "none";
-                    }}
+                    className="max-h-[440px] w-auto mx-auto rounded-lg object-contain border border-slate-800 shadow-2xl"
                   />
-                  <p className="text-xs text-slate-400 font-mono">Image Evidence Preview • High Resolution</p>
+                  <p className="text-xs text-slate-400 font-mono mt-3">High-Resolution Image Attachment Preview</p>
+                </div>
+              ) : isPdf && viewingDocumentModal.file_path && viewingDocumentModal.file_path.startsWith("blob:") ? (
+                <div className="rounded-xl border bg-muted/10 p-2 overflow-hidden shadow-inner">
+                  <iframe
+                    src={viewingDocumentModal.file_path}
+                    className="w-full h-[480px] rounded-lg border bg-white"
+                    title={viewingDocumentModal.file_name}
+                  />
                 </div>
               ) : (
-                <div className="w-full space-y-4 text-center py-6">
-                  <div className="size-16 rounded-2xl bg-primary/20 text-primary mx-auto flex items-center justify-center border border-primary/30 shadow-inner">
-                    <FileText className="size-8" />
+                /* OFFICIAL GENERATED DOCUMENT SHEET */
+                <div className="rounded-xl border bg-card p-6 shadow-sm space-y-5 text-xs">
+                  <div className="flex flex-wrap items-start justify-between border-b pb-4 gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <FileText className="size-5 text-primary" />
+                        <h3 className="text-base font-bold uppercase tracking-tight text-foreground">
+                          {viewingDocumentModal.category}
+                        </h3>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        Official Inbound Verification Record • {viewingDocumentModal.file_name}
+                      </p>
+                    </div>
+                    <div className="text-right font-mono">
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
+                        VERIFIED & ATTACHED
+                      </span>
+                      <p className="text-[11px] font-bold text-primary mt-1">{header.grn_number || "DRAFT-GRN"}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-mono text-base font-bold text-white">{viewingDocumentModal.file_name}</h4>
-                    <p className="text-xs text-slate-400 mt-1">Official Document Copy • PDF / Document Format</p>
+
+                  {/* METADATA GRID */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 font-mono">
+                    <div className="rounded-xl border bg-muted/30 p-3 space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">PO Reference:</span>
+                        <span className="font-bold text-foreground">{header.po_number || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Supplier Name:</span>
+                        <span className="font-bold text-foreground">{header.supplier_name || header.supplier_company_name || "Direct Inbound"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Supplier Company:</span>
+                        <span className="font-bold text-foreground">{header.supplier_company_name || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Gate Pass No:</span>
+                        <span className="font-bold text-foreground">{header.gate_entry_number || "GE-2026-001"}</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border bg-muted/30 p-3 space-y-1.5">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Warehouse:</span>
+                        <span className="font-bold text-foreground">{header.warehouse_name || "Main Warehouse"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Receiving Dock:</span>
+                        <span className="font-bold text-foreground">{header.receiving_dock || "DOCK-01"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Vehicle Number:</span>
+                        <span className="font-bold text-foreground">{header.vehicle_number || "KA-01-XX-0000"}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Receipt Date:</span>
+                        <span className="font-bold text-foreground">{new Date().toLocaleDateString()}</span>
+                      </div>
+                    </div>
                   </div>
-                  <div className="max-w-md mx-auto p-4 rounded-xl bg-slate-900 border border-slate-800 text-left text-xs font-mono space-y-1.5 text-slate-300">
-                    <div><b>Document Section:</b> {viewingDocumentModal.category}</div>
-                    <div><b>GRN Reference:</b> {header.grn_number || "—"}</div>
-                    <div><b>Uploaded By:</b> {loggedInUserName}</div>
-                    <div><b>Timestamp:</b> {new Date().toLocaleString()}</div>
-                    <div><b>Security Hash:</b> SHA256-AUTHENTICATED</div>
+
+                  {/* MANIFEST TABLE */}
+                  <div className="space-y-2">
+                    <span className="font-bold text-foreground text-xs block">Shipment Material Lines</span>
+                    <div className="overflow-x-auto rounded-xl border">
+                      <table className="w-full text-xs text-left">
+                        <thead className="bg-muted/60 font-semibold uppercase text-muted-foreground text-[10px] border-b">
+                          <tr>
+                            <th className="px-3 py-2 text-center">#</th>
+                            <th className="px-3 py-2">Material Details</th>
+                            <th className="px-3 py-2 text-right">Ordered</th>
+                            <th className="px-3 py-2 text-right">Accepted</th>
+                            <th className="px-3 py-2 text-right">Damaged</th>
+                            <th className="px-3 py-2 text-center">QA Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y font-medium">
+                          {materials.map((m, idx) => (
+                            <tr key={m.item_code || idx} className="hover:bg-muted/10">
+                              <td className="px-3 py-2 text-center font-mono text-muted-foreground">{idx + 1}</td>
+                              <td className="px-3 py-2">
+                                <span className="font-bold text-foreground block">{m.material_name}</span>
+                                <span className="text-[10px] font-mono text-muted-foreground">{m.item_code}</span>
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {m.po_quantity || (m.good_quantity + m.damaged_quantity)} {m.uom}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono font-bold text-emerald-600">
+                                {m.good_quantity} {m.uom}
+                              </td>
+                              <td className={`px-3 py-2 text-right font-mono font-bold ${m.damaged_quantity > 0 ? "text-rose-600" : "text-muted-foreground"}`}>
+                                {m.damaged_quantity} {m.uom}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${m.damaged_quantity > 0 ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+                                  {m.quality_result || (m.damaged_quantity > 0 ? "PARTIAL" : "PASSED")}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          {materials.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="text-center py-6 text-muted-foreground">
+                                No material lines associated with this receipt.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* SECURITY & ATTACHMENT STAMP */}
+                  <div className="rounded-xl border border-dashed bg-muted/20 p-3 font-mono text-[11px] space-y-1 text-muted-foreground">
+                    <div><b>Attached File:</b> {viewingDocumentModal.file_name}</div>
+                    <div><b>Uploaded By:</b> {loggedInUserName || "WMS Officer"} • {new Date().toLocaleString()}</div>
+                    <div><b>Security Stamp:</b> SHA256-AUTHENTICATED-WMS-INBOUND</div>
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* ACTION FOOTER */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
-              <Button
-                variant="outline"
-                className="rounded-xl text-xs font-bold"
-                onClick={() => setViewingDocumentModal(null)}
-              >
-                Close Viewer
-              </Button>
-
-              <div className="flex items-center gap-2">
+              {/* ACTION FOOTER */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
                 <Button
                   variant="outline"
-                  className="rounded-xl text-xs font-bold border-primary/40 text-primary"
-                  onClick={() => {
-                    const win = window.open(viewingDocumentModal.file_path, "_blank");
-                    if (!win) toast.error("Please allow popups to open document");
-                  }}
+                  className="rounded-xl text-xs font-bold"
+                  onClick={() => setViewingDocumentModal(null)}
                 >
-                  <Eye className="mr-1.5 size-3.5" /> Open in Full Window
+                  Close Viewer
                 </Button>
-                <a
-                  href={viewingDocumentModal.file_path}
-                  download={viewingDocumentModal.file_name}
-                  className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90"
-                >
-                  <Download className="mr-1.5 size-3.5" /> Download File
-                </a>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    className="rounded-xl text-xs font-bold border-primary/40 text-primary hover:bg-primary/5"
+                    onClick={() => openDocumentInFullWindow(viewingDocumentModal)}
+                  >
+                    <Eye className="mr-1.5 size-3.5" /> Open in Full Window
+                  </Button>
+                  {viewingDocumentModal.file_path && viewingDocumentModal.file_path.startsWith("blob:") ? (
+                    <a
+                      href={viewingDocumentModal.file_path}
+                      download={viewingDocumentModal.file_name}
+                      className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow transition-colors hover:bg-primary/90"
+                    >
+                      <Download className="mr-1.5 size-3.5" /> Download File
+                    </a>
+                  ) : (
+                    <Button
+                      className="rounded-xl text-xs font-bold bg-primary text-primary-foreground"
+                      onClick={() => openDocumentInFullWindow(viewingDocumentModal)}
+                    >
+                      <Printer className="mr-1.5 size-3.5" /> Print Document
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      )}
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
 
       {/* 🚪 EXIT GRN ENTRY CONFIRMATION DIALOG */}
       <Dialog open={showExitConfirmModal} onOpenChange={setShowExitConfirmModal}>

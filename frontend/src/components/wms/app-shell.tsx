@@ -39,6 +39,7 @@ const grnNav = [
   { label: "Create GRN", to: "/grn?tab=wizard", icon: PlusCircle },
   { label: "Inbound Arrivals", to: "/vehicle-queue?module=grn", icon: Truck },
   { label: "GRN History", to: "/grn?tab=records", icon: ClipboardList },
+  { label: "QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
 ];
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
@@ -180,7 +181,15 @@ export function AppShell({
     };
   }, [dark]);
   const currentQueryModule = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("module") : null;
-  const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn");
+  const isGrnUser =
+    mounted &&
+    (user?.roles?.includes("GRN") ||
+      user?.roles?.includes("GRN_MANAGER") ||
+      user?.roles?.includes("OPERATIONS_MANAGER") ||
+      user?.roles?.includes("OPERATIONS") ||
+      user?.roles?.includes("RECEIVING") ||
+      user?.username?.toLowerCase() === "grn" ||
+      user?.username?.toLowerCase()?.includes("grn"));
   const isGrnRoute = path === "/grn" || path.startsWith("/grn") || (path === "/vehicle-queue" && currentQueryModule === "grn");
   const isProcurementRoute =
     path === "/procurement-dashboard" ||
@@ -293,12 +302,16 @@ export function AppShell({
               const [targetPath, targetQuery] = item.to.split("?");
               const targetParams = new URLSearchParams(targetQuery);
               const targetTab = targetParams.get("tab");
+              const targetPage = targetParams.get("page");
               const targetModule = targetParams.get("module");
               const currentParams = new URLSearchParams(searchStr);
               const currentTab = currentParams.get("tab") || (path === "/grn" ? "dashboard" : "");
+              const currentPage = currentParams.get("page") || "";
               const currentModule = currentParams.get("module") || "";
-              if (targetTab) {
-                active = path === targetPath && targetTab === currentTab;
+              if (targetPage && targetTab) {
+                active = path === targetPath && targetTab === currentTab && targetPage === currentPage;
+              } else if (targetTab) {
+                active = path === targetPath && targetTab === currentTab && (!targetPage || !currentPage || targetTab !== "wizard");
               } else if (targetModule) {
                 active = path === targetPath && (targetModule === currentModule || (!currentModule && targetModule === "warehouse"));
               } else {
@@ -460,7 +473,15 @@ export function AppShell({
                         ? "Finance Manager"
                         : user?.roles?.includes("GATE_SECURITY")
                           ? "Security Officer"
-                          : "Operations Manager"}
+                          : user?.roles?.includes("GRN") ||
+                              user?.roles?.includes("GRN_MANAGER") ||
+                              user?.roles?.includes("OPERATIONS_MANAGER") ||
+                              user?.roles?.includes("OPERATIONS") ||
+                              user?.roles?.includes("RECEIVING") ||
+                              user?.username?.toLowerCase() === "grn" ||
+                              user?.username?.toLowerCase()?.includes("grn")
+                            ? "GRN / Operations Manager"
+                            : "Operations Manager"}
                   </p>
                 </div>
                 <button

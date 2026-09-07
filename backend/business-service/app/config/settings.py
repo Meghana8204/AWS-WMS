@@ -88,16 +88,20 @@ class Settings(BaseSettings):
     gate_entry_password: str = Field(default="gate123")
     supplier_username: str = Field(default="supplier")
     supplier_password: str = Field(default="supplier123")
+    grn_username: str = Field(default="grn")
+    grn_password: str = Field(default="grn123")
 
     # --- Email SMTP Settings ----------------------------------------------------
     email_host: str = Field(default="smtp.gmail.com")
-    email_port: int = Field(default=465)
+    email_port: int = Field(default=587)
     email_timeout_seconds: int = Field(default=8, ge=1, le=60)
     email_host_user: str = Field(default="")
     email_host_password: str = Field(default="")
     email_from_name: str = Field(default="NexusWMS Procurement")
+    procurement_email: str = Field(default="")
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+

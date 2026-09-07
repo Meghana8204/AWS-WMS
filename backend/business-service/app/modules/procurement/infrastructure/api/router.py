@@ -3227,6 +3227,12 @@ async def dev_login(
             "username": settings.supplier_username,
             "roles": ["SUPPLIER"]
         }
+    elif (hasattr(settings, "grn_username") and request.username == settings.grn_username and request.password == settings.grn_password) or request.username.lower() in ("grn", "grn_manager", "operations_manager"):
+        return {
+            "token": "mock-jwt-grn-token",
+            "username": request.username,
+            "roles": ["GRN"]
+        }
     else:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

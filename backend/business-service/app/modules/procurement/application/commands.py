@@ -124,6 +124,8 @@ class QuotationLineCommand:
     material_id: Optional[str] = None
     material_variant_id: Optional[str] = None
     variant_code: Optional[str] = None
+    material_name: Optional[str] = None
+    uom: Optional[str] = None
 
 
 @dataclass(frozen=True)

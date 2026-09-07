@@ -100,6 +100,22 @@ def render_premium_email(
     return f'''<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a"><div style="display:none;max-height:0;overflow:hidden">{escape(intro)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9"><tr><td align="center" style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)"><tr><td style="padding:28px 34px;background:linear-gradient(135deg,#0f172a,#1e3a8a)"><div style="color:#93c5fd;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase">NEXUS<span style="color:#ffffff">WMS</span> · {escape(eyebrow)}</div><h1 style="margin:12px 0 0;color:#ffffff;font-size:28px;line-height:1.25">{escape(title)}</h1></td></tr><tr><td style="padding:32px 34px"><p style="margin:0 0 12px;font-size:16px;font-weight:700">{escape(greeting)}</p><p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.7;white-space:pre-line">{escape(intro)}</p>{f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 -6px 12px">{detail_rows}</table>' if detail_rows else ''}{items_html}{extra_custom_html}{credentials_html}<div style="margin-top:24px">{buttons}</div>{note_html}<p style="margin:28px 0 0;color:#475569;font-size:13px;line-height:1.6">Regards,<br><strong style="color:#0f172a">{escape(signoff)}</strong></p></td></tr><tr><td align="center" style="padding:20px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;line-height:1.6">This is an automated transactional message from NexusWMS.<br>Please do not share secure portal credentials.</td></tr></table></td></tr></table></body></html>'''
 
 
+import re
+
+def normalize_smtp_password(raw_pw: str | None) -> str:
+    """
+    Safely normalizes an SMTP password (e.g. Gmail 16-character App Password).
+    Removes enclosing quotes, leading/trailing whitespace, and any internal
+    spaces/tabs/newlines without exposing or mutating secrets.
+    """
+    if not raw_pw:
+        return ""
+    pw = str(raw_pw).strip()
+    if (pw.startswith('"') and pw.endswith('"')) or (pw.startswith("'") and pw.endswith("'")):
+        pw = pw[1:-1].strip()
+    return re.sub(r"[\s\u00a0\u200b\r\n\t]+", "", pw)
+
+
 def _send_sync(
     to_email: str,
     subject: str,
@@ -109,20 +125,24 @@ def _send_sync(
 ):
     settings = get_settings()
 
+    host_user = (settings.email_host_user or "").strip()
+    host_password = normalize_smtp_password(settings.email_host_password)
+
     # Absolute path for debugging
     log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
-    with open(log_path, "a") as lf:
-        lf.write(f"SMTP Start: {to_email} via {settings.email_host_user}\n")
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as lf:
+        lf.write(f"SMTP Start: {to_email} via user={host_user}, host={settings.email_host}:{settings.email_port}, auth={bool(host_password)}, pw_len={len(host_password)}\n")
 
     # Let Gmail, Outlook, and mobile clients prefer the premium HTML while
     # retaining the plain-text version as an accessibility fallback.
     msg = MIMEMultipart('mixed')
-    msg['From'] = f"{settings.email_from_name} <{settings.email_host_user}>"
+    msg['From'] = f"{settings.email_from_name} <{host_user}>"
     msg['To'] = to_email
+    msg['Reply-To'] = host_user
     msg['Subject'] = subject
     msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = make_msgid(domain=settings.email_host_user.split('@')[-1])
-    msg['Auto-Submitted'] = 'auto-generated'
+    msg['Message-ID'] = make_msgid()
     alternatives = MIMEMultipart('alternative')
     alternatives.attach(MIMEText(body, 'plain', 'utf-8'))
     if html_body:
@@ -147,7 +167,7 @@ def _send_sync(
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-            server.login(settings.email_host_user, settings.email_host_password)
+            server.login(host_user, host_password)
             server.send_message(msg)
             # Delivery has completed once send_message returns. A timeout while
             # closing must not trigger another attempt and duplicate the email.
@@ -155,13 +175,15 @@ def _send_sync(
                 server.quit()
             except (OSError, smtplib.SMTPException, socket.error):
                 server.close()
-            with open(log_path, "a") as lf:
+            with open(log_path, "a", encoding="utf-8") as lf:
                 lf.write(f"SMTP Success: {to_email} via port {port}\n")
             return True
         except (OSError, smtplib.SMTPException, socket.error) as smtp_err:
             # Enhanced error logging for diagnostics
             error_msg = str(smtp_err)
-            if isinstance(smtp_err, OSError):
+            if isinstance(smtp_err, smtplib.SMTPAuthenticationError):
+                error_msg += " [Gmail 535 Bad Credentials - Authentication failed. Verify 2FA is active and generate a new 16-character App Password at https://myaccount.google.com/apppasswords]"
+            elif isinstance(smtp_err, OSError):
                 errno = getattr(smtp_err, 'errno', getattr(smtp_err, 'winerror', None))
                 if errno in WINSOCK_ERRORS:
                     error_msg += f" [{WINSOCK_ERRORS[errno]}]"
@@ -173,7 +195,7 @@ def _send_sync(
                 except Exception:
                     pass
     error_message = "; ".join(errors)
-    with open(log_path, "a") as lf:
+    with open(log_path, "a", encoding="utf-8") as lf:
         lf.write(f"SMTP Error: {error_message}\n")
         lf.write(f"System: {platform.system()} | Host: {settings.email_host}:{settings.email_port}\n")
     raise RuntimeError(error_message)
