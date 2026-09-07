@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import asyncio
+import hashlib
 import uuid
 from io import BytesIO
 from datetime import date, datetime
@@ -351,8 +352,21 @@ async def get_next_mr_number(uow: UnitOfWork = Depends(get_uow)):
 
 
 @router.get("/material-requests", response_model=List[MaterialRequestResponse])
-async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
-    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).order_by(MaterialRequestModel.created_at.desc())
+async def list_material_requests(
+    department: Optional[str] = None,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+):
+    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items))
+    
+    roles = [r.upper() for r in (user.roles or [])]
+    if "ASSEMBLY" in roles and not any(r in ["ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER", "PROCUREMENT"] for r in roles):
+        # Assembly sees Assembly department requests
+        stmt = stmt.where(func.lower(MaterialRequestModel.department) == "assembly")
+    elif department:
+        stmt = stmt.where(func.lower(MaterialRequestModel.department) == department.strip().lower())
+        
+    stmt = stmt.order_by(MaterialRequestModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
     return [
@@ -363,6 +377,7 @@ async def list_material_requests(uow: UnitOfWork = Depends(get_uow)):
             department=m.department,
             requested_by=m.requested_by,
             status=m.status,
+            priority=getattr(m, "priority", "MEDIUM") or "MEDIUM",
             required_date=m.required_date,
             remarks=m.remarks,
             items=[
@@ -561,6 +576,54 @@ async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
     req.status = "PROCESSED"
     await uow.commit()
     return {"status": "success"}
+
+
+@router.get("/material-requests/{id}", response_model=MaterialRequestResponse)
+async def get_material_request(
+    id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+):
+    try:
+        req_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Material Request UUID")
+
+    stmt = select(MaterialRequestModel).options(selectinload(MaterialRequestModel.items)).where(MaterialRequestModel.id == req_uuid)
+    res = await uow.session.execute(stmt)
+    m = res.scalar_one_or_none()
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material request not found")
+
+    roles = [r.upper() for r in (user.roles or [])]
+    if "ASSEMBLY" in roles and not any(r in ["ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER", "PROCUREMENT"] for r in roles):
+        if m.department.strip().lower() != "assembly":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this department's request")
+
+    return MaterialRequestResponse(
+        id=str(m.id),
+        request_number=m.request_number,
+        warehouse_id=m.warehouse_id,
+        department=m.department,
+        requested_by=m.requested_by,
+        status=m.status,
+        priority=getattr(m, "priority", "MEDIUM") or "MEDIUM",
+        required_date=m.required_date,
+        remarks=m.remarks,
+        items=[
+            MaterialRequestItemSchema(
+                material_id=str(it.material_id) if it.material_id else None,
+                material_variant_id=str(it.material_variant_id) if it.material_variant_id else None,
+                material_code=it.material_code,
+                variant_code=it.variant_code,
+                material_name=it.material_name,
+                quantity=it.quantity,
+                uom=it.uom
+            )
+            for it in m.items
+        ],
+        created_at=m.created_at
+    )
 
 
 @router.put("/material-requests/{id}")
@@ -3563,9 +3626,31 @@ async def list_arrival_notifications(uow: UnitOfWork = Depends(get_uow)):
 
 
 @router.get("/notifications", response_model=List[NotificationResponse])
-async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
+async def list_notifications(
+    role: str = Query(...),
+    store_code: Optional[str] = Query(None),
+    store_id: Optional[str] = Query(None),
+    uow: UnitOfWork = Depends(get_uow),
+):
     normalized_role = role.strip().upper()
-    stmt = select(NotificationModel).where(NotificationModel.user_role == normalized_role).order_by(NotificationModel.created_at.desc())
+    role_targets = {normalized_role}
+    if store_code:
+        clean_code = store_code.strip().upper()
+        role_targets.add(f"STR:{clean_code}"[:32])
+        role_targets.add(clean_code[:32])
+    if store_id:
+        clean_id = store_id.strip()
+        role_targets.add(f"STR:{clean_id}"[:32])
+        role_targets.add(clean_id[:32])
+    if normalized_role in {"STORE_MANAGER", "STORE_KEEPER", "STORE"}:
+        role_targets.add("STORE_MANAGER")
+        role_targets.add("STORE_KEEPER")
+
+    stmt = (
+        select(NotificationModel)
+        .where(NotificationModel.user_role.in_(list(role_targets)))
+        .order_by(NotificationModel.created_at.desc())
+    )
     res = await uow.session.execute(stmt)
     notifications = res.scalars().all()
     return [
@@ -3607,11 +3692,29 @@ async def mark_notification_read(id: str, uow: UnitOfWork = Depends(get_uow)):
 
 
 @router.post("/notifications/read-all")
-async def mark_all_notifications_read(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
+async def mark_all_notifications_read(
+    role: str = Query(...),
+    store_code: Optional[str] = Query(None),
+    store_id: Optional[str] = Query(None),
+    uow: UnitOfWork = Depends(get_uow),
+):
     normalized_role = role.strip().upper()
+    role_targets = {normalized_role}
+    if store_code:
+        clean_code = store_code.strip().upper()
+        role_targets.add(f"STR:{clean_code}"[:32])
+        role_targets.add(clean_code[:32])
+    if store_id:
+        clean_id = store_id.strip()
+        role_targets.add(f"STR:{clean_id}"[:32])
+        role_targets.add(clean_id[:32])
+    if normalized_role in {"STORE_MANAGER", "STORE_KEEPER", "STORE"}:
+        role_targets.add("STORE_MANAGER")
+        role_targets.add("STORE_KEEPER")
+
     result = await uow.session.execute(
         update(NotificationModel)
-        .where(NotificationModel.user_role == normalized_role, NotificationModel.is_read.is_(False))
+        .where(NotificationModel.user_role.in_(list(role_targets)), NotificationModel.is_read.is_(False))
         .values(is_read=True)
     )
     await uow.commit()
@@ -3699,50 +3802,119 @@ async def change_password(
 @router.post("/auth/dev-login")
 async def dev_login(
     request: DevLoginRequest,
+    uow: UnitOfWork = Depends(get_uow),
 ) -> dict:
     from app.config.settings import get_settings
     settings = get_settings()
 
-    # 1. Check exact settings match first
-    if request.username == settings.admin_username and request.password == settings.admin_password:
-        return {
-            "token": "mock-jwt-admin-token",
-            "username": settings.admin_username,
-            "roles": ["ADMIN"]
-        }
-    elif request.username == settings.procurement_username and request.password == settings.procurement_password:
-        return {
-            "token": "mock-jwt-procurement-token",
-            "username": settings.procurement_username,
-            "roles": ["PROCUREMENT"]
-        }
-    elif request.username == settings.finance_username and request.password == settings.finance_password:
-        return {
-            "token": "mock-jwt-finance-token",
-            "username": settings.finance_username,
-            "roles": ["FINANCE"]
-        }
-    elif request.username == settings.warehouse_username and request.password == settings.warehouse_password:
-        return {
-            "token": "mock-jwt-warehouse-token",
-            "username": settings.warehouse_username,
-            "roles": ["WAREHOUSE"]
-        }
-    elif request.username == settings.gate_security_username and request.password == settings.gate_security_password:
-        return {
-            "token": "mock-jwt-gate-entry-token",
-            "username": settings.gate_security_username,
-            "roles": ["GATE_SECURITY"]
-        }
-    elif request.username == settings.supplier_username and request.password == settings.supplier_password:
-        return {
-            "token": "mock-jwt-supplier-token",
-            "username": settings.supplier_username,
-            "roles": ["SUPPLIER"]
-        }
+    input_user = request.username.strip().lower()
+    input_pwd = request.password
 
-    # 2. Flexible development fallback matching role keywords for local testing
-    u = request.username.lower().strip()
+    if input_user == settings.admin_username.lower():
+        if input_pwd == settings.admin_password:
+            return {
+                "token": "mock-jwt-admin-token",
+                "username": settings.admin_username,
+                "roles": ["ADMIN"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == settings.procurement_username.lower():
+        if input_pwd == settings.procurement_password:
+            return {
+                "token": "mock-jwt-procurement-token",
+                "username": settings.procurement_username,
+                "roles": ["PROCUREMENT"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == settings.finance_username.lower():
+        if input_pwd == settings.finance_password:
+            return {
+                "token": "mock-jwt-finance-token",
+                "username": settings.finance_username,
+                "roles": ["FINANCE"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == settings.warehouse_username.lower():
+        if input_pwd == settings.warehouse_password:
+            return {
+                "token": "mock-jwt-warehouse-token",
+                "username": settings.warehouse_username,
+                "roles": ["WAREHOUSE"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == settings.gate_security_username.lower() or input_user == getattr(settings, "gate_entry_username", "gate_entry").lower():
+        if input_pwd == settings.gate_security_password:
+            return {
+                "token": "mock-jwt-gate-entry-token",
+                "username": settings.gate_security_username,
+                "roles": ["GATE_SECURITY"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == settings.supplier_username.lower():
+        if input_pwd == settings.supplier_password:
+            return {
+                "token": "mock-jwt-supplier-token",
+                "username": settings.supplier_username,
+                "roles": ["SUPPLIER"]
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+    elif input_user == "assembly":
+        if input_pwd == getattr(settings, "assembly_password", "assembly123"):
+            return {
+                "token": "mock-jwt-assembly-token",
+                "username": request.username,
+                "roles": ["ASSEMBLY"],
+                "permissions": ["material_request:create", "material_request:read"],
+                "department": "Assembly",
+            }
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username or password")
+
+    # Check real StoreManagerUserModel accounts in database
+    from app.modules.store.infrastructure.persistence.models import StoreManagerUserModel
+    pwd_hash = hashlib.sha256(input_pwd.encode()).hexdigest()
+    mgr_stmt = (
+        select(StoreManagerUserModel)
+        .options(selectinload(StoreManagerUserModel.store))
+        .where(
+            or_(
+                func.lower(StoreManagerUserModel.username) == input_user,
+                func.lower(StoreManagerUserModel.employee_id) == input_user,
+                func.lower(StoreManagerUserModel.full_name) == input_user,
+                func.lower(StoreManagerUserModel.email) == input_user,
+            )
+        )
+        .order_by(StoreManagerUserModel.created_at.desc())
+    )
+    mgr_res = await uow.session.execute(mgr_stmt)
+    manager = mgr_res.scalars().first()
+
+    if manager:
+        if manager.status.upper() != "ACTIVE":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Store Manager account is inactive. Please contact your administrator.",
+            )
+
+        if manager.password_hash == pwd_hash:
+            store_code = manager.store.store_code if manager.store else "STR-001"
+            return {
+                "token": f"mock-jwt-store-manager-{manager.employee_id}",
+                "username": manager.username,
+                "full_name": manager.full_name,
+                "employee_id": manager.employee_id,
+                "roles": ["STORE_MANAGER"],
+                "permissions": ["store:read", "store:write"],
+                "store_id": str(manager.store_id),
+                "store_code": store_code,
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password"
+            )
+
+    # Flexible development fallback matching role keywords for local testing
+    u = input_user
     if "finance" in u:
         return {
             "token": "mock-jwt-finance-token",
@@ -3755,7 +3927,7 @@ async def dev_login(
             "username": request.username,
             "roles": ["PROCUREMENT"]
         }
-    elif "warehouse" in u or "store" in u:
+    elif "warehouse" in u:
         return {
             "token": "mock-jwt-warehouse-token",
             "username": request.username,
@@ -3778,12 +3950,6 @@ async def dev_login(
             "token": "mock-jwt-grn-token",
             "username": request.username,
             "roles": ["GRN"]
-        }
-    elif u:
-        return {
-            "token": "mock-jwt-admin-token",
-            "username": request.username,
-            "roles": ["ADMIN"]
         }
 
     raise HTTPException(

@@ -1,16 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-<<<<<<< HEAD
-import { Truck, Inbox, Loader2, FileText, AlertTriangle, Camera, X, Eye, ExternalLink } from "lucide-react";
-import { AppShell, DockAllocationNotificationCard } from "@/components/wms/app-shell";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { api, BUSINESS_API_URL } from "@/lib/api-client";
-import { cn } from "@/lib/utils";
-import { requireAuth } from "@/lib/auth-utils";
-=======
 import {
   Bell,
   Truck,
@@ -22,26 +12,36 @@ import {
   Loader2,
   Calendar,
   FileText,
-  ArrowRight,
+  AlertTriangle,
+  Camera,
+  X,
   Package,
+  ExternalLink,
 } from "lucide-react";
-import { AppShell, StatusBadge } from "@/components/wms/app-shell";
-import { Button } from "@/components/ui/button";
+import { AppShell, StatusBadge, DockAllocationNotificationCard } from "@/components/wms/app-shell";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { api } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { api, BUSINESS_API_URL } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { getUserInfo, requireAuth } from "@/lib/auth-utils";
->>>>>>> main
 
 export const Route = createFileRoute("/notifications")({
   beforeLoad: () => requireAuth(),
   component: Notifications,
 });
 
-<<<<<<< HEAD
 function parseDamageNotificationMessage(msg?: string) {
-  if (!msg) return { grnNumber: "", poNumber: "", supplierName: "", warehouseName: "", reportedBy: "", customRemarks: "", items: [] };
+  if (!msg)
+    return {
+      grnNumber: "",
+      poNumber: "",
+      supplierName: "",
+      warehouseName: "",
+      reportedBy: "",
+      customRemarks: "",
+      items: [],
+    };
 
   const grnMatch = msg.match(/GRN:\s*([^\s|\n]+)/i) || msg.match(/for GRN\s+([^\s|\n]+)/i);
   const poMatch = msg.match(/PO:\s*([^\s|\n]+)/i) || msg.match(/against PO\s+([^\s|\.\n]+)/i);
@@ -61,8 +61,12 @@ function parseDamageNotificationMessage(msg?: string) {
       const cleanLine = line.trim().replace(/^•\s*/, "");
       const parts = cleanLine.split("|").map((p) => p.trim());
       const mat = parts[0] || "Material Item";
-      const qty = parts.find((p) => p.toLowerCase().startsWith("qty:"))?.replace(/^qty:\s*/i, "") || "Recorded Qty";
-      const rsn = parts.find((p) => p.toLowerCase().startsWith("reason:"))?.replace(/^reason:\s*/i, "") || (remarksMatch && remarksMatch[1] ? remarksMatch[1] : "Damaged / Rejected");
+      const qty =
+        parts.find((p) => p.toLowerCase().startsWith("qty:"))?.replace(/^qty:\s*/i, "") ||
+        "Recorded Qty";
+      const rsn =
+        parts.find((p) => p.toLowerCase().startsWith("reason:"))?.replace(/^reason:\s*/i, "") ||
+        (remarksMatch && remarksMatch[1] ? remarksMatch[1] : "Damaged / Rejected");
       items.push({ material: mat, quantity: qty, reason: rsn });
     }
   }
@@ -71,10 +75,20 @@ function parseDamageNotificationMessage(msg?: string) {
     grnNumber: grnMatch && grnMatch[1] ? grnMatch[1] : "GRN-2026-0001",
     poNumber: poMatch && poMatch[1] ? poMatch[1] : "PO-1001",
     supplierName: supplierMatch && supplierMatch[1] ? supplierMatch[1].trim() : "Supplier",
-    warehouseName: warehouseMatch && warehouseMatch[1] ? warehouseMatch[1].trim() : "Main Warehouse",
+    warehouseName:
+      warehouseMatch && warehouseMatch[1] ? warehouseMatch[1].trim() : "Main Warehouse",
     reportedBy: "GRN Quality Inspector",
     customRemarks: remarksMatch && remarksMatch[1] ? remarksMatch[1].trim() : "",
-    items: items.length > 0 ? items : [{ material: "Damaged Material Item", quantity: "Recorded Qty", reason: "Damaged during receiving inspection" }],
+    items:
+      items.length > 0
+        ? items
+        : [
+            {
+              material: "Damaged Material Item",
+              quantity: "Recorded Qty",
+              reason: "Damaged during receiving inspection",
+            },
+          ],
   };
 }
 
@@ -83,16 +97,24 @@ function parseGrnNotificationDetails(n: any) {
   const msg = n.message || "";
   const title = n.title || "";
 
-  const grnMatch = msg.match(/GRN:\s*([^\s|\n]+)/i) || msg.match(/GRN Draft Created:\s*([^\s|\n]+)/i) || msg.match(/(GRN-[A-Za-z0-9-]+)/i);
+  const grnMatch =
+    msg.match(/GRN:\s*([^\s|\n]+)/i) ||
+    msg.match(/GRN Draft Created:\s*([^\s|\n]+)/i) ||
+    msg.match(/(GRN-[A-Za-z0-9-]+)/i);
   const poMatch = msg.match(/PO:\s*([^\s|\n]+)/i) || msg.match(/(PO-[A-Za-z0-9-]+)/i);
   const supplierMatch = msg.match(/Supplier:\s*([^|\n]+)/i);
-  const vehicleMatch = msg.match(/vehicle:\s*([^\s|\n,]+)/i) || msg.match(/Vehicle:\s*([^\s|\n,]+)/i) || msg.match(/for\s+([A-Z0-9-]+)\s+at/i);
+  const vehicleMatch =
+    msg.match(/vehicle:\s*([^\s|\n,]+)/i) ||
+    msg.match(/Vehicle:\s*([^\s|\n,]+)/i) ||
+    msg.match(/for\s+([A-Z0-9-]+)\s+at/i);
   const dockMatch = msg.match(/at\s+([A-Z0-9-]+)\s+has/i) || msg.match(/Dock:\s*([^\s|\n]+)/i);
 
   const grnNumber = n.grn_number || n.grnNumber || (grnMatch ? grnMatch[1] : null);
   const poNumber = n.po_number || n.poNumber || (poMatch ? poMatch[1] : null);
-  const supplierName = n.supplier_name || n.supplierName || (supplierMatch ? supplierMatch[1].trim() : null);
-  const vehicleNumber = n.vehicle_number || n.vehicleNumber || (vehicleMatch ? vehicleMatch[1].trim() : null);
+  const supplierName =
+    n.supplier_name || n.supplierName || (supplierMatch ? supplierMatch[1].trim() : null);
+  const vehicleNumber =
+    n.vehicle_number || n.vehicleNumber || (vehicleMatch ? vehicleMatch[1].trim() : null);
   const dockCode = n.dock_code || n.dockCode || (dockMatch ? dockMatch[1].trim() : null);
 
   let statusText = "Goods Receiving";
@@ -100,7 +122,8 @@ function parseGrnNotificationDetails(n: any) {
   else if (title.toLowerCase().includes("posted")) statusText = "GRN Posted";
   else if (title.toLowerCase().includes("required")) statusText = "Quality Inspection Required";
   else if (title.toLowerCase().includes("pass")) statusText = "Quality Inspection Passed";
-  else if (title.toLowerCase().includes("fail") || title.toLowerCase().includes("damage")) statusText = "Quality Failed / Damaged";
+  else if (title.toLowerCase().includes("fail") || title.toLowerCase().includes("damage"))
+    statusText = "Quality Failed / Damaged";
   else if (title.toLowerCase().includes("completed")) statusText = "Receiving Completed";
 
   return {
@@ -117,15 +140,12 @@ function parseGrnNotificationDetails(n: any) {
   };
 }
 
-=======
->>>>>>> main
 function Notifications() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
 
-<<<<<<< HEAD
   // Modal State for Damaged Goods Details
   const [showDamageModal, setShowDamageModal] = useState(false);
   const [selectedDamageNotif, setSelectedDamageNotif] = useState<any | null>(null);
@@ -137,10 +157,10 @@ function Notifications() {
   const [showGrnModal, setShowGrnModal] = useState(false);
   const [selectedGrnNotif, setSelectedGrnNotif] = useState<any | null>(null);
 
-=======
->>>>>>> main
   useEffect(() => {
-    const roles = getUserInfo()?.roles || [];
+    const info = typeof window !== "undefined" ? localStorage.getItem("user_info") : null;
+    const parsedInfo = info ? JSON.parse(info) : {};
+    const roles = parsedInfo.roles || getUserInfo()?.roles || [];
     const role = roles.includes("SUPPLIER")
       ? "SUPPLIER"
       : roles.includes("FINANCE")
@@ -149,11 +169,17 @@ function Notifications() {
           ? "PROCUREMENT"
           : roles.includes("ASSEMBLY_MANAGER")
             ? "ASSEMBLY_MANAGER"
-            : "WAREHOUSE";
+            : roles.includes("STORE_MANAGER") ||
+                roles.includes("STORE_KEEPER") ||
+                roles.includes("STORE")
+              ? "STORE_MANAGER"
+              : "WAREHOUSE";
     setUserRole(role);
-    void fetchData(role, false);
-    const timer = window.setInterval(() => void fetchData(role, true), 2000);
-    const refresh = () => void fetchData(role, true);
+    const storeCode = parsedInfo.store_code || parsedInfo.storeCode;
+    const storeId = parsedInfo.store_id || parsedInfo.storeId;
+    void fetchData(role, storeCode, storeId, false);
+    const timer = window.setInterval(() => void fetchData(role, storeCode, storeId, true), 2000);
+    const refresh = () => void fetchData(role, storeCode, storeId, true);
     window.addEventListener("focus", refresh);
     window.addEventListener("notifications:refresh", refresh);
     return () => {
@@ -163,7 +189,6 @@ function Notifications() {
     };
   }, []);
 
-<<<<<<< HEAD
   // Fetch full GRN damage data when damage notification is selected
   useEffect(() => {
     if (!selectedDamageNotif) {
@@ -196,7 +221,7 @@ function Notifications() {
         const hasEvidence = grnResult?.lines?.some(
           (l: any) =>
             (Array.isArray(l.damageEvidence) && l.damageEvidence.length > 0) ||
-            (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0)
+            (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0),
         );
 
         if (!hasEvidence && (parsed.poNumber || selectedDamageNotif.po_number)) {
@@ -238,9 +263,7 @@ function Notifications() {
     };
   }, [selectedDamageNotif]);
 
-=======
->>>>>>> main
-  const fetchData = async (role: string, quiet = false) => {
+  const fetchData = async (role: string, storeCode?: string, storeId?: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
       if (role === "WAREHOUSE") {
@@ -269,6 +292,12 @@ function Notifications() {
               new Date(a.created_at || a.createdAt || 0).getTime(),
           ),
         );
+      } else if (role === "STORE_MANAGER") {
+        const data = await api.getNotifications("STORE_MANAGER", {
+          store_code: storeCode,
+          store_id: storeId,
+        });
+        setNotifications(data);
       } else {
         const data = await api.getNotifications(role);
         setNotifications(Array.isArray(data) ? data : []);
@@ -280,7 +309,6 @@ function Notifications() {
     }
   };
 
-<<<<<<< HEAD
   const handleOpenNotificationDetails = (n: any) => {
     const isDockAllocation =
       n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
@@ -318,9 +346,7 @@ function Notifications() {
     ? parseDamageNotificationMessage(selectedDamageNotif.message)
     : null;
 
-  const grnDetails = selectedGrnNotif
-    ? parseGrnNotificationDetails(selectedGrnNotif)
-    : null;
+  const grnDetails = selectedGrnNotif ? parseGrnNotificationDetails(selectedGrnNotif) : null;
 
   const getPhotosForMaterial = (matString: string) => {
     if (!damageGrnData?.lines) return [];
@@ -332,18 +358,25 @@ function Notifications() {
       const code = (l.itemCode || l.item_code || "").toLowerCase().trim();
       const name = (l.materialName || l.material_name || "").toLowerCase().trim();
       return (
-        (code && (cleanMat.includes(code) || (extractedCode && (code === extractedCode || cleanMat.startsWith(code))))) ||
+        (code &&
+          (cleanMat.includes(code) ||
+            (extractedCode && (code === extractedCode || cleanMat.startsWith(code))))) ||
         (name && (cleanMat.includes(name) || name.includes(cleanMat)))
       );
     });
-    const lineEvidence = matchedLine?.damageEvidence || matchedLine?.damage_evidence || matchedLine?.photos;
+    const lineEvidence =
+      matchedLine?.damageEvidence || matchedLine?.damage_evidence || matchedLine?.photos;
     if (Array.isArray(lineEvidence) && lineEvidence.length > 0) return lineEvidence;
     if (damageGrnData.lines.length === 1) {
-      const ev = damageGrnData.lines[0]?.damageEvidence || damageGrnData.lines[0]?.damage_evidence || damageGrnData.lines[0]?.photos;
+      const ev =
+        damageGrnData.lines[0]?.damageEvidence ||
+        damageGrnData.lines[0]?.damage_evidence ||
+        damageGrnData.lines[0]?.photos;
       if (Array.isArray(ev) && ev.length > 0) return ev;
     }
     return [];
-=======
+  };
+
   const handleMarkRead = async (id: string) => {
     try {
       const notification = notifications.find((n) => n.id === id);
@@ -371,7 +404,6 @@ function Notifications() {
     } catch (error) {
       toast.error("Unable to mark all notifications as read");
     }
->>>>>>> main
   };
 
   return (
@@ -405,7 +437,6 @@ function Notifications() {
         </Card>
       ) : (
         <div className="grid gap-4">
-<<<<<<< HEAD
           {notifications.map((n) => {
             const isDockAllocation =
               n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
@@ -414,41 +445,11 @@ function Notifications() {
             if (isDockAllocation) {
               return <DockAllocationNotificationCard key={n.id} notification={n} />;
             }
-=======
-          {notifications.map((n, i) => (
-            <Card
-              key={n.id}
-              className={cn(
-                "group relative overflow-hidden border-border/50 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
-                !n.is_read && "bg-primary-soft/5 border-primary/20",
-              )}
-            >
-              {!n.is_read && <div className="absolute left-0 top-0 h-full w-1 bg-primary" />}
-
-              <div className="flex items-start gap-4">
-                <div
-                  className={cn(
-                    "grid size-12 shrink-0 place-items-center rounded-2xl",
-                    n.title?.includes("Approved")
-                      ? "bg-success-soft text-success"
-                      : n.title?.includes("Rejected") || n.title?.includes("Failed")
-                        ? "bg-destructive-soft text-destructive"
-                        : "bg-primary-soft text-primary",
-                  )}
-                >
-                  {n.type === "arrival" ? (
-                    <Truck className="size-6" />
-                  ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
-                    <Package className="size-6" />
-                  ) : (
-                    <FileText className="size-6" />
-                  )}
-                </div>
->>>>>>> main
 
             const isDamage =
               n.title?.toLowerCase().includes("damage") ||
-              n.message?.toLowerCase().includes("damage");
+              n.message?.toLowerCase().includes("damage") ||
+              n.type === "damaged_goods";
 
             return (
               <Card
@@ -477,21 +478,26 @@ function Notifications() {
                         ? "bg-rose-500/10 text-rose-600"
                         : n.title?.includes("Approved")
                           ? "bg-success-soft text-success"
-                          : n.title?.includes("Rejected")
+                          : n.title?.includes("Rejected") || n.title?.includes("Failed")
                             ? "bg-destructive-soft text-destructive"
-                            : "bg-primary-soft text-primary",
+                            : n.type === "arrival"
+                              ? "bg-primary-soft text-primary"
+                              : n.title?.includes("Inventory") || n.title?.includes("Putaway")
+                                ? "bg-teal-500/10 text-teal-600"
+                                : "bg-primary-soft text-primary",
                     )}
                   >
                     {isDamage ? (
                       <AlertTriangle className="size-6" />
                     ) : n.type === "arrival" ? (
                       <Truck className="size-6" />
+                    ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
+                      <Package className="size-6" />
                     ) : (
                       <FileText className="size-6" />
                     )}
                   </div>
 
-<<<<<<< HEAD
                   <div className="flex-1 space-y-1">
                     <div className="flex items-center justify-between">
                       <h3
@@ -540,20 +546,6 @@ function Notifications() {
                       >
                         <FileText className="mr-1.5 size-3.5" /> View Details
                       </Button>
-=======
-                  <div className="mt-4 pt-4 border-t border-border/40 flex items-center justify-between">
-                    <div className="flex gap-2">
-                      {n.po_number && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted font-mono">
-                          PO: {n.po_number}
-                        </span>
-                      )}
-                      {n.supplier_name && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-muted">
-                          {n.supplier_name}
-                        </span>
-                      )}
->>>>>>> main
                     </div>
                   </div>
                 </div>
@@ -684,7 +676,10 @@ function Notifications() {
                           {item.material}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          Reason: <b className="text-rose-700 dark:text-rose-400 font-semibold">{item.reason}</b>
+                          Reason:{" "}
+                          <b className="text-rose-700 dark:text-rose-400 font-semibold">
+                            {item.reason}
+                          </b>
                         </span>
                       </div>
                       <span className="font-mono text-xs font-black text-rose-600 bg-rose-500/10 px-3 py-1 rounded-full border border-rose-500/20">
@@ -697,7 +692,8 @@ function Notifications() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                            <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence ({linePhotos.length})
+                            <Camera className="size-3.5 text-rose-500" /> Damage Photos Evidence (
+                            {linePhotos.length})
                           </span>
                           <span className="text-[10px] font-bold text-emerald-600 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
                             ✓ {linePhotos.length} Photo(s) Attached
@@ -715,7 +711,8 @@ function Notifications() {
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                             {linePhotos.map((photo: any, pIdx: number) => {
                               const filePath = photo.filePath || photo.file_path || "";
-                              const fileName = photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
+                              const fileName =
+                                photo.fileName || photo.file_name || `damage_photo_${pIdx + 1}.jpg`;
                               const fullUrl = filePath.startsWith("http")
                                 ? filePath
                                 : `${BUSINESS_API_URL}${filePath.startsWith("/") ? "" : "/"}${filePath}`;
@@ -732,9 +729,9 @@ function Notifications() {
                                       alt={fileName}
                                       className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
                                       onError={(e) => {
-                                        // Fallback on missing or invalid image path
                                         const target = e.target as HTMLImageElement;
-                                        target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                                        target.src =
+                                          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
                                       }}
                                     />
                                   </div>
@@ -918,7 +915,11 @@ function Notifications() {
               </button>
             </div>
             <div className="mt-3 overflow-hidden rounded-xl bg-black flex items-center justify-center max-h-[70vh]">
-              <img src={enlargedPhoto} alt="Enlarged damage evidence" className="max-h-[70vh] object-contain" />
+              <img
+                src={enlargedPhoto}
+                alt="Enlarged damage evidence"
+                className="max-h-[70vh] object-contain"
+              />
             </div>
           </DialogContent>
         </Dialog>

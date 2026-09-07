@@ -16,26 +16,49 @@ from app.modules.dock.infrastructure.persistence.models import (
     DockStatusHistoryModel,
 )
 # Ensure models are imported
-import app.modules.procurement.infrastructure.persistence.models  # noqa
+from app.modules.procurement.infrastructure.persistence.models import NotificationModel
 import app.modules.receiving.infrastructure.persistence.models  # noqa
 import app.modules.gate.infrastructure.persistence.models  # noqa
 
 
+from app.database.session import AsyncSessionFactory, engine
+from sqlalchemy import update, delete
+
+
 @pytest.fixture
 async def async_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    async_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session_factory() as session:
+    async with AsyncSessionFactory() as session:
+        # Reset tables and seed test docks
+        await session.execute(delete(DockStatusHistoryModel))
+        await session.execute(delete(DockAllocationHistoryModel))
+        await session.execute(delete(DockAllocationRequestModel))
+        await session.execute(delete(DockMasterModel))
+        await session.execute(delete(NotificationModel))
+        await session.commit()
+
+        await DockAllocationService.seed_default_docks_if_empty(session)
+        from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+        await session.execute(update(GateEntryModel).values(status="GATE_EXIT_COMPLETED"))
+        await session.commit()
+
         yield session
 
-    await engine.dispose()
+        await session.execute(update(GateEntryModel).values(status="GATE_EXIT_COMPLETED"))
+        await session.execute(update(DockMasterModel).values(status="AVAILABLE"))
+        await session.execute(delete(DockStatusHistoryModel))
+        await session.execute(delete(DockAllocationHistoryModel))
+        await session.execute(delete(DockAllocationRequestModel))
+        await session.commit()
+
+
 
 
 @pytest.mark.asyncio
 async def test_seed_and_get_overview_metrics(async_session):
+    await DockAllocationService.seed_default_docks_if_empty(async_session)
     metrics = await DockAllocationService.get_overview_metrics(async_session)
     assert metrics["total_docks"] == 9
     assert metrics["available_docks"] == 9
@@ -209,7 +232,7 @@ async def test_dock_notifications_on_allocation(async_session):
     # Check notification records in session
     from app.modules.procurement.infrastructure.persistence.models import NotificationModel
 
-    notifs = (await async_session.execute(select(NotificationModel))).scalars().all()
+    notifs = (await async_session.execute(select(NotificationModel).where(NotificationModel.link.like(f"%{req.id}%")))).scalars().all()
     roles_notified = {n.user_role for n in notifs}
     assert "WAREHOUSE" in roles_notified
     assert "QUALITY_INSPECTOR" in roles_notified

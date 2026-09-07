@@ -130,6 +130,7 @@ class GateEntryResponse(ApiModel):
 
 class AssignDockRequest(ApiModel):
     dock_id: str = Field(..., min_length=1, max_length=32)
+    store_id: Optional[str] = Field(default=None, max_length=64, description="Assigned Store ID or Code")
 
 
 class CreateDockRequest(ApiModel):

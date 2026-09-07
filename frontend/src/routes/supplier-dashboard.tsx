@@ -317,35 +317,64 @@ function SupplierDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
-                    {quotations.map((q, idx) => (
-                      <div
-                        key={q.id || `quo-${idx}`}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold">
-                              Quote Reference: {q.id.substring(0, 8).toUpperCase()}
-                            </h4>
-                            <span className="rounded-full bg-success-soft/30 text-success px-2 py-0.5 text-[10px] font-bold uppercase">
-                              {q.status}
+                    {quotations.map((q, idx) => {
+                      const isRejected = String(q.status || "").toUpperCase() === "REJECTED";
+                      const isDeclined = String(q.status || "").toUpperCase() === "DECLINED";
+                      const rejectionLines = String(q.remarks || "")
+                        .split("\n")
+                        .filter((line: string) => line.startsWith("Rejected by "));
+                      const rejectionReason = rejectionLines[rejectionLines.length - 1];
+                      const quotationRfqId = q.rfqId || q.rfq_id;
+                      return (
+                        <div
+                          key={q.id || `quo-${idx}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold">
+                                Quote Reference: {q.id.substring(0, 8).toUpperCase()}
+                              </h4>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+                                  isRejected || isDeclined
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-success-soft/30 text-success",
+                                )}
+                              >
+                                {q.status}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>RFQ ID: {quotationRfqId}</span>
+                              <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {(isRejected || isDeclined) && (
+                              <div className="max-w-xl rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs">
+                                <p className="flex items-center gap-1.5 font-bold text-destructive">
+                                  <AlertCircle className="size-3.5" />
+                                  {isDeclined ? "Your decline reason" : "Rejection reason"}
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                  {rejectionReason ||
+                                    q.remarks ||
+                                    "Please contact procurement for more details."}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-foreground">
+                              INR {parseFloat(q.total_amount || 0).toLocaleString()}
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground mt-0.5">
+                              {q.lines?.length || 0} items quoted
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>RFQ ID: {q.rfq_id}</span>
-                            <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
-                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-sm font-extrabold text-foreground">
-                            INR {parseFloat(q.total_amount || 0).toLocaleString()}
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground mt-0.5">
-                            {q.lines?.length || 0} items quoted
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>

@@ -31,6 +31,11 @@ from app.modules.receiving.infrastructure.api.router import router as receiving_
 from app.modules.returns.infrastructure.api.router import router as returns_router
 from app.modules.storage.infrastructure.api.router import router as storage_router
 from app.modules.assembly.infrastructure.api.router import router as assembly_router
+from app.modules.storage.infrastructure.api.pickup_router import pickup_router
+from app.modules.storage.infrastructure.api.assembly_requisition_router import router as assembly_requisition_router
+from app.modules.storage.infrastructure.api.inventory_router import inventory_router
+from app.modules.store.infrastructure.api.router import router as store_router, zone_router, bin_router
+from app.modules.quarantine.infrastructure.api.router import router as quarantine_router
 from app.workers.notification_consumer import start_notification_consumer
 from app.workers.outbox_relay import relay_once
 
@@ -234,7 +239,53 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.debug(f"JSONB migration skipped or already done: {e}")
 
-        logger.debug("Ensured columns exist on supplier")
+        for col in [
+            ("dock_code", "VARCHAR(64)"),
+            ("dock_name", "VARCHAR(128)"),
+            ("dock_location", "VARCHAR(256)"),
+            ("dock_type", "VARCHAR(64)"),
+            ("warehouse_name", "VARCHAR(128)"),
+            ("allocation_time", "TIMESTAMP WITH TIME ZONE"),
+            ("gate_pass_number", "VARCHAR(64)"),
+            ("vehicle_number", "VARCHAR(64)"),
+            ("driver_name", "VARCHAR(128)"),
+            ("driver_phone", "VARCHAR(32)"),
+            ("asn_number", "VARCHAR(64)"),
+            ("po_number", "VARCHAR(64)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE notification ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
+        for col in [
+            ("assigned_store_id", "UUID"),
+            ("assigned_store_code", "VARCHAR(64)"),
+            ("assigned_store_name", "VARCHAR(128)"),
+            ("movement_started_by", "VARCHAR(128)"),
+            ("movement_started_at", "TIMESTAMP WITH TIME ZONE"),
+            ("dock_checked_in_by", "VARCHAR(128)"),
+            ("dock_arrival_at", "TIMESTAMP WITH TIME ZONE"),
+            ("unloading_started_by", "VARCHAR(128)"),
+            ("unloading_started_at", "TIMESTAMP WITH TIME ZONE"),
+            ("quality_inspected_by", "VARCHAR(128)"),
+            ("quality_inspected_at", "TIMESTAMP WITH TIME ZONE"),
+            ("quality_decision", "VARCHAR(16)"),
+            ("quality_notes", "TEXT"),
+            ("quality_issue_image_data", "BYTEA"),
+            ("quality_issue_filename", "VARCHAR(256)"),
+            ("quality_issue_content_type", "VARCHAR(128)"),
+            ("quality_issue_status", "VARCHAR(32)"),
+            ("quality_issue_sent_at", "TIMESTAMP WITH TIME ZONE"),
+            ("quality_issue_forwarded_at", "TIMESTAMP WITH TIME ZONE"),
+            ("prepared_grn_id", "UUID"),
+            ("receiving_completed_by", "VARCHAR(128)"),
+            ("receiving_completed_at", "TIMESTAMP WITH TIME ZONE"),
+            ("dock_released_by", "VARCHAR(128)"),
+            ("dock_released_at", "TIMESTAMP WITH TIME ZONE"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE dock_assignment ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
 
         # Receiving/damage-claim compatibility for local databases created
         # before the damaged-goods workflow was introduced. SQLAlchemy's
@@ -567,7 +618,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create material_stock table: {e}")
 
-<<<<<<< HEAD
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS grn_damage_lot (
@@ -601,10 +651,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to create grn_damage_lot/grn_damage_qr tables: {e}")
 
-
-=======
         # Create arrival_notification table
->>>>>>> main
         try:
             await run_ddl("""
                 CREATE TABLE IF NOT EXISTS arrival_notification (
@@ -1060,6 +1107,72 @@ async def lifespan(app: FastAPI):
             logger.debug("Ensured GRN module tables exist")
         except Exception as e:
             logger.warning(f"Failed to create GRN module tables: {e}")
+
+        try:
+            await run_ddl(
+                """
+                CREATE TABLE IF NOT EXISTS store (
+                    id UUID PRIMARY KEY,
+                    store_code VARCHAR(64) UNIQUE NOT NULL,
+                    store_name VARCHAR(128) NOT NULL,
+                    description TEXT,
+                    warehouse_id VARCHAR(64) NOT NULL DEFAULT 'Main Warehouse',
+                    store_manager_id VARCHAR(128),
+                    store_manager_name VARCHAR(128),
+                    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS ix_store_store_code ON store (store_code);
+                CREATE INDEX IF NOT EXISTS ix_store_store_name ON store (store_name);
+                CREATE INDEX IF NOT EXISTS ix_store_warehouse_id ON store (warehouse_id);
+                CREATE INDEX IF NOT EXISTS ix_store_status ON store (status);
+                """
+            )
+            logger.info("Ensured table 'store' exists")
+
+            await run_ddl(
+                """
+                CREATE TABLE IF NOT EXISTS store_zone (
+                    id UUID PRIMARY KEY,
+                    store_id UUID NOT NULL REFERENCES store(id) ON DELETE RESTRICT,
+                    zone_code VARCHAR(64) NOT NULL,
+                    zone_name VARCHAR(128) NOT NULL,
+                    description TEXT,
+                    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_store_zone_code UNIQUE (store_id, zone_code)
+                );
+                CREATE INDEX IF NOT EXISTS ix_store_zone_store_id ON store_zone (store_id);
+                CREATE INDEX IF NOT EXISTS ix_store_zone_zone_code ON store_zone (zone_code);
+                CREATE INDEX IF NOT EXISTS ix_store_zone_status ON store_zone (status);
+                """
+            )
+            logger.info("Ensured table 'store_zone' exists")
+
+            # Phase 3: Store Manager User Accounts DDL
+            await run_ddl("""
+                CREATE TABLE IF NOT EXISTS store_manager_user (
+                    id UUID PRIMARY KEY,
+                    store_id UUID NOT NULL REFERENCES store(id) ON DELETE RESTRICT,
+                    employee_id VARCHAR(64) UNIQUE NOT NULL,
+                    username VARCHAR(64) UNIQUE NOT NULL,
+                    full_name VARCHAR(128) NOT NULL,
+                    email VARCHAR(128) UNIQUE NOT NULL,
+                    password_hash VARCHAR(256) NOT NULL,
+                    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS ix_store_manager_user_store_id ON store_manager_user (store_id);
+                CREATE INDEX IF NOT EXISTS ix_store_manager_user_employee_id ON store_manager_user (employee_id);
+                CREATE INDEX IF NOT EXISTS ix_store_manager_user_username ON store_manager_user (username);
+                CREATE INDEX IF NOT EXISTS ix_store_manager_user_email ON store_manager_user (email);
+            """)
+            logger.info("Ensured table 'store_manager_user' exists")
+        except Exception as exc:
+            logger.debug(f"Store / Zone / Manager table DDL note: {exc}")
     except Exception as e:
         logger.warning(f"Auto-migration failed: {e}", exc_info=True)
 
@@ -1131,8 +1244,6 @@ def create_app() -> FastAPI:
     else:
         origins = list(raw_origins)
 
-<<<<<<< HEAD
-
     for o in [
         "http://localhost:8080",
         "http://127.0.0.1:8080",
@@ -1146,50 +1257,17 @@ def create_app() -> FastAPI:
         if o not in origins:
             origins.append(o)
 
-=======
-    # Always ensure common local dev origins are present for ease of use
-    for o in ["http://localhost:8080", "http://127.0.0.1:8080"]:
-        if o not in origins:
-            origins.append(o)
-
-    # Register request context first so CORS wraps normal application responses.
-    # Top-level exception responses are covered in the centralized error handler.
->>>>>>> main
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=origins,
-<<<<<<< HEAD
-        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+|.*\.loca\.lt)(:\d+)?",
-=======
-        allow_origin_regex=(
-            r"^https?://(?:localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|"
-            r"192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}):8080$"
-            if settings.environment.lower() in ("local", "test", "development")
-            else None
-        ),
->>>>>>> main
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|.*\.loca\.lt)(:\d+)?",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["*"],
     )
     register_exception_handlers(app)
-
-    # Local development authentication override (for standalone testing without auth-service)
-    if settings.environment.lower() in ("local", "test", "development"):
-        from app.security.dependencies import CurrentUser, get_current_user
-
-        def get_local_dev_user() -> CurrentUser:
-            return CurrentUser(
-                subject="local-dev-user-123",
-                username="localdev",
-                roles=["ADMIN", "PROCUREMENT"],
-                permissions=["procurement:create", "procurement:read", "gate:entry:read", "gate:entry:create"],
-                raw_claims={"sub": "local-dev-user-123", "username": "localdev"},
-            )
-
-        app.dependency_overrides[get_current_user] = get_local_dev_user
 
     app.include_router(dock_router)
     app.include_router(receiving_router)
@@ -1208,6 +1286,13 @@ def create_app() -> FastAPI:
     async def debug_assembly():
         return {"status": "ok"}
     app.include_router(material_router)
+    app.include_router(store_router)
+    app.include_router(zone_router)
+    app.include_router(bin_router)
+    app.include_router(quarantine_router)
+    app.include_router(pickup_router)
+    app.include_router(assembly_requisition_router)
+    app.include_router(inventory_router)
 
     from fastapi.staticfiles import StaticFiles
     import os

@@ -63,7 +63,6 @@ export const Route = createFileRoute("/warehouse/materials")({
   component: WarehouseMaterials,
 });
 
-<<<<<<< HEAD
 const DEFAULT_UOMS = [
   "INGOT",
   "ROLL",
@@ -90,8 +89,6 @@ export const formatSpecCode = (code?: string): string => {
   return code.replace(/-V(\d+)$/i, "-S$1");
 };
 
-=======
->>>>>>> main
 interface VariantItem {
   variant_code?: string;
   size: string;
@@ -269,8 +266,10 @@ function WarehouseMaterials() {
   };
 
   const updateVariantRow = (idx: number, field: keyof VariantItem, value: any) => {
+    const current = variantsList[idx];
+    if (!current) return;
     const updated = [...variantsList];
-    updated[idx] = { ...updated[idx], [field]: value };
+    updated[idx] = { ...current, [field]: value };
     setVariantsList(updated);
   };
 
@@ -399,7 +398,6 @@ function WarehouseMaterials() {
 
   const openAddVariantForExisting = async () => {
     if (!selectedMaterial) return;
-    
     // Extract existing sequences from all existing variant/specification codes (Active, Inactive, etc.)
     const existingSeqs = (selectedMaterial.variants || [])
       .map((v: any) => {
@@ -499,84 +497,15 @@ function WarehouseMaterials() {
       }
     >
       {/* Metric Cards */}
-<<<<<<< HEAD
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Material Masters
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums">
-                {loading ? "..." : totalMaterials}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-primary-soft text-primary">
-              <Database className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Total Specifications
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-teal-600">
-                {loading ? "..." : totalVariants}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-teal-soft text-teal">
-              <Layers className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Active Materials
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-success">
-                {loading ? "..." : `${activeCount} / ${totalMaterials}`}
-              </h3>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-success-soft text-success">
-              <CheckCircle2 className="size-6" />
-            </div>
-          </div>
-        </Card>
-
-        <Card className="rounded-2xl border-border/70 bg-card p-5 shadow-soft">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Categories
-              </p>
-              <h3 className="mt-1 text-2xl font-black tabular-nums text-orange-600">
-                {loading ? "..." : distinctCategories}
-              </h3>
-              <p className="mt-1 text-[11px] font-medium text-muted-foreground">
-                Material classifications
-              </p>
-            </div>
-            <div className="grid size-12 place-items-center rounded-2xl bg-orange-soft/40 text-orange-600">
-              <Tag className="size-6" />
-            </div>
-          </div>
-        </Card>
-=======
       <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Base Materials"
+          label="Material Masters"
           value={loading ? "..." : String(totalMaterials)}
           icon={Database}
           tone="primary"
         />
         <StatCard
-          label="Total Variants"
+          label="Total Specifications"
           value={loading ? "..." : String(totalVariants)}
           delta="Stockable SKUs / Specs"
           icon={Layers}
@@ -595,7 +524,6 @@ function WarehouseMaterials() {
           icon={Tag}
           tone="warning"
         />
->>>>>>> main
       </div>
 
       {/* Filter and Search Bar */}
@@ -960,7 +888,9 @@ function WarehouseMaterials() {
 
                     <div className="grid gap-2.5 sm:grid-cols-4">
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Size / Dimension</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Size / Dimension
+                        </Label>
                         <Input
                           value={variant.size}
                           onChange={(e) => updateVariantRow(idx, "size", e.target.value)}
@@ -980,7 +910,9 @@ function WarehouseMaterials() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Grade / Standard</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Grade / Standard
+                        </Label>
                         <Input
                           value={variant.grade}
                           onChange={(e) => updateVariantRow(idx, "grade", e.target.value)}
@@ -990,7 +922,9 @@ function WarehouseMaterials() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Packaging UOM</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Packaging UOM
+                        </Label>
                         <Select
                           value={variant.uom}
                           onValueChange={(val) => updateVariantRow(idx, "uom", val)}
@@ -1010,7 +944,9 @@ function WarehouseMaterials() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-foreground/80">Technical Specification / Notes</Label>
+                      <Label className="text-[11px] font-bold text-foreground/80">
+                        Technical Specification / Notes
+                      </Label>
                       <Input
                         value={variant.specification}
                         onChange={(e) => updateVariantRow(idx, "specification", e.target.value)}
@@ -1156,7 +1092,9 @@ function WarehouseMaterials() {
                               "—"
                             )}
                           </td>
-                          <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.grade || "—"}</td>
+                          <td className="p-3 text-foreground font-medium whitespace-nowrap">
+                            {v.grade || "—"}
+                          </td>
                           <td className="p-3 text-muted-foreground min-w-[150px] max-w-xs">
                             <div className="font-normal">{v.specification || "—"}</div>
                             {v.attributes && Object.keys(v.attributes).length > 0 && (
@@ -1188,7 +1126,7 @@ function WarehouseMaterials() {
                                   "h-7 px-2 text-[11px] font-bold rounded-lg transition-colors",
                                   v.status === "Active"
                                     ? "border-border/70 hover:border-destructive/40 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    : "border-success/40 text-success hover:bg-success-soft"
+                                    : "border-success/40 text-success hover:bg-success-soft",
                                 )}
                                 onClick={() => handleToggleVariantStatus(v)}
                               >

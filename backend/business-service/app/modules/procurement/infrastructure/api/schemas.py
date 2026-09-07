@@ -437,6 +437,7 @@ class CreateMaterialRequest(ApiModel):
     warehouse_id: str = Field(..., min_length=1, description="Warehouse identifier")
     department: str = Field(..., min_length=1, description="Department name")
     requested_by: str = Field(..., min_length=1, description="Requester user name")
+    priority: Optional[str] = "MEDIUM"
     required_date: date
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = Field(..., min_length=1, description="Requested materials list")
@@ -470,6 +471,7 @@ class MaterialRequestResponse(ApiModel):
     department: str
     requested_by: str
     status: str
+    priority: str = "MEDIUM"
     required_date: date
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = []

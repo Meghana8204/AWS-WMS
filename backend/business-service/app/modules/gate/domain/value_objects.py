@@ -77,6 +77,7 @@ class PurchaseOrderRecord:
     po_date: str
     delivery_date: str
     status: str = "OPEN"
+    po_id: Optional[str] = None
 
 
 @dataclass(frozen=True)

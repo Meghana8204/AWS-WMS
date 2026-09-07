@@ -1,16 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import {
-  Edit,
-  Loader2,
-  Plus,
-  RefreshCw,
-  Search,
-  Sliders,
-  Warehouse,
-  Wrench,
-} from "lucide-react";
+import { Edit, Loader2, Plus, RefreshCw, Search, Sliders, Warehouse, Wrench } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -276,7 +267,10 @@ function DockMaster() {
           <Button variant="outline" className="rounded-xl text-xs" onClick={() => void loadDocks()}>
             <RefreshCw className="size-4" /> Refresh
           </Button>
-          <Button className="rounded-xl text-xs shadow-glow" onClick={() => setShowCreateDock(true)}>
+          <Button
+            className="rounded-xl text-xs shadow-glow"
+            onClick={() => setShowCreateDock(true)}
+          >
             <Plus className="size-4" /> + New Dock
           </Button>
         </div>
@@ -286,7 +280,13 @@ function DockMaster() {
       <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryCard
           label="Total Docks"
-          value={metrics.total_docks || (metrics.available_docks + metrics.reserved_docks + metrics.occupied_docks + metrics.maintenance_docks)}
+          value={
+            metrics.total_docks ||
+            metrics.available_docks +
+              metrics.reserved_docks +
+              metrics.occupied_docks +
+              metrics.maintenance_docks
+          }
           status="TOTAL"
           active={activeTab === "ALL"}
           onClick={() => setActiveTab("ALL")}
@@ -394,7 +394,9 @@ function DockMaster() {
                 className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
               >
                 <option value="RAW_MATERIAL">RAW_MATERIAL (Raw Material — RM)</option>
-                <option value="CHEMICAL_HAZARDOUS">CHEMICAL_HAZARDOUS (Chemical/Hazardous — CH)</option>
+                <option value="CHEMICAL_HAZARDOUS">
+                  CHEMICAL_HAZARDOUS (Chemical/Hazardous — CH)
+                </option>
                 <option value="ELECTRICAL">ELECTRICAL (Electrical — EL)</option>
                 <option value="ELECTRONICS">ELECTRONICS (Electronics — EC)</option>
                 <option value="MAIN_RECEIVING">MAIN_RECEIVING (Main Receiving — MR)</option>
@@ -403,7 +405,8 @@ function DockMaster() {
 
             <div>
               <Label htmlFor="dock_code" className="text-xs font-semibold">
-                Dock code <span className="text-muted-foreground font-normal">(Auto-generated)</span>
+                Dock code{" "}
+                <span className="text-muted-foreground font-normal">(Auto-generated)</span>
               </Label>
               <Input
                 id="dock_code"
@@ -478,8 +481,18 @@ function DockMaster() {
             </DialogHeader>
 
             <form onSubmit={handleEditDock} className="space-y-3 py-2 text-xs">
-              <Field name="dock_code" label="Dock code" defaultValue={editingDock.dock_code} required />
-              <Field name="dock_name" label="Dock name" defaultValue={editingDock.dock_name} required />
+              <Field
+                name="dock_code"
+                label="Dock code"
+                defaultValue={editingDock.dock_code}
+                required
+              />
+              <Field
+                name="dock_name"
+                label="Dock name"
+                defaultValue={editingDock.dock_name}
+                required
+              />
               <div>
                 <Label htmlFor="edit_dock_type" className="text-xs">
                   Dock type
@@ -498,7 +511,11 @@ function DockMaster() {
                 </select>
               </div>
               <Field name="location" label="Location" defaultValue={editingDock.location || ""} />
-              <Field name="description" label="Description" defaultValue={editingDock.description || ""} />
+              <Field
+                name="description"
+                label="Description"
+                defaultValue={editingDock.description || ""}
+              />
 
               <DialogFooter className="pt-3">
                 <Button
@@ -509,7 +526,11 @@ function DockMaster() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={actionBusy} className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white">
+                <Button
+                  type="submit"
+                  disabled={actionBusy}
+                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+                >
                   {actionBusy && <Loader2 className="size-4 animate-spin" />} Save changes
                 </Button>
               </DialogFooter>
@@ -547,14 +568,23 @@ function DockMaster() {
 
       {/* 6. View Details Modal */}
       {selectedDetailsDock && (
-        <Dialog open={Boolean(selectedDetailsDock)} onOpenChange={() => setSelectedDetailsDock(null)}>
+        <Dialog
+          open={Boolean(selectedDetailsDock)}
+          onOpenChange={() => setSelectedDetailsDock(null)}
+        >
           <DialogContent className="max-w-md rounded-2xl">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle className="font-mono text-xl font-black text-primary">
                   {selectedDetailsDock.dock_code}
                 </DialogTitle>
-                <StatusBadge status={selectedDetailsDock.status === "MAINTENANCE" ? "Under Maintenance" : selectedDetailsDock.status} />
+                <StatusBadge
+                  status={
+                    selectedDetailsDock.status === "MAINTENANCE"
+                      ? "Under Maintenance"
+                      : selectedDetailsDock.status
+                  }
+                />
               </div>
               <DialogDescription className="text-xs">
                 {selectedDetailsDock.dock_name} · {selectedDetailsDock.location || "Main DC Facade"}
@@ -595,7 +625,11 @@ function DockMaster() {
             </div>
 
             <DialogFooter>
-              <Button variant="outline" className="rounded-xl" onClick={() => setSelectedDetailsDock(null)}>
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setSelectedDetailsDock(null)}
+              >
                 Close
               </Button>
             </DialogFooter>
@@ -621,11 +655,16 @@ function SummaryCard({
   onClick: () => void;
 }) {
   const cardStyles = {
-    TOTAL: "bg-blue-500/10 border-blue-500/30 text-blue-950 dark:text-blue-200 hover:border-blue-500/60",
-    AVAILABLE: "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200 hover:border-emerald-500/60",
-    RESERVED: "bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200 hover:border-amber-500/60",
-    OCCUPIED: "bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-200 hover:border-rose-500/60",
-    MAINTENANCE: "bg-slate-500/10 border-slate-500/30 text-slate-900 dark:text-slate-200 hover:border-slate-500/60",
+    TOTAL:
+      "bg-blue-500/10 border-blue-500/30 text-blue-950 dark:text-blue-200 hover:border-blue-500/60",
+    AVAILABLE:
+      "bg-emerald-500/10 border-emerald-500/30 text-emerald-950 dark:text-emerald-200 hover:border-emerald-500/60",
+    RESERVED:
+      "bg-amber-500/10 border-amber-500/30 text-amber-950 dark:text-amber-200 hover:border-amber-500/60",
+    OCCUPIED:
+      "bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-200 hover:border-rose-500/60",
+    MAINTENANCE:
+      "bg-slate-500/10 border-slate-500/30 text-slate-900 dark:text-slate-200 hover:border-slate-500/60",
   };
 
   const countColors = {
@@ -648,7 +687,9 @@ function SummaryCard({
       <p className="text-[11px] font-extrabold uppercase tracking-wider font-mono opacity-85">
         {label}
       </p>
-      <p className={cn("mt-1 text-3xl font-black tabular-nums tracking-tight", countColors[status])}>
+      <p
+        className={cn("mt-1 text-3xl font-black tabular-nums tracking-tight", countColors[status])}
+      >
         {value}
       </p>
       <p className="mt-1 text-[10px] font-semibold opacity-70">Click to filter</p>
@@ -701,7 +742,13 @@ function MasterDockCard({
 
         <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
         <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-          {dock.dock_type === "CHEMICAL_HAZARDOUS" ? "Chemical/Hazardous" : dock.dock_type === "ELECTRICAL" ? "Electrical" : dock.dock_type === "ELECTRONICS" ? "Electronics" : dock.dock_type.replaceAll("_", " ")}
+          {dock.dock_type === "CHEMICAL_HAZARDOUS"
+            ? "Chemical/Hazardous"
+            : dock.dock_type === "ELECTRICAL"
+              ? "Electrical"
+              : dock.dock_type === "ELECTRONICS"
+                ? "Electronics"
+                : dock.dock_type.replaceAll("_", " ")}
         </span>
         {dock.location && (
           <p className="mt-2 text-[11px] text-muted-foreground font-medium">📍 {dock.location}</p>
@@ -733,12 +780,15 @@ function MasterDockCard({
           size="sm"
           className={cn(
             "w-full rounded-xl text-xs font-bold",
-            isMaintenance ? "text-emerald-600 hover:bg-emerald-500/10" : "text-amber-600 hover:bg-amber-500/10",
+            isMaintenance
+              ? "text-emerald-600 hover:bg-emerald-500/10"
+              : "text-amber-600 hover:bg-amber-500/10",
           )}
           onClick={onToggleMaintenance}
           disabled={dock.status === "OCCUPIED" || dock.status === "RESERVED"}
         >
-          <Wrench className="size-3.5" /> {isMaintenance ? "MAKE AVAILABLE" : "SET UNDER MAINTENANCE"}
+          <Wrench className="size-3.5" />{" "}
+          {isMaintenance ? "MAKE AVAILABLE" : "SET UNDER MAINTENANCE"}
         </Button>
       </div>
     </Card>

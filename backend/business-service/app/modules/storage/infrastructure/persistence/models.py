@@ -3,12 +3,13 @@ SQLAlchemy ORM models for the Storage module (Putaway & Locations).
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from decimal import Decimal
 import uuid
+from typing import List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, Numeric, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID
 
@@ -20,6 +21,9 @@ class StorageLocationModel(Base):
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
     location_code: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
     warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
+    zone_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_zone.id", ondelete="SET NULL"), nullable=True, index=True)
+    bin_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_bin.id", ondelete="SET NULL"), nullable=True, index=True)
     zone: Mapped[str] = mapped_column(String(128), nullable=False)
     rack: Mapped[str] = mapped_column(String(64), nullable=False)
     bin: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -43,10 +47,14 @@ class PutawayTaskModel(Base):
     uom: Mapped[str] = mapped_column(String(32), nullable=False)
     warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
     source_location: Mapped[str] = mapped_column(String(64), nullable=False, default="RECEIVING_AREA")
+    destination_store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
+    destination_zone_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_zone.id", ondelete="SET NULL"), nullable=True, index=True)
+    destination_bin_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_bin.id", ondelete="SET NULL"), nullable=True, index=True)
     destination_location_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("storage_location.id", ondelete="RESTRICT"), nullable=True, index=True)
     destination_zone: Mapped[str | None] = mapped_column(String(128), nullable=True)
     destination_rack: Mapped[str | None] = mapped_column(String(64), nullable=True)
     destination_bin: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    destination_bin_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location_assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     location_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     assigned_to: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
@@ -127,4 +135,103 @@ class InventoryLocationBalanceModel(Base):
     last_putaway_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("putaway_task.id", ondelete="RESTRICT"), nullable=False)
     last_grn_number: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class AssemblyRequisitionModel(Base):
+    __tablename__ = "assembly_requisition"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    requisition_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False, default="Main Warehouse")
+    department: Mapped[str] = mapped_column(String(64), nullable=False, default="Assembly")
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="MEDIUM")
+    required_date: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING", index=True)
+    assigned_store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True)
+    assigned_store_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    assigned_store_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    items: Mapped[List["AssemblyRequisitionItemModel"]] = relationship(
+        "AssemblyRequisitionItemModel", back_populates="requisition", cascade="all, delete-orphan"
+    )
+
+
+class AssemblyRequisitionItemModel(Base):
+    __tablename__ = "assembly_requisition_item"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    requisition_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("assembly_requisition.id", ondelete="CASCADE"), nullable=False, index=True)
+    material_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("material.id", ondelete="SET NULL"), nullable=True)
+    material_variant_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("material_variant.id", ondelete="SET NULL"), nullable=True)
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    variant_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    requested_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    issued_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+
+    requisition: Mapped[AssemblyRequisitionModel] = relationship("AssemblyRequisitionModel", back_populates="items")
+
+
+class PickupTaskModel(Base):
+    __tablename__ = "pickup_task"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    task_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    requisition_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("assembly_requisition.id", ondelete="CASCADE"), nullable=False, index=True)
+    requisition_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("store.id", ondelete="RESTRICT"), nullable=False, index=True)
+    store_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    store_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    department: Mapped[str] = mapped_column(String(64), nullable=False, default="Assembly")
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    requested_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    picked_quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False, default=Decimal("0.0"))
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+    priority: Mapped[str] = mapped_column(String(32), nullable=False, default="MEDIUM")
+    required_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    suggested_zone_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_zone.id", ondelete="SET NULL"), nullable=True)
+    suggested_zone_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    picked_zone_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_zone.id", ondelete="SET NULL"), nullable=True)
+    picked_zone_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ASSIGNED_TO_STORE", index=True)
+    assigned_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    started_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class InventoryIssueTransactionModel(Base):
+    __tablename__ = "inventory_issue_transaction"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    issue_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    requisition_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("assembly_requisition.id", ondelete="SET NULL"), nullable=True)
+    requisition_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    pickup_task_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("pickup_task.id", ondelete="SET NULL"), nullable=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("store.id", ondelete="RESTRICT"), nullable=False)
+    store_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    zone_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_zone.id", ondelete="SET NULL"), nullable=True)
+    zone_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    material_code: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+    recipient_department: Mapped[str] = mapped_column(String(64), nullable=False, default="Assembly")
+    stock_before: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    stock_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    issued_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
 

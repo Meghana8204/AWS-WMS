@@ -87,11 +87,13 @@ export function getSafeRedirectPath(redirectPath: unknown): string | null {
 }
 
 export function getDefaultRouteForUser(user = getUserInfo()): string {
+  if (user?.roles.includes("STORE_MANAGER") || user?.roles.includes("STORE_KEEPER")) return "/my-store";
   if (user?.roles.includes("FINANCE")) return "/finance-dashboard";
   if (user?.roles.includes("PROCUREMENT")) return "/procurement-dashboard";
   if (user?.roles.includes("GATE_SECURITY")) return "/gate-entry";
   if (user?.roles.includes("SUPPLIER")) return "/submit-quotation";
-  if (user?.roles.includes("ASSEMBLY_MANAGER")) return "/assembly-dashboard";
+  if (user?.roles.includes("ASSEMBLY") || user?.roles.includes("ASSEMBLY_MANAGER")) return "/assembly-dashboard";
+  if (user?.roles.includes("GRN")) return "/grn";
   return "/warehouse-dashboard";
 }
 
@@ -111,21 +113,7 @@ export function requireRole(roles: string[] | string) {
   if (typeof window === "undefined") return;
   requireAuth();
   if (!hasRole(roles)) {
-    // If they are authenticated but don't have the role, send them to their primary dashboard
     const user = getUserInfo();
-    const primaryRole = user?.roles[0];
-<<<<<<< HEAD
-    let target = "/grn";
-    if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
-    else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
-    else if (user?.roles?.includes("PROCUREMENT")) target = "/procurement-dashboard";
-    else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
-    else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
-    else target = "/grn";
-    throw redirect({ to: target as any });
-=======
-
     throw redirect({ to: getDefaultRouteForUser(user) as any });
->>>>>>> main
   }
 }

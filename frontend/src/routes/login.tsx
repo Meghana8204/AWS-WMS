@@ -23,17 +23,7 @@ export const Route = createFileRoute("/login")({
 
     if (isAuthenticated()) {
       const user = getUserInfo();
-<<<<<<< HEAD
-      let target = "/warehouse-dashboard";
-      if (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn") target = "/grn";
-      else if (user?.roles?.includes("FINANCE")) target = "/finance-dashboard";
-      else if (user?.roles?.includes("PROCUREMENT")) target = "/procurement-dashboard";
-      else if (user?.roles?.includes("GATE_SECURITY")) target = "/gate-dashboard";
-      else if (user?.roles?.includes("SUPPLIER")) target = "/submit-quotation";
-      throw redirect({ to: target as any });
-=======
       throw redirect({ to: getDefaultRouteForUser(user) as any });
->>>>>>> main
     }
   },
   component: LoginPage,
@@ -93,31 +83,8 @@ function LoginPage() {
 
   const completeAuthentication = (data: any) => {
     toast.success(`Welcome back, ${data.username}!`);
-<<<<<<< HEAD
-    const isGrn = data.roles?.includes("GRN") || data.username?.toLowerCase() === "grn" || employeeId.toLowerCase() === "grn";
-    const isSupplier = data.roles?.includes("SUPPLIER");
-    const isProcurement = data.roles?.includes("PROCUREMENT");
-    const isFinance = data.roles?.includes("FINANCE");
-    const isGate = data.roles?.includes("GATE_SECURITY");
-
-    let targetPath = "/warehouse-dashboard";
-    if (isGrn) {
-      targetPath = "/grn";
-    } else if (isSupplier) {
-      targetPath = redirect || "/submit-quotation";
-    } else if (isProcurement) {
-      targetPath = redirect || "/procurement-dashboard";
-    } else if (isFinance) {
-      targetPath = redirect || "/finance-dashboard";
-    } else if (isGate) {
-      targetPath = redirect || "/gate-dashboard";
-    } else {
-      targetPath = redirect || "/warehouse-dashboard";
-    }
-=======
     const targetPath = redirectPath || getDefaultRouteForUser(data);
 
->>>>>>> main
     setTimeout(() => {
       // Keep route transitions internal. `redirectPath` has already rejected external URLs.
       const target = new URL(targetPath, window.location.origin);

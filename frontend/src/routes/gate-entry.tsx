@@ -129,9 +129,9 @@ function formatVehicleNumber(value: string): string {
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 11);
   const bharat = compact.match(/^(\d{2})BH(\d{4})([A-Z]{2})$/);
-  if (bharat) return `${bharat[1]}-BH-${bharat[2]}-${bharat[3]}`;
+  if (bharat && bharat[1] && bharat[2] && bharat[3]) return `${bharat[1]}-BH-${bharat[2]}-${bharat[3]}`;
   const standard = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{4})$/);
-  if (standard)
+  if (standard && standard[1] && standard[2] && standard[3] && standard[4])
     return `${standard[1]}-${standard[2].padStart(2, "0")}-${standard[3]}-${standard[4]}`;
   return compact;
 }
@@ -168,7 +168,6 @@ function GateEntry() {
   const [driverPhone, setDriverPhone] = useState("");
   const [extractedDetails, setExtractedDetails] = useState<Record<string, unknown> | null>(null);
   const [lastCreatedEntry, setLastCreatedEntry] = useState<GateEntryRecord | null>(null);
-<<<<<<< HEAD
   const [availablePos, setAvailablePos] = useState<any[]>([]);
   const [autoFetchingPo, setAutoFetchingPo] = useState(false);
   const [fieldSources, setFieldSources] = useState<{
@@ -177,7 +176,6 @@ function GateEntry() {
     materials?: "system" | "generated";
     dates?: "system" | "generated";
   }>({});
-=======
   const [lastQrCode, setLastQrCode] = useState<string | null>(null);
   const [isDockModalOpen, setIsDockModalOpen] = useState(false);
   const [qrModalEntry, setQrModalEntry] = useState<GateEntryRecord | null>(null);
@@ -221,7 +219,6 @@ function GateEntry() {
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, [lastCreatedEntry]);
->>>>>>> main
 
   const handleVehicleNumberChange = (rawVal: string) => {
     setVehicleNumber(formatVehicleNumber(rawVal));
@@ -230,15 +227,10 @@ function GateEntry() {
   const applyLineItems = (rawItems: unknown): boolean => {
     if (!Array.isArray(rawItems) || rawItems.length === 0) return false;
     const items = rawItems
-<<<<<<< HEAD
       .map((item: any, idx: number) => ({
-        material_code: String(item.material_code ?? item.materialCode ?? item.item_code ?? `MAT-${101 + idx}`),
-=======
-      .map((item: any) => ({
         material_code: String(
-          item.material_code ?? item.materialCode ?? item.item_code ?? item.itemCode ?? "",
+          item.material_code ?? item.materialCode ?? item.item_code ?? item.itemCode ?? `MAT-${101 + idx}`,
         ),
->>>>>>> main
         material_description: String(
           item.material_description ??
             item.materialDescription ??
@@ -246,15 +238,10 @@ function GateEntry() {
             item.materialName ??
             `Standard Item ${idx + 1}`,
         ),
-<<<<<<< HEAD
-        quantity: String(item.quantity ?? item.ordered_quantity ?? "10"),
-        uom: String(item.uom ?? item.unit ?? "PCS"),
-=======
         // ASN lines expose their quantity as shippedQuantity, whereas PO and
         // OCR lines use quantity. Support both when populating the gate form.
-        quantity: String(item.shipped_quantity ?? item.shippedQuantity ?? item.quantity ?? ""),
-        uom: String(item.uom ?? item.unit ?? ""),
->>>>>>> main
+        quantity: String(item.shipped_quantity ?? item.shippedQuantity ?? item.quantity ?? item.ordered_quantity ?? "10"),
+        uom: String(item.uom ?? item.unit ?? "PCS"),
       }))
       .filter((item) => item.material_description || item.material_code);
     if (!items.length) return false;
@@ -303,7 +290,6 @@ function GateEntry() {
     return () => window.clearInterval(timer);
   }, [loadEntries]);
 
-<<<<<<< HEAD
   // Load available PO list for quick selection
   useEffect(() => {
     void api.getPurchaseOrders().then((pos) => setAvailablePos(pos || [])).catch(() => {});
@@ -318,9 +304,6 @@ function GateEntry() {
     }, 350);
     return () => clearTimeout(timer);
   }, [poNumber]);
-
-=======
->>>>>>> main
   useEffect(() => {
     if (poDocument) {
       const url = URL.createObjectURL(poDocument);
@@ -328,6 +311,7 @@ function GateEntry() {
       return () => URL.revokeObjectURL(url);
     }
     setPoPreview(null);
+    return undefined;
   }, [poDocument]);
 
   useEffect(() => {
@@ -337,6 +321,7 @@ function GateEntry() {
       return () => URL.revokeObjectURL(url);
     }
     setVehiclePreview(null);
+    return undefined;
   }, [vehiclePhoto]);
 
   async function scanCapture(kind: CaptureKind, file: File) {
@@ -478,13 +463,8 @@ function GateEntry() {
   }
 
   async function fetchPoDetails(number: string, preserveScannedFields = false) {
-<<<<<<< HEAD
     if (!number || number.trim().length < 3) return;
     setAutoFetchingPo(true);
-=======
-    if (!number || number.length < 5) return;
-
->>>>>>> main
     const toastId = toast.loading(`Fetching details for PO: ${number}...`);
     try {
       const [purchaseOrders, asns] = await Promise.all([api.getPurchaseOrders(), api.getAsns()]);
@@ -549,7 +529,6 @@ function GateEntry() {
       setPoNumber(resolvedPoNumber);
       setPoVerificationStatus("PO_VERIFIED");
 
-<<<<<<< HEAD
       const items = po.items || po.lines || [];
       if (items.length) {
         applyLineItems(items);
@@ -557,34 +536,23 @@ function GateEntry() {
         applyLineItems([
           {
             material_code: `MAT-${resolvedPoNumber.replace(/[^A-Z0-9]/gi, "")}-01`,
-            material_description: po.materialDescription || po.material_description || "Standard Procurement Goods",
+            material_description:
+              po.materialDescription || po.material_description || "Standard Procurement Goods",
             quantity: po.totalQuantity || po.total_quantity || "10",
             uom: "PCS",
           },
         ]);
-=======
-      // Once OCR identifies a real PO, use its complete line-item data to
-      // populate the editable material inputs. This is more reliable than
-      // expecting OCR to reconstruct every cell in a photographed table.
-      const items = po.items || [];
-      if (items.length) applyLineItems(items);
-
-      if (!preserveScannedFields) {
-        setSupplierName(po.supplierName || "");
-        setDeliveryDate(po.expectedDeliveryDate || "");
->>>>>>> main
       }
-      // The stored PO date is authoritative; OCR often cannot reliably read it.
-      setPoDate(po.poDate || po.po_date || "");
 
-<<<<<<< HEAD
       const fetchedSupplier = po.supplierName || po.supplier_name || "Primary Supplier Pvt Ltd";
       setSupplierName(fetchedSupplier);
 
       const today = new Date().toISOString().split("T")[0];
       const defaultDelivery = new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0];
       const fetchedPoDate = String(po.poDate || po.po_date || today);
-      const fetchedDeliveryDate = String(po.expectedDeliveryDate || po.expected_delivery_date || defaultDelivery);
+      const fetchedDeliveryDate = String(
+        po.expectedDeliveryDate || po.expected_delivery_date || defaultDelivery,
+      );
       setPoDate(fetchedPoDate);
       setDeliveryDate(fetchedDeliveryDate);
 
@@ -595,7 +563,10 @@ function GateEntry() {
       if (systemMat) setMaterialDescription(systemMat);
 
       const systemQty = items.length
-        ? items.reduce((sum: number, i: any) => sum + Number(i.quantity || i.ordered_quantity || 0), 0)
+        ? items.reduce(
+            (sum: number, i: any) => sum + Number(i.quantity || i.ordered_quantity || 0),
+            0,
+          )
         : 10;
       setTotalQuantity(String(systemQty || 10));
 
@@ -606,24 +577,16 @@ function GateEntry() {
         dates: "system",
       });
 
-=======
-      // Vehicle and driver details belong to the supplier's ASN, not the PO.
-      // The ASN list is newest-first, so the first PO match is the current
-      // shipment after a supplier edits and re-submits it.
->>>>>>> main
       const shipment = asns.find(
         (asn: any) =>
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
           resolvedPoNumber.toUpperCase(),
       );
-<<<<<<< HEAD
-=======
+
       setVehicleNumber("");
       if (shipment) {
-        // A PO document scan identifies the PO first; link the matching ASN so
-        // the ASN reference and shipment-specific fields are visible as well.
         setAsnReference(shipment.asnNumber || shipment.asn_number || shipment.id || "");
-        setSupplierName(shipment.supplierName || shipment.supplier_name || po.supplierName || "");
+        setSupplierName(shipment.supplierName || shipment.supplier_name || fetchedSupplier);
         const expectedArrival = shipment.expectedArrivalAt || shipment.expected_arrival_at;
         if (expectedArrival) setDeliveryDate(String(expectedArrival).slice(0, 10));
         const shipmentItems = shipment.lines || shipment.items || [];
@@ -631,24 +594,23 @@ function GateEntry() {
       } else {
         setAsnReference("");
       }
->>>>>>> main
       if (shipment?.driverName || shipment?.driver_name) {
         setDriverName(shipment.driverName || shipment.driver_name);
       }
       if (shipment?.driverContact || shipment?.driver_contact) {
         setDriverPhone(shipment.driverContact || shipment.driver_contact);
       }
-<<<<<<< HEAD
-=======
+
+      if (shipment?.vehicleNumber || shipment?.vehicle_number) {
+        handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
+      }
 
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
-          ? "PO and vehicle details fetched from system"
-          : "PO details fetched; no submitted ASN vehicle found",
+          ? `PO ${resolvedPoNumber} & vehicle details auto-fetched!`
+          : `PO ${resolvedPoNumber} details auto-fetched & required fields generated!`,
         { id: toastId },
       );
-
->>>>>>> main
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
@@ -1818,7 +1780,11 @@ function ScanCard({
         onClick={() => (hideCamera ? fileInput.current?.click() : onOpen(kind))}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
-            hideCamera ? fileInput.current?.click() : onOpen(kind);
+            if (hideCamera) {
+              fileInput.current?.click();
+            } else {
+              onOpen(kind);
+            }
           }
         }}
         className="cursor-pointer space-y-3"

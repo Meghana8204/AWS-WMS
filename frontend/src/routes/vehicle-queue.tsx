@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ArrowRight, Boxes, Eye, Loader2, RefreshCw, Truck, Warehouse } from "lucide-react";
+import { ArrowRight, Boxes, Check, CheckCircle2, Eye, Loader2, RefreshCw, Store as StoreIcon, Truck, Warehouse } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 export const Route = createFileRoute("/vehicle-queue")({
   head: () => ({ meta: [{ title: "Inbound Arrivals · NexusWMS" }] }),
@@ -22,8 +23,11 @@ type Arrival = {
   driver_contact?: string | null;
   arrival_time: string;
   expected_arrival_at?: string | null;
-  status: "AWAITING_DOCK" | "DOCK_ASSIGNED" | "MOVING_TO_DOCK" | "AT_DOCK";
+  status: "AWAITING_DOCK" | "DOCK_ASSIGNED" | "MOVING_TO_DOCK" | "AT_DOCK" | "RECEIVING_COMPLETED" | string;
   assigned_dock_id?: string | null;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
   po_id?: string | null;
   assigned_by?: string | null;
   assigned_at?: string | null;
@@ -31,6 +35,10 @@ type Arrival = {
   movement_started_at?: string | null;
   dock_checked_in_by?: string | null;
   dock_arrival_at?: string | null;
+  dock_released_by?: string | null;
+  dock_released_at?: string | null;
+  receiving_completed_by?: string | null;
+  receiving_completed_at?: string | null;
   shipment: {
     transporter?: string;
     number_of_packages?: number;
@@ -51,19 +59,33 @@ type Dock = {
   status: "AVAILABLE" | "OCCUPIED";
   vehicle_number?: string;
 };
+type Store = {
+  id: string;
+  store_code: string;
+  store_name: string;
+  warehouse_id?: string;
+  status: string;
+};
 function InboundArrivals() {
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedDock, setSelectedDock] = useState<Record<string, string>>({});
+  const [selectedStore, setSelectedStore] = useState<Record<string, string>>({});
   const [assigning, setAssigning] = useState<string | null>(null);
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [arrivalRows, dockRows] = await Promise.all([api.getInboundArrivals(), api.getDocks()]);
+      const [arrivalRows, dockRows, storeRows] = await Promise.all([
+        api.getInboundArrivals(),
+        api.getDocks(),
+        api.getStores({ status: "ACTIVE" }).catch(() => []),
+      ]);
       setArrivals(arrivalRows);
       setDocks(dockRows);
+      setStores(storeRows);
     } catch (error) {
       if (!quiet)
         toast.error("Unable to load inbound arrivals", {
@@ -78,21 +100,27 @@ function InboundArrivals() {
     const timer = window.setInterval(() => void load(true), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
-  async function assignDock(arrival: Arrival) {
+  async function assignDockAndStore(arrival: Arrival) {
     const dockId = selectedDock[arrival.id];
     if (!dockId) {
       toast.error("Select an available dock");
       return;
     }
+    const storeId = selectedStore[arrival.id];
+    if (!storeId) {
+      toast.error("Select a destination store for this arrival");
+      return;
+    }
+    const chosenStore = stores.find((s) => s.id === storeId || s.store_code === storeId);
     setAssigning(arrival.id);
     try {
-      await api.assignDock(arrival.id, dockId);
-      toast.success(`${dockId} assigned`, {
-        description: `${arrival.vehicle_number} can proceed to the dock.`,
+      await api.assignDock(arrival.id, dockId, storeId);
+      toast.success(`Dock ${dockId} & ${chosenStore?.store_name || "Store"} Assigned`, {
+        description: `${arrival.vehicle_number} assigned. Notification dispatched to ${chosenStore?.store_name || "Store"}.`,
       });
       await load(true);
     } catch (error) {
-      toast.error("Dock assignment failed", {
+      toast.error("Dock & Store assignment failed", {
         description: error instanceof Error ? error.message : undefined,
       });
       await load(true);
@@ -132,10 +160,26 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
+  async function releaseArrivalDock(arrival: Arrival) {
+    setAssigning(arrival.id);
+    try {
+      await api.releaseGateDock(arrival.id);
+      toast.success(`Dock ${arrival.assigned_dock_id} Released`, {
+        description: `Unloading & receiving completed for ${arrival.vehicle_number}. Dock is now available.`,
+      });
+      await load(true);
+    } catch (error) {
+      toast.error("Dock release failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setAssigning(null);
+    }
+  }
   return (
     <AppShell
       title="Inbound arrivals"
-      subtitle="Approved gate entries awaiting warehouse dock assignment"
+      subtitle="Approved gate entries awaiting warehouse dock & store assignment"
       actions={
         <Button variant="outline" className="rounded-xl" onClick={() => void load()}>
           <RefreshCw className="size-4" /> Refresh
@@ -144,11 +188,11 @@ function InboundArrivals() {
     >
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
         <Summary
-          label="Awaiting dock"
+          label="Awaiting dock & store"
           value={arrivals.filter((a) => a.status === "AWAITING_DOCK").length}
         />
         <Summary
-          label="Dock assigned / moving"
+          label="Dock & store assigned"
           value={arrivals.filter((a) => a.status !== "AWAITING_DOCK").length}
         />
         <Summary
@@ -179,7 +223,7 @@ function InboundArrivals() {
                     "Supplier",
                     "Vehicle / Driver",
                     "Arrival time",
-                    "Status",
+                    "Status & Assignment",
                     "Actions",
                   ].map((h) => (
                     <th key={h} className="px-4 py-3 font-semibold">
@@ -196,11 +240,15 @@ function InboundArrivals() {
                     expanded={expanded === arrival.id}
                     onToggle={() => setExpanded(expanded === arrival.id ? null : arrival.id)}
                     docks={docks}
-                    selected={selectedDock[arrival.id] || ""}
-                    onSelect={(dockId) => setSelectedDock((v) => ({ ...v, [arrival.id]: dockId }))}
-                    onAssign={() => void assignDock(arrival)}
+                    stores={stores}
+                    selectedDock={selectedDock[arrival.id] || ""}
+                    selectedStore={selectedStore[arrival.id] || ""}
+                    onSelectDock={(dockId) => setSelectedDock((v) => ({ ...v, [arrival.id]: dockId }))}
+                    onSelectStore={(storeId) => setSelectedStore((v) => ({ ...v, [arrival.id]: storeId }))}
+                    onAssign={() => void assignDockAndStore(arrival)}
                     onMove={() => void startMovement(arrival)}
                     onCheckIn={() => void confirmDockArrival(arrival)}
+                    onRelease={() => void releaseArrivalDock(arrival)}
                     busy={assigning === arrival.id}
                   />
                 ))}
@@ -217,22 +265,30 @@ function ArrivalRows({
   expanded,
   onToggle,
   docks,
-  selected,
-  onSelect,
+  stores,
+  selectedDock,
+  selectedStore,
+  onSelectDock,
+  onSelectStore,
   onAssign,
   onMove,
   onCheckIn,
+  onRelease,
   busy,
 }: {
   arrival: Arrival;
   expanded: boolean;
   onToggle: () => void;
   docks: Dock[];
-  selected: string;
-  onSelect: (id: string) => void;
+  stores: Store[];
+  selectedDock: string;
+  selectedStore: string;
+  onSelectDock: (id: string) => void;
+  onSelectStore: (id: string) => void;
   onAssign: () => void;
   onMove: () => void;
   onCheckIn: () => void;
+  onRelease: () => void;
   busy: boolean;
 }) {
   return (
@@ -269,7 +325,14 @@ function ArrivalRows({
         <td className="px-4 py-4">
           <StatusBadge status={arrival.status} />
           {arrival.assigned_dock_id && (
-            <p className="mt-1 text-xs font-semibold">{arrival.assigned_dock_id}</p>
+            <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-primary">
+              <Warehouse className="size-3" /> Dock {arrival.assigned_dock_id}
+            </p>
+          )}
+          {arrival.assigned_store_name && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <StoreIcon className="size-3 text-emerald-600" /> {arrival.assigned_store_name} ({arrival.assigned_store_code})
+            </p>
           )}
         </td>
         <td className="px-4 py-4">
@@ -284,11 +347,15 @@ function ArrivalRows({
             <ArrivalDetails
               arrival={arrival}
               docks={docks}
-              selected={selected}
-              onSelect={onSelect}
+              stores={stores}
+              selectedDock={selectedDock}
+              selectedStore={selectedStore}
+              onSelectDock={onSelectDock}
+              onSelectStore={onSelectStore}
               onAssign={onAssign}
               onMove={onMove}
               onCheckIn={onCheckIn}
+              onRelease={onRelease}
               busy={busy}
             />
           </td>
@@ -308,22 +375,47 @@ function Summary({ label, value }: { label: string; value: number }) {
 function ArrivalDetails({
   arrival,
   docks,
-  selected,
-  onSelect,
+  stores,
+  selectedDock,
+  selectedStore,
+  onSelectDock,
+  onSelectStore,
   onAssign,
   onMove,
   onCheckIn,
+  onRelease,
   busy,
 }: {
   arrival: Arrival;
   docks: Dock[];
-  selected: string;
-  onSelect: (id: string) => void;
+  stores: Store[];
+  selectedDock: string;
+  selectedStore: string;
+  onSelectDock: (id: string) => void;
+  onSelectStore: (id: string) => void;
   onAssign: () => void;
   onMove: () => void;
   onCheckIn: () => void;
+  onRelease: () => void;
   busy: boolean;
 }) {
+  const userInfoStr = typeof window !== "undefined" ? localStorage.getItem("user_info") : null;
+  const userInfo = userInfoStr ? JSON.parse(userInfoStr) : null;
+  const userRoles: string[] = userInfo?.roles || [];
+  const isAdmin = userRoles.includes("ADMIN") || userRoles.includes("SUPERUSER");
+  const isStoreUser =
+    userRoles.includes("STORE_MANAGER") ||
+    userRoles.includes("STORE_KEEPER") ||
+    userRoles.includes("STORE");
+  const userStoreId = userInfo?.store_id || userInfo?.storeId;
+  const userStoreCode = (userInfo?.store_code || userInfo?.storeCode || "").toUpperCase();
+
+  const isAssignedToUserStore = Boolean(
+    (userStoreId && arrival.assigned_store_id === userStoreId) ||
+      (userStoreCode && arrival.assigned_store_code?.toUpperCase() === userStoreCode),
+  );
+
+  const canReleaseDock = isAdmin || (isStoreUser && isAssignedToUserStore);
   return (
     <div className="space-y-5">
       <div className="rounded-xl border bg-card p-4">
@@ -343,6 +435,8 @@ function ArrivalDetails({
           <Detail label="Current status" value={arrival.status.replaceAll("_", " ")} />
           <Detail label="Vehicle number" value={arrival.vehicle_number} mono />
           <Detail label="Driver" value={arrival.driver_name} />
+          <Detail label="Assigned Dock" value={arrival.assigned_dock_id ? `Dock ${arrival.assigned_dock_id}` : "Pending"} mono />
+          <Detail label="Assigned Store" value={arrival.assigned_store_name ? `${arrival.assigned_store_name} (${arrival.assigned_store_code})` : "Pending"} />
           <Detail label="Driver contact" value={arrival.driver_contact} />
           <Detail label="Arrival time" value={new Date(arrival.arrival_time).toLocaleString()} />
         </dl>
@@ -395,11 +489,62 @@ function ArrivalDetails({
         </div>
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
-            <Warehouse className="size-4 text-primary" /> Dock movement
+            <Warehouse className="size-4 text-primary" /> Dock & Store assignment
           </h3>
-          {arrival.status === "AT_DOCK" ? (
+          {arrival.dock_released_at ? (
             <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-              <p className="font-semibold">Vehicle arrived at {arrival.assigned_dock_id}</p>
+              <p className="font-semibold text-emerald-800">Dock {arrival.assigned_dock_id} Released</p>
+              {arrival.assigned_store_name && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Assigned Store: {arrival.assigned_store_name} ({arrival.assigned_store_code})
+                </p>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Released by {arrival.dock_released_by || "Store Keeper"}
+                <br />
+                {new Date(arrival.dock_released_at).toLocaleString()}
+                <br />
+                Dock status: AVAILABLE
+              </p>
+            </div>
+          ) : arrival.status === "RECEIVING_COMPLETED" ? (
+            <div className="rounded-xl border border-primary/30 bg-primary-soft p-4">
+              <p className="font-semibold">Receiving Completed at Dock {arrival.assigned_dock_id}</p>
+              {arrival.assigned_store_name && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Assigned Store: {arrival.assigned_store_name} ({arrival.assigned_store_code})
+                </p>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Receiving completed by {arrival.receiving_completed_by || "—"}
+                <br />
+                {arrival.receiving_completed_at ? new Date(arrival.receiving_completed_at).toLocaleString() : "—"}
+                <br />
+                Unloading complete. Assigned Store Keeper can now release the dock.
+              </p>
+              {canReleaseDock ? (
+                <Button className="mt-3 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white" disabled={busy} onClick={onRelease}>
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}{" "}
+                  Release Dock
+                </Button>
+              ) : isStoreUser ? (
+                <p className="mt-3 rounded-xl border border-warning/30 bg-warning-soft p-2.5 text-xs font-medium text-warning-foreground">
+                  Assigned to {arrival.assigned_store_name || "another Store"}. Release restricted to assigned store keeper.
+                </p>
+              ) : (
+                <p className="mt-3 rounded-xl border border-border/80 bg-muted/40 p-2.5 text-xs font-medium text-muted-foreground">
+                  Unloading complete. Waiting for {arrival.assigned_store_name || "Assigned Store Keeper"} to release dock.
+                </p>
+              )}
+            </div>
+          ) : arrival.status === "AT_DOCK" ? (
+            <div className="rounded-xl border border-success/30 bg-success-soft p-4">
+              <p className="font-semibold">Vehicle arrived at Dock {arrival.assigned_dock_id}</p>
+              {arrival.assigned_store_name && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Assigned Store: {arrival.assigned_store_name} ({arrival.assigned_store_code})
+                </p>
+              )}
               <p className="mt-2 text-xs text-muted-foreground">
                 Checked in by {arrival.dock_checked_in_by || "—"}
                 <br />
@@ -410,7 +555,12 @@ function ArrivalDetails({
             </div>
           ) : arrival.status === "MOVING_TO_DOCK" ? (
             <div className="rounded-xl border border-primary/30 bg-primary-soft p-4">
-              <p className="font-semibold">Vehicle moving to {arrival.assigned_dock_id}</p>
+              <p className="font-semibold">Vehicle moving to Dock {arrival.assigned_dock_id}</p>
+              {arrival.assigned_store_name && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Assigned Store: {arrival.assigned_store_name} ({arrival.assigned_store_code})
+                </p>
+              )}
               <p className="mt-2 text-xs text-muted-foreground">
                 Instructed by {arrival.movement_started_by || "—"}
                 <br />
@@ -429,9 +579,14 @@ function ArrivalDetails({
             </div>
           ) : arrival.status === "DOCK_ASSIGNED" ? (
             <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-              <p className="font-semibold">Assigned to {arrival.assigned_dock_id}</p>
+              <p className="font-semibold">Assigned to Dock {arrival.assigned_dock_id}</p>
+              {arrival.assigned_store_name && (
+                <p className="mt-1 text-xs font-semibold text-emerald-700">
+                  Assigned Store: {arrival.assigned_store_name} ({arrival.assigned_store_code})
+                </p>
+              )}
               <p className="mt-2 text-xs text-muted-foreground">
-                By {arrival.assigned_by || "—"}
+                Assigned by {arrival.assigned_by || "—"}
                 <br />
                 {arrival.assigned_at ? new Date(arrival.assigned_at).toLocaleString() : "—"}
               </p>
@@ -441,29 +596,79 @@ function ArrivalDetails({
               </Button>
             </div>
           ) : (
-            <>
-              <div className="space-y-2">
-                {docks.map((d) => (
-                  <label
-                    key={d.id}
-                    className={`flex items-center gap-3 rounded-xl border p-3 text-sm ${d.status === "AVAILABLE" ? "cursor-pointer bg-card" : "cursor-not-allowed opacity-50"}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected === d.id}
-                      disabled={d.status !== "AVAILABLE"}
-                      onChange={() => onSelect(selected === d.id ? "" : d.id)}
-                    />
-                    <span className="font-mono font-semibold">{d.id}</span>
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      {d.zone} · {d.status}
-                    </span>
-                  </label>
-                ))}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-xs font-semibold uppercase text-muted-foreground mb-1.5 block">
+                  1. Select Available Dock
+                </Label>
+                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                  {docks.map((d) => (
+                    <label
+                      key={d.id}
+                      className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs transition-colors ${
+                        d.status === "AVAILABLE"
+                          ? selectedDock === d.id
+                            ? "border-primary bg-primary-soft/10 text-primary font-semibold"
+                            : "cursor-pointer bg-card hover:bg-muted/40"
+                          : "cursor-not-allowed opacity-40 bg-muted/20"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`dock_${arrival.id}`}
+                        checked={selectedDock === d.id}
+                        disabled={d.status !== "AVAILABLE"}
+                        onChange={() => onSelectDock(d.id)}
+                        className="text-primary focus:ring-primary size-3.5"
+                      />
+                      <span className="font-mono">{d.id}</span>
+                      <span className="ml-auto text-[10px] text-muted-foreground">
+                        {d.zone} · {d.status}
+                      </span>
+                    </label>
+                  ))}
+                </div>
               </div>
+
+              <div>
+                <Label className="text-xs font-semibold uppercase text-muted-foreground mb-1.5 block">
+                  2. Select Destination Store
+                </Label>
+                {stores.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-3 text-center text-xs text-muted-foreground">
+                    No active stores found.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {stores.map((s) => (
+                      <label
+                        key={s.id}
+                        className={`flex items-center gap-2.5 rounded-xl border p-2.5 text-xs transition-colors cursor-pointer ${
+                          selectedStore === s.id
+                            ? "border-emerald-600 bg-emerald-50 text-emerald-900 font-semibold"
+                            : "bg-card hover:bg-muted/40"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name={`store_${arrival.id}`}
+                          checked={selectedStore === s.id}
+                          onChange={() => onSelectStore(s.id)}
+                          className="text-emerald-600 focus:ring-emerald-600 size-3.5"
+                        />
+                        <span>{s.store_name}</span>
+                        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                          {s.store_code}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <Button
-                className="mt-3 w-full rounded-xl"
-                disabled={!selected || busy}
+                className="w-full rounded-xl"
+                disabled={!selectedDock || !selectedStore || busy}
                 onClick={onAssign}
               >
                 {busy ? (
@@ -471,9 +676,9 @@ function ArrivalDetails({
                 ) : (
                   <ArrowRight className="size-4" />
                 )}{" "}
-                Assign dock
+                Assign Dock & Store
               </Button>
-            </>
+            </div>
           )}
         </div>
       </div>
@@ -496,3 +701,4 @@ function Detail({
     </div>
   );
 }
+

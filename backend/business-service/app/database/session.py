@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.config.settings import get_settings
 
@@ -21,9 +22,7 @@ _settings = get_settings()
 engine = create_async_engine(
     _settings.database_url,
     echo=_settings.database_echo,
-    pool_size=_settings.database_pool_size,
-    max_overflow=_settings.database_max_overflow,
-    pool_pre_ping=True,
+    poolclass=NullPool,
 )
 
 AsyncSessionFactory = async_sessionmaker(
