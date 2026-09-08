@@ -1,7 +1,7 @@
 """
 FastAPI entrypoint for ams-wms-business-service.
 """
-# Reload triggered for Material Master schema update
+# Reload triggered for Unexpected Delivery GRN Quality schema 2
 from __future__ import annotations
 
 import asyncio
@@ -149,6 +149,15 @@ async def lifespan(app: FastAPI):
             "ON material (material_code) WHERE material_code IS NOT NULL"
         )
         logger.info("Ensured canonical Material Master columns and legacy data mapping")
+
+        # Allow nullable PO columns in inventory_receipt_posting for Unexpected Delivery
+        try:
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN po_id DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN po_number DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN asn_id DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN asn_number DROP NOT NULL")
+        except Exception:
+            pass
 
         # Add columns to asn
         for col in [

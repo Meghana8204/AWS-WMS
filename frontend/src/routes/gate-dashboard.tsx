@@ -131,7 +131,7 @@ function GateDashboard() {
                         {entry.vehicle_number || "Vehicle pending"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {entry.gate_entry_no || "Gate entry pending"} · {entry.po_number || "No PO"}
+                        {entry.gate_entry_no || "Gate entry pending"} · {entry.vendor || entry.supplier_name || "Supplier pending"} · {entry.po_number || "No PO"}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

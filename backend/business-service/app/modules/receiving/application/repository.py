@@ -93,6 +93,8 @@ class PurchaseOrderSnapshot:
     supplier_id: str | None = None
     supplier_name: str | None = None
     supplier_company_name: str | None = None
+    supplier_email: str | None = None
+    supplier_contact_person: str | None = None
     warehouse_id: str | None = None
     warehouse_name: str | None = None
     expected_delivery_date: object | None = None
@@ -207,6 +209,8 @@ class GrnContextSnapshot:
     po_number: str | None
     supplier_name: str | None
     supplier_company_name: str | None
+    supplier_email: str | None
+    supplier_contact_person: str | None
     warehouse_id: str | None
     warehouse_name: str | None
     asn: AsnSnapshot | None

@@ -5,10 +5,10 @@ import socket
 import platform
 from html import escape
 from typing import Iterable
-from email import encoders
-from email.mime.base import MIMEBase
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from email.utils import formatdate, make_msgid
 from app.config.settings import get_settings
 from app.logging.logger import get_logger
@@ -38,14 +38,16 @@ def render_premium_email(
     intro: str,
     details: Iterable[tuple[str, str]] = (),
     items: Iterable[dict[str, str]] = (),
-    items_title: str = "Requested materials",
-    col_headers: Iterable[str] = ("Material", "Quantity", "Required by", "Warehouse"),
+    items_heading: str | None = "Requested materials",
+    items_title: str | None = None,
+    col_headers: Iterable[str] | None = None,
+    custom_html: str | None = None,
     credentials: Iterable[tuple[str, str]] = (),
     primary_cta: tuple[str, str] | None = None,
     secondary_cta: tuple[str, str] | None = None,
     note: str | None = None,
-    custom_html: str | None = None,
     signoff: str = "NexusWMS Procurement Team",
+    **kwargs,
 ) -> str:
     """Build a responsive, email-client-safe branded transactional email."""
     detail_cells = list(details)
@@ -56,34 +58,34 @@ def render_premium_email(
         ) + ("<td style='width:50%'></td>" if len(detail_cells[index:index + 2]) == 1 else "") + "</tr>"
         for index in range(0, len(detail_cells), 2)
     )
-    headers_list = list(col_headers)
-    num_cols = len(headers_list)
-
-    if num_cols == 3:
-        th_cells = (
-            f'<th align="left" style="padding:11px 12px;color:#475569;font-weight:700;width:38%">{escape(headers_list[0])}</th>'
-            f'<th align="left" style="padding:11px 12px;color:#475569;font-weight:700;width:24%">{escape(headers_list[1])}</th>'
-            f'<th align="left" style="padding:11px 12px;color:#475569;font-weight:700;width:38%">{escape(headers_list[2])}</th>'
-        )
+    headers_list = list(col_headers) if col_headers else ["Material", "Quantity", "Required by", "Warehouse"]
+    header_th = "".join(
+        f'<th align="left" style="padding:11px 12px;color:#475569;font-weight:700">{escape(h)}</th>'
+        for h in headers_list
+    )
+    if len(headers_list) == 3:
         item_rows = "".join(
-            f'<tr>'
-            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#0f172a;font-weight:700;vertical-align:top">{escape(str(item.get("material", "—")))}</td>'
-            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#dc2626;font-weight:700;vertical-align:top">{escape(str(item.get("quantity", "—")))}</td>'
-            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155;vertical-align:top">{escape(str(item.get("delivery", item.get("reason", "—"))))}</td>'
-            f'</tr>'
+            f'<tr><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#0f172a;font-weight:700">{escape(str(item.get("material", "—")))}</td>'
+            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("quantity", "—")))}</td>'
+            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("delivery", item.get("reason", "—"))))}</td></tr>'
             for item in items
         )
     else:
-        th_cells = "".join(
-            f'<th align="left" style="padding:11px 12px;color:#475569;font-weight:700">{escape(h)}</th>'
-            for h in headers_list
-        )
         item_rows = "".join(
-            f'<tr><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#0f172a;font-weight:700">{escape(str(item.get("material", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#dc2626;font-weight:700">{escape(str(item.get("quantity", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("delivery", "—")))}</td><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("warehouse", "—")))}</td></tr>'
+            f'<tr><td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#0f172a;font-weight:700">{escape(str(item.get("material", "—")))}</td>'
+            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("quantity", "—")))}</td>'
+            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("delivery", "—")))}</td>'
+            f'<td style="padding:13px 12px;border-top:1px solid #e2e8f0;color:#334155">{escape(str(item.get("warehouse", "—")))}</td></tr>'
             for item in items
         )
-    items_html = f'''<div style="margin:24px 0"><div style="font-size:14px;font-weight:800;color:#dc2626;margin-bottom:12px;text-decoration:underline">{escape(items_title)}</div><div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px;table-layout:fixed"><tr style="background:#f1f5f9">{th_cells}</tr>{item_rows}</table></div></div>''' if item_rows else ""
-    custom_section = f'''<div style="margin:20px 0">{custom_html}</div>''' if custom_html else ""
+    heading_text = items_title or items_heading or ""
+    items_title_html = (
+        f'<div style="font-size:14px;font-weight:800;color:#2563eb;margin-bottom:12px;text-decoration:underline">{escape(heading_text)}</div>'
+        if heading_text
+        else ""
+    )
+    items_html = f'''<div style="margin:24px 0">{items_title_html}<div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:14px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:13px"><tr style="background:#f1f5f9">{header_th}</tr>{item_rows}</table></div></div>''' if item_rows else ""
+    extra_custom_html = custom_html if custom_html else ""
     credential_rows = "".join(
         f'<tr><td style="padding:5px 0;color:#64748b;font-size:13px">{escape(label)}</td><td align="right" style="padding:5px 0;color:#0f172a;font:700 14px monospace">{escape(str(value))}</td></tr>'
         for label, value in credentials
@@ -95,7 +97,23 @@ def render_premium_email(
     if secondary_cta:
         buttons += f'<a href="{escape(secondary_cta[1], quote=True)}" style="display:inline-block;background:#ffffff;color:#1e40af;text-decoration:none;font-size:14px;font-weight:800;padding:12px 19px;border:1px solid #bfdbfe;border-radius:10px;margin:0 0 8px">{escape(secondary_cta[0])}</a>'
     note_html = f'<div style="margin-top:22px;padding:14px 16px;border-left:4px solid #3b82f6;background:#eff6ff;color:#1e3a8a;font-size:13px;line-height:1.6">{escape(note)}</div>' if note else ""
-    return f'''<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a"><div style="display:none;max-height:0;overflow:hidden">{escape(intro)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9"><tr><td align="center" style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)"><tr><td style="padding:28px 34px;background:linear-gradient(135deg,#0f172a,#1e3a8a)"><div style="color:#93c5fd;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase">NEXUS<span style="color:#ffffff">WMS</span> · {escape(eyebrow)}</div><h1 style="margin:12px 0 0;color:#ffffff;font-size:28px;line-height:1.25">{escape(title)}</h1></td></tr><tr><td style="padding:32px 34px"><p style="margin:0 0 12px;font-size:16px;font-weight:700">{escape(greeting)}</p><p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.7;white-space:pre-line">{escape(intro)}</p>{f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 -6px 12px">{detail_rows}</table>' if detail_rows else ''}{items_html}{custom_section}{credentials_html}<div style="margin-top:24px">{buttons}</div>{note_html}<p style="margin:28px 0 0;color:#475569;font-size:13px;line-height:1.6">Regards,<br><strong style="color:#0f172a">{escape(signoff)}</strong></p></td></tr><tr><td align="center" style="padding:20px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;line-height:1.6">This is an automated transactional message from NexusWMS.<br>Please do not share secure portal credentials.</td></tr></table></td></tr></table></body></html>'''
+    return f'''<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a"><div style="display:none;max-height:0;overflow:hidden">{escape(intro)}</div><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9"><tr><td align="center" style="padding:32px 12px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)"><tr><td style="padding:28px 34px;background:linear-gradient(135deg,#0f172a,#1e3a8a)"><div style="color:#93c5fd;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase">NEXUS<span style="color:#ffffff">WMS</span> · {escape(eyebrow)}</div><h1 style="margin:12px 0 0;color:#ffffff;font-size:28px;line-height:1.25">{escape(title)}</h1></td></tr><tr><td style="padding:32px 34px"><p style="margin:0 0 12px;font-size:16px;font-weight:700">{escape(greeting)}</p><p style="margin:0 0 24px;color:#475569;font-size:15px;line-height:1.7;white-space:pre-line">{escape(intro)}</p>{f'<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:0 -6px 12px">{detail_rows}</table>' if detail_rows else ''}{items_html}{extra_custom_html}{credentials_html}<div style="margin-top:24px">{buttons}</div>{note_html}<p style="margin:28px 0 0;color:#475569;font-size:13px;line-height:1.6">Regards,<br><strong style="color:#0f172a">{escape(signoff)}</strong></p></td></tr><tr><td align="center" style="padding:20px 28px;background:#f8fafc;border-top:1px solid #e2e8f0;color:#94a3b8;font-size:11px;line-height:1.6">This is an automated transactional message from NexusWMS.<br>Please do not share secure portal credentials.</td></tr></table></td></tr></table></body></html>'''
+
+
+import re
+
+def normalize_smtp_password(raw_pw: str | None) -> str:
+    """
+    Safely normalizes an SMTP password (e.g. Gmail 16-character App Password).
+    Removes enclosing quotes, leading/trailing whitespace, and any internal
+    spaces/tabs/newlines without exposing or mutating secrets.
+    """
+    if not raw_pw:
+        return ""
+    pw = str(raw_pw).strip()
+    if (pw.startswith('"') and pw.endswith('"')) or (pw.startswith("'") and pw.endswith("'")):
+        pw = pw[1:-1].strip()
+    return re.sub(r"[\s\u00a0\u200b\r\n\t]+", "", pw)
 
 
 def _send_sync(
@@ -107,34 +125,33 @@ def _send_sync(
 ):
     settings = get_settings()
 
-    host_user = settings.email_host_user.strip() if settings.email_host_user else ""
-    host_pass = settings.email_host_password.replace(" ", "").strip() if settings.email_host_password else ""
+    host_user = (settings.email_host_user or "").strip()
+    host_password = normalize_smtp_password(settings.email_host_password)
 
+    # Absolute path for debugging
     log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a") as lf:
-        lf.write(f"SMTP Start: {to_email} via {host_user}\n")
+    with open(log_path, "a", encoding="utf-8") as lf:
+        lf.write(f"SMTP Start: {to_email} via user={host_user}, host={settings.email_host}:{settings.email_port}, auth={bool(host_password)}, pw_len={len(host_password)}\n")
 
-    msg_id = make_msgid(domain=host_user.split('@')[-1] if '@' in host_user else 'gmail.com')
-
+    # Let Gmail, Outlook, and mobile clients prefer the premium HTML while
+    # retaining the plain-text version as an accessibility fallback.
     msg = MIMEMultipart('mixed')
     msg['From'] = f"{settings.email_from_name} <{host_user}>"
     msg['To'] = to_email
+    msg['Reply-To'] = host_user
     msg['Subject'] = subject
     msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = msg_id
-    msg['Auto-Submitted'] = 'auto-generated'
-
-    alternative = MIMEMultipart('alternative')
-    alternative.attach(MIMEText(body, 'plain', 'utf-8'))
+    msg['Message-ID'] = make_msgid()
+    alternatives = MIMEMultipart('alternative')
+    alternatives.attach(MIMEText(body, 'plain', 'utf-8'))
     if html_body:
-        alternative.attach(MIMEText(html_body, 'html', 'utf-8'))
-    msg.attach(alternative)
-
-    for filename, content, mime_type in attachments or ():
-        main_type, _, sub_type = (mime_type or "application/octet-stream").partition("/")
+        alternatives.attach(MIMEText(html_body, 'html', 'utf-8'))
+    msg.attach(alternatives)
+    for filename, data, content_type in attachments:
+        main_type, _, sub_type = (content_type or "application/octet-stream").partition("/")
         part = MIMEBase(main_type or "application", sub_type or "octet-stream")
-        part.set_payload(content)
+        part.set_payload(data)
         encoders.encode_base64(part)
         part.add_header('Content-Disposition', 'attachment', filename=filename)
         msg.attach(part)
@@ -142,9 +159,7 @@ def _send_sync(
     errors = []
     for port, use_ssl in _smtp_transports(settings):
         server = None
-        send_started = False
         try:
-            logger.info(f"Connecting to SMTP server {settings.email_host}:{port} (SSL={use_ssl}) for recipient {to_email}")
             if use_ssl:
                 server = smtplib.SMTP_SSL(settings.email_host, port, timeout=settings.email_timeout_seconds)
             else:
@@ -152,38 +167,27 @@ def _send_sync(
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-            server.login(host_user, host_pass)
-            logger.info(f"SMTP authentication successful as {host_user}. Dispatching message ID {msg_id}")
-            send_started = True
-            refused = server.send_message(msg)
-            if refused:
-                raise smtplib.SMTPRecipientsRefused(refused)
+            server.login(host_user, host_password)
+            server.send_message(msg)
+            # Delivery has completed once send_message returns. A timeout while
+            # closing must not trigger another attempt and duplicate the email.
             try:
                 server.quit()
-            except Exception:
+            except (OSError, smtplib.SMTPException, socket.error):
                 server.close()
-            logger.info(f"SMTP server accepted message for {to_email} via port {port}. Message-ID: {msg_id}")
-            try:
-                with open(log_path, "a") as lf:
-                    lf.write(f"SMTP Success: {to_email} via port {port} (Message-ID: {msg_id})\n")
-            except OSError:
-                pass
+            with open(log_path, "a", encoding="utf-8") as lf:
+                lf.write(f"SMTP Success: {to_email} via port {port}\n")
             return True
         except (OSError, smtplib.SMTPException, socket.error) as smtp_err:
-            if send_started:
-                if server is not None:
-                    try:
-                        server.close()
-                    except Exception:
-                        pass
-                raise RuntimeError(
-                    f"SMTP send was rejected or could not be confirmed: {smtp_err}"
-                ) from smtp_err
+            # Enhanced error logging for diagnostics
             error_msg = str(smtp_err)
-            if isinstance(smtp_err, OSError):
+            if isinstance(smtp_err, smtplib.SMTPAuthenticationError):
+                error_msg += " [Gmail 535 Bad Credentials - Authentication failed. Verify 2FA is active and generate a new 16-character App Password at https://myaccount.google.com/apppasswords]"
+            elif isinstance(smtp_err, OSError):
                 errno = getattr(smtp_err, 'errno', getattr(smtp_err, 'winerror', None))
                 if errno in WINSOCK_ERRORS:
                     error_msg += f" [{WINSOCK_ERRORS[errno]}]"
+
             errors.append(f"port {port}: {error_msg}")
             if server is not None:
                 try:
@@ -191,12 +195,10 @@ def _send_sync(
                 except Exception:
                     pass
     error_message = "; ".join(errors)
-    logger.error(f"All SMTP transport attempts failed for recipient {to_email}: {error_message}")
-    with open(log_path, "a") as lf:
+    with open(log_path, "a", encoding="utf-8") as lf:
         lf.write(f"SMTP Error: {error_message}\n")
         lf.write(f"System: {platform.system()} | Host: {settings.email_host}:{settings.email_port}\n")
     raise RuntimeError(error_message)
-
 
 async def send_email(
     to_email: str,
@@ -229,11 +231,10 @@ async def send_email(
                 greeting="Hello,",
                 intro=body,
             )
-
-        logger.info(f"send_email initiated for recipient={to_email}, subject={subject}")
+        # Run synchronous smtplib in a separate thread
         await anyio.to_thread.run_sync(_send_sync, to_email, subject, body, html_body, tuple(attachments))
-        logger.info(f"send_email completed successfully for recipient={to_email}")
+        logger.info(f"Email sent successfully to {to_email}")
         return True
     except Exception as e:
-        logger.error(f"send_email failed for recipient={to_email}: {e}")
+        logger.error(f"Email failed to {to_email}: {type(e).__name__}: {e}")
         raise
