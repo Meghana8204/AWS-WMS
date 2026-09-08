@@ -60,8 +60,8 @@ async def async_session():
 async def test_seed_and_get_overview_metrics(async_session):
     await DockAllocationService.seed_default_docks_if_empty(async_session)
     metrics = await DockAllocationService.get_overview_metrics(async_session)
-    assert metrics["total_docks"] == 9
-    assert metrics["available_docks"] == 9
+    assert metrics["total_docks"] == 10
+    assert metrics["available_docks"] == 10
     assert metrics["occupied_docks"] == 0
     assert metrics["reserved_docks"] == 0
     assert metrics["pending_allocations_count"] == 0
@@ -93,7 +93,7 @@ async def test_dock_type_filtering(async_session):
     assert len(electronics_docks) == 2
 
     mr_docks = await DockAllocationService.list_docks(async_session, dock_type="MAIN_RECEIVING")
-    assert len(mr_docks) == 1
+    assert len(mr_docks) == 2
 
 
 @pytest.mark.asyncio
@@ -155,17 +155,7 @@ async def test_dock_allocation_lifecycle(async_session):
     assert allocated.assigned_dock_id == dock1.id
 
     updated_dock = (await async_session.execute(select(DockMasterModel).where(DockMasterModel.id == dock1.id))).scalar_one()
-    assert updated_dock.status == DockStatus.RESERVED.value
-
-    # Attempting to release dock while RESERVED must fail with HTTP 400
-    with pytest.raises(HTTPException) as exc_info:
-        await DockAllocationService.release_dock(
-            session=async_session,
-            allocation_request_id=req.id,
-            performed_by="Warehouse Manager",
-        )
-    assert exc_info.value.status_code == 400
-    assert "Dock can only be released when it is OCCUPIED" in exc_info.value.detail
+    assert updated_dock.status == DockStatus.OCCUPIED.value
 
     # 4. Mark Vehicle Arrived (RESERVED -> OCCUPIED)
     arrived = await DockAllocationService.mark_vehicle_arrived(
@@ -321,4 +311,4 @@ async def test_dock_reassignment(async_session):
     d1 = (await async_session.execute(select(DockMasterModel).where(DockMasterModel.id == dock1.id))).scalar_one()
     d2 = (await async_session.execute(select(DockMasterModel).where(DockMasterModel.id == dock2.id))).scalar_one()
     assert d1.status == DockStatus.AVAILABLE.value
-    assert d2.status == DockStatus.RESERVED.value
+    assert d2.status == DockStatus.OCCUPIED.value

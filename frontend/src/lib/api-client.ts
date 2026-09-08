@@ -743,6 +743,57 @@ export const api = {
       method: "POST",
     });
   },
+
+  async getMatchingSuppliersForMaterialRequest(id: string): Promise<any[]> {
+    return request<any[]>(
+      `${BUSINESS_API_URL}/api/v1/procurement/material-requests/${encodeURIComponent(id)}/matching-suppliers`,
+    );
+  },
+
+  async sendMaterialRequestToSupplier(
+    id: string,
+    data?: { supplier_id?: string; notes?: string },
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/procurement/material-requests/${encodeURIComponent(id)}/send-to-supplier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data || {}),
+      },
+    );
+  },
+
+  async getPickTasks(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/pick-tasks`);
+  },
+
+  async assignPickTask(taskId: string, operator: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/procurement/pick-tasks/${taskId}/assign?operator=${encodeURIComponent(operator)}`,
+      { method: "POST" },
+    );
+  },
+
+  async startPickTask(taskId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/pick-tasks/${taskId}/start`, {
+      method: "POST",
+    });
+  },
+
+  async completePickTask(taskId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/pick-tasks/${taskId}/complete`, {
+      method: "POST",
+    });
+  },
+
+  async issuePickedMaterial(taskId: string, receivedBy: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/procurement/pick-tasks/${taskId}/issue?received_by=${encodeURIComponent(receivedBy)}`,
+      { method: "POST" },
+    );
+  },
+
   async getMaterialStock(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/material-stock`);
   },

@@ -54,6 +54,7 @@ function MaterialRequests() {
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -66,9 +67,11 @@ function MaterialRequests() {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     fetchData();
   }, []);
+
   const handleRequestClick = (req: any) => {
     setSelectedRequest(req);
     setIsModalOpen(true);
@@ -170,104 +173,113 @@ function MaterialRequests() {
       )}
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="max-w-4xl w-full rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/70 hover:[&>button]:text-white [&>button]:top-6 [&>button]:right-6">
+        <DialogContent className="max-w-4xl w-full rounded-3xl p-0 overflow-hidden border-none shadow-2xl [&>button]:text-white/80 hover:[&>button]:text-white [&>button]:top-5 [&>button]:right-5">
           {selectedRequest && (
             <div className="flex flex-col h-full max-h-[90vh]">
-              <div className="p-6 text-white bg-blue-600 flex justify-between items-start">
+              {/* Vibrant Blue Header */}
+              <div className="px-7 py-5 text-white bg-blue-600 flex justify-between items-center">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <DialogTitle className="text-xl font-bold tracking-tight">
+                  <div className="flex items-center gap-3">
+                    <DialogTitle className="text-xl font-bold tracking-tight text-white">
                       Material Request Details
                     </DialogTitle>
-                    <StatusBadge status={selectedRequest.status} />
+                    <span className="rounded-full bg-white/20 text-white font-bold text-[11px] uppercase tracking-wider px-3 py-0.5 border border-white/20">
+                      {selectedRequest.status}
+                    </span>
                   </div>
-                  <p className="text-white/70 text-sm font-mono font-bold tracking-widest">
+                  <p className="text-blue-100 text-xs font-mono font-semibold tracking-wider mt-1.5">
                     {selectedRequest.requestNumber}
                   </p>
                 </div>
               </div>
 
+              {/* Modal Body */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6 w-full min-w-0">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-2xl bg-muted/20 border border-border/40">
+                {/* 1. Metadata 4-Column Box */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-5 rounded-2xl bg-slate-50/70 dark:bg-muted/20 border border-slate-100 dark:border-border/40">
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    <Label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
                       Department
                     </Label>
-                    <p className="font-bold text-sm">{selectedRequest.department || "N/A"}</p>
+                    <p className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                      {selectedRequest.department || "Inventory"}
+                    </p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    <Label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
                       Required Date
                     </Label>
-                    <p className="font-bold text-sm tabular-nums">
+                    <p className="font-bold text-sm text-slate-900 dark:text-slate-100 tabular-nums">
                       {formatDisplayDate(selectedRequest.requiredDate)}
                     </p>
                   </div>
                   <div className="space-y-1">
-                    <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    <Label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
                       Requested By
                     </Label>
-                    <p className="font-bold text-sm">{selectedRequest.requestedBy}</p>
+                    <p className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                      {selectedRequest.requestedBy || "warehouse"}
+                    </p>
                   </div>
                   <div className="space-y-1 sm:text-right">
-                    <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                    <Label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400">
                       Warehouse
                     </Label>
-                    <p className="font-bold text-sm">{selectedRequest.warehouseId}</p>
+                    <p className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                      {selectedRequest.warehouseName ||
+                        (selectedRequest.warehouseId === "WH-001"
+                          ? "Main Warehouse"
+                          : selectedRequest.warehouseId) ||
+                        "Main Warehouse"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                {/* 2. Requested Materials Table */}
+                <div className="space-y-2.5">
+                  <Label className="text-[11px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 block">
                     Requested Materials
                   </Label>
-                  <div className="rounded-2xl border border-border/60 overflow-hidden bg-muted/5 shadow-inner">
-                    <table className="w-full table-fixed text-left text-sm border-collapse">
-                      <colgroup>
-                        <col className="w-[23%]" />
-                        <col className="w-[27%]" />
-                        <col className="w-[28%]" />
-                        <col className="w-[10%]" />
-                        <col className="w-[12%]" />
-                      </colgroup>
+                  <div className="rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden bg-white dark:bg-card shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse">
                       <thead>
-                        <tr className="bg-muted/50 border-b border-border/60">
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                        <tr className="bg-slate-50/70 dark:bg-muted/40 border-b border-slate-100 dark:border-border/60">
+                          <th className="px-5 py-3 text-[10.5px] uppercase font-bold text-slate-500 tracking-wider">
                             Material Code
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                          <th className="px-5 py-3 text-[10.5px] uppercase font-bold text-slate-500 tracking-wider">
                             Variant Code
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground">
+                          <th className="px-5 py-3 text-[10.5px] uppercase font-bold text-slate-500 tracking-wider">
                             Material Name &amp; Specs
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-20 text-center">
+                          <th className="px-5 py-3 text-[10.5px] uppercase font-bold text-slate-500 tracking-wider text-center">
                             Qty
                           </th>
-                          <th className="p-3 text-[10px] uppercase font-black text-muted-foreground w-24">
+                          <th className="px-5 py-3 text-[10.5px] uppercase font-bold text-slate-500 tracking-wider">
                             UOM
                           </th>
                         </tr>
                       </thead>
-                      <tbody>
+                      <tbody className="divide-y divide-slate-100 dark:divide-border/40">
                         {selectedRequest.items?.map((item: any, idx: number) => (
                           <tr
                             key={idx}
-                            className="border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors"
+                            className="hover:bg-slate-50/50 dark:hover:bg-muted/20 transition-colors"
                           >
-                            <td className="p-3 font-mono text-xs font-bold text-primary">
+                            <td className="px-5 py-3.5 font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
                               {item.materialCode || item.material_code}
                             </td>
-                            <td className="p-3 font-mono text-xs font-semibold text-teal-600">
+                            <td className="px-5 py-3.5 font-mono text-xs font-bold text-teal-600 dark:text-teal-400">
                               {item.variantCode || item.variant_code || "—"}
                             </td>
-                            <td className="p-3 font-medium text-foreground truncate">
+                            <td className="px-5 py-3.5 font-medium text-slate-800 dark:text-slate-100 text-xs">
                               {item.materialName || item.material_name || "—"}
                             </td>
-                            <td className="p-3 text-center font-bold text-orange-600 tabular-nums">
+                            <td className="px-5 py-3.5 font-bold text-orange-500 text-xs text-center tabular-nums">
                               {Math.floor(Number(item.quantity || 0))}
                             </td>
-                            <td className="p-3 text-[10px] font-black uppercase text-muted-foreground">
+                            <td className="px-5 py-3.5 font-bold uppercase text-slate-500 dark:text-slate-400 text-xs">
                               {item.uom}
                             </td>
                           </tr>
@@ -277,34 +289,35 @@ function MaterialRequests() {
                   </div>
                 </div>
 
+                {/* 3. Remarks / Justification */}
                 <div className="space-y-2">
-                  <Label className="text-[10px] uppercase font-black text-muted-foreground">
+                  <Label className="text-[11px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 block">
                     Remarks / Justification
                   </Label>
-                  <p className="text-sm bg-muted/30 p-4 rounded-2xl italic text-muted-foreground border border-border/40 leading-relaxed">
+                  <p className="text-xs bg-slate-50/70 dark:bg-muted/30 p-4 rounded-2xl italic text-slate-600 dark:text-slate-400 border border-slate-100 dark:border-border/40 leading-relaxed">
                     {selectedRequest.remarks || "No remarks provided."}
                   </p>
                 </div>
               </div>
 
-              <div className="p-6 bg-muted/10 border-t border-border/60 flex items-center justify-between">
-                <Button
-                  variant="ghost"
-                  className="rounded-2xl h-11 px-6 font-bold text-xs uppercase"
+              {/* Modal Footer matching screenshot */}
+              <div className="p-4 px-7 bg-white dark:bg-card border-t border-slate-100 dark:border-border/60 flex items-center justify-between">
+                <button
+                  type="button"
+                  className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white px-2 py-1 transition-colors"
                   onClick={() => setIsModalOpen(false)}
                 >
-                  Close
+                  CLOSE
+                </button>
+
+                <Button
+                  className="rounded-full h-10 px-6 font-bold text-xs uppercase bg-blue-600 hover:bg-blue-700 text-white shadow-md flex items-center gap-2 tracking-wider"
+                  asChild
+                >
+                  <Link to="/procurement/new-rfq" search={{ fromRequestId: selectedRequest.id }}>
+                    <ArrowRight className="size-4" /> CREATE RFQ FROM REQUEST
+                  </Link>
                 </Button>
-                <div className="flex items-center gap-3">
-                  <Button
-                    className="rounded-2xl h-11 px-8 shadow-glow font-bold text-xs uppercase"
-                    asChild
-                  >
-                    <Link to="/procurement/new-rfq" search={{ fromRequestId: selectedRequest.id }}>
-                      <ArrowRight className="mr-2 size-4" /> Create RFQ from Request
-                    </Link>
-                  </Button>
-                </div>
               </div>
             </div>
           )}

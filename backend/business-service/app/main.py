@@ -1242,9 +1242,13 @@ async def lifespan(app: FastAPI):
     scheduler.start()
 
     try:
-        _consumer_task = asyncio.create_task(start_notification_consumer())
+        from app.database.session import session_scope
+        from app.modules.dock.application.service import DockAllocationService
+        async with session_scope() as session:
+            await DockAllocationService.sync_predefined_docks(session)
+        logger.info("Predefined docks synchronized successfully (9 static docks active)")
     except Exception as exc:
-        logger.debug(f"Notification consumer task failed to start: {exc}")
+        logger.warning(f"Predefined docks synchronization failed: {exc}")
 
     logger.info("business-service started", extra={"extra_fields": {"environment": settings.environment}})
 
