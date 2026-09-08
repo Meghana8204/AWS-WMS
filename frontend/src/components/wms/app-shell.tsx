@@ -27,11 +27,12 @@ import {
   Menu,
   AlertTriangle,
   ShieldCheck,
+  ShieldAlert,
+  ClipboardCheck,
   Sliders,
   PanelLeft,
   PanelLeftClose,
   QrCode,
-  Inbox,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
@@ -41,43 +42,54 @@ import { getUserInfo } from "@/lib/auth-utils";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 
-const grnNav = [
-  { label: "GRN Operations Dashboard", to: "/grn", search: { tab: "dashboard" }, icon: LayoutDashboard },
-  { label: "GRN Records History", to: "/grn", search: { tab: "records" }, icon: ClipboardList },
-  { label: "Material Receiving", to: "/grn", search: { tab: "wizard", page: 2 }, icon: PackageCheck },
-  { label: "Quality & Photos", to: "/grn", search: { tab: "wizard", page: 3 }, icon: AlertTriangle },
-  { label: "Batch Allocation", to: "/grn", search: { tab: "wizard", page: 4 }, icon: Boxes },
-  { label: "Documents & Posting", to: "/grn", search: { tab: "wizard", page: 5 }, icon: FileText },
-  { label: "Batch QR Code Labels", to: "/grn", search: { tab: "wizard", page: 6 }, icon: QrCode },
+export interface NavItem {
+  label: string;
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: number | string;
+  search?: Record<string, unknown>;
+}
+
+const grnNav: NavItem[] = [
+  { label: "GRN Operations Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
+  { label: "GRN Records History", to: "/grn?tab=records", icon: ClipboardList },
+  { label: "Header Details & Entry", to: "/grn?tab=wizard&page=1", icon: ShieldCheck },
+  { label: "Material Receiving", to: "/grn?tab=wizard&page=2", icon: PackageCheck },
+  { label: "Quality & Photos", to: "/grn?tab=wizard&page=3", icon: AlertTriangle },
+  { label: "Batch Allocation", to: "/grn?tab=wizard&page=4", icon: Boxes },
+  { label: "Documents & Posting", to: "/grn?tab=wizard&page=5", icon: FileText },
+  { label: "Batch QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
 ];
-const warehouseNav = [
-  { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
+
+const warehouseNav: NavItem[] = [
+  { label: "Warehouse Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
-  { label: "Inventory", to: "/inventory", icon: Boxes },
-  { label: "Warehouses & Locations", to: "/warehouse-storage", icon: Warehouse },
-  { label: "Putaway Tasks", to: "/putaway-tasks", icon: PackageCheck },
-  { label: "Pick Tasks", to: "/pick-tasks", icon: PackageCheck },
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
-  { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
+  { label: "Stores", to: "/warehouse/stores", icon: Building2 },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
-  { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
-  { label: "GRN", to: "/grn", icon: FileCheck2 },
-  { label: "Damage Claims", to: "/damage-claims", icon: AlertTriangle },
+  { label: "Vehicle Queue", to: "/vehicle-queue", icon: ListOrdered },
+  { label: "Quarantine", to: "/warehouse/quarantine", icon: ShieldAlert },
+  { label: "Assembly Requests", to: "/warehouse/assembly-requisitions", icon: ClipboardCheck },
+  { label: "Inventory", to: "/inventory", icon: Boxes },
+  { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
 
-const procurementNav = [
+const storeManagerNav: NavItem[] = [{ label: "My Store", to: "/my-store", icon: Warehouse }];
+
+const procurementNav: NavItem[] = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
   { label: "Material Requests", to: "/procurement/material-requests", icon: ClipboardList },
-  { label: "Finished Goods", to: "/procurement/finished-goods", icon: PackageCheck },
   { label: "RFQs", to: "/procurement/rfqs", icon: FileQuestion },
   { label: "Quotations", to: "/procurement/quotations", icon: FileBadge },
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
+  { label: "Quality Issues", to: "/procurement/quality-issues", icon: AlertTriangle },
+  { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
-const supplierNav = [
+const supplierNav: NavItem[] = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
@@ -85,21 +97,23 @@ const supplierNav = [
   { label: "Damage Claims", to: "/damage-claims", icon: FileCheck2 },
 ];
 
-const financeNav = [
+const financeNav: NavItem[] = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
 ];
 
-const gateSecurityNav = [
+const gateSecurityNav: NavItem[] = [
   { label: "Dashboard", to: "/gate-dashboard", icon: LayoutDashboard },
   { label: "Gate Entry", to: "/gate-entry", icon: DoorOpen },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Inbound Arrivals", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Unscheduled Arrivals", to: "/unscheduled-arrivals", icon: FileQuestion },
+  { label: "Replacement Claims", to: "/damage-claims", icon: AlertTriangle },
 ];
 
-const assemblyNav = [
+const assemblyNav: NavItem[] = [
   { label: "Dashboard", to: "/assembly-dashboard", icon: LayoutDashboard },
+  { label: "Material Requisitions", to: "/assembly/requests", icon: ClipboardList },
   { label: "Assembly Orders", to: "/assembly-orders", icon: Factory },
   { label: "Material Requirements", to: "/assembly-material-requirements", icon: ClipboardList },
   { label: "Material Reservations", to: "/assembly-material-reservations", icon: Boxes },
@@ -126,11 +140,10 @@ function isActiveNavItem(
   item: { to: string; search?: Record<string, unknown> },
   navItems: ReadonlyArray<{ to: string; search?: Record<string, unknown> }>,
 ): boolean {
-  const itemPath = item.to.split("?")[0];
-  if (path !== itemPath && !path.startsWith(`${itemPath}/`)) return false;
+  if (!isActiveRoute(path, item.to)) return false;
 
   if (item.search) {
-    return Object.entries(item.search).every(([key, value]) => String(currentSearch[key] ?? "") === String(value));
+    return Object.entries(item.search).every(([key, value]) => currentSearch[key] === value);
   }
 
   // A base link and a filtered link can share a pathname. Keep the base link
@@ -140,38 +153,6 @@ function isActiveNavItem(
     .flatMap((navItem) => Object.keys(navItem.search ?? {}));
 
   return siblingSearchKeys.every((key) => currentSearch[key] == null);
-}
-
-const ICON_MAP: Record<string, any> = {
-  LayoutDashboard,
-  Building2,
-  ClipboardList,
-  FileQuestion,
-  FileBadge,
-  FileText,
-  Truck,
-  AlertTriangle,
-  FileCheck2,
-  DoorOpen,
-  LogOut,
-  ListOrdered,
-  Boxes,
-  Factory,
-  Users,
-  BarChart3,
-  Settings,
-  Warehouse,
-  Database,
-  PackageCheck,
-  ShieldCheck,
-  QrCode,
-  Bell,
-  Inbox,
-};
-
-function getIconComponent(iconName: any) {
-  if (typeof iconName !== "string") return iconName || LayoutDashboard;
-  return ICON_MAP[iconName] || LayoutDashboard;
 }
 
 export function AppShell({
@@ -189,18 +170,13 @@ export function AppShell({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [backendNav, setBackendNav] = useState<any[] | null>(null);
-  const [backendModuleLabel, setBackendModuleLabel] = useState<string | null>(null);
-
-  const { path, currentSearch } = useRouterState({
-    select: (s) => ({
-      path: s.location.pathname,
-      currentSearch: s.location.search as Record<string, unknown>,
-    }),
-  });
-  const fullHref = path;
+  const location = useRouterState({ select: (s) => s.location });
+  const path = location.pathname;
+  const searchStr = location.searchStr || "";
+  const currentSearch = (location.search as Record<string, unknown>) || {};
+  const fullHref = path + searchStr;
   const navigate = useNavigate();
-  const [user, setUser] = useState<{ username?: string; roles?: string[] } | null>(null);
+  const [user, setUser] = useState<{ username?: string; roles?: string[]; store_code?: string; storeCode?: string; store_id?: string; storeId?: string } | null>(null);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   // Global Search State
@@ -235,8 +211,6 @@ export function AppShell({
     let cleanup: (() => void) | undefined;
     setMounted(true);
     document.documentElement.classList.toggle("dark", dark);
-
-    // Load user only on client side to prevent hydration mismatch
     try {
       const savedUser = getUserInfo();
       if (savedUser) {
@@ -250,9 +224,11 @@ export function AppShell({
             ? "FINANCE"
             : u.roles?.includes("PROCUREMENT")
               ? "PROCUREMENT"
-              : u.roles?.includes("ASSEMBLY_MANAGER")
-                ? "ASSEMBLY_MANAGER"
-                : "WAREHOUSE";
+              : u.roles?.includes("STORE_MANAGER") || u.roles?.includes("STORE_KEEPER")
+                ? "STORE_MANAGER"
+                : u.roles?.includes("ASSEMBLY") || u.roles?.includes("ASSEMBLY_MANAGER")
+                  ? "ASSEMBLY"
+                  : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE") {
@@ -262,6 +238,12 @@ export function AppShell({
                   ? data.filter((n) => String(n?.status || "").toUpperCase() !== "ACKNOWLEDGED").length
                   : 0,
               );
+            } else if (role === "STORE_MANAGER") {
+              const data = await api.getNotifications("STORE_MANAGER", {
+                store_code: u.store_code || u.storeCode,
+                store_id: u.store_id || u.storeId,
+              });
+              setUnreadNotifications(data.filter((n) => !(n.is_read ?? n.isRead)).length);
             } else {
               const data = await api.getNotifications(role);
               setUnreadNotifications(
@@ -292,122 +274,126 @@ export function AppShell({
     };
   }, [dark]);
 
-  // Fetch dynamic module navigation and user profile from backend
-  useEffect(() => {
-    let isMounted = true;
-    const fetchBackendNavigation = async () => {
-      try {
-        const navData = await api.getUserNavigation();
-        if (isMounted && navData && Array.isArray(navData.navigation)) {
-          setBackendNav(
-            navData.navigation.map((item: any) => ({
-              ...item,
-              icon: getIconComponent(item.icon),
-            })),
-          );
-          if (navData.module_label) setBackendModuleLabel(navData.module_label);
-          if (typeof navData.unread_notifications === "number") {
-            setUnreadNotifications(navData.unread_notifications);
-          }
-        }
-      } catch (err) {
-        // Fallback to client-side nav resolution
+  const toggleDark = () => {
+    setDark((prev) => {
+      const next = !prev;
+      if (next) {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
       }
-    };
-    void fetchBackendNavigation();
-    return () => {
-      isMounted = false;
-    };
-  }, [path]);
+      return next;
+    });
+  };
 
-  const hasSupplierRole = mounted && !!user?.roles?.includes("SUPPLIER");
-  const hasFinanceRole = mounted && !!user?.roles?.includes("FINANCE");
-  const hasProcurementRole = mounted && !!user?.roles?.includes("PROCUREMENT");
-  const hasGateSecurityRole = mounted && !!user?.roles?.includes("GATE_SECURITY");
-  const hasAssemblyRole = mounted && !!user?.roles?.includes("ASSEMBLY_MANAGER");
-  const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer");
+  const isGrnUser = mounted && (user?.roles?.includes("GRN") || user?.username?.toLowerCase() === "grn");
   const isGrnRoute = path === "/grn" || path.startsWith("/grn");
-  const isProcurementRoute = path === "/procurement-dashboard" || path.startsWith("/procurement/");
-  const isSupplierRoute =
-    path === "/supplier-dashboard" ||
-    path === "/submit-quotation" ||
-    path.startsWith("/supplier/") ||
-    (path === "/damage-claims" && hasSupplierRole);
-  const isFinanceRoute = path === "/finance-dashboard" || path.startsWith("/finance/");
+  const isStoreManagerUser =
+    mounted && (user?.roles?.includes("STORE_MANAGER") || user?.roles?.includes("STORE_KEEPER"));
+  const isAssemblyUser = mounted && (user?.roles?.includes("ASSEMBLY") || user?.roles?.includes("ASSEMBLY_MANAGER"));
+  const isAssemblyRoute = path.startsWith("/assembly");
+  const isStoreManagerRoute =
+    path === "/my-store" ||
+    path.startsWith("/my-store/") ||
+    (isStoreManagerUser &&
+      !path.startsWith("/procurement") &&
+      !path.startsWith("/supplier") &&
+      !path.startsWith("/finance") &&
+      !path.startsWith("/gate") &&
+      !path.startsWith("/assembly"));
+
+  const isProcurementRoute =
+    path === "/procurement-dashboard" ||
+    path.startsWith("/procurement/") ||
+    path === "/master-data" ||
+    path === "/new-supplier" ||
+    (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
+  const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
+  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
+  const isSharedFinanceRoute = path.startsWith("/reports");
+  const isFinanceRoute =
+    path === "/finance-dashboard" ||
+    path.startsWith("/finance/") ||
+    (isFinanceUser && isSharedFinanceRoute);
+  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
   const isGateSecurityRoute =
-    path === "/gate-dashboard" ||
-    path === "/gate-entry" ||
-    (path === "/vehicle-exit" && hasGateSecurityRole) ||
-    path === "/vehicle-queue" ||
-    path === "/unscheduled-arrivals";
-  const isAssemblyRoute = path === "/assembly-dashboard" || path.startsWith("/assembly-orders") || path.startsWith("/assembly-workforce");
-  const isWarehouseRoute =
-    path === "/warehouse-dashboard" ||
     [
-      "/inventory",
-      "/warehouse/materials",
-      "/warehouse/material-requests",
-      "/warehouse-storage",
-      "/putaway-tasks",
-      "/pick-tasks",
-      "/dock-management",
-      "/receiving",
-      "/notifications",
-    ].some((p) => path.startsWith(p)) ||
-    (path === "/vehicle-exit" && !hasGateSecurityRole) ||
-    (path === "/damage-claims" && !hasSupplierRole);
+      "/gate-entry",
+      "/gate-dashboard",
+      "/vehicle-queue",
+      "/vehicle-exit",
+      "/accept-arrival",
+      "/driver-verification",
+      "/vehicle-verification",
+      "/dock-assignment",
+      "/arrival-success",
+      "/unscheduled-arrivals",
+    ].some((route) => path.startsWith(route));
+
+  const isWarehouseRoute = [
+    "/warehouse-dashboard",
+    "/inventory",
+    "/warehouse/materials",
+    "/warehouse/stores",
+    "/warehouse/material-requests",
+    "/warehouse/assembly-requisitions",
+    "/warehouse/quarantine",
+    "/dock-management",
+    "/putaway-tasks",
+    "/reports",
+  ].some((p) => path.startsWith(p));
 
   const routeNav = (isGrnUser || isGrnRoute)
     ? grnNav
-    : isSupplierRoute
-      ? supplierNav
-      : isProcurementRoute
-        ? procurementNav
-        : isFinanceRoute
-          ? financeNav
-          : isGateSecurityRoute
-            ? gateSecurityNav
-            : isAssemblyRoute
-              ? assemblyNav
-              : isWarehouseRoute
-                ? warehouseNav
-                : null;
+    : isStoreManagerRoute
+      ? storeManagerNav
+      : isAssemblyRoute
+        ? assemblyNav
+        : isSupplierRoute
+          ? supplierNav
+          : isProcurementRoute
+            ? procurementNav
+            : isFinanceRoute
+              ? financeNav
+              : isGateSecurityRoute
+                ? gateSecurityNav
+                : isWarehouseRoute
+                  ? warehouseNav
+                  : null;
 
   const roleNav = isGrnUser
     ? grnNav
-    : hasSupplierRole
-      ? supplierNav
-      : hasFinanceRole
-        ? financeNav
-        : hasProcurementRole
-          ? procurementNav
-          : hasGateSecurityRole
-            ? gateSecurityNav
-            : hasAssemblyRole
-              ? assemblyNav
-              : warehouseNav;
+    : isStoreManagerUser
+      ? storeManagerNav
+      : isAssemblyUser
+        ? assemblyNav
+        : user?.roles?.includes("SUPPLIER")
+          ? supplierNav
+          : user?.roles?.includes("FINANCE")
+            ? financeNav
+            : user?.roles?.includes("PROCUREMENT")
+              ? procurementNav
+              : isGateSecurityUser
+                ? gateSecurityNav
+                : warehouseNav;
 
-  const fallbackNav = routeNav ?? (mounted ? roleNav : warehouseNav);
-  const activeNav = (isGrnRoute || isGrnUser) ? grnNav : (routeNav ?? backendNav ?? fallbackNav);
+  const nav = routeNav ?? (mounted ? roleNav : warehouseNav);
 
-  const fallbackModuleLabel = (isGrnRoute || isGrnUser)
-    ? "GRN Operations"
-    : isSupplierRoute
-      ? "Supplier Portal"
-      : isProcurementRoute
-        ? "Procurement Portal"
-        : isFinanceRoute
-          ? "Finance Portal"
-          : isGateSecurityRoute
-            ? "Gate Security Portal"
-            : isAssemblyRoute
-              ? "Assembly Portal"
-              : "Warehouse navigation";
-  const activeModuleLabel = (isGrnRoute || isGrnUser)
-    ? "GRN Operations"
-    : routeNav
-      ? fallbackModuleLabel
-      : (backendModuleLabel ?? fallbackModuleLabel);
+  const moduleLabel = (isGrnUser || isGrnRoute)
+    ? "GRN & Quality"
+    : isStoreManagerRoute || isStoreManagerUser
+      ? "Store Management"
+      : isAssemblyRoute || isAssemblyUser
+        ? "Assembly Portal"
+        : isSupplierRoute
+          ? "Supplier Portal"
+          : isProcurementRoute
+            ? "Procurement Portal"
+            : isFinanceRoute
+              ? "Finance Portal"
+              : isGateSecurityRoute
+                ? "Gate Security Portal"
+                : "Warehouse navigation";
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
@@ -448,9 +434,8 @@ export function AppShell({
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
-          {activeNav.map((item) => {
-            const active = isActiveNavItem(path, currentSearch, item, activeNav);
-            const ItemIcon = typeof item.icon === "function" || (typeof item.icon === "object" && item.icon !== null) ? item.icon : getIconComponent(item.icon);
+          {nav.map((item) => {
+            const active = isActiveNavItem(path, currentSearch, item, nav);
             return (
               <Link
                 key={`${item.label}-${item.to}`}
@@ -464,7 +449,7 @@ export function AppShell({
                   active && "bg-primary-soft text-primary shadow-soft",
                 )}
               >
-                <ItemIcon className={cn("size-[18px] shrink-0", active && "text-primary")} />
+                <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} />
                 {!collapsed && <span className="truncate">{item.label}</span>}
                 {!collapsed && (item as any).badge && (
                   <span className="ml-auto grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground">
@@ -506,7 +491,7 @@ export function AppShell({
 
       <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
         <SheetContent side="left" className="flex w-[300px] flex-col gap-0 border-sidebar-border bg-sidebar p-0 sm:max-w-[320px]">
-          <SheetTitle className="sr-only">{activeModuleLabel}</SheetTitle>
+          <SheetTitle className="sr-only">{moduleLabel}</SheetTitle>
           <SheetDescription className="sr-only">Navigate within the current module</SheetDescription>
           <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
             <div className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
@@ -518,9 +503,8 @@ export function AppShell({
             </div>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-            {activeNav.map((item) => {
-              const active = isActiveNavItem(path, currentSearch, item, activeNav);
-              const ItemIcon = typeof item.icon === "function" || (typeof item.icon === "object" && item.icon !== null) ? item.icon : getIconComponent(item.icon);
+            {nav.map((item) => {
+              const active = isActiveNavItem(path, currentSearch, item, nav);
               return (
                 <Link
                   key={`${item.label}-${item.to}`}
@@ -533,7 +517,7 @@ export function AppShell({
                     active && "bg-primary-soft text-primary",
                   )}
                 >
-                  <ItemIcon className="size-[18px] shrink-0" />
+                  <item.icon className="size-[18px] shrink-0" />
                   <span>{item.label}</span>
                 </Link>
               );
@@ -695,8 +679,7 @@ export function AppShell({
     </div>
   );
 }
-
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, className }: { status: string; className?: string }) {
   const map: Record<string, string> = {
     Waiting: "bg-warning-soft text-warning-foreground border-warning/30",
     Active: "bg-success-soft text-success border-success/30",
@@ -764,6 +747,7 @@ export function StatusBadge({ status }: { status: string }) {
         "relative rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
         map[status] ?? map[displayLabel] ?? map["Hold"],
         isLive && "pl-5",
+        className,
       )}
     >
       {isLive && (

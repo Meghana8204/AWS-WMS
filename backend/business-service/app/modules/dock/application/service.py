@@ -14,6 +14,7 @@ from app.modules.dock.domain.enums import (
     AllocationPriority,
     AllocationStatus,
     DockStatus,
+    DockType,
 )
 from app.modules.dock.infrastructure.persistence.models import (
     DockAllocationHistoryModel,
@@ -28,8 +29,31 @@ class DockAllocationService:
 
     @staticmethod
     async def seed_default_docks_if_empty(session: AsyncSession) -> None:
-        """Compatibility hook; dock master data must be created explicitly."""
-        return None
+        """Helper to seed initial 9 docks when explicitly invoked (e.g. by test fixtures or setup scripts)."""
+        result = await session.execute(select(func.count(DockMasterModel.id)))
+        if result.scalar() == 0:
+            initial_docks = [
+                {"code": "RM-01", "name": "Raw Material Dock 01", "type": DockType.RAW_MATERIAL.value, "location": "North Warehouse"},
+                {"code": "RM-02", "name": "Raw Material Dock 02", "type": DockType.RAW_MATERIAL.value, "location": "East Warehouse"},
+                {"code": "CH-01", "name": "Chemical/Hazardous Dock 01", "type": DockType.CHEMICAL_HAZARDOUS.value, "location": "South Warehouse"},
+                {"code": "CH-02", "name": "Chemical/Hazardous Dock 02", "type": DockType.CHEMICAL_HAZARDOUS.value, "location": "South Warehouse"},
+                {"code": "EL-01", "name": "Electrical Dock 01", "type": DockType.ELECTRICAL.value, "location": "North Warehouse"},
+                {"code": "EL-02", "name": "Electrical Dock 02", "type": DockType.ELECTRICAL.value, "location": "North Warehouse"},
+                {"code": "EC-01", "name": "Electronics Dock 01", "type": DockType.ELECTRONICS.value, "location": "West Warehouse"},
+                {"code": "EC-02", "name": "Electronics Dock 02", "type": DockType.ELECTRONICS.value, "location": "West Warehouse"},
+                {"code": "MR-01", "name": "Main Receiving Dock", "type": DockType.MAIN_RECEIVING.value, "location": "North Warehouse"},
+            ]
+            for d in initial_docks:
+                dock = DockMasterModel(
+                    dock_code=d["code"],
+                    dock_name=d["name"],
+                    dock_type=d["type"],
+                    location=d["location"],
+                    status=DockStatus.AVAILABLE.value,
+                    is_active=True,
+                )
+                session.add(dock)
+            await session.commit()
 
     @staticmethod
     async def sync_pending_gate_entries(session: AsyncSession) -> None:
@@ -77,7 +101,6 @@ class DockAllocationService:
 
     @staticmethod
     async def get_overview_metrics(session: AsyncSession) -> dict:
-        await DockAllocationService.seed_default_docks_if_empty(session)
         await DockAllocationService.sync_pending_gate_entries(session)
         docks_result = await session.execute(select(DockMasterModel).where(DockMasterModel.is_active == True))
         docks = docks_result.scalars().all()
@@ -104,7 +127,6 @@ class DockAllocationService:
         dock_type: Optional[str] = None,
         status: Optional[str] = None,
     ) -> List[DockMasterModel]:
-        await DockAllocationService.seed_default_docks_if_empty(session)
         query = select(DockMasterModel).where(DockMasterModel.is_active == True)
         if dock_type and isinstance(dock_type, str) and dock_type.strip().upper() != "ALL":
             query = query.where(DockMasterModel.dock_type == dock_type.strip().upper())

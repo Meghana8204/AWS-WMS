@@ -417,12 +417,14 @@ function AsnTracking() {
             <div className="space-y-4">
               {editing ? (
                 <>
-                  {[
-                    ["Transporter", "transporter", "text"],
-                    ["Vehicle Number", "vehicle_number", "text"],
-                    ["Package Count", "number_of_packages", "number"],
-                    ["Package Type", "package_type", "text"],
-                  ].map(([label, field, type]) => (
+                  {(
+                    [
+                      ["Transporter", "transporter", "text"],
+                      ["Vehicle Number", "vehicle_number", "text"],
+                      ["Package Count", "number_of_packages", "number"],
+                      ["Package Type", "package_type", "text"],
+                    ] as const
+                  ).map(([label, field, type]) => (
                     <div className="space-y-1.5" key={field}>
                       <Label>{label}</Label>
                       <Input

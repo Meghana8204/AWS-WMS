@@ -129,9 +129,9 @@ function formatVehicleNumber(value: string): string {
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 11);
   const bharat = compact.match(/^(\d{2})BH(\d{4})([A-Z]{2})$/);
-  if (bharat) return `${bharat[1]}-BH-${bharat[2]}-${bharat[3]}`;
+  if (bharat && bharat[1] && bharat[2] && bharat[3]) return `${bharat[1]}-BH-${bharat[2]}-${bharat[3]}`;
   const standard = compact.match(/^([A-Z]{2})(\d{1,2})([A-Z]{1,3})(\d{4})$/);
-  if (standard)
+  if (standard && standard[1] && standard[2] && standard[3] && standard[4])
     return `${standard[1]}-${standard[2].padStart(2, "0")}-${standard[3]}-${standard[4]}`;
   return compact;
 }
@@ -238,6 +238,8 @@ function GateEntry() {
             item.materialName ??
             `Standard Item ${idx + 1}`,
         ),
+        // ASN lines expose their quantity as shippedQuantity, whereas PO and
+        // OCR lines use quantity. Support both when populating the gate form.
         quantity: String(item.shipped_quantity ?? item.shippedQuantity ?? item.quantity ?? item.ordered_quantity ?? "10"),
         uom: String(item.uom ?? item.unit ?? "PCS"),
       }))
@@ -309,6 +311,7 @@ function GateEntry() {
       return () => URL.revokeObjectURL(url);
     }
     setPoPreview(null);
+    return undefined;
   }, [poDocument]);
 
   useEffect(() => {
@@ -318,13 +321,10 @@ function GateEntry() {
       return () => URL.revokeObjectURL(url);
     }
     setVehiclePreview(null);
+    return undefined;
   }, [vehiclePhoto]);
 
   async function scanCapture(kind: CaptureKind, file: File) {
-    if (!file || !(file instanceof Blob) || file.size === 0) {
-      toast.error("Please capture or upload a document first.");
-      return;
-    }
     console.log(`Starting scanCapture for kind: ${kind}`, file);
     setScanning(null);
     if (kind === "po") setPoDocument(file);
@@ -395,12 +395,7 @@ function GateEntry() {
         ]
           .filter(([, value]) => value === undefined || value === null || value === "")
           .map(([label]) => label);
-        if (!detectedPo && !result.supplier_name && !fields.supplier_name && !result.material_description && !fields.material_description) {
-          toast.info(
-            "No readable purchase-order details were found. Use a clearer document image or enter the details manually.",
-            { id: toastId },
-          );
-        } else if (missing.length) {
+        if (missing.length) {
           toast.warning("PO scanned with fields requiring review", {
             id: toastId,
             description: `Check: ${missing.join(", ")}`,
@@ -431,17 +426,10 @@ function GateEntry() {
       }
     } catch (error: any) {
       console.error("OCR scan error:", error);
-      const msg = String(error?.message || "");
-      if (msg.includes("422") || msg.includes("Unprocessable") || msg.includes("empty") || msg.includes("validation")) {
-        toast.error("Unable to process the uploaded document. Please try again.", {
-          id: toastId,
-        });
-      } else {
-        toast.error("Document scanning failed. Please try again or enter the details manually.", {
-          id: toastId,
-          description: error.message || "Falling back to manual entry.",
-        });
-      }
+      toast.error("OCR scan failed", {
+        id: toastId,
+        description: error.message || "Falling back to manual entry.",
+      });
     }
   }
 
@@ -548,7 +536,8 @@ function GateEntry() {
         applyLineItems([
           {
             material_code: `MAT-${resolvedPoNumber.replace(/[^A-Z0-9]/gi, "")}-01`,
-            material_description: po.materialDescription || po.material_description || "Standard Procurement Goods",
+            material_description:
+              po.materialDescription || po.material_description || "Standard Procurement Goods",
             quantity: po.totalQuantity || po.total_quantity || "10",
             uom: "PCS",
           },
@@ -561,7 +550,9 @@ function GateEntry() {
       const today = new Date().toISOString().split("T")[0];
       const defaultDelivery = new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0];
       const fetchedPoDate = String(po.poDate || po.po_date || today);
-      const fetchedDeliveryDate = String(po.expectedDeliveryDate || po.expected_delivery_date || defaultDelivery);
+      const fetchedDeliveryDate = String(
+        po.expectedDeliveryDate || po.expected_delivery_date || defaultDelivery,
+      );
       setPoDate(fetchedPoDate);
       setDeliveryDate(fetchedDeliveryDate);
 
@@ -572,7 +563,10 @@ function GateEntry() {
       if (systemMat) setMaterialDescription(systemMat);
 
       const systemQty = items.length
-        ? items.reduce((sum: number, i: any) => sum + Number(i.quantity || i.ordered_quantity || 0), 0)
+        ? items.reduce(
+            (sum: number, i: any) => sum + Number(i.quantity || i.ordered_quantity || 0),
+            0,
+          )
         : 10;
       setTotalQuantity(String(systemQty || 10));
 
@@ -588,9 +582,11 @@ function GateEntry() {
           String(asn.poNumber || asn.po_number || "").toUpperCase() ===
           resolvedPoNumber.toUpperCase(),
       );
+
+      setVehicleNumber("");
       if (shipment) {
         setAsnReference(shipment.asnNumber || shipment.asn_number || shipment.id || "");
-        if (shipment.supplierName || shipment.supplier_name) setSupplierName(shipment.supplierName || shipment.supplier_name);
+        setSupplierName(shipment.supplierName || shipment.supplier_name || fetchedSupplier);
         const expectedArrival = shipment.expectedArrivalAt || shipment.expected_arrival_at;
         if (expectedArrival) setDeliveryDate(String(expectedArrival).slice(0, 10));
         const shipmentItems = shipment.lines || shipment.items || [];
@@ -605,13 +601,16 @@ function GateEntry() {
         setDriverPhone(shipment.driverContact || shipment.driver_contact);
       }
 
+      if (shipment?.vehicleNumber || shipment?.vehicle_number) {
+        handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
+      }
+
       toast.success(
         shipment?.vehicleNumber || shipment?.vehicle_number
-          ? "PO and vehicle details fetched from system"
-          : "PO details fetched; no submitted ASN vehicle found",
+          ? `PO ${resolvedPoNumber} & vehicle details auto-fetched!`
+          : `PO ${resolvedPoNumber} details auto-fetched & required fields generated!`,
         { id: toastId },
       );
-
       if (shipment?.vehicleNumber || shipment?.vehicle_number) {
         handleVehicleNumberChange(shipment.vehicleNumber || shipment.vehicle_number);
       }
@@ -1781,7 +1780,11 @@ function ScanCard({
         onClick={() => (hideCamera ? fileInput.current?.click() : onOpen(kind))}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
-            hideCamera ? fileInput.current?.click() : onOpen(kind);
+            if (hideCamera) {
+              fileInput.current?.click();
+            } else {
+              onOpen(kind);
+            }
           }
         }}
         className="cursor-pointer space-y-3"

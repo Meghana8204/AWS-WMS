@@ -4,6 +4,7 @@ Purchase Order module has been removed.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 import uuid
 from decimal import Decimal
 from typing import List, Optional
@@ -35,6 +36,7 @@ from app.modules.procurement.domain.supplier import (
 )
 from app.modules.procurement.domain.value_objects import (
     AsnId,
+    PurchaseOrderId,
     QuotationId,
     RfqId,
     SupplierId,
@@ -802,6 +804,30 @@ class SqlAlchemyArrivalNotificationRepository(ArrivalNotificationRepository):
         )
         self._session.add(model)
         await self._session.flush()
+
+    async def get_by_id(self, notification_id: str) -> Optional[ArrivalNotification]:
+        res = await self._session.execute(
+            select(ArrivalNotificationModel).where(ArrivalNotificationModel.id == notification_id)
+        )
+        m = res.scalar_one_or_none()
+        if not m:
+            return None
+        return ArrivalNotification(
+            id=m.id,
+            asn_id=str(m.asn_id),
+            asn_number=m.asn_number,
+            po_id=m.po_id,
+            po_number=m.po_number,
+            warehouse_id=m.warehouse_id,
+            supplier_name=m.supplier_name,
+            vehicle_number=m.vehicle_number,
+            expected_arrival_time=m.expected_arrival_time,
+            driver_phone=m.driver_phone,
+            message=m.message,
+            status=m.status,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+        )
 
     async def list_all(self) -> List[ArrivalNotification]:
         res = await self._session.execute(select(ArrivalNotificationModel).order_by(ArrivalNotificationModel.created_at.desc()))

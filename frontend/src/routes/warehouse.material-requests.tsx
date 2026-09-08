@@ -43,10 +43,14 @@ import { cn } from "@/lib/utils";
 
 function formatDisplayDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
-  const clean = String(dateStr).split("T")[0];
+  const str = String(dateStr);
+  const clean = str.includes("T") ? str.split("T")[0] : str;
+  if (!clean) return "—";
   const parts = clean.split("-");
-  if (parts.length === 3) {
-    const [year, month, day] = parts;
+  if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
     const months = [
       "Jan",
       "Feb",
@@ -62,12 +66,17 @@ function formatDisplayDate(dateStr: string | null | undefined): string {
       "Dec",
     ];
     const mIdx = parseInt(month, 10) - 1;
-    if (mIdx >= 0 && mIdx < 12) {
+    if (mIdx >= 0 && mIdx < 12 && months[mIdx]) {
       return `${parseInt(day, 10)} ${months[mIdx]} ${year}`;
     }
   }
   return clean;
 }
+
+export const formatSpecCode = (code?: string): string => {
+  if (!code) return "";
+  return code.replace(/-V(\d+)$/i, "-S$1");
+};
 
 export const Route = createFileRoute("/warehouse/material-requests")({
   component: WarehouseMaterialRequests,
@@ -95,9 +104,7 @@ function MaterialMasterSearchCombobox({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
-  const selectedMaterial = masterMaterials.find(
-    (m) => m.id === value || m.material_code === value,
-  );
+  const selectedMaterial = masterMaterials.find((m) => m.id === value || m.material_code === value);
 
   const filteredMaterials = useMemo(() => {
     if (!search.trim()) return masterMaterials;
@@ -219,9 +226,7 @@ function MaterialMasterSearchCombobox({
                   >
                     <div className="flex flex-col gap-0.5 min-w-0 pr-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-mono font-bold text-primary">
-                          {m.material_code}
-                        </span>
+                        <span className="font-mono font-bold text-primary">{m.material_code}</span>
                         <span className="font-medium text-foreground truncate">
                           {m.material_name}
                         </span>
@@ -234,7 +239,7 @@ function MaterialMasterSearchCombobox({
                         )}
                         {m.variants && m.variants.length > 0 && (
                           <span>
-                            {m.variants.length} variant{m.variants.length > 1 ? "s" : ""}
+                            {m.variants.length} specification{m.variants.length > 1 ? "s" : ""}
                           </span>
                         )}
                         {m.base_uom && <span>• {m.base_uom}</span>}
@@ -251,6 +256,7 @@ function MaterialMasterSearchCombobox({
     </Popover>
   );
 }
+
 function WarehouseMaterialRequests() {
   const [requests, setRequests] = useState<any[]>([]);
   const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
@@ -266,7 +272,7 @@ function WarehouseMaterialRequests() {
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     request_number: "",
-    warehouse_id: "",
+    warehouse_id: "Main Warehouse",
     department: "Inventory",
     requested_by: "",
     required_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
@@ -289,7 +295,7 @@ function WarehouseMaterialRequests() {
       const [reqData, matData, locationData, uomData] = await Promise.all([
         api.getMaterialRequests(),
         api.getMaterials({ status: "Active" }).catch(() => []),
-        api.getStorageLocations(undefined, true).catch(() => []),
+        api.getStorageLocations().catch(() => []),
         api.getMaterialUoms().catch(() => []),
       ]);
       setRequests(reqData);
@@ -299,7 +305,7 @@ function WarehouseMaterialRequests() {
       setUoms(uomData);
       setFormData((prev) => ({
         ...prev,
-        warehouse_id: prev.warehouse_id || warehouseIds[0] || "",
+        warehouse_id: prev.warehouse_id || "Main Warehouse",
       }));
     } catch (error) {
       toast.error("Failed to load requests");
@@ -355,7 +361,7 @@ function WarehouseMaterialRequests() {
               material_id: foundMat.id,
               material_variant_id: defaultVariant?.id || "",
               material_code: foundMat.material_code,
-              variant_code: defaultVariant?.variant_code || "",
+              variant_code: formatSpecCode(defaultVariant?.variant_code) || "",
               material_name: nameWithSpec,
               uom: defaultVariant?.uom || foundMat.base_uom || "",
             }
@@ -380,7 +386,7 @@ function WarehouseMaterialRequests() {
           ? {
               ...it,
               material_variant_id: foundVar.id,
-              variant_code: foundVar.variant_code,
+              variant_code: formatSpecCode(foundVar.variant_code),
               material_name: nameWithSpec,
               uom: foundVar.uom || foundMat.base_uom || "",
             }
@@ -423,7 +429,7 @@ function WarehouseMaterialRequests() {
       materialId: foundMat.id,
       materialVariantId: defaultVariant?.id || "",
       materialCode: foundMat.material_code,
-      variantCode: defaultVariant?.variant_code || "",
+      variantCode: formatSpecCode(defaultVariant?.variant_code) || "",
       materialName: nameWithSpec,
       uom: defaultVariant?.uom || foundMat.base_uom || "",
     };
@@ -447,7 +453,7 @@ function WarehouseMaterialRequests() {
     newItems[idx] = {
       ...newItems[idx],
       materialVariantId: foundVar.id,
-      variantCode: foundVar.variant_code,
+      variantCode: formatSpecCode(foundVar.variant_code),
       materialName: nameWithSpec,
       uom: foundVar.uom || foundMat.base_uom || "",
     };
@@ -488,13 +494,26 @@ function WarehouseMaterialRequests() {
       toast.error("Please fill in material description for all items");
       return;
     }
-    if (items.some((it) => !it.quantity || parseFloat(it.quantity) <= 0 || isNaN(parseFloat(it.quantity)))) {
+    if (
+      items.some(
+        (it) => !it.quantity || parseFloat(it.quantity) <= 0 || isNaN(parseFloat(it.quantity)),
+      )
+    ) {
       toast.error("Quantity must be strictly greater than 0 for all items");
       return;
     }
     setSubmitting(true);
     try {
-      await api.createMaterialRequest({ ...formData, requested_by: requester, items });
+      const itemsToSubmit = items.map((it) => ({
+        ...it,
+        variant_code: formatSpecCode(it.variant_code),
+      }));
+      await api.createMaterialRequest({
+        ...formData,
+        warehouse_id: formData.warehouse_id || "Main Warehouse",
+        requested_by: requester,
+        items: itemsToSubmit,
+      });
       toast.success("Material request submitted to Procurement");
       setIsCreating(false);
       setItems([
@@ -508,7 +527,7 @@ function WarehouseMaterialRequests() {
           uom: "",
         },
       ]);
-      setFormData((prev) => ({ ...prev, request_number: "" }));
+      setFormData((prev) => ({ ...prev, request_number: "", warehouse_id: "Main Warehouse" }));
       fetchData();
     } catch (error: any) {
       toast.error("Failed to submit request: " + (error.message || "Unknown error"));
@@ -523,7 +542,11 @@ function WarehouseMaterialRequests() {
       setNextRequestNumber(requestNumber);
       setBaseMaterialSequence(nextMaterialSequence || 1);
       const initialCode = `MAT-${String(nextMaterialSequence || 1).padStart(3, "0")}`;
-      setFormData((prev) => ({ ...prev, request_number: requestNumber }));
+      setFormData((prev) => ({
+        ...prev,
+        request_number: requestNumber,
+        warehouse_id: "Main Warehouse",
+      }));
       setItems([
         {
           material_id: "",
@@ -546,7 +569,8 @@ function WarehouseMaterialRequests() {
       const matId =
         it.materialId ||
         it.material_id ||
-        masterMaterials.find((m) => m.material_code === (it.materialCode || it.material_code))?.id ||
+        masterMaterials.find((m) => m.material_code === (it.materialCode || it.material_code))
+          ?.id ||
         "";
       const foundMat = masterMaterials.find(
         (m) => m.id === matId || m.material_code === (it.materialCode || it.material_code),
@@ -554,9 +578,8 @@ function WarehouseMaterialRequests() {
       const varId =
         it.materialVariantId ||
         it.material_variant_id ||
-        foundMat?.variants?.find(
-          (v: any) => v.variant_code === (it.variantCode || it.variant_code),
-        )?.id ||
+        foundMat?.variants?.find((v: any) => v.variant_code === (it.variantCode || it.variant_code))
+          ?.id ||
         "";
       return {
         materialId: matId,
@@ -581,11 +604,7 @@ function WarehouseMaterialRequests() {
       toast.error("Please add at least one material item");
       return;
     }
-    if (
-      selectedRequest.items.some(
-        (it: any) => !(it.materialName || it.material_name)?.trim(),
-      )
-    ) {
+    if (selectedRequest.items.some((it: any) => !(it.materialName || it.material_name)?.trim())) {
       toast.error("Please fill in material description for all items");
       return;
     }
@@ -629,6 +648,7 @@ function WarehouseMaterialRequests() {
       setSubmitting(false);
     }
   };
+
   return (
     <AppShell
       title="Warehouse Material Requests"
@@ -670,19 +690,11 @@ function WarehouseMaterialRequests() {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium">Warehouse</Label>
-                  <Select
-                    value={formData.warehouse_id}
-                    onValueChange={(warehouse_id) => setFormData({ ...formData, warehouse_id })}
-                  >
-                    <SelectTrigger className="h-10 w-full rounded-xl bg-background text-sm">
-                      <SelectValue placeholder="Select warehouse" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {warehouses.map((warehouse) => (
-                        <SelectItem key={warehouse} value={warehouse}>{warehouse}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Input
+                    value={formData.warehouse_id || "Main Warehouse"}
+                    readOnly
+                    className="h-10 rounded-xl bg-muted/50 text-sm font-medium"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium">Department</Label>
@@ -756,14 +768,14 @@ function WarehouseMaterialRequests() {
                           </div>
 
                           <div className="flex min-w-0 flex-col gap-2 xl:col-span-2">
-                            <Label className="flex h-4 items-center text-xs font-medium">Variant</Label>
+                            <Label className="flex h-4 items-center text-xs font-medium">Specification</Label>
                             <Select
                               value={item.material_variant_id || selectedMat?.variants?.[0]?.id || ""}
                               onValueChange={(val) => handleSelectVariant(idx, val)}
                               disabled={!selectedMat?.variants?.length}
                             >
                               <SelectTrigger className="h-10 w-full rounded-xl bg-background text-xs">
-                                <SelectValue placeholder="No variant" />
+                                <SelectValue placeholder="No specification" />
                               </SelectTrigger>
                               <SelectContent className="rounded-xl">
                                 {selectedMat?.variants?.map((v: any) => {
@@ -772,7 +784,7 @@ function WarehouseMaterialRequests() {
                                     .join(" · ");
                                   return (
                                     <SelectItem key={v.id} value={v.id} className="text-xs">
-                                      <span className="font-mono font-bold">{v.variant_code}</span>{" "}
+                                      <span className="font-mono font-bold">{formatSpecCode(v.variant_code)}</span>{" "}
                                       {spec && `(${spec})`}
                                     </SelectItem>
                                   );
@@ -921,7 +933,7 @@ function WarehouseMaterialRequests() {
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="size-3.5" /> Required by{" "}
-                        {formatDisplayDate(req.requiredDate)}
+                        {new Date(req.requiredDate || req.required_date).toLocaleDateString()}
                       </span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -930,19 +942,22 @@ function WarehouseMaterialRequests() {
                           key={idx}
                           className="text-[10px] text-orange-700 bg-orange-soft/20 px-2 py-0.5 rounded-md border border-orange-200 uppercase font-bold"
                         >
-                          {item.materialCode}: {Math.floor(item.quantity)} {item.uom}
+                          {item.materialCode || item.material_code}: {Math.floor(item.quantity)}{" "}
+                          {item.uom}
                         </span>
                       ))}
                     </div>
                   </div>
                 </div>
-                <div className="text-right hidden md:block">
-                  <p className="text-[10px] uppercase font-black text-muted-foreground mb-1">
-                    Created At
-                  </p>
-                  <p className="text-sm font-bold tabular-nums">
-                    {new Date(req.createdAt).toLocaleDateString()}
-                  </p>
+                <div className="flex flex-col items-end gap-2 text-right">
+                  <div>
+                    <p className="text-[10px] uppercase font-black text-muted-foreground mb-1">
+                      Created At
+                    </p>
+                    <p className="text-sm font-bold tabular-nums">
+                      {new Date(req.createdAt || req.created_at).toLocaleDateString()}
+                    </p>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -1016,7 +1031,7 @@ function WarehouseMaterialRequests() {
                     <Label className="text-[10px] uppercase font-black text-muted-foreground">
                       Warehouse
                     </Label>
-                    <p className="font-bold text-sm truncate">{selectedRequest.warehouseId}</p>
+                    <p className="font-bold text-sm truncate">{selectedRequest.warehouseId || selectedRequest.warehouse_id || "Main Warehouse"}</p>
                   </div>
                 </div>
 
@@ -1054,7 +1069,7 @@ function WarehouseMaterialRequests() {
                             Material Code
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
-                            Variant Code
+                            Specification Code
                           </th>
                           <th className="p-3 text-[10px] uppercase font-black text-muted-foreground truncate">
                             Material Name & Specs
@@ -1075,18 +1090,14 @@ function WarehouseMaterialRequests() {
                               m.id === item.materialId ||
                               m.material_code === (item.materialCode || item.material_code),
                           );
-                          const currentMaterialId =
-                            item.materialId || selectedMat?.id || "CUSTOM";
+                          const currentMaterialId = item.materialId || selectedMat?.id || "CUSTOM";
                           const hasVariants =
-                            selectedMat &&
-                            selectedMat.variants &&
-                            selectedMat.variants.length > 0;
+                            selectedMat && selectedMat.variants && selectedMat.variants.length > 0;
                           const currentVariantId =
                             item.materialVariantId ||
                             selectedMat?.variants?.find(
                               (v: any) =>
-                                v.variant_code ===
-                                (item.variantCode || item.variant_code),
+                                v.variant_code === (item.variantCode || item.variant_code),
                             )?.id ||
                             selectedMat?.variants?.[0]?.id ||
                             "";
@@ -1097,9 +1108,7 @@ function WarehouseMaterialRequests() {
                                 {isEditing ? (
                                   <MaterialMasterSearchCombobox
                                     value={currentMaterialId}
-                                    onSelect={(val) =>
-                                      handleEditSelectMasterMaterial(idx, val)
-                                    }
+                                    onSelect={(val) => handleEditSelectMasterMaterial(idx, val)}
                                     masterMaterials={masterMaterials}
                                     size="sm"
                                   />
@@ -1114,12 +1123,10 @@ function WarehouseMaterialRequests() {
                                   hasVariants ? (
                                     <Select
                                       value={currentVariantId}
-                                      onValueChange={(val) =>
-                                        handleEditSelectVariant(idx, val)
-                                      }
+                                      onValueChange={(val) => handleEditSelectVariant(idx, val)}
                                     >
                                       <SelectTrigger className="h-9 rounded-xl text-xs bg-background border-teal-500/30 text-teal-700 font-semibold font-mono w-full min-w-0 truncate [&>span]:truncate [&>span]:block">
-                                        <SelectValue placeholder="Select Variant" />
+                                        <SelectValue placeholder="Select Specification" />
                                       </SelectTrigger>
                                       <SelectContent className="rounded-xl max-h-60">
                                         {selectedMat.variants.map((v: any) => {
@@ -1127,13 +1134,9 @@ function WarehouseMaterialRequests() {
                                             .filter(Boolean)
                                             .join(" · ");
                                           return (
-                                            <SelectItem
-                                              key={v.id}
-                                              value={v.id}
-                                              className="text-xs"
-                                            >
+                                            <SelectItem key={v.id} value={v.id} className="text-xs">
                                               <span className="font-mono font-bold text-teal-700">
-                                                {v.variant_code}
+                                                {formatSpecCode(v.variant_code)}
                                               </span>{" "}
                                               {spec && `(${spec})`}
                                             </SelectItem>
@@ -1143,8 +1146,8 @@ function WarehouseMaterialRequests() {
                                     </Select>
                                   ) : (
                                     <Input
-                                      value={item.variantCode || item.variant_code || ""}
-                                      placeholder="Variant Code"
+                                      value={formatSpecCode(item.variantCode || item.variant_code) || ""}
+                                      placeholder="Specification Code"
                                       onChange={(e) =>
                                         handleEditItemChange(idx, "variantCode", e.target.value)
                                       }
@@ -1153,7 +1156,7 @@ function WarehouseMaterialRequests() {
                                   )
                                 ) : (
                                   <span className="font-mono text-xs text-teal-600 font-semibold truncate block">
-                                    {item.variantCode || item.variant_code || "—"}
+                                    {formatSpecCode(item.variantCode || item.variant_code) || "—"}
                                   </span>
                                 )}
                               </td>
@@ -1163,11 +1166,7 @@ function WarehouseMaterialRequests() {
                                     value={item.materialName || item.material_name || ""}
                                     placeholder="Material Name / Specification"
                                     onChange={(e) =>
-                                      handleEditItemChange(
-                                        idx,
-                                        "materialName",
-                                        e.target.value,
-                                      )
+                                      handleEditItemChange(idx, "materialName", e.target.value)
                                     }
                                     className="h-9 text-xs bg-background rounded-xl w-full min-w-0"
                                   />
@@ -1185,11 +1184,7 @@ function WarehouseMaterialRequests() {
                                     step="any"
                                     value={item.quantity}
                                     onChange={(e) =>
-                                      handleEditItemChange(
-                                        idx,
-                                        "quantity",
-                                        e.target.value,
-                                      )
+                                      handleEditItemChange(idx, "quantity", e.target.value)
                                     }
                                     className="h-9 text-xs text-center bg-background rounded-xl w-full min-w-0"
                                   />
@@ -1203,9 +1198,7 @@ function WarehouseMaterialRequests() {
                                 {isEditing ? (
                                   <Select
                                     value={item.uom}
-                                    onValueChange={(val) =>
-                                      handleEditItemChange(idx, "uom", val)
-                                    }
+                                    onValueChange={(val) => handleEditItemChange(idx, "uom", val)}
                                   >
                                     <SelectTrigger className="h-9 text-xs bg-background rounded-xl w-full min-w-0">
                                       <SelectValue />
@@ -1316,7 +1309,7 @@ function WarehouseMaterialRequests() {
                           disabled
                           className="rounded-full h-11 px-6 font-bold text-xs uppercase opacity-60 cursor-not-allowed"
                         >
-                          {selectedRequest.status} (Locked)
+                          {selectedRequest.status}
                         </Button>
                       )}
                     </>

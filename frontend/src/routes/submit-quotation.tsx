@@ -41,6 +41,15 @@ export const Route = createFileRoute("/submit-quotation")({
   component: SubmitQuotation,
 });
 
+const getItemKey = (item: any, idx: number) =>
+  item.variantCode ||
+  item.variant_code ||
+  item.materialVariantId ||
+  item.material_variant_id ||
+  item.materialCode ||
+  item.material_code ||
+  String(idx);
+
 function SubmitQuotation() {
   const navigate = useNavigate();
   const search = useSearch({ strict: false }) as any;
@@ -51,6 +60,7 @@ function SubmitQuotation() {
   const [existingQuote, setExistingQuote] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
   const [showSummaryModal, setShowSummaryModal] = useState(false);
 
   // Supplier user state
@@ -115,17 +125,48 @@ function SubmitQuotation() {
         const existing = quotesList.find((q: any) => q.rfqId === rfqId && q.supplierId === sid);
         if (existing) {
           setExistingQuote(existing);
-          setIsLocked(existing.status === "SUBMITTED");
-
-          // Map items data
+          const normalizedStatus = String(existing.status || "").toUpperCase();
+          setIsLocked(normalizedStatus === "SUBMITTED" || normalizedStatus === "SELECTED");
+          if (normalizedStatus === "REJECTED") {
+            const rejectionLines = String(existing.remarks || "")
+              .split("\n")
+              .filter((line: string) => line.startsWith("Rejected by "));
+            const rejectionNote = rejectionLines[rejectionLines.length - 1];
+            setRejectionReason(rejectionNote || "The procurement team rejected this quotation.");
+          } else {
+            setRejectionReason("");
+          }
           const mappedItems: any = {};
-          existing.lines?.forEach((line: any) => {
-            const price = parseFloat(line.unitPrice || line.unit_price || "0");
-            const qty = parseFloat(line.quantity || "0");
-            mappedItems[line.itemCode || line.item_code] = {
-              unitPrice: String(Math.floor(price)),
-              availableQty: String(Math.floor(qty)),
-            };
+          rfqData.items?.forEach((rfqItem: any, idx: number) => {
+            const key = getItemKey(rfqItem, idx);
+            const matchingLine =
+              existing.lines?.find((line: any) => {
+                const lineCode =
+                  line.itemCode || line.item_code || line.variantCode || line.variant_code;
+                const rfqVariantCode = rfqItem.variantCode || rfqItem.variant_code;
+                const rfqMatCode = rfqItem.materialCode || rfqItem.material_code;
+                const rfqVarId = rfqItem.materialVariantId || rfqItem.material_variant_id;
+                const lineVarId = line.materialVariantId || line.material_variant_id;
+
+                if (rfqVarId && lineVarId && rfqVarId === lineVarId) return true;
+                if (rfqVariantCode && lineCode === rfqVariantCode) return true;
+                if (lineCode === rfqMatCode) return true;
+                return false;
+              }) || existing.lines?.[idx];
+
+            if (matchingLine) {
+              const price = parseFloat(matchingLine.unitPrice || matchingLine.unit_price || "0");
+              const qty = parseFloat(matchingLine.quantity || "0");
+              mappedItems[key] = {
+                unitPrice: price > 0 ? String(Math.floor(price)) : "",
+                availableQty: String(Math.floor(qty || rfqItem.quantity)),
+              };
+            } else {
+              mappedItems[key] = {
+                unitPrice: "",
+                availableQty: String(Math.floor(rfqItem.quantity)),
+              };
+            }
           });
           setItemsData(mappedItems);
 
@@ -139,9 +180,10 @@ function SubmitQuotation() {
 
           // Map meta data
           setMetaData({
-            discount: existingSubtotal > 0
-              ? String(Number(((existingDiscount / existingSubtotal) * 100).toFixed(2)))
-              : "0",
+            discount:
+              existingSubtotal > 0
+                ? String(Number(((existingDiscount / existingSubtotal) * 100).toFixed(2)))
+                : "0",
             tax: String(Math.floor(parseFloat(existing.tax || "0"))),
             freightCharges: String(
               Math.floor(parseFloat(existing.freightCharges || existing.freight_charges || "0")),
@@ -158,8 +200,9 @@ function SubmitQuotation() {
         } else {
           // Initialize empty
           const initialItems: any = {};
-          rfqData.items?.forEach((item: any) => {
-            initialItems[item.materialCode] = {
+          rfqData.items?.forEach((item: any, idx: number) => {
+            const key = getItemKey(item, idx);
+            initialItems[key] = {
               unitPrice: "",
               availableQty: String(Math.floor(item.quantity)),
             };
@@ -176,20 +219,14 @@ function SubmitQuotation() {
     fetchRfqAndQuotation();
   }, [rfqId]);
 
-  const handleItemChange = (
-    itemCode: string,
-    field: "unitPrice" | "availableQty",
-    value: string,
-  ) => {
+  const handleItemChange = (key: string, field: "unitPrice" | "availableQty", value: string) => {
     if (isLocked) return;
 
     let finalValue = value;
 
     // Enforce that Quoted Quantity (availableQty) does not exceed Requested Qty
     if (field === "availableQty" && rfq) {
-      const item = rfq.items.find(
-        (it: any) => it.materialCode === itemCode || it.material_code === itemCode,
-      );
+      const item = rfq.items?.find((it: any, idx: number) => getItemKey(it, idx) === key);
       if (item) {
         const requestedQty = Math.floor(item.quantity);
         const enteredQty = parseInt(value, 10);
@@ -203,8 +240,9 @@ function SubmitQuotation() {
 
     setItemsData((prev) => ({
       ...prev,
-      [itemCode]: {
-        ...prev[itemCode],
+      [key]: {
+        unitPrice: prev[key]?.unitPrice ?? "",
+        availableQty: prev[key]?.availableQty ?? "",
         [field]: finalValue,
       },
     }));
@@ -225,7 +263,7 @@ function SubmitQuotation() {
           if (!isNaN(days)) {
             const date = new Date();
             date.setDate(date.getDate() + days);
-            newState.expectedDeliveryDate = date.toISOString().split("T")[0];
+            newState.expectedDeliveryDate = date.toISOString().split("T")[0] || "";
           }
         }
       }
@@ -279,12 +317,19 @@ function SubmitQuotation() {
         rfq_id: rfq.id,
         supplier_id: supplierId,
         status: "DRAFT",
-        lines: rfq.items.map((item: any) => ({
-          item_code: item.materialCode,
-          quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
-          unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
-        })),
-        discount: calculateDiscountAmount(),
+        lines: rfq.items.map((item: any, idx: number) => {
+          const key = getItemKey(item, idx);
+          return {
+            material_id: item.materialId || item.material_id || null,
+            material_variant_id: item.materialVariantId || item.material_variant_id || null,
+            item_code:
+              item.variantCode || item.variant_code || item.materialCode || item.material_code,
+            variant_code: item.variantCode || item.variant_code || null,
+            quantity: parseFloat(itemsData[key]?.availableQty || "0") || item.quantity,
+            unit_price: parseFloat(itemsData[key]?.unitPrice || "0") || 0,
+          };
+        }),
+        discount: parseFloat(metaData.discount) || 0,
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
         delivery_time: metaData.deliveryTime,
@@ -299,11 +344,10 @@ function SubmitQuotation() {
         setExistingQuote(updated);
       } else {
         const result = await api.submitQuotation(payload);
-        setExistingQuote(result); // Set so future auto-saves use update
+        setExistingQuote(result);
       }
-      console.log("Draft auto-saved");
     } catch (error) {
-      // Silent error for background auto-save
+      console.debug("Draft auto-save skipped:", error);
     }
   };
 
@@ -326,14 +370,19 @@ function SubmitQuotation() {
       setShowSummaryModal(false);
       return;
     }
-
-    // Ensure Quoted Quantity is at least the Requested Quantity
-    for (const item of rfq.items) {
-      const quoted = parseFloat(itemsData[item.materialCode]?.availableQty) || 0;
+    const gstRate = parseFloat(metaData.tax) || 0;
+    if (gstRate < 0 || gstRate > 100) {
+      toast.error("GST percentage must be between 0 and 100");
+      return;
+    }
+    for (let idx = 0; idx < rfq.items.length; idx++) {
+      const item = rfq.items[idx];
+      const key = getItemKey(item, idx);
+      const quoted = parseFloat(itemsData[key]?.availableQty || "0") || 0;
       const requested = Math.floor(item.quantity);
       if (quoted < requested) {
         toast.error(
-          `Quoted quantity for ${item.materialName} cannot be less than the requested quantity (${requested})`,
+          `Quoted quantity for ${item.materialName || item.material_name} cannot be less than the requested quantity (${requested})`,
         );
         setShowSummaryModal(false);
         return;
@@ -346,12 +395,19 @@ function SubmitQuotation() {
         rfq_id: rfq.id,
         supplier_id: supplierId,
         status: status,
-        lines: rfq.items.map((item: any) => ({
-          item_code: item.materialCode,
-          quantity: parseFloat(itemsData[item.materialCode]?.availableQty) || item.quantity,
-          unit_price: parseFloat(itemsData[item.materialCode]?.unitPrice) || 0,
-        })),
-        discount: calculateDiscountAmount(),
+        lines: rfq.items.map((item: any, idx: number) => {
+          const key = getItemKey(item, idx);
+          return {
+            material_id: item.materialId || item.material_id || null,
+            material_variant_id: item.materialVariantId || item.material_variant_id || null,
+            item_code:
+              item.variantCode || item.variant_code || item.materialCode || item.material_code,
+            variant_code: item.variantCode || item.variant_code || null,
+            quantity: parseFloat(itemsData[key]?.availableQty || "0") || item.quantity,
+            unit_price: parseFloat(itemsData[key]?.unitPrice || "0") || 0,
+          };
+        }),
+        discount: parseFloat(metaData.discount) || 0,
         tax: parseFloat(metaData.tax) || 0,
         freight_charges: parseFloat(metaData.freightCharges) || 0,
         delivery_time: metaData.deliveryTime,
@@ -362,10 +418,8 @@ function SubmitQuotation() {
       };
 
       if (existingQuote) {
-        // Update existing
         await api.updateQuotation(existingQuote.id, payload);
       } else {
-        // Create new
         await api.submitQuotation(payload);
       }
 
@@ -381,8 +435,9 @@ function SubmitQuotation() {
   };
 
   const calculateSubtotal = () =>
-    (rfq?.items || []).reduce((total: number, item: any) => {
-      const itemData = itemsData[item.materialCode] || {};
+    (rfq?.items || []).reduce((total: number, item: any, idx: number) => {
+      const key = getItemKey(item, idx);
+      const itemData = itemsData[key] || {};
       return total + (Number(itemData.availableQty) || 0) * (Number(itemData.unitPrice) || 0);
     }, 0);
 
@@ -402,7 +457,7 @@ function SubmitQuotation() {
 
     return {
       quotedItems: (rfq?.items || []).filter(
-        (item: any) => Number(itemsData[item.materialCode]?.unitPrice) > 0,
+        (item: any, idx: number) => Number(itemsData[getItemKey(item, idx)]?.unitPrice) > 0,
       ).length,
       subtotal,
       discountPercentage,
@@ -448,7 +503,7 @@ function SubmitQuotation() {
   return (
     <AppShell
       title="RFQ Response Workspace"
-      subtitle={`RFQ Number: ${rfq.rfqNumber}`}
+      subtitle={`RFQ Number: ${rfq.rfqNumber || rfq.rfq_number}`}
       actions={
         <Button
           variant="outline"
@@ -469,6 +524,16 @@ function SubmitQuotation() {
           </div>
         )}
 
+        {/* Rejection Banner */}
+        {rejectionReason && (
+          <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <p className="font-bold flex items-center gap-2">
+              <AlertTriangle className="size-4" /> Previous Submission Rejected
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{rejectionReason}</p>
+          </div>
+        )}
+
         {/* RFQ Details Summary (Read-Only) */}
         <SectionCard
           title="RFQ Information (Read-Only)"
@@ -480,20 +545,20 @@ function SubmitQuotation() {
               <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
                 RFQ Number
               </Label>
-              <span className="font-bold text-sm block mt-1">{rfq.rfqNumber}</span>
+              <span className="font-bold text-sm block mt-1">{rfq.rfqNumber || rfq.rfq_number}</span>
             </div>
             <div>
               <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
                 Request Date
               </Label>
-              <span className="font-bold text-sm block mt-1">{rfq.rfqDate || "—"}</span>
+              <span className="font-bold text-sm block mt-1">{rfq.rfqDate || rfq.rfq_date || "—"}</span>
             </div>
             <div>
               <Label className="text-muted-foreground text-xs uppercase tracking-wider block">
                 Required Delivery Date
               </Label>
               <span className="font-bold text-sm block mt-1">
-                {rfq.requiredDeliveryDate || "—"}
+                {rfq.requiredDeliveryDate || rfq.required_delivery_date || "—"}
               </span>
             </div>
             <div>
@@ -507,7 +572,7 @@ function SubmitQuotation() {
                 Procurement Officer
               </Label>
               <span className="font-bold text-sm block mt-1 uppercase tracking-wider text-primary">
-                {rfq.procurementOfficer}
+                {rfq.procurementOfficer || rfq.procurement_officer}
               </span>
             </div>
           </div>
@@ -530,37 +595,45 @@ function SubmitQuotation() {
           icon={Package}
         >
           <div className="space-y-6">
-            {rfq.items?.map((item: any, idx: number) => (
-              <div key={idx} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h4 className="text-base font-semibold tracking-tight text-foreground">
-                      {item.materialName}
-                    </h4>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-md border border-primary/20 bg-primary-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                        Material <strong className="ml-1 font-mono text-primary">{item.materialCode}</strong>
-                      </span>
-                      <span className="rounded-md border border-teal-500/20 bg-teal-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                        Variant{" "}
-                        <strong className="ml-1 font-mono text-teal-600">
-                          {item.variantCode || item.variant_code || "—"}
-                        </strong>
-                      </span>
-                      <span className="rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                        Category <strong className="ml-1 text-foreground">{item.category || "—"}</strong>
-                      </span>
+            {rfq.items?.map((item: any, idx: number) => {
+              const itemKey = getItemKey(item, idx);
+              return (
+                <div key={itemKey} className="rounded-2xl border border-border/80 bg-muted/10 p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h4 className="text-base font-semibold tracking-tight text-foreground">
+                        {item.materialName || item.material_name}
+                      </h4>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-md border border-primary/20 bg-primary-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                          Material{" "}
+                          <strong className="ml-1 font-mono text-primary">
+                            {item.materialCode || item.material_code}
+                          </strong>
+                        </span>
+                        {(item.variantCode || item.variant_code) && (
+                          <span className="rounded-md border border-teal-500/20 bg-teal-soft/15 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                            Variant{" "}
+                            <strong className="ml-1 font-mono text-teal-600">
+                              {item.variantCode || item.variant_code}
+                            </strong>
+                          </span>
+                        )}
+                        {item.category && (
+                          <span className="rounded-md border border-border/70 bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                            Category <strong className="ml-1 text-foreground">{item.category}</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
+                    <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
+                      Requested: {Math.floor(item.quantity)} {item.uom}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-primary-soft/20 px-2.5 py-0.5 text-xs font-bold text-primary">
-                    Requested: {Math.floor(item.quantity)} {item.uom}
-                  </span>
-                </div>
 
-                <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Unit Price (INR)*</Label>
-                    <div className="relative">
+                  <div className="mt-5 grid gap-4 sm:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Unit Price (INR)*</Label>
                       <Input
                         type="number"
                         min="0"
@@ -568,46 +641,44 @@ function SubmitQuotation() {
                         placeholder="0"
                         className="rounded-xl h-10 font-mono"
                         disabled={isLocked}
-                        value={itemsData[item.materialCode]?.unitPrice || ""}
+                        value={itemsData[itemKey]?.unitPrice || ""}
+                        onChange={(e) => handleItemChange(itemKey, "unitPrice", e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Requested Qty</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        className="rounded-xl h-10 font-mono bg-muted/50"
+                        disabled
+                        value={Math.floor(item.quantity)}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Quoted Quantity*</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={Math.floor(item.quantity)}
+                        step="1"
+                        placeholder="Enter quantity"
+                        className="rounded-xl h-10 font-mono"
+                        disabled={isLocked}
+                        value={itemsData[itemKey]?.availableQty || ""}
                         onChange={(e) =>
-                          handleItemChange(item.materialCode, "unitPrice", e.target.value)
+                          handleItemChange(itemKey, "availableQty", e.target.value)
                         }
                         required
                       />
                     </div>
                   </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Requested Qty</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      className="rounded-xl h-10 font-mono bg-muted/50"
-                      disabled
-                      value={Math.floor(item.quantity)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Quoted Quantity*</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={Math.floor(item.quantity)}
-                      step="1"
-                      placeholder="Enter quantity"
-                      className="rounded-xl h-10 font-mono"
-                      disabled={isLocked}
-                      value={itemsData[item.materialCode]?.availableQty || ""}
-                      onChange={(e) =>
-                        handleItemChange(item.materialCode, "availableQty", e.target.value)
-                      }
-                      required
-                    />
-                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </SectionCard>
 

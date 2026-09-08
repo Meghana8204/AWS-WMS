@@ -101,7 +101,12 @@ function NewAsn() {
           const poItems = poData.items || poData.lines || [];
           setLines(
             poItems.map((item: any) => {
-              const itemCode = item.variantCode || item.variant_code || item.itemCode || item.materialCode || item.material_code;
+              const itemCode =
+                item.variantCode ||
+                item.variant_code ||
+                item.itemCode ||
+                item.materialCode ||
+                item.material_code;
               const savedLine = savedDraft?.lines?.find((line: any) => line.item_code === itemCode);
               const alreadyShippedQuantity = existingAsns
                 .filter((asn: any) => String(asn.poId || asn.po_id || "") === String(poId))

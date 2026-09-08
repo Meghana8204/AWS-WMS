@@ -1,496 +1,760 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Truck,
-  Clock3,
-  Warehouse,
-  ListOrdered,
-  PackageCheck,
-  Plus,
-  BarChart3,
-  ArrowUpRight,
-  CircleDot,
-  Loader2,
-  Search,
   Boxes,
-  Database,
+  PackageCheck,
+  Building2,
+  ShieldAlert,
+  ClipboardCheck,
+  AlertTriangle,
+  RefreshCw,
+  Warehouse,
+  CheckCircle2,
+  ArrowRight,
+  Activity,
+  Plus,
 } from "lucide-react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip as RTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
-import { SectionCard, StatCard, Timeline } from "@/components/wms/primitives";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { api } from "@/lib/api-client";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/warehouse-dashboard")({
   head: () => ({
     meta: [
-      { title: "Warehouse Dashboard · NexusWMS" },
+      { title: "Warehouse Control Center · NexusWMS" },
       {
         name: "description",
         content:
-          "Live view of today's truck arrivals, dock occupancy, vehicle queue and receiving progress.",
-      },
-      { property: "og:title", content: "Warehouse Dashboard · NexusWMS" },
-      {
-        property: "og:description",
-        content:
-          "Live truck arrivals, dock occupancy and receiving progress for warehouse managers.",
+          "Authoritative operational warehouse dashboard: real-time putaway tasks, store pickups, live stock distribution, storage capacity, and quarantine exceptions.",
       },
     ],
   }),
   component: WarehouseDashboard,
 });
 
-const quickActions = [
-  { label: "Material Master", to: "/warehouse/materials", icon: Database },
-  { label: "Dock Management", to: "/dock-management", icon: Warehouse },
-  { label: "Goods Receiving", to: "/grn", icon: PackageCheck },
-];
-
 function WarehouseDashboard() {
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeFilter, setActiveFilter] = useState("ALL");
+  const [error, setError] = useState<string | null>(null);
 
-  async function fetchDashboardData() {
+  const fetchDashboardData = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
+    setError(null);
     try {
-      const data = await api.getDashboardStats();
-      setDashboardData(data);
-    } catch (err) {
-      console.error("Failed to load dashboard data", err);
+      const res = await api.getWarehouseDashboardMetrics();
+      setData(res);
+    } catch (err: any) {
+      console.error("Failed to load warehouse dashboard metrics", err);
+      setError(err.message || "Failed to load warehouse dashboard data");
+      if (!quiet) {
+        toast.error("Unable to refresh warehouse dashboard data");
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    fetchDashboardData();
-    const timer = window.setInterval(fetchDashboardData, 10000);
-    return () => window.clearInterval(timer);
   }, []);
 
-  const stats = dashboardData?.stats || {
-    totalArrivals: 0,
-    verifiedArrivals: 0,
-    unscheduledArrivals: 0,
-    occupiedDocks: "0/0",
-    vehiclesWaiting: 0,
+  useEffect(() => {
+    void fetchDashboardData();
+    const interval = window.setInterval(() => {
+      void fetchDashboardData(true);
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [fetchDashboardData]);
+
+  const actionReq = data?.action_required || {
+    pending_putaway_count: 0,
+    pending_putaways: [],
+    pending_pickup_count: 0,
+    pending_pickups: [],
+    pending_requisition_count: 0,
+    pending_material_request_count: 0,
+    active_quarantine_count: 0,
+    active_quarantine_qty: 0,
+    quarantine_records: [],
+    low_stock_count: 0,
+    low_stock_items: [],
+    out_of_stock_count: 0,
+    unassigned_locations_count: 0,
   };
 
-  const rawItems = dashboardData?.gateEntries || [];
+  const inventory = data?.inventory_snapshot || {
+    total_skus: 0,
+    total_on_hand: 0,
+    total_available: 0,
+    total_allocated: 0,
+    total_quarantined: 0,
+    low_stock_count: 0,
+    out_of_stock_count: 0,
+  };
 
-  // Filter items based on status toggle and search term
-  const filteredItems = rawItems.filter((item: any) => {
-    const matchesFilter =
-      activeFilter === "ALL" ||
-      (activeFilter === "VERIFIED" && item.status === "PO_VERIFIED") ||
-      (activeFilter === "UNSCHEDULED" && item.status === "UNSCHEDULED_ARRIVAL");
+  const putaway = data?.putaway_summary || {
+    pending_count: 0,
+    in_progress_count: 0,
+    completed_count: 0,
+    recent_tasks: [],
+  };
 
-    if (!matchesFilter) return false;
+  const storage = data?.storage_overview || {
+    total_stores: 0,
+    total_zones: 0,
+    total_bins: 0,
+    occupied_bins: 0,
+    available_bins: 0,
+  };
 
-    if (!searchTerm) return true;
+  const activity = data?.recent_activity || [];
 
-    const s = searchTerm.toLowerCase();
-    return (
-      item.vehicle_number?.toLowerCase().includes(s) ||
-      item.gate_entry_no?.toLowerCase().includes(s) ||
-      item.po_number?.toLowerCase().includes(s) ||
-      item.vendor?.toLowerCase().includes(s) ||
-      item.material?.toLowerCase().includes(s)
-    );
-  });
+  const totalActionsCount =
+    actionReq.pending_putaway_count +
+    actionReq.pending_pickup_count +
+    actionReq.active_quarantine_count +
+    actionReq.low_stock_count;
 
-  const activeTrend = dashboardData?.arrivalTrend || [];
-  const activeActivity = dashboardData?.activity || [];
-  const targetProgress = dashboardData?.targetProgress || { current: 0, target: 0, percentage: 0 };
+  // Compute physical stock distribution percentages
+  const onHandTotal =
+    inventory.total_on_hand ||
+    inventory.total_available + inventory.total_allocated + inventory.total_quarantined ||
+    1;
+  const availPct = Math.round(((inventory.total_available || 0) / onHandTotal) * 100);
+  const allocPct = Math.round(((inventory.total_allocated || 0) / onHandTotal) * 100);
+  const quarPct = Math.round(((inventory.total_quarantined || 0) / onHandTotal) * 100);
+
+  const binOccupancyPct =
+    storage.total_bins > 0 ? Math.round((storage.occupied_bins / storage.total_bins) * 100) : 0;
 
   return (
     <AppShell
-      title="Warehouse Dashboard"
-      subtitle="Real-time inbound and operations overview"
+      title="Warehouse Control Center"
+      subtitle="Authoritative operational metrics: putaways, pickups, inventory balances, and storage hierarchy"
       actions={
-        <>
-          <Button variant="outline" className="rounded-xl" asChild>
-            <Link to="/receiving">
-              <PackageCheck className="size-4" /> Go to Receiving
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchDashboardData()}
+            disabled={loading}
+            className="rounded-xl text-xs"
+          >
+            <RefreshCw className={cn("size-3.5 mr-1.5", loading && "animate-spin")} />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" className="rounded-xl text-xs" asChild>
+            <Link to="/putaway-tasks">
+              <PackageCheck className="size-3.5 mr-1.5 text-primary" /> Putaway Tasks
             </Link>
           </Button>
-          <Button className="rounded-xl shadow-glow" asChild>
+          <Button variant="outline" size="sm" className="rounded-xl text-xs" asChild>
             <Link to="/inventory">
-              <Boxes className="size-4" /> View Inventory
+              <Boxes className="size-3.5 mr-1.5 text-emerald-600" /> Inventory Matrix
             </Link>
           </Button>
-        </>
+          <Button size="sm" className="rounded-xl shadow-glow text-xs font-semibold" asChild>
+            <Link to="/warehouse/material-requests">
+              <Plus className="size-3.5 mr-1.5" /> Raise MR
+            </Link>
+          </Button>
+        </div>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
-          label="Total arrivals"
-          value={loading ? "..." : String(stats.totalArrivals || 0)}
-          delta="Live from gate"
-          icon={Truck}
-          tone="primary"
-          to="/receiving"
-        />
-        <StatCard
-          label="Verified POs"
-          value={loading ? "..." : String(stats.verifiedArrivals || 0)}
-          delta="Matched in DB"
-          icon={Clock3}
-          tone="success"
-          to="/receiving"
-        />
-        <StatCard
-          label="Unscheduled"
-          value={loading ? "..." : String(stats.unscheduledArrivals || 0)}
-          delta="Manual review"
-          icon={CircleDot}
-          tone="warning"
-          to="/gate-entry"
-        />
-        <StatCard
-          label="Awaiting Dock"
-          value={loading ? "..." : String(stats.awaitingDock ?? stats.awaiting_dock ?? 0)}
-          delta="Needs dock allocation"
-          icon={Clock3}
-          tone={Number(stats.awaitingDock ?? stats.awaiting_dock ?? 0) > 0 ? "warning" : "primary"}
-          to="/dock-management"
-        />
-        <StatCard
-          label="Dock occupancy"
-          value={loading ? "..." : (stats.occupiedDocks || "0/0")}
-          delta="Real-time status"
-          icon={Warehouse}
-          tone="teal"
-          to="/dock-management"
-        />
-        <StatCard
-          label="Vehicles waiting"
-          value={loading ? "..." : String(stats.vehiclesWaiting || 0)}
-          delta="Currently in queue"
-          icon={ListOrdered}
-          tone="danger"
-          to="/receiving"
-        />
-      </div>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        <SectionCard
-          title="Arrival vs receiving throughput"
-          description="Vehicles processed per hour — Shift A"
-          icon={BarChart3}
-          className="xl:col-span-2"
-          actions={
-            <span className="rounded-full bg-success-soft px-2.5 py-1 text-[11px] font-semibold text-success">
-              Live
+      <div className="space-y-6">
+        {/* ============================================================ */}
+        {/* SECTION 1: ACTION REQUIRED (OPERATIONAL COMMAND CENTER)     */}
+        {/* ============================================================ */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="size-2 rounded-full bg-amber-500 animate-pulse" />
+              <h2 className="text-sm font-bold uppercase tracking-wider text-foreground">
+                Action Required
+              </h2>
+              {totalActionsCount > 0 ? (
+                <Badge
+                  variant="secondary"
+                  className="rounded-full text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                >
+                  {totalActionsCount} Critical {totalActionsCount === 1 ? "Item" : "Items"}
+                </Badge>
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className="rounded-full text-[10px] font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                >
+                  All Clear
+                </Badge>
+              )}
+            </div>
+            <span className="text-[11px] text-muted-foreground">
+              Live operational exceptions & pending tasks
             </span>
-          }
-        >
-          <div className="h-[248px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={activeTrend} margin={{ left: -22, right: 6, top: 6 }}>
-                <defs>
-                  <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-chart-1)" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="var(--color-chart-1)" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gB" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--color-chart-2)" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="var(--color-chart-2)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid
-                  strokeDasharray="4 4"
-                  vertical={false}
-                  stroke="var(--color-border)"
-                />
-                <XAxis
-                  dataKey="hour"
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                  stroke="var(--color-muted-foreground)"
-                />
-                <YAxis
-                  tickLine={false}
-                  axisLine={false}
-                  fontSize={11}
-                  stroke="var(--color-muted-foreground)"
-                />
-                <RTooltip
-                  contentStyle={{
-                    borderRadius: 12,
-                    border: "1px solid var(--color-border)",
-                    background: "var(--color-card)",
-                    fontSize: 12,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="arrivals"
-                  stroke="var(--color-chart-1)"
-                  strokeWidth={2.5}
-                  fill="url(#gA)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="received"
-                  stroke="var(--color-chart-2)"
-                  strokeWidth={2.5}
-                  fill="url(#gB)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
           </div>
-        </SectionCard>
 
-        <SectionCard
-          title="Quick actions"
-          description="Frequent warehouse manager tasks"
-          icon={Plus}
-        >
-          <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((a) => (
-              <Link
-                key={a.label}
-                to={a.to}
-                className="group flex flex-col gap-3 rounded-2xl border border-border/70 bg-muted/40 p-4 transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:bg-primary-soft hover:shadow-soft"
-              >
-                <span className="grid size-9 place-items-center rounded-xl bg-card text-primary shadow-soft">
-                  <a.icon className="size-[18px]" />
-                </span>
-                <span className="text-sm font-medium">{a.label}</span>
-              </Link>
-            ))}
+          {error && (
+            <Card className="p-4 rounded-2xl border-destructive/40 bg-destructive/10 mb-4">
+              <div className="flex items-center justify-between text-xs text-destructive">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="size-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => void fetchDashboardData()}
+                  className="h-7 text-xs"
+                >
+                  Retry
+                </Button>
+              </div>
+            </Card>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Card 1: Pending Putaway */}
+            <Card
+              className={cn(
+                "rounded-2xl border transition-all hover:shadow-subtle p-4 flex flex-col justify-between",
+                actionReq.pending_putaway_count > 0
+                  ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/60"
+                  : "bg-card/60 border-border/60",
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Pending Putaway
+                  </span>
+                  <div className="size-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <PackageCheck className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-foreground">
+                    {loading ? "..." : actionReq.pending_putaway_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    tasks awaiting bin placement
+                  </span>
+                </div>
+                {actionReq.unassigned_locations_count > 0 && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium mt-1">
+                    ⚠️ {actionReq.unassigned_locations_count} unassigned storage bins
+                  </p>
+                )}
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/40">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl text-xs font-semibold justify-between bg-background/80 hover:bg-background"
+                  asChild
+                >
+                  <Link to="/putaway-tasks">
+                    Execute Putaways <ArrowRight className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </Card>
+
+            {/* Card 2: Store Pickups */}
+            <Card
+              className={cn(
+                "rounded-2xl border transition-all hover:shadow-subtle p-4 flex flex-col justify-between",
+                actionReq.pending_pickup_count > 0
+                  ? "bg-purple-50/50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800/60"
+                  : "bg-card/60 border-border/60",
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Store Pickups
+                  </span>
+                  <div className="size-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                    <ClipboardCheck className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-foreground">
+                    {loading ? "..." : actionReq.pending_pickup_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground">active picking tasks</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Assembly requisitions dispatched to Stores
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/40">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl text-xs font-semibold justify-between bg-background/80 hover:bg-background"
+                  asChild
+                >
+                  <Link to="/warehouse/assembly-requisitions">
+                    Process Pickups <ArrowRight className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </Card>
+
+            {/* Card 3: Active Quarantine */}
+            <Card
+              className={cn(
+                "rounded-2xl border transition-all hover:shadow-subtle p-4 flex flex-col justify-between",
+                actionReq.active_quarantine_count > 0
+                  ? "bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/60"
+                  : "bg-card/60 border-border/60",
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Quarantine Stock
+                  </span>
+                  <div className="size-8 rounded-xl bg-rose-500/10 text-rose-600 flex items-center justify-center">
+                    <ShieldAlert className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-foreground">
+                    {loading ? "..." : actionReq.active_quarantine_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    records ({Number(actionReq.active_quarantine_qty).toLocaleString()} units)
+                  </span>
+                </div>
+                <p className="text-[11px] text-rose-700 dark:text-rose-400 font-medium mt-1">
+                  Damaged / segregated stock pending review
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/40">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl text-xs font-semibold justify-between bg-background/80 hover:bg-background"
+                  asChild
+                >
+                  <Link to="/warehouse/quarantine">
+                    Review Quarantine <ArrowRight className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </Card>
+
+            {/* Card 4: Low Stock Alerts */}
+            <Card
+              className={cn(
+                "rounded-2xl border transition-all hover:shadow-subtle p-4 flex flex-col justify-between",
+                actionReq.low_stock_count > 0
+                  ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/60"
+                  : "bg-card/60 border-border/60",
+              )}
+            >
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Low Stock Alerts
+                  </span>
+                  <div className="size-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                    <AlertTriangle className="size-4" />
+                  </div>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-2xl font-black text-foreground">
+                    {loading ? "..." : actionReq.low_stock_count}
+                  </span>
+                  <span className="text-xs text-muted-foreground">SKUs below reorder point</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  {actionReq.out_of_stock_count > 0
+                    ? `⚠️ ${actionReq.out_of_stock_count} SKUs currently out of stock`
+                    : "No stockouts detected"}
+                </p>
+              </div>
+              <div className="mt-4 pt-3 border-t border-border/40">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full rounded-xl text-xs font-semibold justify-between bg-background/80 hover:bg-background"
+                  asChild
+                >
+                  <Link to="/inventory">
+                    Inspect Stock <ArrowRight className="size-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            </Card>
           </div>
-          <div className="mt-4 rounded-2xl border border-border/70 p-4">
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium">Shift receiving target</span>
-              <span className="font-semibold tabular-nums">
-                {loading ? "..." : `${targetProgress.current} / ${targetProgress.target}`}
+        </div>
+
+        {/* ============================================================ */}
+        {/* SECTION 2: INVENTORY SNAPSHOT & STOCK DISTRIBUTION          */}
+        {/* ============================================================ */}
+        <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-subtle p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                <Boxes className="size-4 text-primary" /> Authoritative Inventory Snapshot
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Physical inventory state: Total On Hand = Available + Allocated + Quarantined
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className="text-[11px] font-mono self-start sm:self-auto py-1 px-2.5"
+            >
+              Total Tracked SKUs:{" "}
+              <span className="font-bold text-foreground ml-1">{inventory.total_skus}</span>
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-3">
+              <p className="text-[11px] font-medium text-muted-foreground uppercase">
+                Total On Hand
+              </p>
+              <p className="text-xl font-black mt-1 text-foreground">
+                {Number(inventory.total_on_hand).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Physical warehouse units</p>
+            </div>
+
+            <div className="rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-950/20 p-3">
+              <p className="text-[11px] font-medium text-emerald-800 dark:text-emerald-300 uppercase">
+                Available Stock
+              </p>
+              <p className="text-xl font-black mt-1 text-emerald-700 dark:text-emerald-400">
+                {Number(inventory.total_available).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-500 mt-0.5">
+                Ready for picking ({availPct}%)
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-blue-200/60 dark:border-blue-800/40 bg-blue-50/40 dark:bg-blue-950/20 p-3">
+              <p className="text-[11px] font-medium text-blue-800 dark:text-blue-300 uppercase">
+                Allocated Stock
+              </p>
+              <p className="text-xl font-black mt-1 text-blue-700 dark:text-blue-400">
+                {Number(inventory.total_allocated).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-blue-600 dark:text-blue-500 mt-0.5">
+                Reserved for requisitions ({allocPct}%)
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-rose-200/60 dark:border-rose-800/40 bg-rose-50/40 dark:bg-rose-950/20 p-3">
+              <p className="text-[11px] font-medium text-rose-800 dark:text-rose-300 uppercase">
+                Quarantined Stock
+              </p>
+              <p className="text-xl font-black mt-1 text-rose-700 dark:text-rose-400">
+                {Number(inventory.total_quarantined).toLocaleString()}
+              </p>
+              <p className="text-[10px] text-rose-600 dark:text-rose-500 mt-0.5">
+                Isolated damaged units ({quarPct}%)
+              </p>
+            </div>
+          </div>
+
+          {/* Distribution Bar */}
+          <div className="space-y-1.5 pt-2 border-t border-border/40">
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <span>Physical Balance Distribution</span>
+              <span className="font-mono font-medium">
+                {availPct}% Available · {allocPct}% Allocated · {quarPct}% Quarantined
               </span>
             </div>
-            <Progress value={loading ? 0 : targetProgress.percentage} className="mt-3 h-2" />
-            <p className="mt-2 text-xs text-muted-foreground">
-              {loading ? "..." : `${targetProgress.percentage}% of planned inbound completed.`}
-            </p>
-          </div>
-        </SectionCard>
-      </div>
-
-      <div className="mt-4 grid gap-4 xl:grid-cols-3">
-        <SectionCard
-          title="Live vehicle queue"
-          description="Trucks currently inside or awaiting the facility"
-          icon={Truck}
-          className="xl:col-span-2"
-          actions={
-            <div className="flex items-center gap-3">
-              <div className="relative hidden sm:block">
-                <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search queue..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="h-8 w-48 rounded-lg border-border/60 bg-muted/30 pl-9 text-xs focus:bg-background"
-                />
-              </div>
-              <Button variant="ghost" size="sm" className="rounded-lg" asChild>
-                <Link to="/receiving">
-                  View all <ArrowUpRight className="size-3.5" />
-                </Link>
-              </Button>
+            <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden flex">
+              <div
+                style={{ width: `${availPct}%` }}
+                className="bg-emerald-500 transition-all"
+                title={`Available: ${inventory.total_available}`}
+              />
+              <div
+                style={{ width: `${allocPct}%` }}
+                className="bg-blue-500 transition-all"
+                title={`Allocated: ${inventory.total_allocated}`}
+              />
+              <div
+                style={{ width: `${quarPct}%` }}
+                className="bg-rose-500 transition-all"
+                title={`Quarantined: ${inventory.total_quarantined}`}
+              />
             </div>
-          }
-        >
-          <div className="mb-5 flex flex-wrap items-center gap-2 border-b border-border/40 pb-4">
-            <FilterButton
-              label="All"
-              count={stats.totalArrivals}
-              active={activeFilter === "ALL"}
-              onClick={() => setActiveFilter("ALL")}
-            />
-            <FilterButton
-              label="Verified"
-              count={stats.verifiedArrivals}
-              active={activeFilter === "VERIFIED"}
-              tone="success"
-              onClick={() => setActiveFilter("VERIFIED")}
-            />
-            <FilterButton
-              label="Unscheduled"
-              count={stats.unscheduledArrivals}
-              active={activeFilter === "UNSCHEDULED"}
-              tone="warning"
-              onClick={() => setActiveFilter("UNSCHEDULED")}
-            />
+          </div>
+        </Card>
+
+        {/* ============================================================ */}
+        {/* SECTION 3: PUTAWAY PIPELINE & STORAGE CAPACITY               */}
+        {/* ============================================================ */}
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Left: Putaway Operations Pipeline */}
+          <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-subtle p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                    <PackageCheck className="size-4 text-primary" /> Putaway Execution Pipeline
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Handling units moving from receiving dock to designated storage bins
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" asChild>
+                  <Link to="/putaway-tasks">
+                    View All <ArrowRight className="size-3 ml-1" />
+                  </Link>
+                </Button>
+              </div>
+
+              {/* Status breakdown pills */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-xl border border-amber-200 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-950/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-amber-800 dark:text-amber-300">
+                    Pending
+                  </p>
+                  <p className="text-lg font-black text-amber-700 dark:text-amber-400 mt-0.5">
+                    {putaway.pending_count}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-blue-200 dark:border-blue-800/40 bg-blue-50/40 dark:bg-blue-950/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-blue-800 dark:text-blue-300">
+                    In Progress
+                  </p>
+                  <p className="text-lg font-black text-blue-700 dark:text-blue-400 mt-0.5">
+                    {putaway.in_progress_count}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50/40 dark:bg-emerald-950/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-emerald-800 dark:text-emerald-300">
+                    Completed
+                  </p>
+                  <p className="text-lg font-black text-emerald-700 dark:text-emerald-400 mt-0.5">
+                    {putaway.completed_count}
+                  </p>
+                </div>
+              </div>
+
+              {/* Recent Tasks List */}
+              <div className="space-y-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Active & Recent Putaways
+                </p>
+                {putaway.recent_tasks.length === 0 ? (
+                  <div className="py-8 text-center border border-dashed rounded-xl border-border/60 bg-muted/10">
+                    <CheckCircle2 className="size-6 text-emerald-500 mx-auto opacity-70 mb-1" />
+                    <p className="text-xs text-muted-foreground font-medium">
+                      No active putaway tasks
+                    </p>
+                  </div>
+                ) : (
+                  putaway.recent_tasks.slice(0, 4).map((t: any) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl border border-border/40 bg-background/50 hover:bg-muted/20 transition-colors"
+                    >
+                      <div className="min-w-0 flex-1 pr-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            {t.task_number}
+                          </span>
+                          <StatusBadge status={t.status} />
+                        </div>
+                        <p className="text-xs text-foreground font-medium truncate mt-0.5">
+                          {t.material_name} ({t.item_code})
+                        </p>
+                        <p className="text-[10px] text-muted-foreground font-mono">
+                          GRN: {t.grn_number} · Dest:{" "}
+                          {t.destination_bin_code || t.destination_zone || "Unassigned"}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-mono text-xs font-bold text-foreground">
+                          {Number(t.quantity).toLocaleString()} {t.uom}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Right: Storage Hierarchy & Capacity */}
+          <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-subtle p-5 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                    <Building2 className="size-4 text-primary" /> Storage Location Hierarchy
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Physical hierarchy: Warehouse → Store → Zone → Bin
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" asChild>
+                  <Link to="/warehouse/stores">
+                    Manage Stores <ArrowRight className="size-3 ml-1" />
+                  </Link>
+                </Button>
+              </div>
+
+              {/* Hierarchy Metrics */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Stores</p>
+                  <p className="text-lg font-black text-foreground mt-0.5">
+                    {storage.total_stores}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Zones</p>
+                  <p className="text-lg font-black text-foreground mt-0.5">{storage.total_zones}</p>
+                </div>
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-2.5 text-center">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                    Total Bins
+                  </p>
+                  <p className="text-lg font-black text-foreground mt-0.5">{storage.total_bins}</p>
+                </div>
+              </div>
+
+              {/* Bin Occupancy Progress */}
+              <div className="p-3.5 rounded-xl border border-border/40 bg-muted/10 mb-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-foreground">Bin Capacity Utilization</span>
+                  <span className="font-mono font-bold text-primary">
+                    {binOccupancyPct}% Occupied
+                  </span>
+                </div>
+                <Progress value={binOccupancyPct} className="h-2 rounded-full" />
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
+                  <span>
+                    Occupied: <strong className="text-foreground">{storage.occupied_bins}</strong>
+                  </span>
+                  <span>
+                    Available:{" "}
+                    <strong className="text-emerald-600 dark:text-emerald-400">
+                      {storage.available_bins}
+                    </strong>
+                  </span>
+                </div>
+              </div>
+
+              {/* Storage Quick Links */}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs justify-start h-9"
+                  asChild
+                >
+                  <Link to="/warehouse/stores">
+                    <Building2 className="size-3.5 mr-2 text-primary" /> Store & Bin Master
+                  </Link>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-xl text-xs justify-start h-9"
+                  asChild
+                >
+                  <Link to="/dock-management">
+                    <Warehouse className="size-3.5 mr-2 text-blue-600" /> Dock Management
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* ============================================================ */}
+        {/* SECTION 4: LIVE WAREHOUSE ACTIVITY FEED                     */}
+        {/* ============================================================ */}
+        <Card className="rounded-2xl border border-border/60 bg-card/60 shadow-subtle p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-foreground flex items-center gap-2">
+                <Activity className="size-4 text-primary" /> Live Warehouse Activity & Movements
+              </h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Real-time stream of putaway completions, material issues, quarantine events, and
+                stock movements
+              </p>
+            </div>
+            <Badge variant="outline" className="text-[10px] font-mono py-0.5 px-2">
+              Authoritative Stock Ledger
+            </Badge>
           </div>
 
-          <div className="-mx-5 overflow-x-auto px-5">
-            {loading ? (
-              <div className="flex h-40 items-center justify-center gap-2">
-                <Loader2 className="size-5 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Loading queue from backend...</p>
-              </div>
-            ) : filteredItems.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                {searchTerm ? "No results found matching your search." : "No vehicles in queue."}
-              </div>
-            ) : (
-              <table className="w-full min-w-[850px] text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-                    <th className="pb-3 font-medium">Snapshot</th>
-                    <th className="pb-3 font-medium">Pass & Plate</th>
-                    <th className="pb-3 font-medium">Supplier & Material</th>
-                    <th className="pb-3 font-medium">PO / Qty</th>
-                    <th className="pb-3 font-medium">Arrival</th>
-                    <th className="pb-3 font-medium">Allocated Dock</th>
-                    <th className="pb-3 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredItems.map((a: any) => {
-                    const rawDock = a.dock_name || a.dock_number || a.assigned_dock_id;
-                    const assignedDock =
-                      rawDock && rawDock !== "—" && rawDock.toUpperCase() !== "UNASSIGNED"
-                        ? (rawDock.includes("Dock") ? rawDock : `Dock ${rawDock}`)
-                        : null;
-
-                    return (
-                      <tr
-                        key={a.id}
-                        className="group border-b border-border/60 last:border-0 hover:bg-muted/20"
-                      >
-                        <td className="py-3">
-                          <div className="size-12 overflow-hidden rounded-lg border border-border/40 bg-muted/30">
-                            {a.truck_photo_base64 ? (
-                              <img
-                                src={`data:image/jpeg;base64,${a.truck_photo_base64}`}
-                                alt="Truck"
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="grid h-full w-full place-items-center text-muted-foreground/40">
-                                <Truck className="size-5" />
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3">
-                          <p className="font-mono text-[10px] text-muted-foreground uppercase leading-tight">
-                            {a.gate_entry_no}
-                          </p>
-                          <div className="mt-1 flex items-center gap-1.5">
-                            <span className="rounded bg-primary-soft px-1.5 py-0.5 font-mono text-[11px] font-bold text-primary border border-primary/20">
-                              {a.vehicle_number}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-3">
-                          <p className="max-w-[200px] truncate font-bold text-xs">{a.vendor}</p>
-                          <p className="max-w-[200px] truncate text-[11px] text-muted-foreground">
-                            {a.material}
-                          </p>
-                        </td>
-                        <td className="py-3">
-                          <p className="font-mono text-xs font-medium">{a.po_number}</p>
-                          <p className="text-[11px] text-muted-foreground">{a.quantity} Units</p>
-                        </td>
-                        <td className="py-3">
-                          <div className="flex items-center gap-1.5 text-xs tabular-nums">
-                            <Clock3 className="size-3 text-muted-foreground" />
-                            {a.arrival_time}
-                          </div>
-                        </td>
-                        <td className="py-3">
-                          {assignedDock ? (
-                            <span className="inline-flex items-center gap-1 rounded-md border border-primary/20 bg-primary-soft px-2 py-0.5 text-xs font-semibold text-primary">
-                              <Warehouse className="size-3" />
-                              {assignedDock}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </td>
-                        <td className="py-3">
-                          <StatusBadge status={a.status} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          title="Recent activity"
-          description="Gate, dock and receiving events"
-          icon={CircleDot}
-        >
-          <Timeline items={activeActivity} />
-        </SectionCard>
+          {activity.length === 0 ? (
+            <div className="py-10 text-center border border-dashed rounded-xl border-border/60 bg-muted/10">
+              <Activity className="size-7 text-muted-foreground mx-auto opacity-40 mb-1" />
+              <p className="text-xs text-muted-foreground font-semibold">
+                No recent warehouse transactions
+              </p>
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                Completed putaways, store issues, and quarantine movements will appear here
+                automatically.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border/40">
+              {activity.map((act: any) => (
+                <div
+                  key={act.id}
+                  className="py-3 flex items-start justify-between gap-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div
+                      className={cn(
+                        "size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
+                        act.tone === "success" &&
+                          "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+                        act.tone === "warning" &&
+                          "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+                        act.tone === "purple" &&
+                          "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
+                        act.tone === "danger" &&
+                          "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
+                        (!act.tone || act.tone === "primary") && "bg-primary/10 text-primary",
+                      )}
+                    >
+                      {act.type === "PUTAWAY" ? (
+                        <PackageCheck className="size-3.5" />
+                      ) : act.type === "PICKUP" ? (
+                        <ClipboardCheck className="size-3.5" />
+                      ) : act.type === "QUARANTINE" ? (
+                        <ShieldAlert className="size-3.5" />
+                      ) : (
+                        <Activity className="size-3.5" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-foreground leading-tight">{act.title}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 truncate">
+                        {act.detail}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="font-mono text-[10px] text-muted-foreground shrink-0 mt-0.5 whitespace-nowrap">
+                    {new Date(act.timestamp).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
     </AppShell>
-  );
-}
-
-function FilterButton({
-  label,
-  count,
-  active,
-  onClick,
-  tone = "primary",
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-  tone?: "primary" | "success" | "warning";
-}) {
-  const activeTones = {
-    primary: "bg-primary text-primary-foreground border-primary",
-    success: "bg-success text-success-foreground border-success",
-    warning: "bg-warning text-warning-foreground border-warning",
-  };
-
-  const inactiveTones = {
-    primary: "hover:bg-primary-soft hover:text-primary border-border/60",
-    success: "hover:bg-success-soft hover:text-success border-border/60",
-    warning: "hover:bg-warning-soft hover:text-warning border-border/60",
-  };
-
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold transition-all",
-        active ? activeTones[tone] : inactiveTones[tone],
-      )}
-    >
-      {label}
-      <span
-        className={cn(
-          "ml-1 grid size-5 place-items-center rounded-full text-[10px] font-black",
-          active ? "bg-white/20" : "bg-muted",
-        )}
-      >
-        {count}
-      </span>
-    </button>
   );
 }

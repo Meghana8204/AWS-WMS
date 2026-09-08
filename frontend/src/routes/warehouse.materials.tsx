@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Boxes,
   Search,
@@ -20,8 +20,17 @@ import {
   Sparkles,
   AlertCircle,
   Copy,
+  Check,
   SlidersHorizontal,
   Info,
+  RefreshCw,
+  Download,
+  LayoutGrid,
+  List,
+  ArrowUpRight,
+  ShieldCheck,
+  Eye,
+  Sliders,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { StatCard } from "@/components/wms/primitives";
@@ -56,7 +65,7 @@ export const Route = createFileRoute("/warehouse/materials")({
       {
         name: "description",
         content:
-          "Manage canonical Material Master codes for warehouse operations.",
+          "Manage canonical Material Master codes, SKU specifications, stock units, and procurement mappings.",
       },
     ],
   }),
@@ -88,6 +97,7 @@ export const formatSpecCode = (code?: string): string => {
   if (!code) return "";
   return code.replace(/-V(\d+)$/i, "-S$1");
 };
+
 interface VariantItem {
   variant_code?: string;
   size: string;
@@ -107,6 +117,11 @@ function WarehouseMaterials() {
   const [selectedStatus, setSelectedStatus] = useState("ALL");
   const [categories, setCategories] = useState<string[]>([]);
   const [uoms, setUoms] = useState<string[]>([]);
+
+  // UI state: Table vs Cards view & clipboard copy tracking
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Modals & Dialog states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -188,6 +203,97 @@ function WarehouseMaterials() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Keyboard shortcut: Pressing '/' focuses the search bar; Alt+N opens Add Material
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === "/" &&
+        document.activeElement?.tagName !== "INPUT" &&
+        document.activeElement?.tagName !== "TEXTAREA"
+      ) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (e.altKey && (e.key === "n" || e.key === "N")) {
+        e.preventDefault();
+        openCreateModal();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleCopyCode = (code: string, label: string = "Code") => {
+    if (!code) return;
+    navigator.clipboard.writeText(code);
+    setCopiedCode(code);
+    toast.success(`${label} "${code}" copied to clipboard!`);
+    setTimeout(() => {
+      setCopiedCode((prev) => (prev === code ? null : prev));
+    }, 2000);
+  };
+
+  const handleExportCSV = () => {
+    if (!materials || materials.length === 0) {
+      toast.info("No material records available to export.");
+      return;
+    }
+    const rows: string[] = [];
+    rows.push(
+      [
+        "Material Code",
+        "Material Name",
+        "Category",
+        "Base UOM",
+        "Material Status",
+        "Specification Code",
+        "Size",
+        "Color",
+        "Grade",
+        "Technical Specification",
+        "Specification UOM",
+        "Specification Status",
+      ].map((h) => `"${h}"`).join(",")
+    );
+
+    materials.forEach((mat) => {
+      const variants = mat.variants && mat.variants.length > 0 ? mat.variants : [null];
+      variants.forEach((v: any) => {
+        rows.push(
+          [
+            mat.material_code || "",
+            mat.material_name || "",
+            mat.category || "",
+            mat.base_uom || "",
+            mat.status || "",
+            v ? formatSpecCode(v.variant_code) : "",
+            v?.size || "",
+            v?.color || "",
+            v?.grade || "",
+            v?.specification || "",
+            v?.uom || mat.base_uom || "",
+            v?.status || "",
+          ]
+            .map((field) => `"${String(field).replace(/"/g, '""')}"`)
+            .join(",")
+        );
+      });
+    });
+
+    const csvContent = "data:text/csv;charset=utf-8," + rows.join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `NexusWMS_Material_Master_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Material Master catalog exported to CSV!");
+  };
+
   const openCreateModal = async () => {
     try {
       const { suggested_material_code, suggested_variant_code } = await api.getNextMaterialCode();
@@ -196,7 +302,7 @@ function WarehouseMaterials() {
       setMaterialCode(code);
       setMaterialName("");
       setDescription("");
-      setBaseUom(uoms[0] || "");
+      setBaseUom(uoms[0] || "NOS");
       setMaterialStatus("Active");
       setCustomCategory("");
       setVariantsList([
@@ -206,7 +312,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: uoms[0] || "",
+          uom: uoms[0] || "NOS",
           attributes: {},
           status: "Active",
         },
@@ -221,7 +327,7 @@ function WarehouseMaterials() {
           color: "",
           grade: "",
           specification: "",
-          uom: uoms[0] || "",
+          uom: uoms[0] || "NOS",
           attributes: {},
           status: "Active",
         },
@@ -249,7 +355,7 @@ function WarehouseMaterials() {
         color: "",
         grade: "",
         specification: "",
-        uom: baseUom,
+        uom: baseUom || uoms[0] || "NOS",
         attributes: {},
         status: "Active",
       },
@@ -265,8 +371,10 @@ function WarehouseMaterials() {
   };
 
   const updateVariantRow = (idx: number, field: keyof VariantItem, value: any) => {
+    const current = variantsList[idx];
+    if (!current) return;
     const updated = [...variantsList];
-    updated[idx] = { ...updated[idx], [field]: value };
+    updated[idx] = { ...current, [field]: value };
     setVariantsList(updated);
   };
 
@@ -393,11 +501,14 @@ function WarehouseMaterials() {
     }
   };
 
-  const openAddVariantForExisting = async () => {
-    if (!selectedMaterial) return;
-    
-    // Extract existing sequences from all existing variant/specification codes (Active, Inactive, etc.)
-    const existingSeqs = (selectedMaterial.variants || [])
+  const openAddVariantForExisting = async (mat?: any) => {
+    const target = mat || selectedMaterial;
+    if (!target) return;
+    if (mat) {
+      setSelectedMaterial(mat);
+    }
+    // Extract existing sequences from all existing variant/specification codes
+    const existingSeqs = (target.variants || [])
       .map((v: any) => {
         const match =
           v.variant_code?.match(/[-_]?[vVsS](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
@@ -405,14 +516,14 @@ function WarehouseMaterials() {
       })
       .filter((n: number) => !isNaN(n) && n > 0);
     const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
-    const initialCode = `${selectedMaterial.material_code}-S${String(maxSeq + 1).padStart(3, "0")}`;
+    const initialCode = `${target.material_code}-S${String(maxSeq + 1).padStart(3, "0")}`;
 
     setNewVarCode(initialCode);
     setNewVarSize("");
     setNewVarColor("");
     setNewVarGrade("");
     setNewVarSpec("");
-    setNewVarUom(selectedMaterial.base_uom || uoms[0] || "");
+    setNewVarUom(target.base_uom || uoms[0] || "");
     setNewVarAttrs({});
     setAttrKey("");
     setAttrVal("");
@@ -420,7 +531,7 @@ function WarehouseMaterials() {
 
     // Also fetch suggested code from backend API to ensure 100% synchronization
     try {
-      const res = await api.getNextVariantCode(selectedMaterial.id);
+      const res = await api.getNextVariantCode(target.id);
       if (res?.suggested_variant_code) {
         setNewVarCode(formatSpecCode(res.suggested_variant_code));
       }
@@ -484,216 +595,577 @@ function WarehouseMaterials() {
     <AppShell
       title="Material Master"
       actions={
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <Button
-            className="rounded-xl shadow-glow bg-primary hover:bg-primary/90 text-primary-foreground font-semibold px-4"
+            variant="outline"
+            size="sm"
+            className="h-9.5 rounded-xl px-3 text-xs font-semibold border-border/80 bg-card hover:bg-muted/60 shadow-2xs text-muted-foreground hover:text-foreground"
+            onClick={handleExportCSV}
+            title="Export catalog to CSV"
+          >
+            <Download className="size-3.5 mr-1.5" />
+            Export CSV
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9.5 rounded-xl px-3 text-xs font-semibold border-border/80 bg-card hover:bg-muted/60 shadow-2xs text-muted-foreground hover:text-foreground"
+            onClick={fetchMaterialsData}
+            disabled={loading}
+            title="Refresh material catalog"
+          >
+            <RefreshCw className={cn("size-3.5 mr-1.5", loading && "animate-spin text-primary")} />
+            Refresh
+          </Button>
+
+          <Button
+            className="h-9.5 rounded-xl shadow-glow bg-primary hover:bg-primary/90 text-primary-foreground font-bold px-4 text-xs tracking-tight"
             onClick={openCreateModal}
           >
             <Plus className="mr-1.5 size-4" /> Add Material
+            <kbd className="hidden md:inline-flex ml-2 items-center rounded bg-primary-foreground/20 px-1.5 py-0.5 font-mono text-[9px] font-medium text-primary-foreground">
+              Alt+N
+            </kbd>
           </Button>
         </div>
       }
     >
-      {/* Metric Cards */}
+      {/* Executive Metric Cards (Industry-Standard Bento Grid) */}
       <div className="mb-6 grid auto-rows-fr items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Base Materials"
-          value={loading ? "..." : String(totalMaterials)}
-          icon={Database}
-          tone="primary"
-        />
-        <StatCard
-          label="Total Specifications"
-          value={loading ? "..." : String(totalVariants)}
-          delta="Stockable SKUs / Specs"
-          icon={Layers}
-          tone="teal"
-        />
-        <StatCard
-          label="Active Materials"
-          value={loading ? "..." : `${activeCount} / ${totalMaterials}`}
-          icon={CheckCircle2}
-          tone="success"
-        />
-        <StatCard
-          label="Categories"
-          value={loading ? "..." : String(distinctCategories)}
-          delta="Material classifications"
-          icon={Tag}
-          tone="amber"
-        />
+        {/* Card 1: Material Masters */}
+        <Card className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-2xs transition-all duration-300 hover:border-primary/40 hover:shadow-soft">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Material Masters
+            </span>
+            <span className="grid size-9 place-items-center rounded-xl bg-primary/15 text-primary border border-primary/20 shadow-2xs">
+              <Database className="size-4" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <p className="text-3xl font-black tracking-tight tabular-nums text-foreground">
+              {loading ? "..." : totalMaterials}
+            </p>
+          </div>
+        </Card>
+
+        {/* Card 2: Total Specifications */}
+        <Card className="relative overflow-hidden rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-500/10 via-card to-card p-5 shadow-2xs transition-all duration-300 hover:border-teal-500/40 hover:shadow-soft">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Total Specifications
+            </span>
+            <span className="grid size-9 place-items-center rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 border border-teal-500/20 shadow-2xs">
+              <Layers className="size-4" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <p className="text-3xl font-black tracking-tight tabular-nums text-foreground">
+              {loading ? "..." : totalVariants}
+            </p>
+          </div>
+        </Card>
+
+        {/* Card 3: Active Materials */}
+        <Card className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-card to-card p-5 shadow-2xs transition-all duration-300 hover:border-emerald-500/40 hover:shadow-soft">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Active Materials
+            </span>
+            <span className="grid size-9 place-items-center rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs">
+              <CheckCircle2 className="size-4" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black tracking-tight tabular-nums text-foreground">
+                {loading ? "..." : activeCount}
+              </span>
+              <span className="text-sm font-semibold text-muted-foreground">
+                / {loading ? "..." : totalMaterials}
+              </span>
+            </div>
+            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/15">
+              <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+            </span>
+          </div>
+        </Card>
+
+        {/* Card 4: Categories */}
+        <Card className="relative overflow-hidden rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-card to-card p-5 shadow-2xs transition-all duration-300 hover:border-amber-500/40 hover:shadow-soft">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+              Categories
+            </span>
+            <span className="grid size-9 place-items-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 shadow-2xs">
+              <Tag className="size-4" />
+            </span>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <p className="text-3xl font-black tracking-tight tabular-nums text-foreground">
+              {loading ? "..." : distinctCategories}
+            </p>
+          </div>
+        </Card>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-1 flex-wrap items-center gap-3">
-          <div className="relative min-w-[280px] max-w-md flex-1">
-            <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search code, name, size, color, grade, specs..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="h-10 rounded-xl border-border bg-card pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-            />
+      {/* Modern High-End Command & Filter Bar */}
+      <div className="mb-6 rounded-2xl border border-border/80 bg-card/90 p-3 shadow-2xs backdrop-blur-md">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-wrap items-center gap-2.5">
+            {/* Search Input with Clear Button & Shortcut Badge */}
+            <div className="relative min-w-[260px] max-w-md flex-1">
+              <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground/70 pointer-events-none" />
+              <Input
+                ref={searchInputRef}
+                placeholder="Search code, name, size, color, grade, specs... (Press /)"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-10 rounded-xl border-border/70 bg-background/90 pl-10 pr-9 text-xs outline-none focus:ring-2 focus:ring-primary/25"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 rounded"
+                  title="Clear search"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Category Filter */}
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="h-10 w-48 rounded-xl bg-background/90 text-xs font-medium border-border/70">
+                <div className="flex items-center gap-1.5 truncate">
+                  <Tag className="size-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="All Categories" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="rounded-xl shadow-lg border-border/80">
+                <SelectItem value="ALL" className="text-xs font-bold">
+                  All Categories ({categories.length})
+                </SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c} className="text-xs">
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Status Filter */}
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="h-10 w-38 rounded-xl bg-background/90 text-xs font-medium border-border/70">
+                <div className="flex items-center gap-1.5 truncate">
+                  <SlidersHorizontal className="size-3.5 text-muted-foreground shrink-0" />
+                  <SelectValue placeholder="All Status" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="rounded-xl shadow-lg border-border/80">
+                <SelectItem value="ALL" className="text-xs font-bold">
+                  All Status
+                </SelectItem>
+                <SelectItem value="Active" className="text-xs text-emerald-600 font-medium">
+                  Active Only
+                </SelectItem>
+                <SelectItem value="Inactive" className="text-xs text-muted-foreground">
+                  Inactive Only
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Reset Filters Shortcut */}
+            {(searchTerm || selectedCategory !== "ALL" || selectedStatus !== "ALL") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 rounded-xl px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                onClick={() => {
+                  setSearchTerm("");
+                  setSelectedCategory("ALL");
+                  setSelectedStatus("ALL");
+                }}
+              >
+                <X className="mr-1 size-3.5" /> Reset Filters
+              </Button>
+            )}
           </div>
 
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="h-10 w-44 rounded-xl bg-card text-xs font-medium">
-              <SelectValue placeholder="All Categories" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="ALL" className="text-xs font-bold">
-                All Categories
-              </SelectItem>
-              {categories.map((c) => (
-                <SelectItem key={c} value={c} className="text-xs">
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Right Toolbar: View Mode Switcher & Count Indicator */}
+          <div className="flex items-center justify-between lg:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/50">
+            <span className="text-xs text-muted-foreground font-medium">
+              Showing <strong className="text-foreground">{materials.length}</strong> of{" "}
+              <strong className="text-foreground">{totalMaterials}</strong> materials
+            </span>
 
-          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="h-10 w-36 rounded-xl bg-card text-xs font-medium">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="ALL" className="text-xs font-bold">
-                All Status
-              </SelectItem>
-              <SelectItem value="Active" className="text-xs text-success font-medium">
-                Active Only
-              </SelectItem>
-              <SelectItem value="Inactive" className="text-xs text-muted-foreground">
-                Inactive
-              </SelectItem>
-            </SelectContent>
-          </Select>
+            {/* View Mode Segmented Control */}
+            <div className="flex items-center rounded-xl border border-border/80 bg-background/80 p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
+                  viewMode === "table"
+                    ? "bg-card text-foreground shadow-2xs border border-border/50"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Dense Table View"
+              >
+                <List className="size-3.5" />
+                <span className="hidden sm:inline">Table</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition-all",
+                  viewMode === "grid"
+                    ? "bg-card text-foreground shadow-2xs border border-border/50"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                title="Card Grid View"
+              >
+                <LayoutGrid className="size-3.5" />
+                <span className="hidden sm:inline">Cards</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Material Master Table List */}
+      {/* Main Material Master Display Area */}
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex h-72 flex-col items-center justify-center gap-3">
           <Loader2 className="size-8 animate-spin text-primary" />
+          <p className="text-xs font-medium text-muted-foreground">Loading Material Master registry...</p>
         </div>
       ) : materials.length === 0 ? (
-        <Card className="flex h-72 flex-col items-center justify-center p-8 text-center border-dashed border-border bg-muted/20 rounded-2xl">
-          <Boxes className="size-14 text-muted-foreground/30 mb-3" />
+        <Card className="flex h-72 flex-col items-center justify-center p-8 text-center border-dashed border-border/80 bg-card/60 rounded-3xl shadow-2xs">
+          <div className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground mb-3">
+            <Boxes className="size-7 opacity-60" />
+          </div>
           <h3 className="text-lg font-bold text-foreground">No Materials Found</h3>
-          <p className="mt-1 text-sm text-muted-foreground max-w-md">
+          <p className="mt-1 text-xs text-muted-foreground max-w-md">
             {searchTerm || selectedCategory !== "ALL" || selectedStatus !== "ALL"
               ? "No materials match your active search or filter criteria. Try clearing filters."
-              : "Start by creating your first canonical Material Code with specifications for wire, steel, fasteners, or consumables."}
+              : "Start by registering your canonical Material Code with specifications for wire, steel, fasteners, or consumables."}
           </p>
-          <Button className="mt-5 rounded-xl shadow-glow" onClick={openCreateModal}>
-            <Plus className="mr-1.5 size-4" /> Create Material Master
+          <Button className="mt-5 rounded-xl shadow-glow bg-primary font-bold text-xs" onClick={openCreateModal}>
+            <Plus className="mr-1.5 size-4" /> Add Material Master
           </Button>
         </Card>
+      ) : viewMode === "table" ? (
+        /* HIGH-DENSITY ENTERPRISE TABLE VIEW */
+        <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-soft">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-md shadow-2xs">
+                <tr className="border-b border-border/80 bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="py-3.5 px-4 whitespace-nowrap w-[140px]">Material Code</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap min-w-[200px] max-w-[280px]">Material Name & Category</th>
+                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[110px]">Base UOM</th>
+                  <th className="py-3.5 px-4 min-w-[320px]">Specifications / SKUs</th>
+                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[120px]">Status</th>
+                  <th className="py-3.5 px-4 text-right whitespace-nowrap w-[240px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60 font-medium">
+                {materials.map((mat) => {
+                  const specCount = mat.variant_count || mat.variants?.length || 0;
+                  const isCopied = copiedCode === mat.material_code;
+
+                  return (
+                    <tr
+                      key={mat.id}
+                      className="group hover:bg-muted/25 transition-colors cursor-pointer"
+                      onClick={() => openMaterialDetail(mat)}
+                    >
+                      {/* Code with 1-click copy */}
+                      <td className="py-3.5 px-4 whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyCode(mat.material_code, "Material Code")}
+                            className="font-mono text-xs font-bold text-primary bg-primary/10 hover:bg-primary/20 border border-primary/25 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 group/code shrink-0"
+                            title="Click to copy Material Code"
+                          >
+                            <span>{mat.material_code}</span>
+                            {isCopied ? (
+                              <Check className="size-3 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Copy className="size-3 text-primary/60 group-hover/code:text-primary shrink-0 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Name & Category */}
+                      <td className="py-3.5 px-4 min-w-[200px] max-w-[280px] align-middle">
+                        <div className="flex flex-col gap-1">
+                          <span className="font-bold text-foreground group-hover:text-primary transition-colors text-sm truncate" title={mat.material_name}>
+                            {mat.material_name}
+                          </span>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-muted/70 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground border border-border/50 shrink-0">
+                              <Tag className="size-2.5 text-muted-foreground" /> {mat.category}
+                            </span>
+                            {mat.description && (
+                              <span className="truncate max-w-[180px] text-[11px] text-muted-foreground italic" title={mat.description}>
+                                {mat.description}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Base UOM */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap align-middle">
+                        <Badge
+                          variant="outline"
+                          className="rounded-lg font-mono text-[10px] uppercase font-bold border-border/80 bg-muted/30 px-2.5 py-0.5"
+                        >
+                          {mat.base_uom}
+                        </Badge>
+                      </td>
+
+                      {/* Specifications Pills */}
+                      <td className="py-3.5 px-4 min-w-[320px] align-middle">
+                        <div className="flex flex-wrap items-center gap-1.5 max-w-2xl">
+                          {mat.variants && mat.variants.length > 0 ? (
+                            <>
+                              {mat.variants.slice(0, 3).map((v: any) => {
+                                const specDesc = [v.size, v.color, v.grade].filter(Boolean).join(" · ");
+                                const isInactive = v.status === "Inactive";
+                                const specCode = formatSpecCode(v.variant_code);
+                                const fullTitle = `${specCode}${specDesc ? ` (${specDesc})` : ""}`;
+                                return (
+                                  <span
+                                    key={v.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openMaterialDetail(mat);
+                                    }}
+                                    title={fullTitle}
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-mono transition-colors whitespace-nowrap max-w-[260px] cursor-pointer",
+                                      isInactive
+                                        ? "border-dashed border-muted-foreground/40 bg-muted/20 text-muted-foreground"
+                                        : "border-border/80 bg-background/90 text-foreground hover:border-teal-500/50 hover:bg-teal-500/5"
+                                    )}
+                                  >
+                                    <span className={cn("font-bold shrink-0 whitespace-nowrap", isInactive ? "text-muted-foreground" : "text-teal-600 dark:text-teal-400")}>
+                                      {specCode}
+                                    </span>
+                                    {specDesc && (
+                                      <span className="font-sans text-muted-foreground font-normal truncate">
+                                        ({specDesc})
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })}
+                              {specCount > 3 && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openMaterialDetail(mat);
+                                  }}
+                                  className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/10 border border-teal-500/20 px-2 py-1 rounded-md whitespace-nowrap hover:bg-teal-500/20 cursor-pointer transition-colors"
+                                  title={`+${specCount - 3} more specifications (click to view)`}
+                                >
+                                  +{specCount - 3} more
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">No specifications defined</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap align-middle">
+                        <div className="flex justify-center">
+                          <StatusBadge status={mat.status} />
+                        </div>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-xl px-2.5 text-xs font-semibold border-border/80 bg-card hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200"
+                            onClick={() => openMaterialDetail(mat)}
+                            title="View material specifications and details"
+                          >
+                            <Layers className="size-3 mr-1 text-teal-600" />
+                            Specs ({specCount})
+                            <ChevronRight className="ml-1 size-3" />
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 rounded-xl px-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                            onClick={() => openAddVariantForExisting(mat)}
+                            title="Quick add specification to this material"
+                          >
+                            <Plus className="size-3 mr-1" /> Spec
+                          </Button>
+
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "h-8 rounded-xl px-2 text-[11px] font-medium",
+                              mat.status === "Active"
+                                ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                : "text-emerald-600 hover:bg-emerald-500/10"
+                            )}
+                            onClick={() => handleToggleMaterialStatus(mat)}
+                            title={mat.status === "Active" ? "Deactivate Material" : "Activate Material"}
+                          >
+                            {mat.status === "Active" ? "Deactivate" : "Activate"}
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       ) : (
-        <div className="grid gap-4">
-          {materials.map((mat) => (
-            <Card
-              key={mat.id}
-              className="overflow-hidden border-border/70 transition-all hover:border-primary/40 hover:shadow-soft rounded-2xl group cursor-pointer"
-              onClick={() => openMaterialDetail(mat)}
-            >
-              <div className="flex flex-col p-5 md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-start gap-4 flex-1">
-                  <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft/40 text-primary border border-primary/20">
-                    <Boxes className="size-6" />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary-soft/50 border border-primary/20">
-                        {mat.material_code}
-                      </span>
-                      <h3 className="font-bold text-base text-foreground tracking-tight">
-                        {mat.material_name}
-                      </h3>
-                      <StatusBadge status={mat.status} />
+        /* VISUAL BENTO CARD GRID VIEW */
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {materials.map((mat) => {
+            const specCount = mat.variant_count || mat.variants?.length || 0;
+            const isCopied = copiedCode === mat.material_code;
+
+            return (
+              <Card
+                key={mat.id}
+                className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-border/75 bg-card/95 hover:bg-card hover:border-primary/40 hover:shadow-soft transition-all duration-200 cursor-pointer p-5"
+                onClick={() => openMaterialDetail(mat)}
+              >
+                <div>
+                  {/* Top Bar: Code pill, UOM, and Status */}
+                  <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCode(mat.material_code, "Material Code")}
+                        className="font-mono text-xs font-black text-primary bg-primary/10 hover:bg-primary/20 border border-primary/25 px-2.5 py-1 rounded-lg transition-colors inline-flex items-center gap-1.5 group/code"
+                        title="Click to copy Material Code"
+                      >
+                        <span>{mat.material_code}</span>
+                        {isCopied ? (
+                          <Check className="size-3 text-emerald-600 shrink-0" />
+                        ) : (
+                          <Copy className="size-3 text-primary/60 group-hover/code:text-primary shrink-0 opacity-0 group-hover/code:opacity-100 transition-opacity" />
+                        )}
+                      </button>
                       <Badge
                         variant="outline"
-                        className="rounded-md font-mono text-[10px] uppercase"
+                        className="rounded-lg font-mono text-[10px] uppercase font-bold border-border/80 bg-muted/30"
                       >
                         {mat.base_uom}
                       </Badge>
                     </div>
+                    <StatusBadge status={mat.status} />
+                  </div>
 
-                    <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                      <span className="font-semibold text-foreground/80 flex items-center gap-1">
-                        <Tag className="size-3 text-muted-foreground" /> {mat.category}
+                  {/* Body: Title & Category */}
+                  <div className="mt-3">
+                    <h3 className="font-bold text-base text-foreground tracking-tight group-hover:text-primary transition-colors">
+                      {mat.material_name}
+                    </h3>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-md bg-muted/70 px-2 py-0.5 text-[11px] font-semibold text-muted-foreground border border-border/50">
+                        <Tag className="size-2.5 text-muted-foreground" /> {mat.category}
                       </span>
-                      {mat.description && (
-                        <span className="truncate max-w-md italic text-muted-foreground/90">
-                          — {mat.description}
-                        </span>
-                      )}
                     </div>
+                    {mat.description && (
+                      <p className="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                        {mat.description}
+                      </p>
+                    )}
+                  </div>
 
-                    {/* Specification Pills Preview */}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-bold text-muted-foreground uppercase flex items-center gap-1 mr-1">
-                        <Layers className="size-3 text-teal-600" /> Specifications (
-                        {mat.variant_count || mat.variants?.length || 0}):
+                  {/* Specification Pills Preview */}
+                  <div className="mt-4 pt-3 border-t border-border/40">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-muted-foreground uppercase mb-2">
+                      <span className="flex items-center gap-1">
+                        <Layers className="size-3 text-teal-600 dark:text-teal-400" /> Specifications ({specCount}):
                       </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {mat.variants && mat.variants.length > 0 ? (
-                        mat.variants.slice(0, 4).map((v: any) => {
-                          const spec = [v.size, v.color, v.grade].filter(Boolean).join(" · ");
-                          const isInactive = v.status === "Inactive";
-                          return (
-                            <span
-                              key={v.id}
-                              className={cn(
-                                "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono font-medium",
-                                isInactive
-                                  ? "border-dashed border-muted-foreground/40 bg-muted/20 text-muted-foreground"
-                                  : "border-border/80 bg-muted/40 text-foreground",
-                              )}
-                            >
-                              <span className={cn("font-bold", isInactive ? "text-muted-foreground" : "text-primary")}>
-                                {formatSpecCode(v.variant_code)}
-                              </span>
-                              {spec && <span className="text-muted-foreground">({spec})</span>}
-                              {isInactive && (
-                                <span className="text-[9px] font-sans font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 rounded">
-                                  Inactive
+                        <>
+                          {mat.variants.slice(0, 3).map((v: any) => {
+                            const spec = [v.size, v.color, v.grade].filter(Boolean).join(" · ");
+                            const isInactive = v.status === "Inactive";
+                            return (
+                              <span
+                                key={v.id}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[10px] font-mono font-medium",
+                                  isInactive
+                                    ? "border-dashed border-muted-foreground/40 bg-muted/20 text-muted-foreground"
+                                    : "border-border/80 bg-background/80 text-foreground"
+                                )}
+                              >
+                                <span className={cn("font-bold", isInactive ? "text-muted-foreground" : "text-teal-600 dark:text-teal-400")}>
+                                  {formatSpecCode(v.variant_code)}
                                 </span>
-                              )}
+                                {spec && <span className="text-muted-foreground font-sans font-normal">({spec})</span>}
+                              </span>
+                            );
+                          })}
+                          {specCount > 3 && (
+                            <span className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/10 border border-teal-500/20 px-2 py-0.5 rounded-lg">
+                              +{specCount - 3} more
                             </span>
-                          );
-                        })
+                          )}
+                        </>
                       ) : (
-                        <span className="text-xs text-muted-foreground italic">
-                          No specifications yet
-                        </span>
-                      )}
-                      {(mat.variant_count || mat.variants?.length || 0) > 4 && (
-                        <span className="text-[10px] font-bold text-primary bg-primary-soft px-2 py-0.5 rounded-md">
-                          +{(mat.variant_count || mat.variants?.length || 0) - 4} more
-                        </span>
+                        <span className="text-xs text-muted-foreground italic">No specifications defined</span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                {/* Right side actions */}
+                {/* Footer CTA */}
                 <div
-                  className="flex items-center gap-2 shrink-0 pt-3 md:pt-0 border-t md:border-t-0 border-border/50"
+                  className="mt-5 pt-3 border-t border-border/50 flex items-center justify-between gap-2"
                   onClick={(e) => e.stopPropagation()}
                 >
                   <Button
                     variant="outline"
                     size="sm"
-                    className="rounded-xl h-9 text-xs font-semibold"
+                    className="h-8.5 rounded-xl text-xs font-semibold border-border/80 bg-card hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200"
                     onClick={() => openMaterialDetail(mat)}
                   >
                     View Details <ChevronRight className="ml-1 size-3.5" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8.5 rounded-xl text-xs font-bold text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                    onClick={() => openAddVariantForExisting(mat)}
+                  >
+                    <Plus className="size-3.5 mr-1" /> Add Spec
+                  </Button>
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -702,13 +1174,13 @@ function WarehouseMaterials() {
         <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden rounded-3xl p-6 shadow-2xl">
           <DialogHeader className="border-b pb-4 pr-10">
             <div className="flex items-center gap-2.5">
-              <div className="grid size-10 place-items-center rounded-xl bg-primary-soft text-primary">
+              <div className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
                 <Plus className="size-5" />
               </div>
               <div>
                 <DialogTitle className="text-xl font-bold">Add Material Master</DialogTitle>
                 <p className="text-xs text-muted-foreground">
-                  Define canonical Material Code with initial specifications
+                  Define canonical Material Code with initial specifications for warehouse operations
                 </p>
               </div>
             </div>
@@ -716,7 +1188,7 @@ function WarehouseMaterials() {
 
           <form onSubmit={handleCreateSubmit} className="space-y-6 pt-3">
             {/* Step 1: Base Material Master Fields */}
-            <div className="rounded-2xl bg-muted/20 border border-border/60 p-4 space-y-4">
+            <div className="rounded-2xl bg-muted/20 border border-border/70 p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Badge className="bg-primary text-primary-foreground font-mono text-[10px]">
                   STEP 1
@@ -749,7 +1221,7 @@ function WarehouseMaterials() {
                     Material Name <span className="text-destructive">*</span>
                   </Label>
                   <Input
-                    placeholder="e.g. Wire, Steel Rod, Hex Bolt"
+                    placeholder="e.g. Wire, Steel Rod, Hex Bolt, Hydraulic Oil"
                     value={materialName}
                     onChange={(e) => setMaterialName(e.target.value)}
                     className="text-sm rounded-xl bg-background"
@@ -802,16 +1274,15 @@ function WarehouseMaterials() {
                     value={baseUom}
                     onValueChange={(val) => {
                       setBaseUom(val);
-                      // sync default specification UOMs if matching
                       setVariantsList(variantsList.map((v) => ({ ...v, uom: val })));
                     }}
                   >
-                    <SelectTrigger className="rounded-xl text-xs bg-background">
+                    <SelectTrigger className="rounded-xl text-xs bg-background font-mono">
                       <SelectValue placeholder="Base UOM" />
                     </SelectTrigger>
                     <SelectContent className="rounded-xl">
                       {uoms.map((u) => (
-                        <SelectItem key={u} value={u} className="text-xs">
+                        <SelectItem key={u} value={u} className="text-xs font-mono">
                           {u}
                         </SelectItem>
                       ))}
@@ -850,7 +1321,7 @@ function WarehouseMaterials() {
                   variant="outline"
                   size="sm"
                   onClick={addVariantRow}
-                  className="rounded-xl h-8 border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-50 hover:bg-teal-100 text-xs font-bold"
+                  className="rounded-xl h-8 border-teal-500/40 text-teal-700 dark:text-teal-300 bg-teal-500/10 hover:bg-teal-500/20 text-xs font-bold"
                 >
                   <Plus className="size-3.5 mr-1" /> Add Specification
                 </Button>
@@ -860,14 +1331,14 @@ function WarehouseMaterials() {
                 {variantsList.map((variant, idx) => (
                   <div
                     key={idx}
-                    className="p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs space-y-2.5 transition-all hover:border-primary/30"
+                    className="p-3.5 rounded-2xl bg-card border border-border/80 shadow-2xs space-y-2.5 transition-all hover:border-teal-500/30"
                   >
                     <div className="flex items-center justify-between border-b border-border/40 pb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs font-black text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md">
                           #{idx + 1}
                         </span>
-                        <span className="font-mono text-xs font-bold text-primary bg-primary-soft/60 px-2.5 py-0.5 rounded-lg border border-primary/20">
+                        <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20">
                           {formatSpecCode(variant.variant_code)}
                         </span>
                       </div>
@@ -886,7 +1357,9 @@ function WarehouseMaterials() {
 
                     <div className="grid gap-2.5 sm:grid-cols-4">
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Size / Dimension</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Size / Dimension
+                        </Label>
                         <Input
                           value={variant.size}
                           onChange={(e) => updateVariantRow(idx, "size", e.target.value)}
@@ -906,7 +1379,9 @@ function WarehouseMaterials() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Grade / Standard</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Grade / Standard
+                        </Label>
                         <Input
                           value={variant.grade}
                           onChange={(e) => updateVariantRow(idx, "grade", e.target.value)}
@@ -916,7 +1391,9 @@ function WarehouseMaterials() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label className="text-[11px] font-bold text-foreground/80">Packaging UOM</Label>
+                        <Label className="text-[11px] font-bold text-foreground/80">
+                          Packaging UOM
+                        </Label>
                         <Select
                           value={variant.uom}
                           onValueChange={(val) => updateVariantRow(idx, "uom", val)}
@@ -926,7 +1403,7 @@ function WarehouseMaterials() {
                           </SelectTrigger>
                           <SelectContent className="rounded-xl">
                             {uoms.map((u) => (
-                              <SelectItem key={u} value={u} className="text-xs">
+                              <SelectItem key={u} value={u} className="text-xs font-mono">
                                 {u}
                               </SelectItem>
                             ))}
@@ -936,7 +1413,9 @@ function WarehouseMaterials() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label className="text-[11px] font-bold text-foreground/80">Technical Specification / Notes</Label>
+                      <Label className="text-[11px] font-bold text-foreground/80">
+                        Technical Specification / Notes
+                      </Label>
                       <Input
                         value={variant.specification}
                         onChange={(e) => updateVariantRow(idx, "specification", e.target.value)}
@@ -953,14 +1432,14 @@ function WarehouseMaterials() {
               <Button
                 type="button"
                 variant="ghost"
-                className="rounded-xl"
+                className="rounded-xl text-xs font-semibold"
                 onClick={() => setIsAddModalOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                className="rounded-xl shadow-glow bg-primary hover:bg-primary/90 px-6 font-bold"
+                className="rounded-xl shadow-glow bg-primary hover:bg-primary/90 px-6 font-bold text-xs"
                 disabled={submitting}
               >
                 {submitting ? (
@@ -983,14 +1462,20 @@ function WarehouseMaterials() {
               {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-4 pr-12">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-11 place-items-center rounded-2xl bg-primary-soft text-primary shrink-0">
+                  <div className="grid size-11 place-items-center rounded-2xl bg-primary/10 text-primary border border-primary/20 shrink-0 shadow-2xs">
                     <Boxes className="size-5" />
                   </div>
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary-soft/60 border border-primary/20">
-                        {selectedMaterial.material_code}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyCode(selectedMaterial.material_code, "Material Code")}
+                        className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors inline-flex items-center gap-1.5"
+                        title="Click to copy Material Code"
+                      >
+                        <span>{selectedMaterial.material_code}</span>
+                        <Copy className="size-3 text-primary/60" />
+                      </button>
                       <h2 className="text-lg font-bold text-foreground">
                         {selectedMaterial.material_name}
                       </h2>
@@ -1019,7 +1504,7 @@ function WarehouseMaterials() {
                   <Button
                     size="sm"
                     className="h-8.5 rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
-                    onClick={openAddVariantForExisting}
+                    onClick={() => openAddVariantForExisting(selectedMaterial)}
                   >
                     <Plus className="mr-1 size-3.5" /> Add Specification
                   </Button>
@@ -1035,7 +1520,7 @@ function WarehouseMaterials() {
               </div>
 
               {selectedMaterial.description && (
-                <div className="p-3 rounded-xl bg-muted/30 border border-border/50 text-xs text-muted-foreground leading-relaxed">
+                <div className="p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
                   <span className="font-bold text-foreground mr-1">Description:</span>
                   {selectedMaterial.description}
                 </div>
@@ -1053,7 +1538,7 @@ function WarehouseMaterials() {
                 <div className="overflow-x-auto rounded-2xl border border-border/70 bg-card shadow-2xs">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
-                      <tr className="border-b border-border/70 bg-muted/30 text-[10px] font-bold uppercase text-muted-foreground">
+                      <tr className="border-b border-border/70 bg-muted/40 text-[10px] font-bold uppercase text-muted-foreground">
                         <th className="p-3 whitespace-nowrap">Specification Code</th>
                         <th className="p-3 whitespace-nowrap">Size</th>
                         <th className="p-3 whitespace-nowrap">Color</th>
@@ -1066,8 +1551,18 @@ function WarehouseMaterials() {
                     </thead>
                     <tbody className="divide-y divide-border/50 font-medium">
                       {selectedMaterial.variants?.map((v: any) => (
-                        <tr key={v.id} className="hover:bg-muted/10 transition-colors">
-                          <td className="p-3 font-mono font-bold text-primary whitespace-nowrap">{formatSpecCode(v.variant_code)}</td>
+                        <tr key={v.id} className="hover:bg-muted/15 transition-colors">
+                          <td className="p-3 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyCode(formatSpecCode(v.variant_code), "Spec Code")}
+                              className="font-mono font-bold text-primary hover:underline inline-flex items-center gap-1"
+                              title="Click to copy Specification Code"
+                            >
+                              <span>{formatSpecCode(v.variant_code)}</span>
+                              <Copy className="size-2.5 opacity-50" />
+                            </button>
+                          </td>
                           <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.size || "—"}</td>
                           <td className="p-3 text-foreground whitespace-nowrap">
                             {v.color ? (
@@ -1082,7 +1577,9 @@ function WarehouseMaterials() {
                               "—"
                             )}
                           </td>
-                          <td className="p-3 text-foreground font-medium whitespace-nowrap">{v.grade || "—"}</td>
+                          <td className="p-3 text-foreground font-medium whitespace-nowrap">
+                            {v.grade || "—"}
+                          </td>
                           <td className="p-3 text-muted-foreground min-w-[150px] max-w-xs">
                             <div className="font-normal">{v.specification || "—"}</div>
                             {v.attributes && Object.keys(v.attributes).length > 0 && (
@@ -1114,7 +1611,7 @@ function WarehouseMaterials() {
                                   "h-7 px-2 text-[11px] font-bold rounded-lg transition-colors",
                                   v.status === "Active"
                                     ? "border-border/70 hover:border-destructive/40 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                                    : "border-success/40 text-success hover:bg-success-soft"
+                                    : "border-success/40 text-success hover:bg-success-soft",
                                 )}
                                 onClick={() => handleToggleVariantStatus(v)}
                               >
@@ -1146,7 +1643,7 @@ function WarehouseMaterials() {
               <DialogFooter className="border-t pt-4">
                 <Button
                   variant="outline"
-                  className="rounded-xl"
+                  className="rounded-xl text-xs font-semibold"
                   onClick={() => setIsDetailModalOpen(false)}
                 >
                   Close
@@ -1162,7 +1659,7 @@ function WarehouseMaterials() {
         <DialogContent className="w-[95vw] max-w-lg rounded-3xl p-6 shadow-2xl">
           <DialogHeader className="border-b pb-3 pr-10">
             <div className="flex items-center gap-2">
-              <div className="grid size-9 place-items-center rounded-xl bg-teal-soft text-teal">
+              <div className="grid size-9 place-items-center rounded-xl bg-teal-500/10 text-teal-600 border border-teal-500/20">
                 <Plus className="size-4" />
               </div>
               <div>
@@ -1191,12 +1688,12 @@ function WarehouseMaterials() {
               <div className="space-y-1">
                 <Label className="text-xs font-bold">UOM</Label>
                 <Select value={newVarUom} onValueChange={setNewVarUom}>
-                  <SelectTrigger className="h-9 rounded-xl text-xs">
+                  <SelectTrigger className="h-9 rounded-xl text-xs font-mono">
                     <SelectValue placeholder="UOM" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     {uoms.map((u) => (
-                      <SelectItem key={u} value={u} className="text-xs">
+                      <SelectItem key={u} value={u} className="text-xs font-mono">
                         {u}
                       </SelectItem>
                     ))}
@@ -1297,14 +1794,14 @@ function WarehouseMaterials() {
               <Button
                 type="button"
                 variant="ghost"
-                className="rounded-xl"
+                className="rounded-xl text-xs font-semibold"
                 onClick={() => setIsAddVariantModalOpen(false)}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                className="rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold"
+                className="rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
                 disabled={submitting}
               >
                 {submitting ? (
@@ -1321,3 +1818,4 @@ function WarehouseMaterials() {
     </AppShell>
   );
 }
+

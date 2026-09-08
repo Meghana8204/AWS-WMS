@@ -31,6 +31,9 @@ async def test_qr_lookup_good_stock_item():
 
 @pytest.mark.asyncio
 async def test_qr_lookup_material_with_color_variant():
+    from app.modules.procurement.infrastructure.persistence.models import MaterialModel, MaterialVariantModel
+    from sqlalchemy import select
+    import uuid
     async for uow in get_uow():
         user = CurrentUser(
             subject="test_user",
@@ -39,6 +42,36 @@ async def test_qr_lookup_material_with_color_variant():
             permissions=["receiving:read"],
             raw_claims={},
         )
+        # Ensure MAT-1001 and MAT-1001-V002 exist in DB
+        v_stmt = select(MaterialVariantModel).where(MaterialVariantModel.variant_code == "MAT-1001-V002")
+        v = (await uow.session.execute(v_stmt)).scalar_one_or_none()
+        if not v:
+            m_stmt = select(MaterialModel).where(MaterialModel.material_code == "MAT-1001")
+            mat = (await uow.session.execute(m_stmt)).scalar_one_or_none()
+            if not mat:
+                mat = MaterialModel(
+                    id=uuid.uuid4(),
+                    material_code="MAT-1001",
+                    material_name="PVC Pipes",
+                    category="Raw Materials",
+                    base_uom="BUNDLE",
+                    status="Active",
+                )
+                uow.session.add(mat)
+                await uow.commit()
+            v = MaterialVariantModel(
+                id=uuid.uuid4(),
+                material_id=mat.id,
+                variant_code="MAT-1001-V002",
+                color="red",
+                size="32 mm x 3 m",
+                grade="ISI",
+                uom="BUNDLE",
+                status="Active",
+            )
+            uow.session.add(v)
+            await uow.commit()
+
         # MAT-1001-V002 has color 'red', size '32 mm x 3 m', grade 'ISI'
         res = await lookup_qr_code(code="MAT-1001-V002", uow=uow, _user=user)
         assert res.material_code == "MAT-1001"
@@ -51,6 +84,9 @@ async def test_qr_lookup_material_with_color_variant():
 
 @pytest.mark.asyncio
 async def test_qr_lookup_damage_payload():
+    from app.modules.procurement.infrastructure.persistence.models import MaterialModel, MaterialVariantModel
+    from sqlalchemy import select
+    import uuid
     async for uow in get_uow():
         user = CurrentUser(
             subject="test_user",
@@ -59,6 +95,36 @@ async def test_qr_lookup_damage_payload():
             permissions=["receiving:read"],
             raw_claims={},
         )
+        # Ensure MAT-1001 and MAT-1001-V001 exist in DB
+        v_stmt = select(MaterialVariantModel).where(MaterialVariantModel.variant_code == "MAT-1001-V001")
+        v = (await uow.session.execute(v_stmt)).scalar_one_or_none()
+        if not v:
+            m_stmt = select(MaterialModel).where(MaterialModel.material_code == "MAT-1001")
+            mat = (await uow.session.execute(m_stmt)).scalar_one_or_none()
+            if not mat:
+                mat = MaterialModel(
+                    id=uuid.uuid4(),
+                    material_code="MAT-1001",
+                    material_name="PVC Pipes",
+                    category="Raw Materials",
+                    base_uom="BUNDLE",
+                    status="Active",
+                )
+                uow.session.add(mat)
+                await uow.commit()
+            v = MaterialVariantModel(
+                id=uuid.uuid4(),
+                material_id=mat.id,
+                variant_code="MAT-1001-V001",
+                color="White",
+                size="25 mm × 3 m",
+                grade="ISI",
+                uom="BUNDLE",
+                status="Active",
+            )
+            uow.session.add(v)
+            await uow.commit()
+
         damage_payload = """Material Code: MAT-1001
 Material Name: PVC Pipes
 Material Category: Raw Materials

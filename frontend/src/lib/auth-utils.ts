@@ -87,12 +87,13 @@ export function getSafeRedirectPath(redirectPath: unknown): string | null {
 }
 
 export function getDefaultRouteForUser(user = getUserInfo()): string {
-  if (user?.roles.includes("GRN") || user?.username?.toLowerCase() === "grn" || user?.username?.toLowerCase() === "grn_officer") return "/grn";
+  if (user?.roles.includes("STORE_MANAGER") || user?.roles.includes("STORE_KEEPER")) return "/my-store";
   if (user?.roles.includes("FINANCE")) return "/finance-dashboard";
   if (user?.roles.includes("PROCUREMENT")) return "/procurement-dashboard";
   if (user?.roles.includes("GATE_SECURITY")) return "/gate-entry";
   if (user?.roles.includes("SUPPLIER")) return "/submit-quotation";
-  if (user?.roles.includes("ASSEMBLY_MANAGER")) return "/assembly-dashboard";
+  if (user?.roles.includes("ASSEMBLY") || user?.roles.includes("ASSEMBLY_MANAGER")) return "/assembly-dashboard";
+  if (user?.roles.includes("GRN")) return "/grn";
   return "/warehouse-dashboard";
 }
 
