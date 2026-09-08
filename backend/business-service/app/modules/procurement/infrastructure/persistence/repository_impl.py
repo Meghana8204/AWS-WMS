@@ -456,10 +456,18 @@ class SqlAlchemyRfqRepository(RfqRepository):
         return [self._to_aggregate(e) for e in result.scalars().all()]
 
     def _to_aggregate(self, model: RfqModel) -> RFQ:
+        rfq_date_val = model.rfq_date
+        if not rfq_date_val:
+            from datetime import date
+            if hasattr(model, "created_at") and model.created_at:
+                rfq_date_val = model.created_at.date() if hasattr(model.created_at, "date") else date.today()
+            else:
+                rfq_date_val = date.today()
+
         return RFQ(
             id=RfqId.of(model.id),
             rfq_number=model.rfq_number,
-            rfq_date=model.rfq_date,
+            rfq_date=rfq_date_val,
             warehouse=model.warehouse,
             procurement_officer=model.procurement_officer,
             status=model.status,

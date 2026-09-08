@@ -7,8 +7,6 @@ from pathlib import Path, PurePosixPath
 import re
 from typing import Any, Iterable, List, Optional, Set, Tuple
 
-from datetime import datetime, timezone
-
 MAX_PHOTO_BYTES = 5 * 1024 * 1024  # 5 MB per photo
 MAX_TOTAL_BYTES = 15 * 1024 * 1024  # 15 MB total
 MAX_PHOTOS = 10
@@ -24,10 +22,9 @@ def collect_damage_attachments(
     Collect saved damage photos belonging ONLY to the current GRN, damaged lines, and photo IDs.
 
     Guarantees:
-    - Never attaches previous or stale photos from earlier retakes or previous GRN runs.
+    - Never scans the upload directory or attaches unrelated files.
     - Only reads damage evidence records explicitly linked to the current GRN's lines.
     - If photo_ids are provided, strictly limits attachments to those photo/evidence IDs.
-    - If no photo_ids filter is given, takes only the single latest active photo per damaged line.
     - Fresh attachment list created for every invocation (no caching or reused lists).
     - Validates file paths to ensure they strictly belong to the current GRN and are within media root.
     - Filters by selected item codes / damaged lines if provided.
@@ -72,18 +69,7 @@ def collect_damage_attachments(
         line_photo_idx = 0
         mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line_item_code or "material")[:60]
 
-        ev_list = getattr(line, "damage_evidence", []) or []
-        def _get_ts(e):
-            ts = getattr(e, "uploaded_at", None)
-            if ts is None:
-                return datetime.min.replace(tzinfo=timezone.utc)
-            if getattr(ts, "tzinfo", None) is None:
-                return ts.replace(tzinfo=timezone.utc)
-            return ts
-
-        sorted_evidence = sorted(ev_list, key=_get_ts, reverse=True)
-
-        for evidence in sorted_evidence:
+        for evidence in getattr(line, "damage_evidence", []):
             if not evidence or not getattr(evidence, "id", None):
                 continue
 
@@ -91,13 +77,8 @@ def collect_damage_attachments(
             if ev_id_str in seen_evidence_ids:
                 continue
 
-            if photo_id_set is not None:
-                if ev_id_str not in photo_id_set:
-                    continue
-            else:
-                # If no explicit photo IDs filter provided, take only the latest photo for this damaged line
-                if line_photo_idx >= 1:
-                    break
+            if photo_id_set is not None and ev_id_str not in photo_id_set:
+                continue
 
             seen_evidence_ids.add(ev_id_str)
 

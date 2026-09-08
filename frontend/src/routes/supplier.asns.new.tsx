@@ -23,7 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import { requireRole } from "@/lib/auth-utils";
+import { getUserInfo, requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/supplier/asns/new")({
   beforeLoad: () => requireRole("SUPPLIER"),
@@ -81,9 +81,20 @@ function NewAsn() {
         const { asnNumber: nextAsn } = await api.getNextAsnNumber();
         setAsnNumber(nextAsn);
 
+        const supplierId = getUserInfo()?.supplierId || "";
+        if (!supplierId) {
+          toast.error("Supplier session is missing", {
+            description: "Please log out and sign in again before creating an ASN.",
+          });
+          return;
+        }
+
         // 2. Fetch PO details if poId is provided
         if (poId) {
-          const poData = await api.getPurchaseOrder(poId);
+          const [poData, existingAsns] = await Promise.all([
+            api.getPurchaseOrder(poId),
+            api.getAsns(supplierId),
+          ]);
           setPo(poData);
 
           // Initialize lines from PO items
@@ -92,13 +103,24 @@ function NewAsn() {
             poItems.map((item: any) => {
               const itemCode = item.variantCode || item.variant_code || item.itemCode || item.materialCode || item.material_code;
               const savedLine = savedDraft?.lines?.find((line: any) => line.item_code === itemCode);
+              const alreadyShippedQuantity = existingAsns
+                .filter((asn: any) => String(asn.poId || asn.po_id || "") === String(poId))
+                .flatMap((asn: any) => asn.lines || [])
+                .filter((line: any) => String(line.itemCode || line.item_code) === String(itemCode))
+                .reduce(
+                  (total: number, line: any) =>
+                    total + (Number(line.shippedQuantity || line.shipped_quantity) || 0),
+                  0,
+                );
+              const orderedQuantity = parseFloat(item.quantity) || 0;
+              const remainingQuantity = Math.max(orderedQuantity - alreadyShippedQuantity, 0);
               return {
                 item_code: itemCode,
                 material_name: item.materialName || item.material_name,
                 uom: item.uom || "PCS",
-                ordered_quantity: parseFloat(item.quantity) || 0,
-                already_shipped_quantity: 0, // In a real app, track cumulative shipments
-                shipped_quantity: savedLine?.shipped_quantity ?? (parseFloat(item.quantity) || 0),
+                ordered_quantity: orderedQuantity,
+                already_shipped_quantity: alreadyShippedQuantity,
+                shipped_quantity: savedLine?.shipped_quantity ?? remainingQuantity,
               };
             }),
           );
@@ -163,6 +185,17 @@ function NewAsn() {
     setDocuments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleLineQuantityChange = (index: number, value: string) => {
+    setLines((prev) =>
+      prev.map((line, currentIndex) => {
+        if (currentIndex !== index) return line;
+        const remainingQuantity = Math.max(line.ordered_quantity - line.already_shipped_quantity, 0);
+        const shippedQuantity = Math.min(Math.max(Number(value) || 0, 0), remainingQuantity);
+        return { ...line, shipped_quantity: shippedQuantity };
+      }),
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!poId) {
@@ -208,6 +241,14 @@ function NewAsn() {
         })),
       };
 
+      if (payload.lines.every((line) => line.shipped_quantity <= 0)) {
+        toast.error("No shipment quantity entered", {
+          description: "Enter a quantity for at least one PO item before submitting another ASN.",
+        });
+        setSubmitting(false);
+        return;
+      }
+
       const createdAsn = await api.createAsn(payload);
       localStorage.removeItem(draftStorageKey);
       toast.success("Advance Shipment Notice submitted successfully");
@@ -230,6 +271,13 @@ function NewAsn() {
       </div>
     );
   }
+
+  const totalRemainingQuantity = lines.reduce(
+    (total, line) =>
+      total + Math.max(Number(line.ordered_quantity) - Number(line.already_shipped_quantity), 0),
+    0,
+  );
+  const hasShipmentQuantity = lines.some((line) => Number(line.shipped_quantity) > 0);
 
   return (
     <AppShell
@@ -298,6 +346,12 @@ function NewAsn() {
               description="Specify quantities for this dispatch"
               icon={Package}
             >
+              {lines.length > 0 && totalRemainingQuantity <= 0 && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  This PO is already fully shipped. Create another ASN for the same PO only when
+                  there is remaining PO quantity to dispatch.
+                </div>
+              )}
               <div className="rounded-2xl border border-border/40 overflow-hidden bg-card">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-muted/50 border-b border-border/40 text-[10px] uppercase font-bold text-muted-foreground">
@@ -305,35 +359,53 @@ function NewAsn() {
                       <th className="px-4 py-3">Material</th>
                       <th className="px-4 py-3 text-right">Ordered</th>
                       <th className="px-4 py-3 text-right">Already Shipped</th>
+                      <th className="px-4 py-3 text-right">Remaining</th>
                       <th className="px-4 py-3 text-right">UOM</th>
                       <th className="px-4 py-3 text-right w-32">Shipped This Time</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/20">
-                    {lines.map((line, idx) => (
-                      <tr key={idx} className="hover:bg-muted/5 transition-colors">
-                        <td className="px-4 py-3">
-                          <div className="font-bold text-primary font-mono">{line.item_code}</div>
-                          <div className="text-muted-foreground">{line.material_name}</div>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums">
-                          {line.ordered_quantity.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
-                          {line.already_shipped_quantity.toLocaleString()}
-                        </td>
-                        <td className="px-4 py-3 text-right">{line.uom}</td>
-                        <td className="px-4 py-3">
-                          <div className="h-8 flex items-center justify-end px-3 rounded-lg text-xs font-mono text-right bg-muted/50 border border-border/40 font-bold text-primary">
-                            {line.shipped_quantity.toLocaleString()}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                    {lines.map((line, idx) => {
+                      const remainingQuantity = Math.max(
+                        Number(line.ordered_quantity) - Number(line.already_shipped_quantity),
+                        0,
+                      );
+
+                      return (
+                        <tr key={idx} className="hover:bg-muted/5 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-primary font-mono">{line.item_code}</div>
+                            <div className="text-muted-foreground">{line.material_name}</div>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums">
+                            {line.ordered_quantity.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
+                            {line.already_shipped_quantity.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold">
+                            {remainingQuantity.toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3 text-right">{line.uom}</td>
+                          <td className="px-4 py-3">
+                            <Input
+                              type="number"
+                              min="0"
+                              max={remainingQuantity}
+                              step="0.01"
+                              className="ml-auto h-9 w-32 rounded-lg text-right font-mono text-xs"
+                              value={line.shipped_quantity}
+                              onChange={(event) => handleLineQuantityChange(idx, event.target.value)}
+                              disabled={remainingQuantity <= 0}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                     {lines.length === 0 && (
                       <tr>
                         <td
-                          colSpan={3}
+                          colSpan={6}
                           className="px-4 py-12 text-center text-muted-foreground italic"
                         >
                           <Info className="size-5 mx-auto mb-2 opacity-50" />
@@ -513,14 +585,14 @@ function NewAsn() {
                   <Button
                     type="submit"
                     className="w-full h-12 rounded-xl shadow-glow"
-                    disabled={submitting || lines.length === 0}
+                    disabled={submitting || lines.length === 0 || !hasShipmentQuantity}
                   >
                     {submitting ? (
                       <Loader2 className="mr-2 size-4 animate-spin" />
                     ) : (
                       <CheckCircle2 className="mr-2 size-4" />
                     )}
-                    Submit ASN
+                    {totalRemainingQuantity <= 0 ? "PO Fully Shipped" : "Submit ASN"}
                   </Button>
                 </div>
               </div>
