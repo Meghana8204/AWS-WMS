@@ -991,71 +991,128 @@ async def assign_arrival_dock(
     user: CurrentUser = Depends(require_permission("gate:verify")),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    dock_id = request.dock_id.strip().upper()
-    dock_result = await uow.session.execute(select(DockModel).where(DockModel.dock_number == dock_id))
-    dock = dock_result.scalar_one_or_none()
+    from app.modules.dock.infrastructure.persistence.models import DockMasterModel, DockAllocationRequestModel, DockAllocationHistoryModel, DockStatusHistoryModel
+
+    dock_input = request.dock_id.strip()
+    dock_master = None
+    dock = None
+
+    # 1. Resolve DockMasterModel (by UUID or dock_code)
+    try:
+        dock_uuid = uuid.UUID(dock_input)
+        dm_res = await uow.session.execute(select(DockMasterModel).where(DockMasterModel.id == dock_uuid))
+        dock_master = dm_res.scalar_one_or_none()
+    except (ValueError, TypeError):
+        pass
+    if not dock_master:
+        dm_res = await uow.session.execute(select(DockMasterModel).where(func.upper(DockMasterModel.dock_code) == dock_input.upper()))
+        dock_master = dm_res.scalar_one_or_none()
+
+    # 2. Resolve or create corresponding DockModel in warehouse_dock
+    effective_dock_code = dock_master.dock_code if dock_master else dock_input.upper()
+    dock_res = await uow.session.execute(select(DockModel).where(DockModel.dock_number == effective_dock_code))
+    dock = dock_res.scalar_one_or_none()
     if dock is None:
-        raise HTTPException(status_code=422, detail=f"Unknown dock '{dock_id}'")
-    if dock.status != "AVAILABLE":
-        raise HTTPException(status_code=409, detail=f"Dock {dock_id} is {dock.status.lower()}")
-    occupied = await uow.session.execute(
-        select(GateEntryModel.id).where(
-            GateEntryModel.assigned_dock_id == dock_id,
-            GateEntryModel.status == GateEntryStatus.DOCK_ASSIGNED.value,
+        dock = DockModel(
+            dock_number=effective_dock_code,
+            warehouse_id="WH-MAIN-01",
+            dock_type=dock_master.dock_type if dock_master else "GENERAL",
+            capacity=1,
+            status="AVAILABLE",
         )
-    )
-    if occupied.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail=f"Dock {dock_id} is already occupied")
+        uow.session.add(dock)
+        await uow.session.flush()
+
     try:
         model = await uow.session.get(GateEntryModel, uuid.UUID(entry_id))
-    except ValueError:
+    except (ValueError, TypeError):
         model = None
     if model is None:
         raise NotFoundException(f"Inbound arrival '{entry_id}' not found")
-    if model.status != GateEntryStatus.AWAITING_DOCK.value:
-        raise HTTPException(status_code=409, detail="Arrival is not awaiting dock assignment")
-    if model.asn_id is None:
-        raise HTTPException(status_code=409, detail="Arrival has no ASN reference")
-    po_result = await uow.session.execute(
-        select(PurchaseOrderModel).where(PurchaseOrderModel.po_number == model.po_number)
-    )
-    po = po_result.scalar_one_or_none()
-    if po is None:
-        raise HTTPException(status_code=409, detail=f"Purchase order {model.po_number} was not found")
-    existing_assignment = await uow.session.execute(
-        select(DockAssignmentModel.id).where(DockAssignmentModel.gate_entry_id == model.id)
-    )
-    if existing_assignment.scalar_one_or_none() is not None:
-        raise HTTPException(status_code=409, detail="This arrival already has a dock assignment")
-    entry = _gate_entry_from_model(model)
-    entry.assign_dock(dock_id)
+
+    po = None
+    if model.po_number:
+        po_result = await uow.session.execute(
+            select(PurchaseOrderModel).where(PurchaseOrderModel.po_number == model.po_number)
+        )
+        po = po_result.scalar_one_or_none()
+
+    # Update gate entry model & domain
+    model.assigned_dock_id = effective_dock_code
+    model.status = GateEntryStatus.DOCK_ASSIGNED.value
+    model.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    # Update dock statuses
     dock.status = "OCCUPIED"
     dock.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    await _save_gate_entry(uow.session, entry)
-    assigned_at = datetime.datetime.now(datetime.timezone.utc)
-    assignment = DockAssignmentModel(
-        gate_entry_id=model.id,
-        asn_id=model.asn_id,
-        po_id=po.id,
-        vehicle_number=model.vehicle_number,
-        dock_number=dock_id,
-        assigned_by=user.username,
-        assigned_at=assigned_at,
+    if dock_master:
+        dock_master.status = "RESERVED"
+
+    # Sync or create DockAllocationRequestModel
+    alloc_stmt = select(DockAllocationRequestModel).where(
+        (DockAllocationRequestModel.existing_gate_pass_id == (model.gate_entry_number or str(model.id))) |
+        (DockAllocationRequestModel.vehicle_number == model.vehicle_number)
     )
-    uow.session.add(assignment)
+    alloc_req = (await uow.session.execute(alloc_stmt)).scalars().first()
+    if alloc_req:
+        alloc_req.assigned_dock_id = dock_master.id if dock_master else None
+        alloc_req.assigned_by = user.username
+        alloc_req.assigned_at = datetime.datetime.now(datetime.timezone.utc)
+        alloc_req.status = "DOCK_ASSIGNED"
+    elif dock_master:
+        alloc_req = DockAllocationRequestModel(
+            existing_gate_pass_id=model.gate_entry_number or str(model.id),
+            vehicle_number=model.vehicle_number or "VEHICLE",
+            vendor_reference=model.ocr_supplier_name or getattr(model, "supplier_name", None),
+            material_reference=model.ocr_product_material or getattr(model, "material_description", None),
+            material_description=model.ocr_product_material or getattr(model, "material_description", None),
+            quantity=Decimal(str(model.ocr_quantity)) if model.ocr_quantity is not None else None,
+            security_approved_at=model.created_at or datetime.datetime.now(datetime.timezone.utc),
+            priority="NORMAL",
+            status="DOCK_ASSIGNED",
+            assigned_dock_id=dock_master.id,
+            assigned_by=user.username,
+            assigned_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        uow.session.add(alloc_req)
+
+    # Create DockAssignmentModel if not already present
+    existing_assignment = (await uow.session.execute(
+        select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == model.id)
+    )).scalar_one_or_none()
+
+    assigned_at = datetime.datetime.now(datetime.timezone.utc)
+    if not existing_assignment:
+        assignment = DockAssignmentModel(
+            gate_entry_id=model.id,
+            asn_id=model.asn_id,
+            po_id=po.id if po else None,
+            vehicle_number=model.vehicle_number or "",
+            dock_number=effective_dock_code,
+            assigned_by=user.username,
+            assigned_at=assigned_at,
+        )
+        uow.session.add(assignment)
+
+    uow.session.add(NotificationModel(
+        user_role="GRN",
+        title="Dock Allocated — Ready for GRN",
+        message=f"Dock {effective_dock_code} has been allocated for vehicle {model.vehicle_number} (Gate Pass {model.gate_entry_number or str(model.id)}). Ready for GRN creation.",
+        link=f"/grn?tab=wizard&gatePassId={model.gate_entry_number or str(model.id)}&dock={effective_dock_code}",
+    ))
     uow.session.add(NotificationModel(
         user_role="WAREHOUSE",
         title="Dock Assigned",
-        message=f"{entry.vehicle_plate} has been assigned to {dock_id} by {user.username}.",
+        message=f"{model.vehicle_number} has been assigned to {effective_dock_code} by {user.username}.",
         link="/vehicle-queue",
     ))
     return {
-        "id": entry.id,
-        "status": entry.status.value,
-        "asn_id": str(model.asn_id),
-        "po_id": str(po.id),
+        "id": str(model.id),
+        "status": GateEntryStatus.DOCK_ASSIGNED.value,
+        "asn_id": str(model.asn_id) if model.asn_id else None,
+        "po_id": str(po.id) if po else None,
         "vehicle_number": model.vehicle_number,
-        "dock_number": dock_id,
+        "dock_number": effective_dock_code,
         "assigned_by": user.username,
         "assigned_at": assigned_at.isoformat(),
     }

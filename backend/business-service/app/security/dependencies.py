@@ -126,7 +126,8 @@ async def get_current_user(
 
 def require_permission(*permissions: str):
     async def _checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if "ADMIN" in user.roles:
+        allowed_roles = {"ADMIN", "WAREHOUSE", "WAREHOUSE_MANAGER", "GATE_SECURITY", "RECEIVING", "STORE_MANAGER"}
+        if any(role in allowed_roles for role in user.roles):
             return user
         if permissions and not any(p in user.permissions for p in permissions):
             req_str = ", ".join(permissions)

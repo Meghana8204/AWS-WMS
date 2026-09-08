@@ -332,6 +332,26 @@ class DockAllocationService:
         if material_text:
             notif_msg = f"{notif_msg[:-1]} for material {material_text}."
         
+        # Notification to GRN Module / Receiving
+        session.add(
+            NotificationModel(
+                user_role="GRN",
+                title="Dock Allocated — Ready for GRN",
+                message=f"Dock {dock.dock_code} allocated for vehicle {req.vehicle_number} (Gate Pass {req.existing_gate_pass_id}). Inbound goods are ready for receiving and GRN creation.",
+                link=f"/grn?tab=wizard&gatePassId={req.existing_gate_pass_id}&dock={dock.dock_code}",
+            )
+        )
+
+        # Notification to Warehouse Module
+        session.add(
+            NotificationModel(
+                user_role="WAREHOUSE",
+                title="DOCK ALLOCATED",
+                message=notif_msg,
+                link=f"/dock-management?requestId={req.id}",
+            )
+        )
+
         # Mandatory Notification to Quality Inspector
         session.add(
             NotificationModel(
@@ -462,6 +482,34 @@ class DockAllocationService:
         req = req_query.scalars().first()
 
         if not req:
+            dock_direct = (
+                await session.execute(
+                    select(DockMasterModel).where(DockMasterModel.id == allocation_request_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if dock_direct:
+                old_dock_st = dock_direct.status
+                dock_direct.status = DockStatus.OCCUPIED.value
+                session.add(
+                    DockStatusHistoryModel(
+                        dock_id=dock_direct.id,
+                        previous_status=old_dock_st,
+                        new_status=DockStatus.OCCUPIED.value,
+                        reason="Direct vehicle arrival marked on dock",
+                        changed_by=performed_by,
+                        changed_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+                return DockAllocationRequestModel(
+                    existing_gate_pass_id="N/A",
+                    vehicle_number="N/A",
+                    security_approved_at=datetime.now(timezone.utc),
+                    priority="NORMAL",
+                    status=DockStatus.OCCUPIED.value,
+                    assigned_dock_id=dock_direct.id,
+                    arrived_at=datetime.now(timezone.utc),
+                )
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Allocation request not found")
 
         dock_code = "N/A"
@@ -508,7 +556,16 @@ class DockAllocationService:
             )
         )
 
-        # Vehicle arrival notification
+        # Vehicle arrival notifications
+        session.add(
+            NotificationModel(
+                user_role="GRN",
+                title="Vehicle Arrived at Dock — Ready for Unloading",
+                message=f"Vehicle {req.vehicle_number} has arrived at Dock {dock_code} for Gate Pass {req.existing_gate_pass_id}. Ready for unloading and GRN inspection.",
+                link=f"/grn?tab=wizard&gatePassId={req.existing_gate_pass_id}&dock={dock_code}",
+            )
+        )
+
         session.add(
             NotificationModel(
                 user_role="STORE_MANAGER",
@@ -597,6 +654,36 @@ class DockAllocationService:
         req = req_query.scalars().first()
 
         if not req:
+            # Check if allocation_request_id corresponds directly to a DockMasterModel ID
+            dock_direct = (
+                await session.execute(
+                    select(DockMasterModel).where(DockMasterModel.id == allocation_request_id).with_for_update()
+                )
+            ).scalar_one_or_none()
+            if dock_direct:
+                old_dock_st = dock_direct.status
+                dock_direct.status = DockStatus.AVAILABLE.value
+                session.add(
+                    DockStatusHistoryModel(
+                        dock_id=dock_direct.id,
+                        previous_status=old_dock_st,
+                        new_status=DockStatus.AVAILABLE.value,
+                        reason="Direct dock release back to operational service",
+                        changed_by=performed_by,
+                        changed_at=datetime.now(timezone.utc),
+                    )
+                )
+                await session.commit()
+                # Return dummy allocation request response representing the released state
+                return DockAllocationRequestModel(
+                    existing_gate_pass_id="N/A",
+                    vehicle_number="N/A",
+                    security_approved_at=datetime.now(timezone.utc),
+                    priority="NORMAL",
+                    status=AllocationStatus.RELEASED.value,
+                    assigned_dock_id=dock_direct.id,
+                    released_at=datetime.now(timezone.utc),
+                )
             raise HTTPException(status_code=404, detail="Allocation request or dock not found")
 
         dock_code = "N/A"

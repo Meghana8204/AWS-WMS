@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { api } from "@/lib/api-client";
+import { api, resolveMediaUrl } from "@/lib/api-client";
 import { getUserInfo } from "@/lib/auth-utils";
 import {
   QRScanResultModal,
@@ -69,6 +69,9 @@ export const Route = createFileRoute("/grn")({
     tab: (search.tab as string) || "dashboard",
     page: Number(search.page) || 1,
     grn_id: (search.grn_id as string) || undefined,
+    gatePassId: (search.gatePassId as string) || (search.gate_pass_id as string) || undefined,
+    dock: (search.dock as string) || (search.dock_number as string) || undefined,
+    po: (search.po as string) || (search.po_number as string) || undefined,
   }),
   component: GrnPageWorkflow,
 });
@@ -217,7 +220,16 @@ function GrnPageWorkflow() {
   useEffect(() => {
     if (search.tab) setActiveTab(search.tab as any);
     if (search.page) setCurrentPage(search.page);
-  }, [search.tab, search.page]);
+    if (search.gatePassId || search.dock || search.po) {
+      if (!search.tab) setActiveTab("wizard");
+      setHeader((prev) => ({
+        ...prev,
+        gate_entry_number: search.gatePassId || prev.gate_entry_number,
+        receiving_dock: search.dock || prev.receiving_dock,
+        po_number: search.po || prev.po_number,
+      }));
+    }
+  }, [search.tab, search.page, search.gatePassId, search.dock, search.po]);
 
   // User Info (Client-Side Safe for SSR)
   const [loggedInUserName, setLoggedInUserName] = useState<string>("GRN Officer");
@@ -261,7 +273,7 @@ function GrnPageWorkflow() {
   const [materials, setMaterials] = useState<GrnLineItem[]>([]);
 
   // Page 3 - Damaged Goods & Quality State
-  const [damagePhotos, setDamagePhotos] = useState<Record<string, { file?: File; previewUrl?: string; reason?: string; evidenceId?: string }>>({});
+  const [damagePhotos, setDamagePhotos] = useState<Record<string, { file?: File; previewUrl?: string; reason?: string; evidenceId?: string; evidenceIds?: string[]; photos?: any[] }>>({});
   const [qualityApproved, setQualityApproved] = useState<Record<string, number>>({});
 
   // Page 4 - Batches State
@@ -321,6 +333,60 @@ function GrnPageWorkflow() {
       })
       .catch((err) => console.warn("Could not preload material master for QR generation:", err));
   }, []);
+
+  // Fetch All Docks & Allocations Created in Warehouse Module
+  const loadWarehouseDocks = useCallback(async () => {
+    try {
+      const [docksRes, allocsRes] = await Promise.all([
+        api.getDocks().catch(() => []),
+        api.getDockAllocationRequests().catch(() => []),
+      ]);
+
+      const docksList = Array.isArray(docksRes) ? docksRes : [];
+      const allocsList = Array.isArray(allocsRes) ? allocsRes : [];
+
+      if (docksList.length > 0) {
+        const enrichedDocks = docksList.map((d: any) => {
+          const num = d.dock_number || d.dock_code || d.name || `DOCK-${d.id}`;
+          const currentAlloc = d.current_allocation || allocsList.find(
+            (a: any) =>
+              (a.assigned_dock_id && a.assigned_dock_id === d.id) ||
+              (a.assigned_dock_code && a.assigned_dock_code === num) ||
+              (a.assigned_dock?.dock_number && a.assigned_dock?.dock_number === num)
+          );
+
+          return {
+            id: d.id,
+            dock_number: num,
+            dock_name: d.dock_name || d.name || num,
+            dock_type: d.dock_type || "Standard",
+            status: d.status || "AVAILABLE",
+            capacity: d.capacity || "Full Container",
+            current_allocation: currentAlloc,
+            allocated_vehicle: currentAlloc?.vehicle_number || "",
+            allocated_vendor: currentAlloc?.vendor_reference || "",
+            allocated_gate_pass: currentAlloc?.existing_gate_pass_id || "",
+          };
+        });
+
+        setDockOptions(enrichedDocks);
+
+        // Auto-select first dock if none selected yet
+        setHeader((prev) => {
+          if (!prev.receiving_dock && enrichedDocks.length > 0) {
+            return { ...prev, receiving_dock: enrichedDocks[0].dock_number };
+          }
+          return prev;
+        });
+      }
+    } catch (err) {
+      console.warn("Failed to load warehouse dock allocations:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWarehouseDocks();
+  }, [loadWarehouseDocks]);
 
   function formatReadableDate(dateStr?: string) {
     if (!dateStr) {
@@ -489,7 +555,28 @@ function GrnPageWorkflow() {
       const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || "";
       const driverName = ctx.driver_name || ctx.driverName || ctx.asn?.driver_name || ctx.asn?.driverName || ctx.gate_entry?.driver_name || ctx.gate_entry?.driverName || "";
       const warehouseName = ctx.warehouse_name || ctx.warehouseName || "Main Warehouse";
-      const prefilledDock = ctx.prefilled_dock_number || ctx.prefilledDockNumber || (ctx.dock_options && ctx.dock_options[0]?.dock_number) || "DOCK-01";
+      
+      // Auto-detect allocated dock from warehouse allocation, gate entry, or PO context
+      let prefilledDock = ctx.prefilled_dock_number || ctx.prefilledDockNumber || ctx.gate_entry?.dock_number || ctx.gate_entry?.dockNumber || ctx.assigned_dock_number || "";
+      if (!prefilledDock && dockOptions.length > 0) {
+        const matchedDock = dockOptions.find((d: any) => {
+          const alloc = d.current_allocation;
+          if (!alloc) return false;
+          return (
+            (vehicleNum && alloc.vehicle_number && alloc.vehicle_number.toUpperCase() === vehicleNum.toUpperCase()) ||
+            (gateNum && alloc.existing_gate_pass_id && alloc.existing_gate_pass_id.toUpperCase() === gateNum.toUpperCase()) ||
+            (numToFetch && alloc.material_reference && alloc.material_reference.includes(numToFetch)) ||
+            (supplierName && alloc.vendor_reference && alloc.vendor_reference.toLowerCase().includes(supplierName.toLowerCase()))
+          );
+        });
+        if (matchedDock) {
+          prefilledDock = matchedDock.dock_number;
+        }
+      }
+      if (!prefilledDock) {
+        prefilledDock = (ctx.dock_options && ctx.dock_options[0]?.dock_number) || dockOptions[0]?.dock_number || "DOCK-01";
+      }
+
       const generatedGrnNum = ctx.grn_number || ctx.grnNumber || `GRN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Math.floor(1000 + Math.random() * 9000)}`;
 
       setHeader({
@@ -512,7 +599,11 @@ function GrnPageWorkflow() {
       setDamagePhotos({});
       setGrnId(ctx.grn_id || ctx.grnId || null);
       if (ctx.dock_options && ctx.dock_options.length > 0) {
-        setDockOptions(ctx.dock_options);
+        setDockOptions((prev) => {
+          const existingNums = new Set(prev.map((d: any) => d.dock_number));
+          const newDocks = ctx.dock_options.filter((d: any) => !existingNums.has(d.dock_number));
+          return [...prev, ...newDocks];
+        });
       }
 
       const mapped: GrnLineItem[] = (ctx.lines || []).map((l: any) => {
@@ -553,7 +644,8 @@ function GrnPageWorkflow() {
         setMaterialBatches(initBatches);
       }
 
-      toast.success(`PO ${numToFetch} details fetched successfully`);
+      const poDisplay = numToFetch.toUpperCase().startsWith("PO") ? numToFetch : `PO-${numToFetch}`;
+      toast.success(`${poDisplay} details fetched successfully`);
     } catch (err: any) {
       if (requestId !== contextRequest.current) return;
       console.error("PO Fetch error:", err);
@@ -766,10 +858,23 @@ function GrnPageWorkflow() {
             ];
           }
           if (Array.isArray(l.damage_evidence) && l.damage_evidence.length > 0) {
+            const photoList = l.damage_evidence.map((ev: any, idx: number) => {
+              const evId = String(ev.evidence_id || ev.id || `ev_${idx + 1}`);
+              return {
+                id: evId,
+                evidenceId: evId,
+                previewUrl: resolveMediaUrl(ev.file_path || ev.filePath),
+                fileName: ev.file_name || ev.fileName || `damage-evidence-${idx + 1}.jpg`,
+              };
+            });
+            const firstEv = l.damage_evidence[0];
+            const firstEvId = String(firstEv.evidence_id || firstEv.id || "");
             pMap[l.item_code] = {
-              evidenceId: l.damage_evidence[0].id,
-              previewUrl: l.damage_evidence[0].file_path ? `${api.BUSINESS_API_URL}${l.damage_evidence[0].file_path}` : undefined,
-              reason: l.damage_evidence[0].reason,
+              evidenceId: firstEvId,
+              evidenceIds: l.damage_evidence.map((ev: any) => String(ev.evidence_id || ev.id)).filter(Boolean),
+              previewUrl: resolveMediaUrl(firstEv.file_path || firstEv.filePath),
+              reason: firstEv.reason || l.damage_reason,
+              photos: photoList,
             };
           }
         });
@@ -1085,11 +1190,89 @@ function GrnPageWorkflow() {
   }
 
   async function handleProceedFromPage3() {
+    // Strictly validate that if any material has damaged_quantity > 0, at least 1 photo evidence MUST be taken/attached
+    const missingPhotoLine = damagedMaterials.find((m) => {
+      const p = damagePhotos[m.item_code];
+      const hasPhotos = p && (
+        (Array.isArray(p.photos) && p.photos.length > 0) ||
+        (Array.isArray(p.evidenceIds) && p.evidenceIds.length > 0) ||
+        Boolean(p.evidenceId) ||
+        Boolean(p.file) ||
+        Boolean(p.previewUrl)
+      );
+      return !hasPhotos;
+    });
+
+    if (missingPhotoLine) {
+      toast.error(
+        `Photo evidence required: Please take at least 1 photo for ${missingPhotoLine.material_name} (${missingPhotoLine.item_code}) to document the ${missingPhotoLine.damaged_quantity} ${missingPhotoLine.uom || "units"} damaged.`
+      );
+      return;
+    }
+
     setBusyAction(true);
     setSaveStatus("saving");
     try {
       const savedGrnId = grnId || await saveGrnHeader();
-      await api.submitQualityInspection(savedGrnId, materials.map((m) => ({
+
+      // Ensure GRN lines are up to date with correct damaged quantities and have grn_line_id
+      const payloadLines = materials.map((m) => {
+        const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
+        return {
+          item_code: m.item_code,
+          material_name: m.material_name,
+          material_category: m.material_category || "Raw Materials",
+          uom: m.uom || "PCS",
+          received_quantity: rec,
+          good_quantity: qualityApproved[m.item_code] ?? m.good_quantity,
+          damaged_quantity: m.damaged_quantity,
+        };
+      });
+
+      const updateLinesRes = await api.updateGrnLines(savedGrnId, payloadLines).catch((e) => {
+        console.warn("Update lines during step 3:", e);
+        return null;
+      });
+
+      let currentMaterials = materials;
+      if (updateLinesRes && Array.isArray(updateLinesRes.lines)) {
+        currentMaterials = materials.map((m) => {
+          const match = updateLinesRes.lines.find((l: any) => (l.item_code || l.itemCode) === m.item_code);
+          return match ? { ...m, grn_line_id: match.grn_line_id || match.grnLineId || m.grn_line_id } : m;
+        });
+        setMaterials(currentMaterials);
+      }
+
+      // Upload all pending damage photos to backend
+      for (const m of currentMaterials) {
+        if ((m.damaged_quantity || 0) > 0) {
+          const p = damagePhotos[m.item_code];
+          const lineIdToUse = m.grn_line_id || m.item_code;
+          if (p && Array.isArray(p.photos) && lineIdToUse) {
+            for (const photo of p.photos) {
+              if (photo.file && (!photo.evidenceId || photo.evidenceId.startsWith("photo_") || !photo.evidenceId.includes("-"))) {
+                try {
+                  const data = new FormData();
+                  data.append("file", photo.file);
+                  data.append("damaged_quantity", String(m.damaged_quantity || 1));
+                  if (m.damage_reason || p.reason) {
+                    data.append("reason", m.damage_reason || p.reason || "");
+                  }
+                  const uploadRes = await api.uploadDamageEvidence(lineIdToUse, data);
+                  if (uploadRes?.evidence_id || uploadRes?.evidenceId) {
+                    photo.evidenceId = uploadRes.evidence_id || uploadRes.evidenceId;
+                    photo.previewUrl = uploadRes.file_path ? (uploadRes.file_path.startsWith("http") ? uploadRes.file_path : `${api.BUSINESS_API_URL}${uploadRes.file_path}`) : photo.previewUrl;
+                  }
+                } catch (uploadErr) {
+                  console.warn(`Could not upload photo file for ${m.item_code}:`, uploadErr);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      await api.submitQualityInspection(savedGrnId, currentMaterials.map((m) => ({
         item_code: m.item_code,
         good_quantity: qualityApproved[m.item_code] ?? m.good_quantity,
         damaged_quantity: m.damaged_quantity,
@@ -1201,23 +1384,29 @@ function GrnPageWorkflow() {
     const category = m.material_category || variantInfo.category || "Raw Materials";
 
     return [
+      `PO Number: ${header.po_number || ""}`,
+      `GRN Number: ${header.grn_number || ""}`,
+      `Supplier: ${header.supplier_name || header.supplier_company_name || ""}`,
+      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
+      `Quarantine Location: QUARANTINE-ZONE-A`,
       `Material Code: ${m.item_code}`,
       `Material Name: ${m.material_name || m.item_code}`,
       `Material Category: ${category}`,
       `Material Variant Code: ${variantInfo.variant_code}`,
-      `Batch: ${lotNum}`,
+      `Damage Lot: ${lotNum}`,
       `Size: ${variantInfo.size}`,
       `Color: ${variantInfo.color}`,
-      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
       `Grade: ${variantInfo.grade}`,
       `UOM: ${uom}`,
-      `Inspection Status: PARTIAL`,
-      `Batch Quantity: ${damagedQty} ${uom}`,
+      `QA Status: DAMAGED`,
+      `Inspection Status: DAMAGED`,
+      `Damaged Quantity: ${damagedQty} ${uom}`,
+      `Damage Reason: ${reasonText}`,
     ].join("\n");
   }
 
   function printSingleDamageQrLabel(entry: DamageQrEntry) {
-    const win = window.open("", "_blank", "width=650,height=750");
+    const win = window.open("", "_blank", "width=500,height=550");
     if (!win) {
       toast.error("Please allow popups to print label");
       return;
@@ -1228,34 +1417,19 @@ function GrnPageWorkflow() {
         <head>
           <title>WMS Quarantine & Damage QR Label - ${entry.damage_lot_number}</title>
           <style>
-            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #fff1f2; }
-            .card { border: 3px solid #be123c; border-radius: 16px; padding: 24px; max-width: 440px; margin: 0 auto; background: #ffffff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-            img { width: 220px; height: 220px; margin: 12px auto; display: block; }
-            h2 { margin: 6px 0; font-size: 20px; color: #9f1239; font-weight: 800; }
+            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #fff; }
+            .card { border: 3px solid #be123c; border-radius: 16px; padding: 24px; max-width: 380px; margin: 0 auto; background: #ffffff; }
+            img { width: 260px; height: 260px; margin: 16px auto; display: block; }
+            h2 { margin: 8px 0 0; font-size: 18px; color: #9f1239; font-weight: 800; word-break: break-all; }
             .header-tag { font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #be123c; background: #ffe4e6; padding: 6px; border-radius: 8px; border: 1px solid #fecdd3; }
-            .details { text-align: left; font-size: 12px; margin-top: 16px; border-top: 2px dashed #f43f5e; padding-top: 12px; line-height: 1.6; color: #1e293b; }
-            .details div { margin-bottom: 3px; }
-            .badge { display: inline-block; background: #ffe4e6; color: #9f1239; font-weight: bold; padding: 3px 10px; border-radius: 12px; font-size: 11px; border: 1px solid #fda4af; }
+            @media print { body { padding: 0; } .card { box-shadow: none; } }
           </style>
         </head>
         <body>
           <div class="card">
             <div class="header-tag">⚠️ WMS QUARANTINE & DAMAGED GOODS LABEL</div>
             <h2>${entry.damage_lot_number}</h2>
-            <p style="margin:2px 0 8px;font-size:12px;font-weight:bold;color:#be123c;">QR ID: ${entry.qr_code}</p>
-            ${entry.qr_data_url ? `<img src="${entry.qr_data_url}" alt="Damage QR Code" />` : '<div style="height:220px;line-height:220px;font-weight:bold;">GENERATING QR...</div>'}
-            <div class="details">
-              <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-              <div><strong>PO Reference:</strong> ${header.po_number}</div>
-              <div><strong>Supplier Name:</strong> ${header.supplier_name}</div>
-              <div><strong>Material Code:</strong> ${entry.item_code}</div>
-              <div><strong>Material Name:</strong> ${entry.material_name}</div>
-              <div><strong>Damaged Qty:</strong> ${entry.damaged_quantity} ${entry.uom}</div>
-              <div><strong>Damage Reason:</strong> ${entry.reason}</div>
-              <div><strong>QA Status:</strong> ${entry.qa_status}</div>
-              <div><strong>Quarantine Loc:</strong> ${entry.quarantine_location}</div>
-              <div style="margin-top:6px;"><span class="badge">STATUS: DAMAGED / QUARANTINE</span></div>
-            </div>
+            ${entry.qr_data_url ? `<img src="${entry.qr_data_url}" alt="Damage QR Code" />` : '<div style="height:260px;line-height:260px;font-weight:bold;">GENERATING QR...</div>'}
           </div>
           <script>
             window.onload = () => { window.focus(); window.print(); };
@@ -1279,17 +1453,7 @@ function GrnPageWorkflow() {
         <div class="card">
           <div class="header">⚠️ QUARANTINE & DAMAGED GOODS LABEL</div>
           <h2>${entry.damage_lot_number}</h2>
-          <p style="margin:2px 0;font-size:11px;font-weight:bold;color:#be123c;">QR ID: ${entry.qr_code}</p>
-          ${entry.qr_data_url ? `<img src="${entry.qr_data_url}" alt="Damage QR Code" />` : `<div style="height:180px;line-height:180px;font-weight:bold;">QR CODE</div>`}
-          <div class="details">
-            <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-            <div><strong>PO Reference:</strong> ${header.po_number}</div>
-            <div><strong>Material Code:</strong> ${entry.item_code} (${entry.material_name})</div>
-            <div><strong>Damaged Qty:</strong> ${entry.damaged_quantity} ${entry.uom}</div>
-            <div><strong>Damage Reason:</strong> ${entry.reason}</div>
-            <div><strong>QA Status:</strong> ${entry.qa_status}</div>
-            <div><strong>Quarantine Loc:</strong> ${entry.quarantine_location}</div>
-          </div>
+          ${entry.qr_data_url ? `<img src="${entry.qr_data_url}" alt="Damage QR Code" />` : `<div style="height:220px;line-height:220px;font-weight:bold;">QR CODE</div>`}
         </div>
       `;
     }
@@ -1301,12 +1465,11 @@ function GrnPageWorkflow() {
           <title>WMS Damaged Goods QR Labels - ${header.grn_number}</title>
           <style>
             body { font-family: monospace, sans-serif; padding: 20px; background: #fff; text-align: center; }
-            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-            .card { border: 2px solid #be123c; border-radius: 12px; padding: 14px; break-inside: avoid; background: #fff1f2; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+            .card { border: 2px solid #be123c; border-radius: 12px; padding: 16px; break-inside: avoid; background: #fff; text-align: center; }
             .header { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #be123c; border-bottom: 1px solid #fda4af; padding-bottom: 4px; }
-            h2 { margin: 6px 0 2px; font-size: 18px; color: #9f1239; }
-            img { width: 180px; height: 180px; margin: 6px auto; display: block; }
-            .details { text-align: left; font-size: 11px; margin-top: 8px; border-top: 1px dashed #be123c; padding-top: 6px; line-height: 1.5; }
+            h2 { margin: 8px 0 4px; font-size: 16px; color: #9f1239; word-break: break-all; }
+            img { width: 220px; height: 220px; margin: 10px auto; display: block; }
             @media print { body { padding: 0; } .card { margin-bottom: 12px; } }
           </style>
         </head>
@@ -1590,16 +1753,23 @@ function GrnPageWorkflow() {
     const inspectionStatus = (dmgQty > 0 || rejQty > 0) ? "PARTIAL" : "COMPLETED";
 
     return [
+      `PO Number: ${header.po_number || ""}`,
+      `GRN Number: ${header.grn_number || ""}`,
+      `Supplier: ${header.supplier_name || header.supplier_company_name || ""}`,
+      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
+      `Dock: ${header.receiving_dock || "DOCK-01"}`,
+      `Vehicle: ${header.vehicle_number || ""}`,
+      `Driver: ${header.driver_name || ""}`,
       `Material Code: ${itemCode}`,
       `Material Name: ${mat?.material_name || itemCode}`,
       `Material Category: ${category}`,
       `Material Variant Code: ${variantInfo.variant_code}`,
-      `Batch: ${b.batch_number}`,
+      `Batch Number: ${b.batch_number}`,
       `Size: ${variantInfo.size}`,
       `Color: ${variantInfo.color}`,
-      `Warehouse: ${header.warehouse_name || "Main Warehouse"}`,
       `Grade: ${variantInfo.grade}`,
       `UOM: ${uom}`,
+      `QA Status: ACCEPTED`,
       `Inspection Status: ${inspectionStatus}`,
       `Batch Quantity: ${batchQty} ${uom}`,
     ].join("\n");
@@ -1626,9 +1796,7 @@ function GrnPageWorkflow() {
   }
 
   function printSingleQrLabel(batchNumber: string, itemCode: string, qrId: string, dataUrl: string) {
-    const mat = materials.find((m) => m.item_code === itemCode);
-    const b = (materialBatches[itemCode] || []).find((b) => b.batch_number === batchNumber);
-    const win = window.open("", "_blank", "width=650,height=750");
+    const win = window.open("", "_blank", "width=500,height=550");
     if (!win) {
       toast.error("Please allow popups to print label");
       return;
@@ -1639,36 +1807,19 @@ function GrnPageWorkflow() {
         <head>
           <title>GRN Batch QR Label - ${batchNumber}</title>
           <style>
-            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #f8fafc; }
-            .card { border: 2px solid #0f172a; border-radius: 16px; padding: 24px; max-width: 440px; margin: 0 auto; background: #ffffff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-            img { width: 220px; height: 220px; margin: 12px auto; display: block; }
-            h2 { margin: 6px 0; font-size: 22px; color: #0f172a; font-weight: 800; }
+            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #fff; }
+            .card { border: 2px solid #0f172a; border-radius: 16px; padding: 24px; max-width: 380px; margin: 0 auto; background: #ffffff; }
+            img { width: 260px; height: 260px; margin: 16px auto; display: block; }
+            h2 { margin: 8px 0 0; font-size: 20px; color: #0f172a; font-weight: 800; word-break: break-all; }
             .header-tag { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-            .details { text-align: left; font-size: 12px; margin-top: 16px; border-top: 2px dashed #94a3b8; padding-top: 12px; line-height: 1.6; color: #1e293b; }
-            .details div { margin-bottom: 3px; }
-            .badge { display: inline-block; background: #dcfce7; color: #166534; font-weight: bold; padding: 2px 8px; border-radius: 12px; font-size: 10px; border: 1px solid #86efac; }
+            @media print { body { padding: 0; } .card { box-shadow: none; } }
           </style>
         </head>
         <body>
           <div class="card">
             <div class="header-tag">WMS GOODS RECEIVING BATCH LABEL</div>
             <h2>${batchNumber}</h2>
-            <p style="margin:2px 0 8px;font-size:12px;font-weight:bold;color:#2563eb;">QR ID: ${qrId}</p>
-            ${dataUrl ? `<img src="${dataUrl}" alt="Material QR Code" />` : '<div style="height:220px;line-height:220px;font-weight:bold;">GENERATING QR...</div>'}
-            <div class="details">
-              <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-              <div><strong>PO Reference:</strong> ${header.po_number}</div>
-              <div><strong>Supplier Name:</strong> ${header.supplier_name} (${header.supplier_company_name})</div>
-              <div><strong>Warehouse / Dock:</strong> ${header.warehouse_name} / ${header.receiving_dock}</div>
-              <div><strong>ASN / Gate Entry:</strong> ${header.asn_number} / ${header.gate_entry_number}</div>
-              <div><strong>Vehicle / Driver:</strong> ${header.vehicle_number} / ${header.driver_name}</div>
-              <div><strong>Material Code:</strong> ${itemCode}</div>
-              <div><strong>Material Name:</strong> ${mat?.material_name || itemCode}</div>
-              <div><strong>Category:</strong> ${mat?.material_category || "Raw Materials"}</div>
-              <div><strong>Batch Quantity:</strong> ${b?.batch_quantity || 0} ${mat?.uom || "PCS"}</div>
-              <div><strong>Received By:</strong> ${header.received_by || "System User"}</div>
-              <div style="margin-top:6px;"><span class="badge">QUALITY APPROVED & VERIFIED</span></div>
-            </div>
+            ${dataUrl ? `<img src="${dataUrl}" alt="Material QR Code" />` : '<div style="height:260px;line-height:260px;font-weight:bold;">GENERATING QR...</div>'}
           </div>
           <script>
             window.onload = () => { window.focus(); window.print(); };
@@ -1693,24 +1844,13 @@ function GrnPageWorkflow() {
     let labelsHtml = "";
     for (const m of filteredMaterials) {
       const bList = materialBatches[m.item_code] || [];
-      const qrInfo = qrLabels[m.item_code] || { qr_id: `QR-MAT-${m.item_code}`, data_url: "" };
+      const qrInfo = qrLabels[m.item_code] || { qr_id: m.item_code.startsWith("MAT-") ? `QR-${m.item_code}` : `QR-MAT-${m.item_code}`, data_url: "" };
       for (const b of bList) {
         labelsHtml += `
           <div class="card">
             <div class="header">WMS GOODS RECEIVING BATCH LABEL</div>
             <h2>${b.batch_number}</h2>
-            <p style="margin:2px 0;font-size:11px;font-weight:bold;color:#2563eb;">QR ID: ${qrInfo.qr_id}</p>
-            ${qrInfo.data_url ? `<img src="${qrInfo.data_url}" alt="Material QR Code" />` : `<div style="height:180px;line-height:180px;font-weight:bold;">QR CODE</div>`}
-            <div class="details">
-              <div><strong>GRN Number:</strong> ${header.grn_number}</div>
-              <div><strong>PO Reference:</strong> ${header.po_number}</div>
-              <div><strong>Supplier Name:</strong> ${header.supplier_name}</div>
-              <div><strong>Warehouse / Dock:</strong> ${header.warehouse_name} / ${header.receiving_dock}</div>
-              <div><strong>Material Code:</strong> ${m.item_code} (${m.material_name})</div>
-              <div><strong>Category:</strong> ${m.material_category || "Raw Materials"}</div>
-              <div><strong>Batch Quantity:</strong> ${b.batch_quantity} ${m.uom || "PCS"}</div>
-              <div><strong>Status:</strong> APPROVED & VERIFIED</div>
-            </div>
+            ${qrInfo.data_url ? `<img src="${qrInfo.data_url}" alt="Material QR Code" />` : `<div style="height:220px;line-height:220px;font-weight:bold;">QR CODE</div>`}
           </div>
         `;
       }
@@ -1723,12 +1863,11 @@ function GrnPageWorkflow() {
           <title>GRN Batch QR Labels - ${header.grn_number}</title>
           <style>
             body { font-family: monospace, sans-serif; padding: 20px; background: #fff; text-align: center; }
-            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
-            .card { border: 2px solid #000; border-radius: 12px; padding: 14px; break-inside: avoid; background: #fff; }
+            .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+            .card { border: 2px solid #000; border-radius: 12px; padding: 16px; break-inside: avoid; background: #fff; text-align: center; }
             .header { font-size: 11px; font-weight: bold; text-transform: uppercase; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-            h2 { margin: 6px 0 2px; font-size: 18px; color: #000; }
-            img { width: 180px; height: 180px; margin: 6px auto; display: block; }
-            .details { text-align: left; font-size: 11px; margin-top: 8px; border-top: 1px dashed #444; padding-top: 6px; line-height: 1.5; }
+            h2 { margin: 8px 0 4px; font-size: 16px; color: #000; word-break: break-all; }
+            img { width: 220px; height: 220px; margin: 10px auto; display: block; }
             @media print { body { padding: 0; } .card { margin-bottom: 12px; } }
           </style>
         </head>
@@ -1765,16 +1904,13 @@ function GrnPageWorkflow() {
     statusText?: string;
     damageReason?: string;
   }) {
-    const win = window.open("", "_blank", "width=650,height=750");
+    const win = window.open("", "_blank", "width=500,height=550");
     if (!win) {
       toast.error("Please allow popups to print label");
       return;
     }
     const isQuarantine = label.type === "QUARANTINE";
     const headerTag = isQuarantine ? "WMS QUARANTINE DAMAGE LOT LABEL" : label.type === "TEMPLATE" ? "WMS MATERIAL MASTER TEMPLATE LABEL" : "WMS GOODS RECEIVING BATCH LABEL";
-    const statusBadge = isQuarantine
-      ? `<span class="badge" style="background:#ffe4e6;color:#9f1239;border-color:#fecdd3;">QUARANTINE - REJECTED/DAMAGED</span>`
-      : `<span class="badge" style="background:#dcfce7;color:#166534;border-color:#86efac;">QUALITY APPROVED & VERIFIED</span>`;
 
     win.document.write(`
       <!DOCTYPE html>
@@ -1782,35 +1918,19 @@ function GrnPageWorkflow() {
         <head>
           <title>${headerTag} - ${label.title}</title>
           <style>
-            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #f8fafc; }
-            .card { border: 2px solid ${isQuarantine ? '#e11d48' : '#0f172a'}; border-radius: 16px; padding: 24px; max-width: 440px; margin: 0 auto; background: #ffffff; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
-            img { width: 220px; height: 220px; margin: 12px auto; display: block; }
-            h2 { margin: 6px 0; font-size: 20px; color: ${isQuarantine ? '#be123c' : '#0f172a'}; font-weight: 800; word-break: break-all; }
+            body { font-family: 'Courier New', monospace, sans-serif; padding: 20px; text-align: center; background: #fff; }
+            .card { border: 2px solid ${isQuarantine ? '#e11d48' : '#0f172a'}; border-radius: 16px; padding: 24px; max-width: 380px; margin: 0 auto; background: #ffffff; }
+            img { width: 260px; height: 260px; margin: 16px auto; display: block; }
+            h2 { margin: 8px 0 0; font-size: 20px; color: ${isQuarantine ? '#be123c' : '#0f172a'}; font-weight: 800; word-break: break-all; }
             .header-tag { font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #475569; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; }
-            .details { text-align: left; font-size: 12px; margin-top: 16px; border-top: 2px dashed #94a3b8; padding-top: 12px; line-height: 1.6; color: #1e293b; }
-            .details div { margin-bottom: 3px; }
-            .badge { display: inline-block; font-weight: bold; padding: 2px 8px; border-radius: 12px; font-size: 10px; border: 1px solid; }
+            @media print { body { padding: 0; } .card { box-shadow: none; } }
           </style>
         </head>
         <body>
           <div class="card">
             <div class="header-tag">${headerTag}</div>
             <h2>${label.title}</h2>
-            <p style="margin:2px 0 8px;font-size:12px;font-weight:bold;color:${isQuarantine ? '#e11d48' : '#2563eb'};">QR ID: ${label.qrId}</p>
-            ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : '<div style="height:220px;line-height:220px;font-weight:bold;">GENERATING QR...</div>'}
-            <div class="details">
-              ${label.grnNumber ? `<div><strong>GRN Number:</strong> ${label.grnNumber}</div>` : ''}
-              ${label.poNumber ? `<div><strong>PO Reference:</strong> ${label.poNumber}</div>` : ''}
-              ${label.supplierName ? `<div><strong>Supplier Name:</strong> ${label.supplierName}</div>` : ''}
-              <div><strong>Material Code:</strong> ${label.materialCode}</div>
-              <div><strong>Material Name:</strong> ${label.materialName}</div>
-              <div><strong>Category:</strong> ${label.category || "Raw Materials"}</div>
-              ${label.quantity !== undefined ? `<div><strong>Quantity:</strong> ${label.quantity} ${label.uom || "PCS"}</div>` : ''}
-              ${label.damageReason ? `<div><strong>Damage Reason:</strong> ${label.damageReason}</div>` : ''}
-              ${label.size ? `<div><strong>Standard Size:</strong> ${label.size}</div>` : ''}
-              ${label.grade ? `<div><strong>Standard Grade:</strong> ${label.grade}</div>` : ''}
-              <div style="margin-top:6px;">${statusBadge}</div>
-            </div>
+            ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : '<div style="height:260px;line-height:260px;font-weight:bold;">GENERATING QR...</div>'}
           </div>
           <script>
             window.onload = () => { window.focus(); window.print(); };
@@ -1852,15 +1972,7 @@ function GrnPageWorkflow() {
         <div class="card" style="${isQuarantine ? 'border-color:#e11d48;' : ''}">
           <div class="header" style="${isQuarantine ? 'color:#e11d48;' : ''}">${isQuarantine ? 'QUARANTINE DAMAGE LOT LABEL' : 'WMS GOODS RECEIVING LABEL'}</div>
           <h2>${label.title}</h2>
-          <p style="margin:2px 0;font-size:11px;font-weight:bold;color:${isQuarantine ? '#e11d48' : '#2563eb'};">QR ID: ${label.qrId}</p>
-          ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : `<div style="height:160px;line-height:160px;font-weight:bold;">QR CODE</div>`}
-          <div class="details">
-            ${label.grnNumber ? `<div><strong>GRN:</strong> ${label.grnNumber}</div>` : ''}
-            ${label.poNumber ? `<div><strong>PO:</strong> ${label.poNumber}</div>` : ''}
-            <div><strong>Item:</strong> ${label.materialCode} (${label.materialName})</div>
-            <div><strong>Category:</strong> ${label.category || "Raw Materials"}</div>
-            ${label.quantity !== undefined ? `<div><strong>Qty:</strong> ${label.quantity} ${label.uom || "PCS"}</div>` : ''}
-          </div>
+          ${label.dataUrl ? `<img src="${label.dataUrl}" alt="Material QR Code" />` : `<div style="height:220px;line-height:220px;font-weight:bold;">QR CODE</div>`}
         </div>
       `;
     }
@@ -1873,11 +1985,10 @@ function GrnPageWorkflow() {
           <style>
             body { font-family: monospace, sans-serif; padding: 20px; background: #fff; text-align: center; }
             .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-            .card { border: 2px solid #000; border-radius: 12px; padding: 14px; break-inside: avoid; background: #fff; text-align: center; }
+            .card { border: 2px solid #000; border-radius: 12px; padding: 16px; break-inside: avoid; background: #fff; text-align: center; }
             .header { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #555; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-            h2 { margin: 6px 0 2px; font-size: 16px; color: #000; word-break: break-all; }
-            img { width: 160px; height: 160px; margin: 6px auto; display: block; }
-            .details { text-align: left; font-size: 11px; margin-top: 8px; border-top: 1px dashed #444; padding-top: 6px; line-height: 1.4; }
+            h2 { margin: 8px 0 4px; font-size: 16px; color: #000; word-break: break-all; }
+            img { width: 220px; height: 220px; margin: 10px auto; display: block; }
             @media print { body { padding: 0; } .card { margin-bottom: 12px; } }
           </style>
         </head>
@@ -2262,7 +2373,7 @@ function GrnPageWorkflow() {
               margin: 2,
               width: 500,
               errorCorrectionLevel: "M",
-              color: { dark: "#9f1239", light: "#ffffff" },
+              color: { dark: "#000000", light: "#ffffff" },
             });
           } catch (e) {
             console.error("Damage QR generation error:", e);
@@ -2276,7 +2387,7 @@ function GrnPageWorkflow() {
             damaged_quantity: qty,
             uom: m.uom || "PCS",
             reason: reasonText,
-            qa_status: m.quality_result || "REJECTED",
+            qa_status: "REJECTED / DAMAGED",
             quarantine_location: "QUARANTINE-ZONE-A",
             status: "DAMAGED",
             qr_id: `dmg_qr_${m.item_code}`,
@@ -2380,7 +2491,6 @@ function GrnPageWorkflow() {
               delta={grnRecords.length > 0 ? "All recorded entries" : "No receipts yet"}
               icon={ClipboardList}
               tone="primary"
-              to="/grn"
             />
             <StatCard
               label="Fully completed"
@@ -2388,7 +2498,6 @@ function GrnPageWorkflow() {
               delta={grnRecords.length > 0 ? "100% sound lines posted" : "0 completed"}
               icon={CheckCircle2}
               tone="success"
-              to="/grn"
             />
             <StatCard
               label="Partially completed"
@@ -2396,7 +2505,6 @@ function GrnPageWorkflow() {
               delta={grnRecords.length > 0 ? "Pending balance receipts" : "0 pending"}
               icon={Clock3}
               tone="warning"
-              to="/grn"
             />
             <StatCard
               label="Quarantine lots"
@@ -2404,7 +2512,6 @@ function GrnPageWorkflow() {
               delta={totalQuarantineLots > 0 ? "Zone A · Damage QR" : "0 quarantine lots"}
               icon={AlertTriangle}
               tone="danger"
-              to="/grn"
             />
           </div>
 
@@ -2414,7 +2521,6 @@ function GrnPageWorkflow() {
             <div className="space-y-6 lg:col-span-2">
               <SectionCard
                 title="Inbound Goods Receipts"
-                description="Recent PO receipts, batch allocations, and inspection statuses"
                 icon={ClipboardList}
                 actions={
                   <div className="flex items-center gap-1.5 sm:gap-2">
@@ -2820,38 +2926,6 @@ function GrnPageWorkflow() {
             </div>
           </Card>
 
-          {/* PAGE TITLE BANNER WITH AUTO-SAVE & EXIT */}
-          <div className="rounded-2xl border bg-gradient-to-r from-primary/10 via-background to-muted p-4 flex flex-wrap items-center justify-between gap-3 shadow-xs">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                  {PAGES[currentPage - 1]?.title}
-                </span>
-                {grnId && (
-                  <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-primary/15 text-primary">
-                    {header.grn_number || grnId}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{PAGES[currentPage - 1]?.subtitle}</p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
-                Step {currentPage} of 6
-              </span>
-
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="rounded-xl text-xs font-semibold h-8"
-                onClick={() => setShowExitConfirmModal(true)}
-              >
-                Exit Entry
-              </Button>
-            </div>
-          </div>
 
           {/* PAGE 1 – GRN HEADER DETAILS */}
           {currentPage === 1 && (
@@ -3018,26 +3092,46 @@ function GrnPageWorkflow() {
 
                   {/* 7. Receiving Dock */}
                   <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
-                    <label className="text-[11px] font-bold uppercase text-primary block mb-1">7. Receiving Dock *</label>
+                    <label className="text-[11px] font-bold uppercase text-primary block mb-1">
+                      7. Receiving Dock *
+                    </label>
                     <select
                       value={header.receiving_dock}
                       onChange={(e) => setHeader({ ...header, receiving_dock: e.target.value })}
-                      className="w-full rounded-lg border bg-background px-3 py-1.5 text-sm font-bold"
+                      className="w-full rounded-lg border bg-background px-3 py-2 text-sm font-bold text-foreground focus:ring-2 focus:ring-primary/40"
                     >
                       {dockOptions.length > 0 ? (
-                        dockOptions.map((d: any, idx: number) => (
-                          <option key={d.dock_number || d.id || `dock_${idx}`} value={d.dock_number}>
-                            Dock {d.dock_number} ({d.dock_type || "Standard"})
-                          </option>
-                        ))
+                        dockOptions.map((d: any, idx: number) => {
+                          const isAllocatedToCurrent =
+                            (header.vehicle_number && d.allocated_vehicle && d.allocated_vehicle.toLowerCase() === header.vehicle_number.toLowerCase()) ||
+                            (header.gate_entry_number && d.allocated_gate_pass && d.allocated_gate_pass.toLowerCase() === header.gate_entry_number.toLowerCase());
+
+                          const statusLabel = isAllocatedToCurrent
+                            ? "⭐ Allocated to this shipment"
+                            : d.allocated_vehicle
+                              ? `Occupied: ${d.allocated_vehicle}`
+                              : d.status || "Available";
+
+                          return (
+                            <option key={d.dock_number || d.id || `dock_${idx}`} value={d.dock_number}>
+                              {d.dock_number} — {d.dock_name || d.dock_type || "Bay"} ({statusLabel})
+                            </option>
+                          );
+                        })
                       ) : (
                         <>
-                          <option value="DOCK-02">DOCK-02 (Selected)</option>
-                          <option value="DOCK-01">DOCK-01 (Standard)</option>
-                          <option value="DOCK-03">DOCK-03 (Cold Bay)</option>
+                          <option value="DOCK-01">DOCK-01 (Standard Receiving)</option>
+                          <option value="DOCK-02">DOCK-02 (Heavy Unloading)</option>
+                          <option value="DOCK-03">DOCK-03 (Cold Bay / Quarantine)</option>
                         </>
                       )}
                     </select>
+                    {header.receiving_dock && (
+                      <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1 font-medium">
+                        <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+                        Selected Receiving Dock: <b className="text-foreground font-mono">{header.receiving_dock}</b>
+                      </p>
+                    )}
                   </div>
 
                   {/* 8. GRN Number */}
@@ -3420,7 +3514,7 @@ function GrnPageWorkflow() {
             <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
               <div className="border-b pb-4">
                 <h3 className="font-bold text-foreground text-base">
-                  Page 3: Quality Inspection & Damage Breakdown
+                  Quality Inspection & Damage Breakdown
                 </h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Inspect physically received materials into Accepted (Good) and Damaged quantities, then record photo evidence for damaged goods.
@@ -3591,12 +3685,14 @@ function GrnPageWorkflow() {
                                 lineId={m.grn_line_id}
                                 damagedQuantity={m.damaged_quantity}
                                 reason={m.damage_reason}
+                                existingPhotos={damagePhotos[m.item_code]?.photos || []}
                                 onSuccess={(ev) => {
                                   setDamagePhotos((prev) => ({
                                     ...prev,
                                     [m.item_code]: {
                                       evidenceId: ev.evidenceId,
-                                      evidenceIds: [ev.evidenceId],
+                                      evidenceIds: ev.evidenceIds,
+                                      photos: ev.photos,
                                       reason: m.damage_reason,
                                       previewUrl: ev.filePath,
                                       file: ev.file,
@@ -3628,7 +3724,7 @@ function GrnPageWorkflow() {
           {currentPage === 4 && (
             <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
               <div className="border-b pb-4">
-                <h3 className="font-bold text-foreground text-base">Page 4: Lot & Batch Creation</h3>
+                <h3 className="font-bold text-foreground text-base">Lot & Batch Creation</h3>
                 <p className="text-xs text-muted-foreground">
                   Divide Quality-Approved materials into batches. <b>Rule: Total Batch Quantity MUST equal Quality-Approved Quantity.</b>
                 </p>
@@ -3748,16 +3844,7 @@ function GrnPageWorkflow() {
               <div className="flex flex-wrap items-center justify-between border-b pb-4 gap-3">
                 <div>
                   <h3 className="font-bold text-foreground text-base flex items-center gap-2">
-                    <span>Page 5: Inbound Goods Document Repository</span>
-                    {header.receipt_type === "PO_RECEIPT" ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 border border-rose-300">
-                        PO Document Compulsory *
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300">
-                        PO Document Optional (Unexpected Delivery)
-                      </span>
-                    )}
+                    <span>Inbound Goods Document Repository</span>
                   </h3>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {header.receipt_type === "PO_RECEIPT" ? (
@@ -3881,7 +3968,6 @@ function GrnPageWorkflow() {
                   <thead className="bg-muted/60 text-muted-foreground uppercase font-mono border-b">
                     <tr>
                       <th className="px-4 py-3">Document Category / Name</th>
-                      <th className="px-4 py-3">Requirement</th>
                       <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Attached File</th>
                       <th className="px-4 py-3 text-right">Actions</th>
@@ -3909,11 +3995,6 @@ function GrnPageWorkflow() {
                                 </span>
                               </div>
                             </div>
-                          </td>
-                          <td className="px-4 py-3.5">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-800 border border-rose-300">
-                              COMPULSORY *
-                            </span>
                           </td>
                           <td className="px-4 py-3.5">
                             {poDoc ? (
@@ -4007,11 +4088,6 @@ function GrnPageWorkflow() {
                             </div>
                           </td>
                           <td className="px-4 py-3.5">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                              OPTIONAL
-                            </span>
-                          </td>
-                          <td className="px-4 py-3.5">
                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 w-fit">
                               ATTACHED ✓
                             </span>
@@ -4063,7 +4139,7 @@ function GrnPageWorkflow() {
           {currentPage === 6 && (
             <Card className="rounded-2xl p-6 space-y-6 shadow-sm">
               <div className="border-b pb-4">
-                <h3 className="font-bold text-foreground text-base">Page 6: Batch-wise QR Code Generation</h3>
+                <h3 className="font-bold text-foreground text-base">Batch-wise QR Code Generation</h3>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/20 p-4 rounded-xl border">
@@ -4144,21 +4220,16 @@ function GrnPageWorkflow() {
                         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                           {bList.map((b, idx) => {
                             const qrInfo = qrLabels[mat.item_code] || {
-                              qr_id: `QR-MAT-${mat.item_code}`,
+                              qr_id: mat.item_code.startsWith("MAT-") ? `QR-${mat.item_code}` : `QR-MAT-${mat.item_code}`,
                               data_url: "",
                               payload: buildMaterialQrPayload(mat.item_code),
                             };
 
                             return (
                               <Card key={b.batch_number} className="rounded-2xl p-5 border text-center space-y-3 bg-white text-black shadow-md relative overflow-hidden group">
-                                <div className="border-b pb-2 flex items-center justify-between">
-                                  <div>
-                                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">GRN Batch Label</span>
-                                    <h4 className="font-mono text-base font-bold text-gray-900">{b.batch_number}</h4>
-                                  </div>
-                                  <span className="text-[11px] font-mono font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200">
-                                    {qrInfo.qr_id}
-                                  </span>
+                                <div className="border-b pb-2 text-left">
+                                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">GRN Batch Label</span>
+                                  <h4 className="font-mono text-base font-bold text-gray-900">{b.batch_number}</h4>
                                 </div>
 
                                 <div
@@ -4277,14 +4348,9 @@ function GrnPageWorkflow() {
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {damageQrLabels.map((dEntry) => (
                       <Card key={dEntry.damage_lot_number} className="rounded-2xl p-5 border-2 border-rose-300 dark:border-rose-800 text-center space-y-3 bg-rose-50/20 dark:bg-rose-950/20 text-foreground shadow-md relative overflow-hidden group">
-                        <div className="border-b border-rose-200 dark:border-rose-900 pb-2 flex items-center justify-between">
-                          <div className="text-left">
-                            <span className="text-[10px] font-extrabold uppercase tracking-widest text-rose-700 dark:text-rose-400">Damage Lot QR</span>
-                            <h4 className="font-mono text-sm font-bold text-rose-950 dark:text-rose-100">{dEntry.damage_lot_number}</h4>
-                          </div>
-                          <span className="text-[11px] font-mono font-bold text-rose-700 bg-rose-100 dark:bg-rose-900/60 dark:text-rose-200 px-2.5 py-0.5 rounded-full border border-rose-300">
-                            {dEntry.qr_code}
-                          </span>
+                        <div className="border-b border-rose-200 dark:border-rose-900 pb-2 text-left">
+                          <span className="text-[10px] font-extrabold uppercase tracking-widest text-rose-700 dark:text-rose-400">Damage Lot QR</span>
+                          <h4 className="font-mono text-sm font-bold text-rose-950 dark:text-rose-100">{dEntry.damage_lot_number}</h4>
                         </div>
 
                         <div
@@ -4321,7 +4387,7 @@ function GrnPageWorkflow() {
                           <p><b>Material:</b> {dEntry.item_code} ({dEntry.material_name})</p>
                           <p><b>Damaged Qty:</b> <b className="text-rose-600 dark:text-rose-400">{dEntry.damaged_quantity} {dEntry.uom}</b></p>
                           <p><b>Reason:</b> {dEntry.reason}</p>
-                          <p><b>QA Status:</b> <span className="bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200 px-1.5 py-0.5 rounded text-[10px] font-bold">{dEntry.qa_status}</span></p>
+                          <p><b>QA Status:</b> <span className="bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-200 px-1.5 py-0.5 rounded text-[10px] font-bold">DAMAGED</span></p>
                           <p><b>Quarantine Location:</b> <span className="text-amber-700 dark:text-amber-400 font-bold">{dEntry.quarantine_location}</span></p>
                         </div>
 
@@ -4349,16 +4415,6 @@ function GrnPageWorkflow() {
                             onClick={() => printSingleDamageQrLabel(dEntry)}
                           >
                             <Printer className="mr-1 size-3" /> Print Label
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="col-span-2 w-full rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
-                            onClick={() => {
-                              setNotifyVendorEmail(header.supplier_email || "");
-                              setShowNotifyVendorModal(true);
-                            }}
-                          >
-                            <Mail className="mr-1.5 size-3" /> Email Damage Report to Vendor ({header.supplier_name})
                           </Button>
                         </div>
                       </Card>

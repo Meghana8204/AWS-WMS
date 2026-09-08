@@ -203,7 +203,7 @@ export function DockManagement() {
         api.getDockOverviewMetrics().catch(() => null),
         api.getPendingAllocations().catch(() => []),
         api.getDockHistory().catch(() => []),
-        api.getDockTypes(),
+        api.getDockTypes().catch(() => []),
       ]);
 
       setDocks(docksRes);

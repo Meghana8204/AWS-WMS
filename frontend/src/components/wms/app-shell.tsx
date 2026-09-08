@@ -144,13 +144,18 @@ export function AppShell({
               : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
-            if (role === "WAREHOUSE") {
-              const data = await api.getArrivalNotifications();
-              setUnreadNotifications(
-                Array.isArray(data)
-                  ? data.filter((n) => String(n?.status || "").toUpperCase() !== "ACKNOWLEDGED").length
-                  : 0,
-              );
+            if (role === "WAREHOUSE" || role === "GRN" || isGrnUser) {
+              const [arrivals, general] = await Promise.all([
+                api.getArrivalNotifications().catch(() => []),
+                api.getNotifications("GRN").catch(() => []),
+              ]);
+              const unreadArrivals = Array.isArray(arrivals)
+                ? arrivals.filter((n) => String(n?.status || "").toUpperCase() !== "ACKNOWLEDGED").length
+                : 0;
+              const unreadGeneral = Array.isArray(general)
+                ? general.filter((n) => !(n?.is_read ?? n?.isRead)).length
+                : 0;
+              setUnreadNotifications(unreadArrivals + unreadGeneral);
             } else {
               const data = await api.getNotifications(role);
               setUnreadNotifications(
