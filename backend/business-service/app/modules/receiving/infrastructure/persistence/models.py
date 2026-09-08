@@ -1,3 +1,25 @@
+﻿"""
+SQLAlchemy ORM models for the Goods Receiving / GRN module.
+
+Workflow:
+Purchase Order
+    -> GRN Header
+    -> GRN Lines
+    -> Damage Evidence
+    -> Quality Inspection
+    -> Batch Creation
+    -> Document Upload
+    -> Batch-wise QR Generation
+    -> Inventory Receipt Posting
+
+Important business rules:
+1. One PO -> One GRN
+2. Receiving Dock is manually selected in the GRN module
+3. Partial receipt updates the same GRN
+4. Each GRN can contain multiple material lines
+5. Each GRN line can have multiple damage evidences
+6. Each GRN line can have multiple batches
+7. One Batch -> One QR Code
 """
 SQLAlchemy ORM models for the Goods Receiving / GRN module.
 
@@ -302,6 +324,21 @@ class GrnModel(Base):
         back_populates="grn",
         cascade="all, delete-orphan",
     )
+
+    documents: Mapped[list["GrnDocumentModel"]] = relationship(
+        back_populates="grn",
+        cascade="all, delete-orphan",
+    )
+
+    receiving_sessions: Mapped[list["GrnReceivingSessionModel"]] = relationship(
+        back_populates="grn",
+        cascade="all, delete-orphan",
+    )
+
+
+# ============================================================
+# 2. GRN ITEM / MATERIAL RECEIVING DETAILS
+# ============================================================
 
 
 # ============================================================

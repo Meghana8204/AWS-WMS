@@ -217,7 +217,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 supplier_company_name or entity.supplier_name or "—"
             ),
             warehouse_id=entity.warehouse_id,
-            warehouse_name=entity.delivery_warehouse_name or "Main Warehouse – Bangalore",
+            warehouse_name=entity.delivery_warehouse_name or "Main Warehouse",
             expected_delivery_date=entity.expected_delivery_date,
             lines=tuple(line_snapshots),
         )

@@ -46,6 +46,7 @@ def render_premium_email(
     note: str | None = None,
     custom_html: str | None = None,
     signoff: str = "NexusWMS Procurement Team",
+    **kwargs,
 ) -> str:
     """Build a responsive, email-client-safe branded transactional email."""
     detail_cells = list(details)

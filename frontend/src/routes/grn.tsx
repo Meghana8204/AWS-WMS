@@ -210,7 +210,7 @@ function GrnPageWorkflow() {
   const [enlargedQr, setEnlargedQr] = useState<{ title: string; qr_id: string; data_url: string; payload: string; batch: BatchEntry; itemCode: string } | null>(null);
   const [showQualityPassModal, setShowQualityPassModal] = useState(false);
   const [showNotifyVendorModal, setShowNotifyVendorModal] = useState(false);
-  const [notifyVendorEmail, setNotifyVendorEmail] = useState("spoorthiharakuni@gmail.com");
+  const [notifyVendorEmail, setNotifyVendorEmail] = useState("");
   const [notifyVendorRemarks, setNotifyVendorRemarks] = useState("");
   const [sendingVendorNotify, setSendingVendorNotify] = useState(false);
 
@@ -329,13 +329,13 @@ function GrnPageWorkflow() {
     try {
       const ctx = await api.getGrnContext(numToFetch);
       if (requestId !== contextRequest.current) return;
-      const supplierName = ctx.supplier_name || ctx.supplierName || "Supplier";
+      const supplierName = ctx.supplier_name || ctx.supplierName || "";
       const supplierComp = ctx.supplier_company_name || ctx.supplierCompanyName || supplierName;
-      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "spoorthiharakuni@gmail.com";
-      const asnNum = ctx.asn_number || ctx.asnNumber || ctx.asn?.asn_number || ctx.asn?.asnNumber || `ASN-${numToFetch}`;
-      const gateNum = ctx.gate_entry_number || ctx.gateEntryNumber || ctx.gate_entry?.gate_entry_number || ctx.gate_entry?.gateEntryNumber || `GE-${numToFetch}`;
-      const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || `KA01EQ${numToFetch.replace(/\D/g, "") || "1001"}`;
-      const driverName = ctx.driver_name || ctx.driverName || ctx.asn?.driver_name || ctx.asn?.driverName || ctx.gate_entry?.driver_name || ctx.gate_entry?.driverName || "Ramesh Kumar";
+      const supplierEmail = ctx.supplier_email || ctx.supplierEmail || ctx.supplier?.email || ctx.supplier?.contact?.primary_email || "";
+      const asnNum = ctx.asn_number || ctx.asnNumber || ctx.asn?.asn_number || ctx.asn?.asnNumber || "";
+      const gateNum = ctx.gate_entry_number || ctx.gateEntryNumber || ctx.gate_entry?.gate_entry_number || ctx.gate_entry?.gateEntryNumber || "";
+      const vehicleNum = ctx.vehicle_number || ctx.vehicleNumber || ctx.asn?.vehicle_number || ctx.asn?.vehicleNumber || ctx.gate_entry?.vehicle_number || ctx.gate_entry?.vehicleNumber || "";
+      const driverName = ctx.driver_name || ctx.driverName || ctx.asn?.driver_name || ctx.asn?.driverName || ctx.gate_entry?.driver_name || ctx.gate_entry?.driverName || "";
       const warehouseName = ctx.warehouse_name || ctx.warehouseName || "Main Warehouse";
       const prefilledDock = ctx.prefilled_dock_number || ctx.prefilledDockNumber || (ctx.dock_options && ctx.dock_options[0]?.dock_number) || "DOCK-01";
       const generatedGrnNum = ctx.grn_number || ctx.grnNumber || `GRN-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -357,6 +357,7 @@ function GrnPageWorkflow() {
         received_by: loggedInUserName,
       });
 
+      setDamagePhotos({});
       setGrnId(ctx.grn_id || ctx.grnId || null);
       if (ctx.dock_options && ctx.dock_options.length > 0) {
         setDockOptions(ctx.dock_options);
@@ -582,7 +583,7 @@ function GrnPageWorkflow() {
   const [damageQrLabels, setDamageQrLabels] = useState<DamageQrEntry[]>([]);
 
   function buildDamageQrPayload(m: GrnLineItem, reasonText: string) {
-    const lotNum = `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`;
+    const lotNum = `DMG-LOT-${header.grn_number || grnId || "GRN"}-${m.item_code}`;
     const damagedQty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
     const variantInfo = getMaterialVariantInfo(m.item_code, m.variant_code);
     const uom = m.uom || "BUNDLE";
@@ -1073,8 +1074,8 @@ function GrnPageWorkflow() {
       if (matchedDamageEntry) {
         setScanResultData({
           qr_id: matchedDamageEntry.qr_code,
-          grn_number: header.grn_number || "GRN-2026-0001",
-          po_number: header.po_number || "PO-2026-0001",
+          grn_number: header.grn_number || "",
+          po_number: header.po_number || "",
           material_code: matchedDamageEntry.item_code,
           material_name: matchedDamageEntry.material_name,
           variant_code: `${matchedDamageEntry.item_code}-V001`,
@@ -1082,10 +1083,10 @@ function GrnPageWorkflow() {
           color: "Standard",
           grade: "Standard Industrial Grade",
           uom: matchedDamageEntry.uom || "PCS",
-          supplier_code: "SUP-00001",
-          supplier_name: header.supplier_name || "Supplier",
+          supplier_code: "",
+          supplier_name: header.supplier_name || header.supplier_company_name || "",
           receipt_date: new Date().toLocaleDateString("en-GB"),
-          warehouse_name: header.warehouse_name || "Main Warehouse",
+          warehouse_name: header.warehouse_name || "",
           category: "Quarantine / Damaged Goods",
           batch_number: matchedDamageEntry.damage_lot_number,
           received_quantity: matchedDamageEntry.damaged_quantity,
@@ -1109,8 +1110,8 @@ function GrnPageWorkflow() {
         };
         setScanResultData({
           qr_id: `QR-MAT-${matchedWizardMaterial.item_code}`,
-          grn_number: header.grn_number || "GRN-2026-0001",
-          po_number: header.po_number || "PO-2026-0001",
+          grn_number: header.grn_number || "",
+          po_number: header.po_number || "",
           material_code: matchedWizardMaterial.item_code,
           material_name: matchedWizardMaterial.material_name,
           variant_code: `${matchedWizardMaterial.item_code}-V001`,
@@ -1118,10 +1119,10 @@ function GrnPageWorkflow() {
           color: "Standard",
           grade: "Standard Industrial Grade",
           uom: matchedWizardMaterial.uom || "PCS",
-          supplier_code: "SUP-00001",
-          supplier_name: header.supplier_name || "Supplier",
+          supplier_code: "",
+          supplier_name: header.supplier_name || header.supplier_company_name || "",
           receipt_date: new Date().toLocaleDateString("en-GB"),
-          warehouse_name: header.warehouse_name || "Main Warehouse",
+          warehouse_name: header.warehouse_name || "",
           category: matchedWizardMaterial.material_category || "Raw Materials",
           batch_number: b.batch_number,
           received_quantity:
@@ -1206,7 +1207,7 @@ function GrnPageWorkflow() {
           const reasonText = (photo && photo.reason)
             ? photo.reason
             : (m.damage_reason || "Damaged/Rejected during receiving inspection");
-          const qrCodeStr = `DMG-${header.grn_number || "GRN-2026-0001"}-${m.item_code}-01`;
+          const qrCodeStr = `DMG-${header.grn_number || grnId || "GRN"}-${m.item_code}-01`;
           const payload = buildDamageQrPayload(m, reasonText);
           let dataUrl = "";
           try {
@@ -1222,7 +1223,7 @@ function GrnPageWorkflow() {
           const qty = (m.damaged_quantity || 0) > 0 ? m.damaged_quantity : (m.rejected_quantity || 0);
           damageGenerated.push({
             damage_lot_id: `dmg_lot_${m.item_code}`,
-            damage_lot_number: `DMG-LOT-${header.grn_number || "GRN-2026-0001"}-${m.item_code}`,
+            damage_lot_number: `DMG-LOT-${header.grn_number || grnId || "GRN"}-${m.item_code}`,
             item_code: m.item_code,
             material_name: m.material_name,
             damaged_quantity: qty,
@@ -1285,7 +1286,37 @@ function GrnPageWorkflow() {
       }
     >
       {/* 📊 GRN OPERATIONS DASHBOARD TAB */}
-      {activeTab === "dashboard" && (
+      {activeTab === "dashboard" && (() => {
+        const totalQuarantineLots = grnRecords.reduce((acc, r) => {
+          const lots = r.damage_lots || r.damageLots || [];
+          if (Array.isArray(lots) && lots.length > 0) return acc + lots.length;
+          const lines = r.lines || r.materials || [];
+          const damagedLineCount = lines.filter((l: any) => (Number(l.damaged_quantity || l.damagedQuantity || 0) > 0)).length;
+          return acc + damagedLineCount;
+        }, 0);
+
+        let soundUnits = 0;
+        let quarantinedUnits = 0;
+        let lotsCount = 0;
+        for (const r of grnRecords) {
+          const lines = r.lines || r.materials || [];
+          for (const l of lines) {
+            const g = Number(l.good_quantity ?? l.goodQuantity ?? 0);
+            const d = Number(l.damaged_quantity ?? l.damagedQuantity ?? 0);
+            soundUnits += g;
+            quarantinedUnits += d;
+          }
+          const dLots = r.damage_lots || r.damageLots || [];
+          if (Array.isArray(dLots) && dLots.length > 0) {
+            lotsCount += dLots.length;
+          } else {
+            lotsCount += lines.filter((l: any) => Number(l.damaged_quantity ?? l.damagedQuantity ?? 0) > 0).length;
+          }
+        }
+        const totalUnits = soundUnits + quarantinedUnits;
+        const healthPercent = totalUnits > 0 ? Number(((soundUnits / totalUnits) * 100).toFixed(1)) : 100;
+
+        return (
         <div className="space-y-6">
           {/* TOP STAT CARDS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1512,7 +1543,8 @@ function GrnPageWorkflow() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* 📋 RECORDS OVERVIEW TAB */}
       {activeTab === "records" && (
@@ -2490,7 +2522,7 @@ function GrnPageWorkflow() {
                                   Purchase Order (PO) Document Copy
                                 </span>
                                 <span className="text-[10px] text-muted-foreground block">
-                                  Compulsory PO authorization copy for PO {header.po_number || "PO-1001"}
+                                  Compulsory PO authorization copy for PO {header.po_number || "—"}
                                 </span>
                               </div>
                             </div>
@@ -2854,7 +2886,7 @@ function GrnPageWorkflow() {
                     <div className="flex items-center gap-2">
                       <Button
                         onClick={() => {
-                          setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
+                          setNotifyVendorEmail(header.supplier_email || "");
                           setShowNotifyVendorModal(true);
                         }}
                         className="rounded-xl font-bold bg-amber-600 hover:bg-amber-700 text-white shadow-sm"
@@ -2957,7 +2989,7 @@ function GrnPageWorkflow() {
                             size="sm"
                             className="col-span-2 w-full rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white"
                             onClick={() => {
-                              setNotifyVendorEmail(header.supplier_email || "spoorthiharakuni@gmail.com");
+                              setNotifyVendorEmail(header.supplier_email || "");
                               setShowNotifyVendorModal(true);
                             }}
                           >
@@ -2980,16 +3012,7 @@ function GrnPageWorkflow() {
                     try {
                       // Rule: (Good Qty + Damaged Qty) >= PO Qty for ALL materials => COMPLETED
                       //       (Good Qty + Damaged Qty) < PO Qty for ANY material => PARTIALLY COMPLETED
-                      const currentMaterials = materials.length > 0 ? materials : [
-                        {
-                          item_code: "MAT-STEEL-001",
-                          material_name: "High-Tensile Steel Coil 2mm",
-                          po_quantity: 100,
-                          good_quantity: 90,
-                          damaged_quantity: 10,
-                          uom: "MT",
-                        },
-                      ];
+                      const currentMaterials = materials;
 
                       const processedMaterials = currentMaterials.map((m) => {
                         const good = Number(m.good_quantity) || 0;
@@ -3015,17 +3038,17 @@ function GrnPageWorkflow() {
                       const newRecord = {
                         grn_id: grnId || grnNumber,
                         grn_number: grnNumber,
-                        po_number: header.po_number || "PO-1001",
-                        supplier_name: header.supplier_name || header.supplier_company_name || "ABC Supplier Ltd",
-                        supplier_company_name: header.supplier_company_name || header.supplier_name || "ABC Supplier Ltd",
-                        supplier_email: header.supplier_email || "spoorthiharakuni@gmail.com",
-                        vehicle_number: header.vehicle_number || "KA01EQ9921",
-                        driver_name: header.driver_name || "Obaiah",
-                        dock_number: header.receiving_dock || "DOCK-01",
+                        po_number: header.po_number || "",
+                        supplier_name: header.supplier_name || header.supplier_company_name || "",
+                        supplier_company_name: header.supplier_company_name || header.supplier_name || "",
+                        supplier_email: header.supplier_email || "",
+                        vehicle_number: header.vehicle_number || "",
+                        driver_name: header.driver_name || "",
+                        dock_number: header.receiving_dock || "",
                         status: computedStatus,
                         receipt_date: new Date().toISOString().split("T")[0],
                         created_at: new Date().toISOString(),
-                        received_by: loggedInUserName || "Officer Obaiah",
+                        received_by: loggedInUserName || "Warehouse Officer",
                         materials: processedMaterials,
                       };
 
@@ -3035,6 +3058,50 @@ function GrnPageWorkflow() {
                         }
                       } catch (apiErr) {
                         console.log("postGrn API fallback to local state:", apiErr);
+                      }
+
+                      // Auto-dispatch damage notification to vendor and procurement if damaged materials exist
+                      const damagedLines = processedMaterials.filter((m) => (m.damaged_quantity || 0) > 0);
+                      if (damagedLines.length > 0 && (grnId || grnNumber)) {
+                        const targetId = grnId || grnNumber;
+                        const currentPhotoIds = damagedLines
+                          .map((m) => {
+                            const photo = damagePhotos[m.item_code] as any;
+                            return photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                          })
+                          .filter((id): id is string => Boolean(id && id.trim()));
+
+                        const damagePayloadItems = damagedLines.map((m) => {
+                          const photo = damagePhotos[m.item_code] as any;
+                          const activeId = photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                          const pIds = activeId ? [activeId] : [];
+                          return {
+                            item_code: m.item_code,
+                            material_name: m.material_name,
+                            damaged_quantity: Number(m.damaged_quantity || 0),
+                            uom: m.uom || "PCS",
+                            reason: m.damage_reason || "Damaged during receiving inspection",
+                            photo_ids: pIds,
+                          };
+                        });
+
+                        try {
+                          const res = await api.notifyVendorDamage(targetId, {
+                            supplier_email: header.supplier_email || notifyVendorEmail || "",
+                            custom_remarks: "Automated damaged goods report dispatched on GRN completion.",
+                            notify_procurement: true,
+                            photo_ids: currentPhotoIds,
+                            damage_items: damagePayloadItems,
+                          });
+                          toast.success("Damage Report Email Dispatched!", {
+                            description: `Notice dispatched to ${res?.vendor_email || header.supplier_email || "Vendor"} and Procurement team.`,
+                          });
+                        } catch (emailErr: any) {
+                          console.warn("Auto damage notification warning:", emailErr);
+                          toast.warning("Damage Notification Notice", {
+                            description: emailErr?.message || "Could not auto-dispatch damage email. Check SMTP settings.",
+                          });
+                        }
                       }
 
                       // Update grnRecords state so it appears immediately on Dashboard & Records table
@@ -3356,21 +3423,38 @@ function GrnPageWorkflow() {
               <div>
                 <label className="text-xs font-bold uppercase text-muted-foreground">Damaged & Rejected Items Breakdown</label>
                 <div className="max-h-40 overflow-y-auto border rounded-xl p-3 bg-muted/20 space-y-2 mt-1">
-                  {damageQrLabels.length === 0 ? (
-                    <p className="text-xs text-muted-foreground italic">No damaged items listed.</p>
-                  ) : (
-                    damageQrLabels.map((d) => (
-                      <div key={d.damage_lot_number} className="text-xs font-mono flex items-center justify-between border-b pb-1">
-                        <div>
-                          <span className="font-bold text-foreground">{d.item_code} ({d.material_name})</span>
-                          <p className="text-[10px] text-muted-foreground">Lot: {d.damage_lot_number} | Reason: {d.reason}</p>
+                  {(() => {
+                    const activeDamageList = (selectedGrnDetail && selectedGrnDetail.materials && selectedGrnDetail.materials.length > 0)
+                      ? selectedGrnDetail.materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)
+                      : (damagedMaterials.length > 0
+                          ? damagedMaterials
+                          : (damageQrLabels.length > 0 ? damageQrLabels : materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)));
+
+                    if (activeDamageList.length === 0) {
+                      return <p className="text-xs text-muted-foreground italic">No damaged items listed.</p>;
+                    }
+
+                    return activeDamageList.map((d: any, idx: number) => {
+                      const code = d.item_code || d.itemCode || `ITEM-${idx + 1}`;
+                      const name = d.material_name || d.materialName || "Material";
+                      const qty = Number(d.damaged_quantity || d.rejected_quantity || d.quantity || 0);
+                      const uom = d.uom || "PCS";
+                      const reason = d.damage_reason || d.reason || "Damaged during receiving inspection";
+                      const lot = d.damage_lot_number || d.batch_number || "";
+
+                      return (
+                        <div key={d.damage_lot_number || `${code}-${idx}`} className="text-xs font-mono flex items-center justify-between border-b pb-1">
+                          <div>
+                            <span className="font-bold text-foreground">{code} ({name})</span>
+                            <p className="text-[10px] text-muted-foreground">{lot ? `Lot: ${lot} | ` : ""}Reason: {reason}</p>
+                          </div>
+                          <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                            {qty} {uom}
+                          </span>
                         </div>
-                        <span className="font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                          {d.damaged_quantity} {d.uom}
-                        </span>
-                      </div>
-                    ))
-                  )}
+                      );
+                    });
+                  })()}
                 </div>
               </div>
 
@@ -3396,51 +3480,45 @@ function GrnPageWorkflow() {
                 onClick={async () => {
                   setSendingVendorNotify(true);
                   try {
-                    const currentPhotoIds = Object.values(damagePhotos)
-                      .flatMap((p: any) => (p.evidenceIds && p.evidenceIds.length > 0 ? p.evidenceIds : (p.evidenceId ? [p.evidenceId] : [])))
+                    const activeDamageList = (selectedGrnDetail && selectedGrnDetail.materials && selectedGrnDetail.materials.length > 0)
+                      ? selectedGrnDetail.materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)
+                      : (damagedMaterials.length > 0
+                          ? damagedMaterials
+                          : (damageQrLabels.length > 0 ? damageQrLabels : materials.filter((m: any) => Number(m.damaged_quantity || m.rejected_quantity || 0) > 0)));
+
+                    const currentPhotoIds = activeDamageList
+                      .map((m: any) => {
+                        const code = m.item_code || m.itemCode || "ITEM";
+                        const photo = damagePhotos[code] as any;
+                        return photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                      })
                       .filter((id): id is string => Boolean(id && id.trim()));
 
-                    const damagePayloadItems = damagedMaterials.length > 0
-                      ? damagedMaterials.map((m) => {
-                          const photo = damagePhotos[m.item_code] as any;
-                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
-                            ? photo.evidenceIds
-                            : (photo?.evidenceId ? [photo.evidenceId] : []);
-                          return {
-                            item_code: m.item_code,
-                            material_name: m.material_name,
-                            damaged_quantity: Number(m.damaged_quantity || 0),
-                            uom: m.uom || "PCS",
-                            reason: m.damage_reason || "Damaged during receiving inspection",
-                            photo_ids: pIds,
-                          };
-                        })
-                      : (damageQrLabels || []).map((d: any) => {
-                          const code = d.item_code || d.itemCode || "ITEM";
-                          const photo = damagePhotos[code] as any;
-                          const pIds = photo?.evidenceIds && photo.evidenceIds.length > 0
-                            ? photo.evidenceIds
-                            : (photo?.evidenceId ? [photo.evidenceId] : []);
-                          return {
-                            item_code: code,
-                            material_name: d.material_name || d.materialName || "Material",
-                            damaged_quantity: Number(d.damaged_quantity || d.quantity || 0),
-                            uom: d.uom || "PCS",
-                            reason: d.reason || "Damaged / Rejected",
-                            damage_lot_number: d.damage_lot_number || "",
-                            quarantine_location: d.quarantine_location || "",
-                            photo_ids: pIds,
-                          };
-                        });
+                    const damagePayloadItems = activeDamageList.map((m: any, idx: number) => {
+                      const code = m.item_code || m.itemCode || `ITEM-${idx + 1}`;
+                      const photo = damagePhotos[code] as any;
+                      const activeId = photo?.evidenceId || (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1]);
+                      const pIds = activeId ? [activeId] : (m.photo_ids || []);
+                      return {
+                        item_code: code,
+                        material_name: m.material_name || m.materialName || "Material",
+                        damaged_quantity: Number(m.damaged_quantity || m.rejected_quantity || m.quantity || 0),
+                        uom: m.uom || "PCS",
+                        reason: m.damage_reason || m.reason || "Damaged during receiving quality inspection",
+                        damage_lot_number: m.damage_lot_number || "",
+                        quarantine_location: m.quarantine_location || "",
+                        photo_ids: pIds,
+                      };
+                    });
 
-                    const targetGrnId = grnId || (selectedGrnDetail && (selectedGrnDetail.grn_id || selectedGrnDetail.id));
+                    const targetGrnId = grnId || (selectedGrnDetail && (selectedGrnDetail.grn_id || selectedGrnDetail.id || selectedGrnDetail.grn_number)) || header.grn_number;
                     if (!targetGrnId) {
                       toast.error("GRN must be saved before sending damage notification.");
                       return;
                     }
 
                     const res = await api.notifyVendorDamage(targetGrnId, {
-                      supplier_email: notifyVendorEmail || "spoorthiharakuni@gmail.com",
+                      supplier_email: notifyVendorEmail || header.supplier_email || "",
                       custom_remarks: notifyVendorRemarks || "",
                       notify_procurement: true,
                       photo_ids: currentPhotoIds,
@@ -3713,7 +3791,7 @@ function GrnPageWorkflow() {
                 Document Preview: {viewingDocumentModal.file_name}
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
-                Inbound Quality & Regulatory Attachment • PO: {header.po_number || "PO-1001"} • GRN: {header.grn_number || "GRN-2026-0001"}
+                Inbound Quality & Regulatory Attachment • PO: {header.po_number || "—"} • GRN: {header.grn_number || "—"}
               </DialogDescription>
             </DialogHeader>
 
@@ -3745,7 +3823,7 @@ function GrnPageWorkflow() {
                   </div>
                   <div className="max-w-md mx-auto p-4 rounded-xl bg-slate-900 border border-slate-800 text-left text-xs font-mono space-y-1.5 text-slate-300">
                     <div><b>Document Section:</b> {viewingDocumentModal.category}</div>
-                    <div><b>GRN Reference:</b> {header.grn_number || "GRN-2026-0001"}</div>
+                    <div><b>GRN Reference:</b> {header.grn_number || "—"}</div>
                     <div><b>Uploaded By:</b> {loggedInUserName}</div>
                     <div><b>Timestamp:</b> {new Date().toLocaleString()}</div>
                     <div><b>Security Hash:</b> SHA256-AUTHENTICATED</div>
