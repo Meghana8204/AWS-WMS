@@ -2399,7 +2399,28 @@ async def list_grn_drafts(
 ):
     query = select(GrnModel).options(selectinload(GrnModel.lines)).order_by(GrnModel.created_at.desc(), GrnModel.grn_number.desc())
     if status and status.upper() != "ALL":
-        query = query.where(GrnModel.status == status)
+        clean_st = status.upper().strip()
+        if "PARTIAL" in clean_st:
+            query = query.where(
+                or_(
+                    GrnModel.status.ilike("%PARTIAL%"),
+                    GrnModel.status == "PARTIALLY COMPLETED",
+                    GrnModel.status == "PARTIALLY_COMPLETED",
+                    GrnModel.status == "DRAFT",
+                    GrnModel.status == "IN_PROGRESS",
+                )
+            )
+        elif "COMPLETE" in clean_st:
+            query = query.where(
+                or_(
+                    GrnModel.status.ilike("%COMPLETE%"),
+                    GrnModel.status == "COMPLETED",
+                    GrnModel.status == "POSTED",
+                    GrnModel.status == "CLOSED",
+                )
+            )
+        else:
+            query = query.where(GrnModel.status == status)
 
     result = await uow.session.execute(query)
     all_grns = result.scalars().all()

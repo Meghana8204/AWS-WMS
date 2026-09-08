@@ -627,6 +627,11 @@ class NotificationModel(Base):
     driver_phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     asn_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    grn_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notification_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class SupplierUserModel(Base):

@@ -95,7 +95,7 @@ export function QRScanResultModal({
                 className={cn(
                   "grid size-11 place-items-center rounded-2xl shrink-0",
                   isDamaged
-                    ? "bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400"
+                    ? "bg-danger-soft text-destructive"
                     : "bg-primary-soft text-primary"
                 )}
               >
@@ -103,7 +103,7 @@ export function QRScanResultModal({
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary-soft/60 border border-primary/20">
+                  <span className="font-mono text-sm font-black text-primary px-2.5 py-0.5 rounded-lg bg-primary-soft border border-primary/20">
                     {data.qr_id}
                   </span>
                   <h2 className="text-lg font-bold text-foreground">
@@ -111,10 +111,10 @@ export function QRScanResultModal({
                   </h2>
                   <span
                     className={cn(
-                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold",
+                      "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold border",
                       data.stock_status === "AVAILABLE"
-                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
-                        : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                        ? "bg-success-soft text-success border-success/30"
+                        : "bg-danger-soft text-destructive border-destructive/30"
                     )}
                   >
                     {data.stock_status === "AVAILABLE" ? (
@@ -124,7 +124,7 @@ export function QRScanResultModal({
                     )}
                     {data.stock_status}
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold bg-primary-soft text-primary border border-primary/20">
                     <ShieldCheck className="size-3" />
                     QA: {data.inspection_status}
                   </span>
@@ -152,16 +152,16 @@ export function QRScanResultModal({
                 className="h-8.5 rounded-xl text-xs font-semibold"
                 onClick={handleCopyQrId}
               >
-                {copied ? <Check className="mr-1 size-3.5 text-emerald-600" /> : <Copy className="mr-1 size-3.5" />}
+                {copied ? <Check className="mr-1 size-3.5 text-success" /> : <Copy className="mr-1 size-3.5" />}
                 {copied ? "Copied" : "Copy QR ID"}
               </Button>
               {onPrint && (
                 <Button
                   size="sm"
                   className={cn(
-                    "h-8.5 rounded-xl font-bold text-xs shadow-glow text-white",
+                    "h-8.5 rounded-xl font-bold text-xs shadow-glow text-primary-foreground",
                     isDamaged
-                      ? "bg-rose-600 hover:bg-rose-700"
+                      ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       : "bg-primary hover:bg-primary/90"
                   )}
                   onClick={() => onPrint(data)}
@@ -250,11 +250,11 @@ export function QRScanResultModal({
           <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                <Boxes className="size-3.5 text-teal-600" />
+                <Boxes className="size-3.5 text-teal" />
                 Material & Variant Specifications
               </h3>
               {data.variant_code && (
-                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-teal-50 dark:bg-teal-950/40 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
+                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded-md bg-teal-soft text-teal border border-teal/20">
                   {data.variant_code}
                 </span>
               )}
@@ -273,7 +273,7 @@ export function QRScanResultModal({
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
                   Variant Code
                 </span>
-                <div className="font-mono font-bold text-teal-600 dark:text-teal-400">
+                <div className="font-mono font-bold text-teal">
                   {data.variant_code || `${data.material_code}-V001`}
                 </div>
               </div>
@@ -345,7 +345,7 @@ export function QRScanResultModal({
           {/* Section 3: Quantity Details Breakdown */}
           <div className="rounded-2xl border border-border/70 bg-card p-4 shadow-2xs space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-              <Layers className="size-3.5 text-blue-600" />
+              <Layers className="size-3.5 text-primary" />
               Received & Quality Quantities
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -361,11 +361,11 @@ export function QRScanResultModal({
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
+              <div className="p-3 rounded-xl bg-success-soft border border-success/30">
+                <span className="text-[10px] font-bold text-success uppercase tracking-wider block">
                   Accepted Qty
                 </span>
-                <div className="font-mono text-base font-extrabold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                <div className="font-mono text-base font-extrabold text-success mt-0.5">
                   {data.accepted_quantity}{" "}
                   <span className="text-xs font-medium">
                     {data.uom}
@@ -377,7 +377,7 @@ export function QRScanResultModal({
                 className={cn(
                   "p-3 rounded-xl border",
                   data.damaged_quantity > 0
-                    ? "bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-400"
+                    ? "bg-danger-soft border-destructive/30 text-destructive"
                     : "bg-muted/20 border-border/50 text-muted-foreground"
                 )}
               >
@@ -411,13 +411,13 @@ export function QRScanResultModal({
             className={cn(
               "rounded-2xl p-4 border text-xs space-y-1.5 shadow-2xs",
               isDamaged
-                ? "bg-rose-500/10 border-rose-500/30 text-rose-950 dark:text-rose-100"
+                ? "bg-danger-soft/40 border-destructive/30 text-destructive"
                 : "bg-primary-soft/40 border-primary/20 text-foreground"
             )}
           >
             <div className="font-bold flex items-center gap-1.5 uppercase text-[11px]">
               {isDamaged ? (
-                <AlertTriangle className="size-3.5 text-rose-600" />
+                <AlertTriangle className="size-3.5 text-destructive" />
               ) : (
                 <CheckCircle2 className="size-3.5 text-primary" />
               )}
@@ -430,7 +430,7 @@ export function QRScanResultModal({
 
           <DialogFooter className="border-t pt-4 flex sm:flex-row items-center justify-between gap-3">
             <div className="text-[11px] text-muted-foreground flex items-center gap-2">
-              <span className="inline-block size-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="inline-block size-2 rounded-full bg-success animate-pulse" />
               Database Record Verified
             </div>
             <Button
@@ -455,7 +455,7 @@ export function QrNotFoundModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-md rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-        <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400 shadow-inner">
+        <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-danger-soft text-destructive shadow-inner">
           <XCircle className="size-8" />
         </div>
 
@@ -473,7 +473,7 @@ export function QrNotFoundModal({
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground block">
               Scanned Value
             </span>
-            <span className="font-mono text-xs font-bold text-rose-600 dark:text-rose-400 break-all">
+            <span className="font-mono text-xs font-bold text-destructive break-all">
               {scannedCode.length > 100
                 ? `${scannedCode.substring(0, 100)}...`
                 : scannedCode}
@@ -483,7 +483,7 @@ export function QrNotFoundModal({
 
         <DialogFooter className="pt-2">
           <Button
-            className="w-full rounded-xl bg-primary text-white font-bold"
+            className="w-full rounded-xl font-bold shadow-glow"
             onClick={onClose}
           >
             Close
