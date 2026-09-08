@@ -132,6 +132,29 @@ function WarehouseMaterials() {
   const [selectedVariant, setSelectedVariant] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // Editing Material Master state
+  const [editingMaterial, setEditingMaterial] = useState<any>(null);
+  const [editMatName, setEditMatName] = useState("");
+  const [editMatCategory, setEditMatCategory] = useState("");
+  const [editMatCustomCat, setEditMatCustomCat] = useState("");
+  const [editMatBaseUom, setEditMatBaseUom] = useState("");
+  const [editMatDescription, setEditMatDescription] = useState("");
+  const [editMatStatus, setEditMatStatus] = useState("Active");
+
+  // Editing Specification (Variant) state
+  const [isEditVariantModalOpen, setIsEditVariantModalOpen] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<any>(null);
+  const [editVarCode, setEditVarCode] = useState("");
+  const [editVarSize, setEditVarSize] = useState("");
+  const [editVarColor, setEditVarColor] = useState("");
+  const [editVarGrade, setEditVarGrade] = useState("");
+  const [editVarSpec, setEditVarSpec] = useState("");
+  const [editVarUom, setEditVarUom] = useState("");
+  const [editVarStatus, setEditVarStatus] = useState("Active");
+  const [editVarAttrs, setEditVarAttrs] = useState<Record<string, string>>({});
+  const [editAttrKey, setEditAttrKey] = useState("");
+  const [editAttrVal, setEditAttrVal] = useState("");
+
   // Form states for creating Material
   const [materialCode, setMaterialCode] = useState("");
   const [materialName, setMaterialName] = useState("");
@@ -342,7 +365,7 @@ function WarehouseMaterials() {
       .map((v) => {
         const match =
           v.variant_code?.match(/[-_]?[vVsS](\d+)$/) || v.variant_code?.match(/-(\d+)$/);
-        return match ? parseInt(match[1], 10) : 0;
+        return match && match[1] ? parseInt(match[1], 10) : 0;
       })
       .filter((n) => !isNaN(n) && n > 0);
     const maxSeq = existingSeqs.length > 0 ? Math.max(...existingSeqs) : 0;
@@ -440,6 +463,120 @@ function WarehouseMaterials() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openEditMaterialModal = (mat: any) => {
+    setEditingMaterial(mat);
+    setEditMatName(mat.material_name || "");
+    const isStandardCat = categories.includes(mat.category);
+    setEditMatCategory(isStandardCat ? mat.category : "OTHER");
+    setEditMatCustomCat(isStandardCat ? "" : (mat.category || ""));
+    setEditMatBaseUom(mat.base_uom || "");
+    setEditMatDescription(mat.description || "");
+    setEditMatStatus(mat.status || "Active");
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditMaterialSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingMaterial) return;
+    if (!editMatName.trim()) {
+      toast.error("Material Name is required");
+      return;
+    }
+    const finalCategory = editMatCategory === "OTHER" ? editMatCustomCat.trim() : editMatCategory;
+    if (!finalCategory) {
+      toast.error("Please specify a category");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        material_name: editMatName.trim(),
+        category: finalCategory,
+        base_uom: editMatBaseUom,
+        description: editMatDescription.trim() || undefined,
+        status: editMatStatus,
+      };
+
+      const updated = await api.updateMaterial(editingMaterial.id, payload);
+      toast.success(`Material ${editingMaterial.material_code} updated successfully!`);
+      setIsEditModalOpen(false);
+      setEditingMaterial(null);
+      if (selectedMaterial && selectedMaterial.id === editingMaterial.id) {
+        setSelectedMaterial(updated);
+      }
+      fetchMaterialsData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update Material");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEditVariantModal = (mat: any, variant: any) => {
+    setSelectedMaterial(mat);
+    setEditingVariant(variant);
+    setEditVarCode(formatSpecCode(variant.variant_code));
+    setEditVarSize(variant.size || "");
+    setEditVarColor(variant.color || "");
+    setEditVarGrade(variant.grade || "");
+    setEditVarSpec(variant.specification || "");
+    setEditVarUom(variant.uom || mat.base_uom || "");
+    setEditVarStatus(variant.status || "Active");
+    setEditVarAttrs({ ...(variant.attributes || {}) });
+    setEditAttrKey("");
+    setEditAttrVal("");
+    setIsEditVariantModalOpen(true);
+  };
+
+  const handleEditVariantSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMaterial || !editingVariant) return;
+
+    setSubmitting(true);
+    try {
+      const payload = {
+        size: editVarSize.trim() || undefined,
+        color: editVarColor.trim() || undefined,
+        grade: editVarGrade.trim() || undefined,
+        specification: editVarSpec.trim() || undefined,
+        uom: editVarUom || selectedMaterial.base_uom,
+        attributes: editVarAttrs,
+        status: editVarStatus,
+      };
+
+      await api.updateMaterialVariant(selectedMaterial.id, editingVariant.id, payload);
+      toast.success(`Specification ${editVarCode} updated successfully!`);
+      setIsEditVariantModalOpen(false);
+      setEditingVariant(null);
+      const updated = await api.getMaterial(selectedMaterial.id);
+      setSelectedMaterial(updated);
+      fetchMaterialsData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update specification");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditAddAttribute = () => {
+    if (!editAttrKey.trim() || !editAttrVal.trim()) return;
+    setEditVarAttrs((prev) => ({
+      ...prev,
+      [editAttrKey.trim()]: editAttrVal.trim(),
+    }));
+    setEditAttrKey("");
+    setEditAttrVal("");
+  };
+
+  const handleEditRemoveAttribute = (key: string) => {
+    setEditVarAttrs((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
   const handleToggleMaterialStatus = async (material: any) => {
@@ -861,15 +998,15 @@ function WarehouseMaterials() {
         /* HIGH-DENSITY ENTERPRISE TABLE VIEW */
         <Card className="overflow-hidden rounded-2xl border border-border/80 bg-card/95 shadow-soft">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-xs border-collapse min-w-[980px]">
               <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur-md shadow-2xs">
                 <tr className="border-b border-border/80 bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                  <th className="py-3.5 px-4 whitespace-nowrap w-[140px]">Material Code</th>
-                  <th className="py-3.5 px-4 whitespace-nowrap min-w-[200px] max-w-[280px]">Material Name & Category</th>
-                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[110px]">Base UOM</th>
-                  <th className="py-3.5 px-4 min-w-[320px]">Specifications / SKUs</th>
-                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[120px]">Status</th>
-                  <th className="py-3.5 px-4 text-right whitespace-nowrap w-[240px]">Actions</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap w-[130px]">Material Code</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap min-w-[190px] max-w-[260px]">Material Name & Category</th>
+                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[90px]">Base UOM</th>
+                  <th className="py-3.5 px-4 min-w-[240px]">Specifications / SKUs</th>
+                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[100px]">Status</th>
+                  <th className="py-3.5 px-4 text-center whitespace-nowrap w-[290px]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/60 font-medium">
@@ -903,7 +1040,7 @@ function WarehouseMaterials() {
                       </td>
 
                       {/* Name & Category */}
-                      <td className="py-3.5 px-4 min-w-[200px] max-w-[280px] align-middle">
+                      <td className="py-3.5 px-4 min-w-[190px] max-w-[260px] align-middle">
                         <div className="flex flex-col gap-1">
                           <span className="font-bold text-foreground group-hover:text-primary transition-colors text-sm truncate" title={mat.material_name}>
                             {mat.material_name}
@@ -913,7 +1050,7 @@ function WarehouseMaterials() {
                               <Tag className="size-2.5 text-muted-foreground" /> {mat.category}
                             </span>
                             {mat.description && (
-                              <span className="truncate max-w-[180px] text-[11px] text-muted-foreground italic" title={mat.description}>
+                              <span className="truncate max-w-[170px] text-[11px] text-muted-foreground italic" title={mat.description}>
                                 {mat.description}
                               </span>
                             )}
@@ -932,11 +1069,11 @@ function WarehouseMaterials() {
                       </td>
 
                       {/* Specifications Pills */}
-                      <td className="py-3.5 px-4 min-w-[320px] align-middle">
-                        <div className="flex flex-wrap items-center gap-1.5 max-w-2xl">
+                      <td className="py-3.5 px-4 min-w-[240px] align-middle">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           {mat.variants && mat.variants.length > 0 ? (
                             <>
-                              {mat.variants.slice(0, 3).map((v: any) => {
+                              {mat.variants.slice(0, 2).map((v: any) => {
                                 const specDesc = [v.size, v.color, v.grade].filter(Boolean).join(" · ");
                                 const isInactive = v.status === "Inactive";
                                 const specCode = formatSpecCode(v.variant_code);
@@ -950,7 +1087,7 @@ function WarehouseMaterials() {
                                     }}
                                     title={fullTitle}
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-mono transition-colors whitespace-nowrap max-w-[260px] cursor-pointer",
+                                      "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-[11px] font-mono transition-colors whitespace-nowrap max-w-[220px] cursor-pointer",
                                       isInactive
                                         ? "border-dashed border-muted-foreground/40 bg-muted/20 text-muted-foreground"
                                         : "border-border/80 bg-background/90 text-foreground hover:border-teal-500/50 hover:bg-teal-500/5"
@@ -967,16 +1104,16 @@ function WarehouseMaterials() {
                                   </span>
                                 );
                               })}
-                              {specCount > 3 && (
+                              {specCount > 2 && (
                                 <span
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     openMaterialDetail(mat);
                                   }}
-                                  className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/10 border border-teal-500/20 px-2 py-1 rounded-md whitespace-nowrap hover:bg-teal-500/20 cursor-pointer transition-colors"
-                                  title={`+${specCount - 3} more specifications (click to view)`}
+                                  className="text-[10px] font-bold text-teal-700 dark:text-teal-300 bg-teal-500/10 border border-teal-500/20 px-1.5 py-0.5 rounded-md whitespace-nowrap hover:bg-teal-500/20 cursor-pointer transition-colors"
+                                  title={`+${specCount - 2} more specifications (click to view)`}
                                 >
-                                  +{specCount - 3} more
+                                  +{specCount - 2} more
                                 </span>
                               )}
                             </>
@@ -994,24 +1131,33 @@ function WarehouseMaterials() {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-right whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center gap-1">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 rounded-xl px-2.5 text-xs font-semibold border-border/80 bg-card hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all duration-200"
+                            className="h-7.5 rounded-lg px-2 text-xs font-semibold border-border/80 bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/40 transition-colors"
                             onClick={() => openMaterialDetail(mat)}
                             title="View material specifications and details"
                           >
                             <Layers className="size-3 mr-1 text-teal-600" />
                             Specs ({specCount})
-                            <ChevronRight className="ml-1 size-3" />
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7.5 rounded-lg px-2 text-xs font-semibold text-primary border-primary/30 bg-primary/5 hover:bg-primary/15 transition-colors"
+                            onClick={() => openEditMaterialModal(mat)}
+                            title="Edit Material Master"
+                          >
+                            <Edit className="size-3 mr-1" /> Edit
                           </Button>
 
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-8 rounded-xl px-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                            className="h-7.5 rounded-lg px-2 text-xs font-semibold text-teal-600 hover:bg-teal-500/10 transition-colors"
                             onClick={() => openAddVariantForExisting(mat)}
                             title="Quick add specification to this material"
                           >
@@ -1022,7 +1168,7 @@ function WarehouseMaterials() {
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-8 rounded-xl px-2 text-[11px] font-medium",
+                              "h-7.5 rounded-lg px-2 text-xs font-medium transition-colors",
                               mat.status === "Active"
                                 ? "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 : "text-emerald-600 hover:bg-emerald-500/10"
@@ -1154,14 +1300,25 @@ function WarehouseMaterials() {
                   >
                     View Details <ChevronRight className="ml-1 size-3.5" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8.5 rounded-xl text-xs font-bold text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
-                    onClick={() => openAddVariantForExisting(mat)}
-                  >
-                    <Plus className="size-3.5 mr-1" /> Add Spec
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8.5 rounded-xl px-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      onClick={() => openEditMaterialModal(mat)}
+                      title="Edit Material"
+                    >
+                      <Edit className="size-3.5 mr-1" /> Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8.5 rounded-xl text-xs font-bold text-teal-700 dark:text-teal-300 hover:bg-teal-500/10"
+                      onClick={() => openAddVariantForExisting(mat)}
+                    >
+                      <Plus className="size-3.5 mr-1" /> Add Spec
+                    </Button>
+                  </div>
                 </div>
               </Card>
             );
@@ -1502,6 +1659,14 @@ function WarehouseMaterials() {
 
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8.5 rounded-xl text-xs font-semibold gap-1.5 border-border/80 hover:bg-muted"
+                    onClick={() => openEditMaterialModal(selectedMaterial)}
+                  >
+                    <Edit className="size-3.5 text-primary" /> Edit Material
+                  </Button>
+                  <Button
                     size="sm"
                     className="h-8.5 rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
                     onClick={() => openAddVariantForExisting(selectedMaterial)}
@@ -1604,6 +1769,16 @@ function WarehouseMaterials() {
                           </td>
                           <td className="p-3 text-right whitespace-nowrap pr-3">
                             <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 px-2 text-[11px] font-bold rounded-lg transition-colors border-border/70 hover:bg-muted text-foreground inline-flex items-center gap-1"
+                                onClick={() => openEditVariantModal(selectedMaterial, v)}
+                                title="Edit Specification"
+                              >
+                                <Edit className="size-3 text-teal-600" />
+                                Edit
+                              </Button>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -1810,6 +1985,339 @@ function WarehouseMaterials() {
                   <Save className="mr-2 size-4" />
                 )}
                 Add Specification
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* EDIT MATERIAL MASTER MODAL */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="w-[95vw] max-w-lg rounded-3xl p-6 shadow-2xl">
+          <DialogHeader className="border-b pb-3 pr-10">
+            <div className="flex items-center gap-2">
+              <div className="grid size-9 place-items-center rounded-xl bg-primary/10 text-primary border border-primary/20">
+                <Edit className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">
+                  Edit Material Master
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground">
+                  Update details for material code{" "}
+                  <span className="font-mono font-bold text-foreground">
+                    {editingMaterial?.material_code}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleEditMaterialSubmit} className="space-y-4 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Material Code</Label>
+                <Input
+                  value={editingMaterial?.material_code || ""}
+                  readOnly
+                  disabled
+                  className="h-9 font-mono text-xs font-bold rounded-xl bg-muted/60 text-foreground cursor-not-allowed border-dashed"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Status</Label>
+                <Select value={editMatStatus} onValueChange={setEditMatStatus}>
+                  <SelectTrigger className="h-9 rounded-xl text-xs font-semibold">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="Active" className="text-xs">
+                      Active
+                    </SelectItem>
+                    <SelectItem value="Inactive" className="text-xs">
+                      Inactive
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Material Name *</Label>
+              <Input
+                value={editMatName}
+                onChange={(e) => setEditMatName(e.target.value)}
+                placeholder="e.g. Copper Wire, Cardboard Box"
+                className="h-9 text-xs rounded-xl"
+                required
+              />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Category *</Label>
+                <Select value={editMatCategory} onValueChange={setEditMatCategory}>
+                  <SelectTrigger className="h-9 rounded-xl text-xs">
+                    <SelectValue placeholder="Select Category" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    {categories.map((c) => (
+                      <SelectItem key={c} value={c} className="text-xs">
+                        {c}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="OTHER" className="text-xs font-semibold text-primary">
+                      + Other / Custom Category
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {editMatCategory === "OTHER" && (
+                  <Input
+                    value={editMatCustomCat}
+                    onChange={(e) => setEditMatCustomCat(e.target.value)}
+                    placeholder="Enter custom category"
+                    className="h-9 text-xs rounded-xl mt-1.5"
+                    required
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Base UOM *</Label>
+                <Select value={editMatBaseUom} onValueChange={setEditMatBaseUom}>
+                  <SelectTrigger className="h-9 rounded-xl text-xs font-mono">
+                    <SelectValue placeholder="Base UOM" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    {uoms.map((u) => (
+                      <SelectItem key={u} value={u} className="text-xs font-mono">
+                        {u}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold">Description</Label>
+              <Textarea
+                value={editMatDescription}
+                onChange={(e) => setEditMatDescription(e.target.value)}
+                placeholder="Optional description of the material..."
+                className="text-xs rounded-xl min-h-[70px] resize-none"
+              />
+            </div>
+
+            <DialogFooter className="border-t pt-3 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-xl text-xs font-semibold"
+                onClick={() => setIsEditModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="rounded-xl shadow-glow bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 size-4" />
+                )}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* EDIT SPECIFICATION MODAL */}
+      <Dialog open={isEditVariantModalOpen} onOpenChange={setIsEditVariantModalOpen}>
+        <DialogContent className="w-[95vw] max-w-lg rounded-3xl p-6 shadow-2xl">
+          <DialogHeader className="border-b pb-3 pr-10">
+            <div className="flex items-center gap-2">
+              <div className="grid size-9 place-items-center rounded-xl bg-teal-500/10 text-teal-600 border border-teal-500/20">
+                <Edit className="size-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold">
+                  Edit Specification
+                </DialogTitle>
+                <p className="text-xs text-muted-foreground">
+                  Update spec{" "}
+                  <span className="font-mono font-bold text-foreground">{editVarCode}</span>{" "}
+                  for{" "}
+                  <span className="font-semibold text-foreground">
+                    {selectedMaterial?.material_name}
+                  </span>
+                </p>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleEditVariantSubmit} className="space-y-4 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Specification Code</Label>
+                <Input
+                  value={editVarCode}
+                  readOnly
+                  disabled
+                  className="h-9 font-mono text-xs font-bold rounded-xl bg-muted/60 text-foreground cursor-not-allowed border-dashed"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Status</Label>
+                <Select value={editVarStatus} onValueChange={setEditVarStatus}>
+                  <SelectTrigger className="h-9 rounded-xl text-xs font-semibold">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    <SelectItem value="Active" className="text-xs">
+                      Active
+                    </SelectItem>
+                    <SelectItem value="Inactive" className="text-xs">
+                      Inactive
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Size</Label>
+                <Input
+                  value={editVarSize}
+                  onChange={(e) => setEditVarSize(e.target.value)}
+                  placeholder="e.g. 10 mm, 2.5 mm"
+                  className="h-9 text-xs rounded-xl"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Color</Label>
+                <Input
+                  value={editVarColor}
+                  onChange={(e) => setEditVarColor(e.target.value)}
+                  placeholder="e.g. Blue, Black"
+                  className="h-9 text-xs rounded-xl"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Grade</Label>
+                <Input
+                  value={editVarGrade}
+                  onChange={(e) => setEditVarGrade(e.target.value)}
+                  placeholder="e.g. A, Premium, 304"
+                  className="h-9 text-xs rounded-xl"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">Specification Notes</Label>
+                <Input
+                  value={editVarSpec}
+                  onChange={(e) => setEditVarSpec(e.target.value)}
+                  placeholder="e.g. Heavy Duty, High Voltage"
+                  className="h-9 text-xs rounded-xl"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold">UOM</Label>
+                <Select value={editVarUom} onValueChange={setEditVarUom}>
+                  <SelectTrigger className="h-9 rounded-xl text-xs font-mono">
+                    <SelectValue placeholder="UOM" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    {uoms.map((u) => (
+                      <SelectItem key={u} value={u} className="text-xs font-mono">
+                        {u}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Custom Attributes */}
+            <div className="space-y-2 border-t pt-3">
+              <Label className="text-xs font-bold text-muted-foreground flex items-center justify-between">
+                <span>Additional Key/Value Attributes (Optional)</span>
+                <span className="text-[10px] font-normal">
+                  {Object.keys(editVarAttrs).length} defined
+                </span>
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Key (e.g. Voltage)"
+                  value={editAttrKey}
+                  onChange={(e) => setEditAttrKey(e.target.value)}
+                  className="h-8 text-xs rounded-lg flex-1 font-mono"
+                />
+                <Input
+                  placeholder="Value (e.g. 440V)"
+                  value={editAttrVal}
+                  onChange={(e) => setEditAttrVal(e.target.value)}
+                  className="h-8 text-xs rounded-lg flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-lg text-xs"
+                  onClick={handleEditAddAttribute}
+                >
+                  Add
+                </Button>
+              </div>
+
+              {Object.keys(editVarAttrs).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {Object.entries(editVarAttrs).map(([k, val]) => (
+                    <Badge
+                      key={k}
+                      variant="secondary"
+                      className="text-xs px-2 py-0.5 rounded-lg flex items-center gap-1"
+                    >
+                      <span className="font-mono font-bold">{k}:</span> {val}
+                      <X
+                        className="size-3 cursor-pointer hover:text-destructive ml-1"
+                        onClick={() => handleEditRemoveAttribute(k)}
+                      />
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="border-t pt-3 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-xl text-xs font-semibold"
+                onClick={() => setIsEditVariantModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                className="rounded-xl shadow-glow bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="mr-2 size-4 animate-spin" />
+                ) : (
+                  <Save className="mr-2 size-4" />
+                )}
+                Save Specification
               </Button>
             </DialogFooter>
           </form>

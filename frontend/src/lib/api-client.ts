@@ -902,6 +902,26 @@ export const api = {
     });
   },
 
+  async getMatchingSuppliersForMaterialRequest(id: string): Promise<any[]> {
+    return request<any[]>(
+      `${BUSINESS_API_URL}/api/v1/procurement/material-requests/${encodeURIComponent(id)}/matching-suppliers`,
+    );
+  },
+
+  async sendMaterialRequestToSupplier(
+    id: string,
+    data?: { supplier_id?: string; notes?: string },
+  ): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/procurement/material-requests/${encodeURIComponent(id)}/send-to-supplier`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data || {}),
+      },
+    );
+  },
+
   async getPickTasks(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/procurement/pick-tasks`);
   },

@@ -97,6 +97,8 @@ from app.modules.procurement.infrastructure.api.schemas import (
     PurchaseOrderItemSchema,
     MaterialRequestResponse,
     MaterialRequestItemSchema,
+    SendMaterialRequestToSupplierRequest,
+    MaterialRequestMatchingSupplierResponse,
     CreateMaterialRequest,
     SupplierSelectionRequest,
     MaterialStockResponse,
@@ -139,6 +141,7 @@ from app.modules.procurement.infrastructure.persistence.models import (
     POApprovalHistoryModel,
     NotificationModel,
     rfq_supplier_link,
+    supplier_material_link,
 )
 from app.modules.procurement.infrastructure.persistence.repository_impl import (
     SqlAlchemySupplierRepository,
@@ -148,7 +151,7 @@ from app.modules.procurement.infrastructure.persistence.repository_impl import (
     SqlAlchemyArrivalNotificationRepository,
     SqlAlchemyPurchaseOrderRepository,
 )
-from app.common.email_utils import render_premium_email, send_email
+from app.common.email_utils import render_premium_email, send_email, mask_email
 from app.security.dependencies import CurrentUser, get_current_user
 
 logger = get_logger(__name__)
@@ -576,6 +579,279 @@ async def process_material_request(id: str, uow: UnitOfWork = Depends(get_uow)):
     req.status = "PROCESSED"
     await uow.commit()
     return {"status": "success"}
+
+
+@router.get("/material-requests/{id}/matching-suppliers", response_model=List[MaterialRequestMatchingSupplierResponse])
+async def get_matching_suppliers_for_material_request(
+    id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Fetch suppliers matching the materials in a Material Request.
+    Prioritizes suppliers linked to requested materials via supplier_material_link or main_materials keywords.
+    """
+    try:
+        req_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Material Request UUID")
+
+    stmt = (
+        select(MaterialRequestModel)
+        .options(selectinload(MaterialRequestModel.items))
+        .where(MaterialRequestModel.id == req_uuid)
+    )
+    res = await uow.session.execute(stmt)
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material request not found")
+
+    material_ids = [it.material_id for it in req.items if it.material_id]
+    material_keywords = set()
+    for it in req.items:
+        if it.material_code:
+            material_keywords.add(it.material_code.strip().lower())
+        if it.material_name:
+            for word in it.material_name.strip().split():
+                if len(word) >= 3:
+                    material_keywords.add(word.lower())
+
+    # Check suppliers linked via supplier_material_link
+    linked_supplier_ids = set()
+    if material_ids:
+        link_stmt = select(supplier_material_link.c.supplier_id).where(supplier_material_link.c.material_id.in_(material_ids))
+        link_res = await uow.session.execute(link_stmt)
+        linked_supplier_ids = {row[0] for row in link_res.fetchall()}
+
+    # Fetch all active suppliers
+    sup_stmt = select(SupplierModel).options(selectinload(SupplierModel.contact)).where(SupplierModel.status.ilike("Active"))
+    sup_res = await uow.session.execute(sup_stmt)
+    suppliers = sup_res.scalars().all()
+
+    matched_list: List[MaterialRequestMatchingSupplierResponse] = []
+    other_list: List[MaterialRequestMatchingSupplierResponse] = []
+
+    for s in suppliers:
+        is_matched = s.id in linked_supplier_ids
+        if not is_matched and s.main_materials and isinstance(s.main_materials, list):
+            sup_materials = " ".join(str(m).lower() for m in s.main_materials)
+            for kw in material_keywords:
+                if kw in sup_materials:
+                    is_matched = True
+                    break
+
+        item = MaterialRequestMatchingSupplierResponse(
+            supplier_id=str(s.id),
+            supplier_name=s.supplier_name,
+            supplier_code=s.supplier_code,
+            primary_contact_name=s.contact.primary_contact_name if s.contact else None,
+            primary_email=s.contact.primary_email if s.contact else None,
+            phone=s.contact.phone if s.contact else None,
+            main_materials=s.main_materials if isinstance(s.main_materials, list) else [],
+            is_matched=is_matched,
+        )
+
+        if is_matched:
+            matched_list.append(item)
+        else:
+            other_list.append(item)
+
+    return matched_list + other_list
+
+
+@router.post("/material-requests/{id}/send-to-supplier")
+async def send_material_request_to_supplier(
+    id: str,
+    body: Optional[SendMaterialRequestToSupplierRequest] = None,
+    uow: UnitOfWork = Depends(get_uow),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """
+    Approve/review a Material Request and dispatch it via email to the associated or selected supplier.
+    Ensures safe recipient validation, real SMTP delivery confirmation, and updates request status.
+    """
+    try:
+        req_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Material Request UUID")
+
+    stmt = (
+        select(MaterialRequestModel)
+        .options(selectinload(MaterialRequestModel.items))
+        .where(MaterialRequestModel.id == req_uuid)
+    )
+    res = await uow.session.execute(stmt)
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Material request not found")
+
+    # Resolve supplier
+    supplier: Optional[SupplierModel] = None
+    if body and body.supplier_id:
+        try:
+            sup_uuid = uuid.UUID(body.supplier_id)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Supplier UUID")
+        sup_stmt = select(SupplierModel).options(selectinload(SupplierModel.contact)).where(SupplierModel.id == sup_uuid)
+        sup_res = await uow.session.execute(sup_stmt)
+        supplier = sup_res.scalar_one_or_none()
+        if not supplier:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Specified supplier not found")
+    else:
+        # Automatically determine supplier from requested materials
+        material_ids = [it.material_id for it in req.items if it.material_id]
+        material_keywords = set()
+        for it in req.items:
+            if it.material_code:
+                material_keywords.add(it.material_code.strip().lower())
+            if it.material_name:
+                for word in it.material_name.strip().split():
+                    if len(word) >= 3:
+                        material_keywords.add(word.lower())
+
+        sup_stmt = select(SupplierModel).options(selectinload(SupplierModel.contact)).where(SupplierModel.status.ilike("Active"))
+        sup_res = await uow.session.execute(sup_stmt)
+        all_active = sup_res.scalars().all()
+
+        # Try to find matching supplier with primary email
+        for s in all_active:
+            if not s.contact or not s.contact.primary_email:
+                continue
+            sup_materials = " ".join(str(m).lower() for m in (s.main_materials or []))
+            if any(kw in sup_materials for kw in material_keywords):
+                supplier = s
+                break
+
+        # If no keyword match, take first active supplier with email
+        if not supplier:
+            for s in all_active:
+                if s.contact and s.contact.primary_email:
+                    supplier = s
+                    break
+
+    if not supplier:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active supplier with an email address found. Please select a supplier from the list."
+        )
+
+    # Validate supplier contact and email
+    recipient_email = (supplier.contact.primary_email if supplier.contact else "").strip()
+    if not recipient_email or "@" not in recipient_email:
+        logger.error(
+            f"Cannot send Material Request {req.request_number}: Supplier {supplier.supplier_name} "
+            f"(ID: {supplier.id}) has no valid primary email configured."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Supplier '{supplier.supplier_name}' does not have a valid primary email address configured in the database."
+        )
+
+    masked_email = mask_email(recipient_email)
+    logger.info(
+        f"Attempting Material Request email send: request_id={req.id}, request_number={req.request_number}, "
+        f"supplier_id={supplier.id}, supplier_name='{supplier.supplier_name}', recipient={masked_email}"
+    )
+
+    # Prepare email text and HTML
+    items_text = "\n".join(
+        f"  - {it.material_code}: {it.material_name or '—'} | Quantity: {it.quantity} {it.uom}"
+        for it in req.items
+    )
+    notes_section = f"\nProcurement Notes: {body.notes}\n" if (body and body.notes) else ""
+    remarks_section = f"\nRemarks: {req.remarks}\n" if req.remarks else ""
+
+    plain_body = (
+        f"Dear {supplier.supplier_name},\n\n"
+        f"We are submitting a formal material requirement enquiry from NexusWMS Procurement:\n\n"
+        f"Request Number: {req.request_number}\n"
+        f"Warehouse: {req.warehouse_id}\n"
+        f"Department: {req.department}\n"
+        f"Required By Date: {req.required_date}\n"
+        f"{remarks_section}{notes_section}\n"
+        f"Requested Materials:\n{items_text}\n\n"
+        f"Please reply with your commercial quotation, availability, and expected dispatch timeline.\n\n"
+        f"Regards,\nNexusWMS Procurement Team"
+    )
+
+    item_rows = [
+        {
+            "material": f"{it.material_code} - {it.material_name}" if it.material_name else it.material_code,
+            "quantity": f"{it.quantity} {it.uom}",
+            "delivery": str(req.required_date),
+            "warehouse": req.warehouse_id,
+        }
+        for it in req.items
+    ]
+
+    html_body = render_premium_email(
+        eyebrow="Material Requirement Enquiry",
+        title=f"Material Requirement · {req.request_number}",
+        greeting=f"Hello {supplier.supplier_name},",
+        intro=(
+            f"NexusWMS Procurement has reviewed and approved Material Request {req.request_number}. "
+            "Please review the required materials below and confirm product availability, pricing, and estimated dispatch dates."
+        ),
+        details=[
+            ("Request Number", req.request_number),
+            ("Destination Warehouse", req.warehouse_id),
+            ("Originating Department", req.department),
+            ("Required By Date", str(req.required_date)),
+        ],
+        items=item_rows,
+        items_title="Requested Materials & Quantities",
+        col_headers=("Material & Specification", "Quantity", "Required Date", "Destination Warehouse"),
+        note=(
+            f"Procurement Notes: {body.notes}" if (body and body.notes) else
+            "Please submit your response or quotation referencing this Material Request number."
+        ),
+        signoff="NexusWMS Procurement Team",
+    )
+
+    subject = f"Material Requirement Enquiry · {req.request_number}"
+
+    # Dispatch email live and handle provider response
+    try:
+        await send_email(
+            to_email=recipient_email,
+            subject=subject,
+            body=plain_body,
+            html_body=html_body,
+            raise_on_missing=True,
+        )
+        logger.info(
+            f"Material Request {req.request_number} email successfully delivered to supplier "
+            f"'{supplier.supplier_name}' ({masked_email})"
+        )
+    except Exception as send_err:
+        logger.error(
+            f"Failed to send Material Request email for {req.request_number} to supplier {supplier.id} "
+            f"({masked_email}): {send_err}",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to deliver email to supplier ({recipient_email}): {str(send_err)}"
+        )
+
+    # Update database status only after email service accepts the message
+    req.status = "PROCESSED"
+    if hasattr(req, "approved_by"):
+        req.approved_by = getattr(_user, "username", "procurement") or "procurement"
+    if hasattr(req, "approved_at"):
+        req.approved_at = datetime.now()
+
+    await uow.commit()
+
+    return {
+        "status": "success",
+        "message": f"Email successfully accepted by mail service and sent to {supplier.supplier_name} ({recipient_email}).",
+        "recipient": recipient_email,
+        "supplier_name": supplier.supplier_name,
+        "supplier_id": str(supplier.id),
+        "request_number": req.request_number,
+        "request_status": req.status,
+    }
 
 
 @router.get("/material-requests/{id}", response_model=MaterialRequestResponse)
