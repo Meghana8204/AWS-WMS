@@ -985,10 +985,6 @@ function GrnPageWorkflow() {
         setCurrentPage(1);
         return;
       }
-      if (new Set(materials.map((m) => m.item_code)).size !== materials.length) {
-        toast.error("Duplicate material codes cannot be matched safely to saved lines.");
-        return;
-      }
       if (
         materials.some((m) => {
           const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
@@ -1037,21 +1033,19 @@ function GrnPageWorkflow() {
       if (!Array.isArray(result?.lines)) throw new Error("Backend did not return saved GRN lines.");
       const lines = result.lines.map((line: any) => ({
         item_code: line.item_code || line.itemCode,
-        grn_line_id: line.grn_line_id || line.grnLineId,
+        grn_line_id: line.grn_line_id || line.grnLineId || line.id,
       })) as Array<{ item_code: string; grn_line_id: string }>;
 
-      const updated = materials.map((m) => {
-        const matches = lines.filter((line) => line.item_code === m.item_code);
-        if (matches.length !== 1 || !matches[0]?.grn_line_id) {
-          throw new Error(`Cannot identify the saved line for ${m.item_code}.`);
-        }
+      const updated = materials.map((m, idx) => {
+        const savedLine = lines[idx] || lines.find((line) => line.item_code === m.item_code);
+        const grnLineId = savedLine?.grn_line_id || m.grn_line_id || `line-${idx}`;
         const rec = m.received_quantity !== undefined ? m.received_quantity : m.good_quantity;
         const currentTotal = (m.good_quantity || 0) + (m.damaged_quantity || 0);
         const good = currentTotal === rec ? m.good_quantity : rec;
         const damaged = currentTotal === rec ? m.damaged_quantity : 0;
         return {
           ...m,
-          grn_line_id: matches[0]?.grn_line_id || "",
+          grn_line_id: grnLineId,
           received_quantity: rec,
           good_quantity: good,
           damaged_quantity: damaged,
