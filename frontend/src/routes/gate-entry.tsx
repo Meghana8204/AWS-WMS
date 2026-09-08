@@ -141,6 +141,12 @@ function isValidVehicleNumber(value: string): boolean {
   return /^(?:[A-Z]{2}\d{1,2}[A-Z]{1,3}\d{4}|\d{2}BH\d{4}[A-Z]{2})$/.test(compact);
 }
 
+function formatQuantityInputValue(value: unknown): string {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return "";
+  return String(Math.floor(quantity));
+}
+
 function GateEntry() {
   const [entries, setEntries] = useState<GateEntryRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -240,7 +246,9 @@ function GateEntry() {
         ),
         // ASN lines expose their quantity as shippedQuantity, whereas PO and
         // OCR lines use quantity. Support both when populating the gate form.
-        quantity: String(item.shipped_quantity ?? item.shippedQuantity ?? item.quantity ?? item.ordered_quantity ?? "10"),
+        quantity: formatQuantityInputValue(
+          item.shipped_quantity ?? item.shippedQuantity ?? item.quantity ?? item.ordered_quantity ?? "10",
+        ),
         uom: String(item.uom ?? item.unit ?? "PCS"),
       }))
       .filter((item) => item.material_description || item.material_code);
@@ -971,37 +979,6 @@ function GateEntry() {
             description="Entering a PO auto-fetches system records and auto-populates all required fields."
             icon={Truck}
           >
-            {/* PO Quick Selection Pills */}
-            {availablePos.length > 0 && (
-              <div className="mb-3">
-                <span className="text-[11px] font-medium text-muted-foreground mr-2">Quick Select Open PO:</span>
-                <div className="inline-flex flex-wrap gap-1.5 align-middle mt-1">
-                  {availablePos.slice(0, 6).map((item: any) => {
-                    const num = item.poNumber || item.po_number;
-                    if (!num) return null;
-                    return (
-                      <button
-                        type="button"
-                        key={num}
-                        onClick={() => {
-                          setPoNumber(num);
-                          void fetchPoDetails(num, true);
-                        }}
-                        className={cn(
-                          "px-2 py-0.5 text-xs font-mono rounded-md border transition-colors",
-                          poNumber.toUpperCase() === num.toUpperCase()
-                            ? "bg-primary text-primary-foreground border-primary font-semibold"
-                            : "bg-muted/50 hover:bg-muted text-foreground border-border/60",
-                        )}
-                      >
-                        {num}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             <datalist id="po-options">
               {availablePos.map((item: any, idx: number) => {
                 const num = item.poNumber || item.po_number;

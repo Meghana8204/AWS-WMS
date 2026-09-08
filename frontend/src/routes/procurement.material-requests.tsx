@@ -265,7 +265,7 @@ function MaterialRequests() {
                               {item.materialName || item.material_name || "—"}
                             </td>
                             <td className="p-3 text-center font-bold text-orange-600 tabular-nums">
-                              {item.quantity}
+                              {Math.floor(Number(item.quantity || 0))}
                             </td>
                             <td className="p-3 text-[10px] font-black uppercase text-muted-foreground">
                               {item.uom}

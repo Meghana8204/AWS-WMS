@@ -511,6 +511,11 @@ async def lifespan(app: FastAPI):
                 ("driver_phone", "VARCHAR(32)"),
                 ("asn_number", "VARCHAR(64)"),
                 ("po_number", "VARCHAR(64)"),
+                ("grn_number", "VARCHAR(64)"),
+                ("supplier_name", "VARCHAR(255)"),
+                ("notification_type", "VARCHAR(64)"),
+                ("idempotency_key", "VARCHAR(255)"),
+                ("payload_json", "TEXT"),
             ]:
                 try:
                     await run_ddl(f"ALTER TABLE notification ADD COLUMN IF NOT EXISTS {col} {col_type}")
@@ -853,16 +858,21 @@ async def lifespan(app: FastAPI):
                     task_number VARCHAR(64) UNIQUE NOT NULL,
                     grn_id UUID,
                     grn_number VARCHAR(64),
+                    handling_unit_id UUID,
                     item_code VARCHAR(64) NOT NULL,
                     material_name VARCHAR(256),
                     quantity NUMERIC(18, 4) NOT NULL,
                     uom VARCHAR(32),
                     warehouse_id VARCHAR(64),
                     source_location VARCHAR(64),
+                    destination_store_id UUID,
+                    destination_zone_id UUID,
+                    destination_bin_id UUID,
                     destination_location_id UUID,
                     destination_zone VARCHAR(32),
                     destination_rack VARCHAR(32),
                     destination_bin VARCHAR(32),
+                    destination_bin_code VARCHAR(64),
                     location_assigned_by VARCHAR(128),
                     location_assigned_at TIMESTAMP WITH TIME ZONE,
                     assigned_to VARCHAR(128),
@@ -873,12 +883,27 @@ async def lifespan(app: FastAPI):
                     rotation_policy VARCHAR(16),
                     placement_metadata JSON,
                     status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
+                    started_by VARCHAR(128),
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    completed_by VARCHAR(128),
+                    completed_at TIMESTAMP WITH TIME ZONE,
                     created_by VARCHAR(128) NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         except Exception: pass
         for column, column_type in [
+            ("handling_unit_id", "UUID"),
+            ("destination_store_id", "UUID"),
+            ("destination_zone_id", "UUID"),
+            ("destination_bin_id", "UUID"),
+            ("destination_location_id", "UUID"),
+            ("destination_zone", "VARCHAR(128)"),
+            ("destination_rack", "VARCHAR(64)"),
+            ("destination_bin", "VARCHAR(64)"),
+            ("destination_bin_code", "VARCHAR(64)"),
+            ("location_assigned_by", "VARCHAR(128)"),
+            ("location_assigned_at", "TIMESTAMP WITH TIME ZONE"),
             ("assigned_to", "VARCHAR(128)"),
             ("assigned_by", "VARCHAR(128)"),
             ("assigned_at", "TIMESTAMP WITH TIME ZONE"),
@@ -886,6 +911,10 @@ async def lifespan(app: FastAPI):
             ("handling_requirement", "VARCHAR(128)"),
             ("rotation_policy", "VARCHAR(16)"),
             ("placement_metadata", "JSON"),
+            ("started_by", "VARCHAR(128)"),
+            ("started_at", "TIMESTAMP WITH TIME ZONE"),
+            ("completed_by", "VARCHAR(128)"),
+            ("completed_at", "TIMESTAMP WITH TIME ZONE"),
         ]:
             try:
                 await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {column} {column_type}")

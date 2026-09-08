@@ -465,13 +465,13 @@ function DockManagement() {
             className="rounded-xl text-xs shadow-glow"
             onClick={() => setShowCreateDock(true)}
           >
-            <Plus className="size-4" /> + New Dock
+            <Plus className="size-4" /> New Dock
           </Button>
         </div>
       }
     >
       {/* Summary cards use the same neutral surfaces and semantic tokens as the rest of the app. */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           label="Total Docks"
           value={
@@ -1448,12 +1448,36 @@ function SummaryCard({
   onClick: () => void;
 }) {
   const presentation = {
-    TOTAL: { icon: Warehouse, tone: "bg-primary-soft text-primary" },
-    AVAILABLE: { icon: CheckCircle2, tone: "bg-success-soft text-success" },
-    RESERVED: { icon: History, tone: "bg-warning-soft text-warning-foreground" },
-    OCCUPIED: { icon: Truck, tone: "bg-danger-soft text-destructive" },
-    MAINTENANCE: { icon: Wrench, tone: "bg-muted text-muted-foreground" },
-    PENDING: { icon: Package, tone: "bg-primary-soft text-primary" },
+    TOTAL: {
+      icon: Warehouse,
+      card: "border-blue-300 bg-gradient-to-br from-blue-50/80 via-card to-card",
+      iconTone: "border-blue-200 bg-blue-100 text-blue-600",
+    },
+    AVAILABLE: {
+      icon: CheckCircle2,
+      card: "border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-card to-card",
+      iconTone: "border-emerald-200 bg-emerald-100 text-emerald-600",
+    },
+    RESERVED: {
+      icon: History,
+      card: "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-card to-card",
+      iconTone: "border-cyan-200 bg-cyan-100 text-cyan-600",
+    },
+    OCCUPIED: {
+      icon: Truck,
+      card: "border-amber-200 bg-gradient-to-br from-amber-50/80 via-card to-card",
+      iconTone: "border-amber-200 bg-amber-100 text-amber-600",
+    },
+    MAINTENANCE: {
+      icon: Wrench,
+      card: "border-rose-200 bg-gradient-to-br from-rose-50/80 via-card to-card",
+      iconTone: "border-rose-200 bg-rose-100 text-rose-600",
+    },
+    PENDING: {
+      icon: Package,
+      card: "border-violet-200 bg-gradient-to-br from-violet-50/80 via-card to-card",
+      iconTone: "border-violet-200 bg-violet-100 text-violet-600",
+    },
   };
   const Icon = presentation[status].icon;
 
@@ -1461,19 +1485,28 @@ function SummaryCard({
     <Card
       onClick={onClick}
       className={cn(
-        "group cursor-pointer gap-0 rounded-2xl border border-border/70 bg-card p-4 text-card-foreground shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
-        active && "border-primary/50 ring-2 ring-primary/20",
+        "group flex min-h-32 cursor-pointer flex-col justify-between gap-3 rounded-[22px] border p-5 text-card-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
+        presentation[status].card,
+        active && "ring-2 ring-primary/25",
       )}
     >
       <div className="flex items-center justify-between">
-        <span className={cn("grid size-9 place-items-center rounded-xl", presentation[status].tone)}>
+        <p className="min-w-0 pr-2 text-[11px] font-black uppercase leading-tight text-slate-500">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "grid size-10 shrink-0 place-items-center rounded-full border shadow-sm",
+            presentation[status].iconTone,
+          )}
+        >
           <Icon className="size-4" />
         </span>
-        <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
-      <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">Click to filter</p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-4xl font-black leading-none tabular-nums text-slate-950 xl:text-3xl 2xl:text-4xl">{value}</p>
+        <ArrowRight className="mb-1 size-4 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+      </div>
     </Card>
   );
 }

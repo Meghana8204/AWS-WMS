@@ -69,15 +69,6 @@ class GrnHistorySnapshot:
 
 
 @dataclass(frozen=True)
-class PurchaseOrderLineSnapshot:
-    item_code: str
-    ordered_quantity: Decimal
-    material_name: str | None = None
-    material_category: str | None = None
-    uom: str | None = None
-
-
-@dataclass(frozen=True)
 class PurchaseOrderSnapshot:
     """
     Read-only PO information required by Goods Receiving.
@@ -218,20 +209,6 @@ class GrnContextSnapshot:
     existing_grn: GrnHeaderSnapshot | None
     dock_options: list[WarehouseDockSnapshot]
     lines: list[GrnContextLineSnapshot]
-
-    po_number: str | None = None
-    status: str | None = None
-
-    supplier_id: str | None = None
-    supplier_name: str | None = None
-    supplier_company_name: str | None = None
-
-    warehouse_id: str | None = None
-    warehouse_name: str | None = None
-
-    expected_delivery_date: date | None = None
-
-    lines: tuple[PurchaseOrderLineSnapshot, ...] = field(default_factory=tuple)
 
 
 # ============================================================================

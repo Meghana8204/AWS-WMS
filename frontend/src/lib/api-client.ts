@@ -163,6 +163,25 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+  async getBankDetailsByIfsc(ifsc: string): Promise<{
+    ifsc: string;
+    bank_name: string;
+    branch_name: string;
+  }> {
+    const normalizedIfsc = ifsc.trim().toUpperCase();
+    const response = await fetch(`https://ifsc.razorpay.com/${encodeURIComponent(normalizedIfsc)}`);
+
+    if (!response.ok) {
+      throw new Error("Unable to find IFSC code");
+    }
+
+    const data = await response.json();
+    return {
+      ifsc: data.IFSC || normalizedIfsc,
+      bank_name: data.BANK || "",
+      branch_name: data.BRANCH || "",
+    };
+  },
   async getRfq(rfqId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/rfqs/${rfqId}`);
   },
@@ -193,6 +212,9 @@ export const api = {
   },
   async getDockOverviewMetrics(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
+  },
+  async getDockTypes(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-types`);
   },
   async getPendingAllocations(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
@@ -482,6 +504,9 @@ export const api = {
   },
   async getDashboardStats(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/dashboard/stats`);
+  },
+  async getWarehouseDashboardMetrics(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/storage/inventory/dashboard-metrics`);
   },
   async createGateEntry(formData: FormData): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries`, {

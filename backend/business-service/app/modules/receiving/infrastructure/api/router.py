@@ -1771,6 +1771,8 @@ async def get_grn_detail(
         verification_notes=grn.verification_notes,
         created_at=grn.created_at,
         updated_at=grn.updated_at,
+        current_step=get_grn_wizard_progress(grn)[0],
+        max_completed_step=get_grn_wizard_progress(grn)[1],
         lines=[
             GrnLineResponse(
                 grn_line_id=str(line.id),

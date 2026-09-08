@@ -299,6 +299,19 @@ class GrnHeaderResponse(ApiModel):
     updated_at: datetime | None = None
 
 
+class UpdateGrnStepRequest(ApiModel):
+    current_step: int = Field(ge=1, le=6)
+    max_completed_step: int | None = Field(default=None, ge=0, le=6)
+
+
+class UpdateGrnStepResponse(ApiModel):
+    grn_id: str
+    status: str
+    current_step: int
+    max_completed_step: int
+    completed_steps: list[int] = Field(default_factory=list)
+
+
 # ============================================================================
 # PAGE 2 - ITEM RECEIVING DETAILS
 # ============================================================================
@@ -692,6 +705,8 @@ class GrnDetailResponse(ApiModel):
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    current_step: int = 1
+    max_completed_step: int = 0
 
     lines: list[GrnLineResponse] = Field(default_factory=list)
     documents: list[GrnDocumentResponse] = Field(default_factory=list)
@@ -716,6 +731,8 @@ class GrnSummaryResponse(ApiModel):
 
     receipt_date: datetime | None = None
     received_by: str | None = None
+    current_step: int = 1
+    max_completed_step: int = 0
 
 
 class GrnListResponse(ApiModel):

@@ -60,6 +60,7 @@ function NewSupplier() {
   const [currentStep, setCurrentStep] = React.useState(1);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isLookingUpIfsc, setIsLookingUpIfsc] = React.useState(false);
+  const [isLookingUpPincode, setIsLookingUpPincode] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
   // Vendor Types state
@@ -204,6 +205,64 @@ function NewSupplier() {
       setIsLookingUpIfsc(false);
     }
   };
+
+  const lookupPincode = React.useCallback(async (pincode: string) => {
+    if (!/^\d{6}$/.test(pincode)) return;
+
+    setIsLookingUpPincode(true);
+    try {
+      const response = await fetch(`https://api.postalpincode.in/pincode/${pincode}`);
+      if (!response.ok) {
+        throw new Error("Unable to lookup pincode");
+      }
+
+      const data = await response.json();
+      const result = Array.isArray(data) ? data[0] : null;
+      const postOffice = Array.isArray(result?.PostOffice) ? result.PostOffice[0] : null;
+
+      if (result?.Status !== "Success" || !postOffice) {
+        throw new Error("Invalid pincode");
+      }
+
+      const city = postOffice.District || postOffice.Block || postOffice.Name || "";
+      const state = postOffice.State || "";
+
+      setFormData((previous) => ({
+        ...previous,
+        address: {
+          ...previous.address,
+          city,
+          state: INDIAN_STATES.includes(state) ? state : previous.address.state,
+          pincode,
+        },
+      }));
+      setErrors((previous) => {
+        const next = { ...previous };
+        delete next["address.city"];
+        delete next["address.state"];
+        delete next["address.pincode"];
+        return next;
+      });
+    } catch (error) {
+      setErrors((previous) => ({
+        ...previous,
+        "address.pincode": error instanceof Error ? error.message : "Unable to lookup pincode",
+      }));
+    } finally {
+      setIsLookingUpPincode(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const pincode = formData.address.pincode;
+    if (!/^\d{6}$/.test(pincode)) return;
+
+    const timer = window.setTimeout(() => {
+      void lookupPincode(pincode);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [formData.address.pincode, lookupPincode]);
 
   const validateStep = async (step: number) => {
     const newErrors: Record<string, string> = {};
@@ -964,20 +1023,26 @@ function NewSupplier() {
                     <Label htmlFor="pincode">
                       Pincode <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="pincode"
-                      value={formData.address.pincode}
-                      maxLength={6}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/\D/g, "").substring(0, 6);
-                        updateFormData("address", "pincode", val);
-                      }}
-                      className={cn(
-                        errors["address.pincode"] &&
-                          "border-destructive focus-visible:ring-destructive",
+                    <div className="relative">
+                      <Input
+                        id="pincode"
+                        value={formData.address.pincode}
+                        maxLength={6}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "").substring(0, 6);
+                          updateFormData("address", "pincode", val);
+                        }}
+                        className={cn(
+                          "pr-9",
+                          errors["address.pincode"] &&
+                            "border-destructive focus-visible:ring-destructive",
+                        )}
+                        placeholder="6-digit PIN"
+                      />
+                      {isLookingUpPincode && (
+                        <Loader2 className="absolute right-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-muted-foreground" />
                       )}
-                      placeholder="6-digit PIN"
-                    />
+                    </div>
                     {errors["address.pincode"] && (
                       <p className="text-[11px] font-medium text-destructive flex items-center gap-1">
                         <AlertCircle className="size-3" /> {errors["address.pincode"]}

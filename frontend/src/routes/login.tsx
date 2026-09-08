@@ -1,6 +1,6 @@
 import * as React from "react";
 import { createFileRoute, redirect, useNavigate, useSearch } from "@tanstack/react-router";
-import { Warehouse, Loader2, Eye, EyeOff, ShieldCheck, Lock } from "lucide-react";
+import { Warehouse, Loader2, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api-client";
@@ -171,7 +171,7 @@ function LoginPage() {
               <Label htmlFor="employeeId">Employee ID / Username</Label>
               <Input
                 id="employeeId"
-                placeholder="grn or emp_001"
+                placeholder="Enter your employee ID or username"
                 value={employeeId}
                 onChange={(e) => setEmployeeId(e.target.value)}
                 required
@@ -208,49 +208,6 @@ function LoginPage() {
               </div>
             </div>
 
-            {/* DEMO CREDENTIALS QUICK-FILL BAR */}
-            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 space-y-2">
-              <span className="text-xs font-bold text-primary uppercase block">Demo Sign-In Credentials</span>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-lg text-xs font-bold border-primary/40 bg-background text-primary hover:bg-primary/10"
-                  onClick={() => {
-                    setEmployeeId("grn");
-                    setPassword("123456");
-                    toast.info("GRN credentials loaded: Username: grn | Password: 123456");
-                  }}
-                >
-                  📦 GRN Officer (grn / 123456)
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-lg text-xs font-medium border-border"
-                  onClick={() => {
-                    setEmployeeId("warehouse");
-                    setPassword("123456");
-                  }}
-                >
-                  🏭 Warehouse
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-lg text-xs font-medium border-border"
-                  onClick={() => {
-                    setEmployeeId("procurement");
-                    setPassword("123456");
-                  }}
-                >
-                  🛒 Procurement
-                </Button>
-              </div>
-            </div>
 
             <div className="flex items-center space-x-2">
               <Checkbox
