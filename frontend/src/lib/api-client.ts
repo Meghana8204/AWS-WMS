@@ -478,10 +478,20 @@ export const api = {
       `${BUSINESS_API_URL}/api/storage/putaway-tasks/handling-units/${encodeURIComponent(scanValue)}`,
     );
   },
-  async assignPutawayLocation(taskId: string, locationId: string): Promise<any> {
+  async assignPutawayLocation(
+    taskId: string,
+    locationId?: string,
+    storeId?: string,
+    zoneId?: string,
+  ): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/storage/putaway-tasks/${taskId}/location`, {
       method: "PUT",
-      body: JSON.stringify({ location_id: locationId }),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        location_id: locationId,
+        store_id: storeId,
+        zone_id: zoneId,
+      }),
     });
   },
   async startPutaway(taskId: string): Promise<any> {
@@ -507,6 +517,152 @@ export const api = {
   },
   async getWarehouseDashboardMetrics(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/storage/inventory/dashboard-metrics`);
+  },
+  async getWarehouseInventorySummary(params?: {
+    store_id?: string;
+    status_filter?: string;
+    search?: string;
+  }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.store_id && params.store_id !== "ALL") query.set("store_id", params.store_id);
+    if (params?.status_filter && params.status_filter !== "ALL") {
+      query.set("status_filter", params.status_filter);
+    }
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString();
+    return request<any[]>(
+      `${BUSINESS_API_URL}/api/storage/inventory/warehouse-summary${qs ? `?${qs}` : ""}`,
+    );
+  },
+  async getStockLedger(params?: {
+    store_id?: string;
+    material_code?: string;
+    transaction_type?: string;
+    search?: string;
+    start_date?: string;
+    end_date?: string;
+  }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.store_id && params.store_id !== "ALL") query.set("store_id", params.store_id);
+    if (params?.material_code) query.set("material_code", params.material_code);
+    if (params?.transaction_type && params.transaction_type !== "ALL") {
+      query.set("transaction_type", params.transaction_type);
+    }
+    if (params?.search) query.set("search", params.search);
+    if (params?.start_date) query.set("start_date", params.start_date);
+    if (params?.end_date) query.set("end_date", params.end_date);
+    const qs = query.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/storage/inventory/ledger${qs ? `?${qs}` : ""}`);
+  },
+  async getInventoryStats(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/storage/inventory/dashboard-metrics`);
+  },
+  async getStores(params?: { status?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== "ALL") query.set("status", params.status);
+    const qs = query.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/stores${qs ? `?${qs}` : ""}`);
+  },
+  async getStoreHierarchy(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/stores/hierarchy/all`);
+  },
+  async getStoreManagers(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/stores/managers`);
+  },
+  async getNextStoreCode(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/next-code`);
+  },
+  async createStore(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateStore(idOrCode: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(idOrCode)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateStoreStatus(idOrCode: string, status: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(idOrCode)}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  },
+  async getStoreZones(storeIdOrCode: string, params?: { status?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== "ALL") query.set("status", params.status);
+    const qs = query.toString();
+    return request<any[]>(
+      `${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(storeIdOrCode)}/zones${qs ? `?${qs}` : ""}`,
+    );
+  },
+  async getNextZoneCode(storeIdOrCode: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(storeIdOrCode)}/zones/next-code`,
+    );
+  },
+  async createZone(storeIdOrCode: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(storeIdOrCode)}/zones`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async getNextBinCode(zoneId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/zones/${encodeURIComponent(zoneId)}/bins/next-code`);
+  },
+  async createBin(zoneId: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/zones/${encodeURIComponent(zoneId)}/bins`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateBinStatus(binId: string, status: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/bins/${encodeURIComponent(binId)}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  },
+  async getZoneQR(zoneId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/zones/${encodeURIComponent(zoneId)}/qr`);
+  },
+  async getBinQR(binId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/bins/${encodeURIComponent(binId)}/qr`);
+  },
+  async createStoreManager(data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/managers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateStoreManager(managerId: string, data: any): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/managers/${encodeURIComponent(managerId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+  },
+  async updateStoreManagerStatus(managerId: string, status: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/stores/managers/${encodeURIComponent(managerId)}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+  },
+  async getQuarantineRecords(params?: { status?: string; search?: string }): Promise<any[]> {
+    const query = new URLSearchParams();
+    if (params?.status && params.status !== "ALL") query.set("status", params.status);
+    if (params?.search) query.set("search", params.search);
+    const qs = query.toString();
+    return request<any[]>(`${BUSINESS_API_URL}/api/quarantine${qs ? `?${qs}` : ""}`);
   },
   async createGateEntry(formData: FormData): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries`, {

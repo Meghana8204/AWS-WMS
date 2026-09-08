@@ -132,10 +132,18 @@ async def create_dock(
     user: CurrentUser = Depends(require_permission("gate:write")),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Docks are predefined static system configuration and cannot be created.",
+    dock = DockMasterModel(
+        dock_code=req.dock_code.strip().upper(),
+        dock_name=req.dock_name.strip(),
+        dock_type=req.dock_type.strip().upper(),
+        location=req.location,
+        description=req.description,
+        status=req.status.upper(),
+        is_active=req.is_active,
     )
+    uow.session.add(dock)
+    await uow.session.commit()
+    return await get_dock_by_id(dock.id, uow)
 
 
 @router.get("/docks/{dock_id}", response_model=DockMasterResponse)
@@ -215,10 +223,25 @@ async def update_dock(
     user: CurrentUser = Depends(require_permission("gate:write")),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Docks are predefined static system configuration and cannot be edited.",
-    )
+    dock = (await uow.session.execute(select(DockMasterModel).where(DockMasterModel.id == dock_id))).scalar_one_or_none()
+    if not dock:
+        raise HTTPException(status_code=404, detail="Dock not found")
+
+    if req.dock_code is not None:
+        dock.dock_code = req.dock_code.strip().upper()
+    if req.dock_name is not None:
+        dock.dock_name = req.dock_name.strip()
+    if req.dock_type is not None:
+        dock.dock_type = req.dock_type.strip().upper()
+    if req.location is not None:
+        dock.location = req.location
+    if req.description is not None:
+        dock.description = req.description
+    if req.is_active is not None:
+        dock.is_active = req.is_active
+
+    await uow.session.commit()
+    return await get_dock_by_id(dock.id, uow)
 
 
 @router.patch("/docks/{dock_id}/status", response_model=DockMasterResponse)

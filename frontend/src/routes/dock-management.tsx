@@ -1,15 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   ArrowRight,
   CheckCircle2,
+  Edit,
+  History,
   Loader2,
   Package,
+  Plus,
   RefreshCw,
   Search,
   ShieldAlert,
-  SquarePen,
   Truck,
   Warehouse,
   Wrench,
@@ -47,7 +49,7 @@ export const Route = createFileRoute("/dock-management")({
       {
         name: "description",
         content:
-          "Real-time dock allocation, vehicle arrival tracking, and operational status.",
+          "Real-time warehouse dock allocation, vehicle arrival tracking, status management, and operational overview.",
       },
     ],
   }),
@@ -103,33 +105,44 @@ type DockHistory = {
   remarks?: string | null;
 };
 
-export const PREDEFINED_CATEGORIES = [
-  { id: "ALL", name: "All Types" },
-  { id: "CHEMICAL_HAZARDOUS", name: "Chemical / Hazardous" },
-  { id: "ELECTRONICS", name: "Electronics" },
-  { id: "ELECTRICAL", name: "Electrical" },
-  { id: "RAW_MATERIAL", name: "Raw Material" },
-  { id: "MAIN_RECEIVING", name: "Main Receiving" },
+const FALLBACK_DOCK_TYPES = [
+  "RAW_MATERIAL",
+  "CHEMICAL_HAZARDOUS",
+  "ELECTRICAL",
+  "CHEMICAL",
+  "HAZARDOUS_ITEMS",
+  "ELECTRONICS",
+  "MAIN_RECEIVING",
 ];
 
-function getCategoryLabel(dockType: string): string {
-  switch (dockType) {
-    case "CHEMICAL_HAZARDOUS":
-    case "CHEMICAL":
-    case "HAZARDOUS_ITEMS":
-      return "CHEMICAL/HAZARDOUS";
-    case "ELECTRONICS":
-    case "ELECTRONIC":
-      return "ELECTRONICS";
-    case "ELECTRICAL":
-      return "ELECTRICAL";
-    case "RAW_MATERIAL":
-      return "RAW MATERIAL";
-    case "MAIN_RECEIVING":
-      return "MAIN RECEIVING";
-    default:
-      return dockType ? dockType.replaceAll("_", "/").toUpperCase() : "STANDARD";
+function formatDockType(value: string) {
+  if (!value) return "Standard";
+  return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function generateDockCodeAndName(dockType?: string, existingDocks: { dock_code?: string }[] = []) {
+  const effectiveType = dockType || "RAW_MATERIAL";
+  const words = effectiveType.split("_").filter(Boolean);
+  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : effectiveType.slice(0, 2)).toUpperCase() || "DK";
+  const regex = new RegExp(`^${prefix}-?(\\d+)`, "i");
+  let maxNum = 0;
+
+  for (const d of existingDocks) {
+    if (!d.dock_code) continue;
+    const match = d.dock_code.trim().match(regex);
+    if (match && match[1]) {
+      const num = parseInt(match[1], 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
   }
+
+  const nextNumStr = String(maxNum + 1).padStart(2, "0");
+  return {
+    code: `${prefix}-${nextNumStr}`,
+    name: `${formatDockType(effectiveType)} Dock ${nextNumStr}`,
+  };
 }
 
 function DockManagement() {
@@ -142,15 +155,16 @@ function DockManagement() {
     maintenance_docks: number;
     pending_allocations_count: number;
   }>({
-    total_docks: 10,
-    available_docks: 6,
-    occupied_docks: 4,
+    total_docks: 0,
+    available_docks: 0,
+    occupied_docks: 0,
     reserved_docks: 0,
     maintenance_docks: 0,
     pending_allocations_count: 0,
   });
   const [pendingRequests, setPendingRequests] = useState<AllocationRequest[]>([]);
   const [history, setHistory] = useState<DockHistory[]>([]);
+  const [dockTypes, setDockTypes] = useState<string[]>(FALLBACK_DOCK_TYPES);
   const [loading, setLoading] = useState(true);
 
   // Filter & tab controls
@@ -158,59 +172,70 @@ function DockManagement() {
   const [activeTab, setActiveTab] = useState<
     "ALL" | "AVAILABLE" | "RESERVED" | "OCCUPIED" | "MAINTENANCE" | "PENDING" | "HISTORY"
   >("ALL");
-  const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
+  const [dockTypeFilter, setDockTypeFilter] = useState<string>("ALL");
 
   // Modals & Action States
   const [selectedDetailsDock, setSelectedDetailsDock] = useState<Dock | null>(null);
+  const [editingDock, setEditingDock] = useState<Dock | null>(null);
   const [allocateModalDock, setAllocateModalDock] = useState<Dock | null>(null);
   const [allocateModalPendingReq, setAllocateModalPendingReq] = useState<AllocationRequest | null>(
     null,
   );
   const [selectedRequestIdToAllocate, setSelectedRequestIdToAllocate] = useState<string>("");
   const [selectedDockIdToAllocate, setSelectedDockIdToAllocate] = useState<string>("");
+
+  const [arriveConfirmDock, setArriveConfirmDock] = useState<Dock | null>(null);
   const [releaseConfirmDock, setReleaseConfirmDock] = useState<Dock | null>(null);
 
-  // Edit & Maintenance Modals
-  const [editDockModalDock, setEditDockModalDock] = useState<Dock | null>(null);
-  const [editDockForm, setEditDockForm] = useState({
-    name: "",
-    type: "RAW_MATERIAL",
-    location: "",
-    description: "",
-  });
-
-  const [maintenanceConfirmDock, setMaintenanceConfirmDock] = useState<Dock | null>(null);
-
+  const [showCreateDock, setShowCreateDock] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+
+  const [createDockType, setCreateDockType] = useState(FALLBACK_DOCK_TYPES[0]);
+  const [createDockCode, setCreateDockCode] = useState("");
+  const [createDockName, setCreateDockName] = useState("");
+
+  const handleDockTypeChange = (newType: string) => {
+    setCreateDockType(newType);
+    const generated = generateDockCodeAndName(newType, docks);
+    setCreateDockCode(generated.code);
+    setCreateDockName(generated.name);
+  };
+
+  useEffect(() => {
+    if (showCreateDock) {
+      const generated = generateDockCodeAndName(createDockType, docks);
+      setCreateDockCode(generated.code);
+      setCreateDockName(generated.name);
+    }
+  }, [showCreateDock, docks]);
 
   const loadAll = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [docksRes, overviewRes, pendingRes, historyRes] = await Promise.all([
+      const [docksRes, overviewRes, pendingRes, historyRes, dockTypesRes] = await Promise.all([
         api.getDocks(),
         api.getDockOverviewMetrics().catch(() => null),
         api.getPendingAllocations().catch(() => []),
         api.getDockHistory().catch(() => []),
+        api.getDockTypes().catch(() => FALLBACK_DOCK_TYPES),
       ]);
 
       setDocks(docksRes);
       setPendingRequests(pendingRes);
       setHistory(historyRes);
+      const effectiveTypes = dockTypesRes && dockTypesRes.length > 0 ? dockTypesRes : FALLBACK_DOCK_TYPES;
+      setDockTypes(effectiveTypes);
+      setCreateDockType((current) => current || effectiveTypes[0] || "RAW_MATERIAL");
 
       if (overviewRes) {
         setMetrics(overviewRes);
       } else {
-        const avail = docksRes.filter((d: Dock) => d.status === "AVAILABLE").length;
-        const occ = docksRes.filter(
-          (d: Dock) => d.status === "OCCUPIED" || d.status === "RESERVED",
-        ).length;
-        const maint = docksRes.filter((d: Dock) => d.status === "MAINTENANCE").length;
         setMetrics({
-          total_docks: docksRes.length || 10,
-          available_docks: avail,
-          occupied_docks: occ,
-          reserved_docks: 0,
-          maintenance_docks: maint,
+          total_docks: docksRes.length,
+          available_docks: docksRes.filter((d: Dock) => d.status === "AVAILABLE").length,
+          occupied_docks: docksRes.filter((d: Dock) => d.status === "OCCUPIED").length,
+          reserved_docks: docksRes.filter((d: Dock) => d.status === "RESERVED").length,
+          maintenance_docks: docksRes.filter((d: Dock) => d.status === "MAINTENANCE").length,
           pending_allocations_count: pendingRes.length,
         });
       }
@@ -241,11 +266,12 @@ function DockManagement() {
 
   const isAnyModalOpen = Boolean(
     selectedDetailsDock ||
-      allocateModalDock ||
-      allocateModalPendingReq ||
-      releaseConfirmDock ||
-      editDockModalDock ||
-      maintenanceConfirmDock,
+    allocateModalDock ||
+    allocateModalPendingReq ||
+    arriveConfirmDock ||
+    releaseConfirmDock ||
+    showCreateDock ||
+    editingDock,
   );
 
   useEffect(() => {
@@ -254,55 +280,6 @@ function DockManagement() {
     const timer = window.setInterval(() => void loadAll(true), 5000);
     return () => window.clearInterval(timer);
   }, [loadAll, isAnyModalOpen]);
-
-  // Handle Edit Dock Update
-  async function handleUpdateDock() {
-    if (!editDockModalDock) return;
-    setActionBusy(true);
-    try {
-      await api.updateDock(editDockModalDock.id, {
-        dock_name: editDockForm.name.trim() || editDockModalDock.dock_name,
-        dock_type: editDockForm.type,
-        location: editDockForm.location.trim() || undefined,
-        description: editDockForm.description.trim() || undefined,
-      });
-      toast.success(`Dock ${editDockModalDock.dock_code} updated successfully`);
-      setEditDockModalDock(null);
-      await loadAll(true);
-    } catch (error) {
-      toast.error("Failed to update dock", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setActionBusy(false);
-    }
-  }
-
-  // Handle Maintenance Toggle
-  async function handleToggleMaintenance() {
-    if (!maintenanceConfirmDock) return;
-    const isMaint = maintenanceConfirmDock.status === "MAINTENANCE";
-    const nextStatus = isMaint ? "AVAILABLE" : "MAINTENANCE";
-    setActionBusy(true);
-    try {
-      await api.updateDockStatus(
-        maintenanceConfirmDock.id,
-        nextStatus,
-        isMaint ? "Maintenance completed" : "Scheduled routine maintenance",
-      );
-      toast.success(
-        `Dock ${maintenanceConfirmDock.dock_code} ${isMaint ? "returned to Available" : "marked Under Maintenance"}`,
-      );
-      setMaintenanceConfirmDock(null);
-      await loadAll(true);
-    } catch (error) {
-      toast.error("Status update failed", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setActionBusy(false);
-    }
-  }
 
   // Action Handlers
   async function handleAllocateDock() {
@@ -326,18 +303,12 @@ function DockManagement() {
       return;
     }
 
-    // Verify dock availability
-    const targetDock = docks.find((d) => d.id === dockId);
-    if (targetDock && targetDock.status !== "AVAILABLE") {
-      toast.error("Selected dock is not Available. Please choose an Available dock.");
-      return;
-    }
-
     setActionBusy(true);
     try {
       await api.allocateDock(reqId, dockId);
       toast.success(`Dock ${dockCode} allocated successfully`, {
-        description: "Status updated to OCCUPIED. Vehicle ready to proceed to dock.",
+        description:
+          "Status updated to RESERVED. Notifications dispatched to Store Manager & Quality Inspector.",
       });
       setAllocateModalPendingReq(null);
       setAllocateModalDock(null);
@@ -346,6 +317,27 @@ function DockManagement() {
       await loadAll(true);
     } catch (error) {
       toast.error("Allocation failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleVehicleArrived() {
+    if (!arriveConfirmDock) return;
+    const reqId = arriveConfirmDock.current_allocation?.id || arriveConfirmDock.id;
+    setActionBusy(true);
+    try {
+      await api.markVehicleArrived(reqId);
+      toast.success(`Vehicle Arrived at ${arriveConfirmDock.dock_code}`, {
+        description: "Dock status updated to OCCUPIED.",
+      });
+      setArriveConfirmDock(null);
+      setSelectedDetailsDock(null);
+      await loadAll(true);
+    } catch (error) {
+      toast.error("Vehicle arrival update failed", {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
@@ -374,47 +366,90 @@ function DockManagement() {
     }
   }
 
+  async function handleToggleMaintenance(dock: Dock) {
+    const nextStatus = dock.status === "MAINTENANCE" ? "AVAILABLE" : "MAINTENANCE";
+    setActionBusy(true);
+    try {
+      await api.updateDockStatus(
+        dock.id,
+        nextStatus,
+        nextStatus === "MAINTENANCE" ? "Marked for maintenance" : "Returned to operational service",
+      );
+      toast.success(`Dock ${dock.dock_code} status updated to ${nextStatus}`);
+      if (selectedDetailsDock?.id === dock.id) {
+        setSelectedDetailsDock(null);
+      }
+      await loadAll(true);
+    } catch (error) {
+      toast.error("Status update failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleCreateDock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActionBusy(true);
+    const data = new FormData(event.currentTarget);
+    try {
+      await api.createDock({
+        dock_code: String(data.get("dock_code")),
+        dock_name: String(data.get("dock_name")),
+        dock_type: String(data.get("dock_type")),
+        location: String(data.get("location") || ""),
+        description: String(data.get("description") || ""),
+        status: String(data.get("status")),
+      });
+      toast.success("Dock created successfully");
+      setShowCreateDock(false);
+      await loadAll(true);
+    } catch (error) {
+      toast.error("Unable to create dock", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleEditDock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingDock) return;
+    setActionBusy(true);
+    const data = new FormData(event.currentTarget);
+    try {
+      await api.updateDock(editingDock.id, {
+        dock_code: String(data.get("dock_code")),
+        dock_name: String(data.get("dock_name")),
+        dock_type: String(data.get("dock_type")),
+        location: String(data.get("location") || ""),
+        description: String(data.get("description") || ""),
+      });
+      toast.success(`Dock ${editingDock.dock_code} updated successfully`);
+      setEditingDock(null);
+      await loadAll(true);
+    } catch (error) {
+      toast.error("Failed to update dock master record", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   // Filtered Docks
   const filteredDocks = docks.filter((dock) => {
-    let matchesTab = true;
-    if (activeTab === "AVAILABLE") {
-      matchesTab = dock.status === "AVAILABLE";
-    } else if (activeTab === "OCCUPIED") {
-      matchesTab = dock.status === "OCCUPIED";
-    } else if (activeTab === "RESERVED") {
-      matchesTab = dock.status === "RESERVED";
-    } else if (activeTab === "MAINTENANCE") {
-      matchesTab = dock.status === "MAINTENANCE";
-    }
-
-    let matchesCategory = true;
-    if (categoryFilter !== "ALL") {
-      if (categoryFilter === "ELECTRONICS") {
-        matchesCategory = dock.dock_type === "ELECTRONICS" || dock.dock_type === "ELECTRONIC";
-      } else if (categoryFilter === "CHEMICAL_HAZARDOUS") {
-        matchesCategory =
-          dock.dock_type === "CHEMICAL_HAZARDOUS" ||
-          dock.dock_type === "CHEMICAL" ||
-          dock.dock_type === "HAZARDOUS_ITEMS";
-      } else {
-        matchesCategory = dock.dock_type === categoryFilter;
-      }
-    }
-
+    const matchesTab = activeTab === "ALL" || activeTab === "HISTORY" || dock.status === activeTab;
+    const matchesType = dockTypeFilter === "ALL" || dock.dock_type === dockTypeFilter;
     const q = searchTerm.toLowerCase().trim();
     const matchesSearch =
       !q ||
       dock.dock_code.toLowerCase().includes(q) ||
       dock.dock_name.toLowerCase().includes(q) ||
-      (dock.location && dock.location.toLowerCase().includes(q)) ||
-      (dock.current_allocation?.vehicle_number &&
-        dock.current_allocation.vehicle_number.toLowerCase().includes(q)) ||
-      (dock.current_allocation?.existing_gate_pass_id &&
-        dock.current_allocation.existing_gate_pass_id.toLowerCase().includes(q)) ||
-      (dock.current_allocation?.vendor_reference &&
-        dock.current_allocation.vendor_reference.toLowerCase().includes(q));
-
-    return matchesTab && matchesCategory && matchesSearch;
+      (dock.location && dock.location.toLowerCase().includes(q));
+    return matchesTab && matchesType && matchesSearch;
   });
 
   return (
@@ -422,21 +457,15 @@ function DockManagement() {
       title="Dock Management"
       subtitle="Real-time dock allocation, vehicle arrival tracking, and operational status."
       actions={
-        <div className="flex items-center gap-2.5">
-          <Button
-            variant="outline"
-            className="h-9 rounded-full px-4 text-xs font-semibold border-border/80 bg-card hover:bg-muted/60 shadow-2xs text-muted-foreground hover:text-foreground gap-1.5"
-            onClick={() => void loadAll()}
-          >
-            <RefreshCw className={cn("size-3.5", loading && "animate-spin text-primary")} />
-            Refresh
+        <div className="flex gap-2">
+          <Button variant="outline" className="rounded-xl text-xs" onClick={() => void loadAll()}>
+            <RefreshCw className="size-4" /> Refresh
           </Button>
           <Button
-            className="h-9 rounded-full px-4 text-xs font-semibold shadow-glow gap-1.5"
+            className="rounded-xl text-xs shadow-glow"
             onClick={() => setShowCreateDock(true)}
           >
-            <Plus className="size-3.5" />
-            New Dock
+            <Plus className="size-4" /> New Dock
           </Button>
         </div>
       }
@@ -444,114 +473,281 @@ function DockManagement() {
       {/* Summary cards use the same neutral surfaces and semantic tokens as the rest of the app. */}
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
-          label="TOTAL DOCKS"
-          value={metrics.total_docks}
-          variant="total"
+          label="Total Docks"
+          value={
+            metrics.total_docks ||
+            metrics.available_docks +
+              metrics.reserved_docks +
+              metrics.occupied_docks +
+              metrics.maintenance_docks
+          }
+          status="TOTAL"
           active={activeTab === "ALL"}
           onClick={() => setActiveTab("ALL")}
         />
         <SummaryCard
-          label="AVAILABLE DOCKS"
+          label="Available Docks"
           value={metrics.available_docks}
-          variant="available"
+          status="AVAILABLE"
           active={activeTab === "AVAILABLE"}
           onClick={() => setActiveTab("AVAILABLE")}
         />
         <SummaryCard
-          label="RESERVED DOCKS"
+          label="Reserved Docks"
           value={metrics.reserved_docks}
-          variant="reserved"
+          status="RESERVED"
           active={activeTab === "RESERVED"}
           onClick={() => setActiveTab("RESERVED")}
         />
         <SummaryCard
-          label="OCCUPIED DOCKS"
+          label="Occupied Docks"
           value={metrics.occupied_docks}
-          variant="occupied"
+          status="OCCUPIED"
           active={activeTab === "OCCUPIED"}
           onClick={() => setActiveTab("OCCUPIED")}
         />
         <SummaryCard
-          label="UNDER MAINTENANCE"
+          label="Under Maintenance"
           value={metrics.maintenance_docks}
-          variant="maintenance"
+          status="MAINTENANCE"
           active={activeTab === "MAINTENANCE"}
           onClick={() => setActiveTab("MAINTENANCE")}
         />
         <SummaryCard
-          label="PENDING ALLOCATIONS"
+          label="Pending Allocations"
           value={metrics.pending_allocations_count || pendingRequests.length}
-          variant="pending"
+          status="PENDING"
           active={activeTab === "PENDING"}
           onClick={() => setActiveTab("PENDING")}
         />
       </div>
 
-      {/* 2. Filter Bar & Search Container */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-full border border-border/80 bg-card p-1.5 px-4 shadow-2xs">
-        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
-          {/* Search Box */}
-          <div className="relative flex items-center w-56 sm:w-64">
-            <Search className="size-4 text-muted-foreground/70 shrink-0 ml-1" />
+      {/* 2. Filter Bar & Search */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-card p-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[260px]">
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search truck no, PO, vendor, gate entry..."
-              className="h-8 border-none bg-transparent pl-2.5 pr-2 text-xs focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-muted-foreground/60"
+              placeholder="Search dock code, name, location..."
+              className="h-9 pl-9 rounded-xl text-xs"
             />
           </div>
 
-          {/* Filter Pills */}
           <div className="flex flex-wrap items-center gap-1">
             {(
               [
-                { key: "ALL", label: "TOTAL DOCKS" },
-                { key: "AVAILABLE", label: "AVAILABLE" },
-                { key: "RESERVED", label: "RESERVED" },
-                { key: "OCCUPIED", label: "OCCUPIED" },
-                { key: "MAINTENANCE", label: "UNDER MAINTENANCE" },
-                { key: "PENDING", label: "PENDING ALLOCATIONS" },
-                { key: "HISTORY", label: "HISTORY" },
+                "ALL",
+                "AVAILABLE",
+                "RESERVED",
+                "OCCUPIED",
+                "MAINTENANCE",
+                "PENDING",
+                "HISTORY",
               ] as const
             ).map((tab) => (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                key={tab}
+                onClick={() => setActiveTab(tab)}
                 className={cn(
-                  "rounded-full px-3.5 py-1.5 text-xs font-bold transition-all whitespace-nowrap",
-                  activeTab === tab.key
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : "text-muted-foreground hover:text-foreground font-semibold hover:bg-muted/40",
+                  "rounded-xl px-3 py-1.5 text-xs font-bold transition-all flex items-center gap-1.5",
+                  activeTab === tab
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {tab.label}
+                {tab === "ALL"
+                  ? "TOTAL DOCKS"
+                  : tab === "MAINTENANCE"
+                    ? "UNDER MAINTENANCE"
+                    : tab === "PENDING"
+                      ? "PENDING ALLOCATIONS"
+                      : tab}
+                {tab === "PENDING" && pendingRequests.length > 0 && (
+                  <span className="rounded-full bg-primary text-primary-foreground px-1.5 py-0.5 text-[10px] font-mono font-black">
+                    {pendingRequests.length}
+                  </span>
+                )}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Dock Type Dropdown on Right */}
-        {activeTab !== "HISTORY" && activeTab !== "PENDING" && (
+        {activeTab !== "HISTORY" && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
-              Dock type:
-            </span>
+            <Label className="text-xs text-muted-foreground hidden sm:inline">Dock type:</Label>
             <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="h-8 rounded-full border border-border/80 bg-background px-3 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+              value={dockTypeFilter}
+              onChange={(e) => setDockTypeFilter(e.target.value)}
+              className="h-9 rounded-xl border border-border bg-background px-3 text-xs font-medium"
             >
-              {PREDEFINED_CATEGORIES.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
+              <option value="ALL">All Types</option>
+              {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
             </select>
           </div>
         )}
       </div>
 
-      {/* 3. Main Content View */}
+      {/* 3. Create New Dock Modal Popup */}
+      <Dialog open={showCreateDock} onOpenChange={setShowCreateDock}>
+        <DialogContent className="max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="font-semibold text-lg">Create New Dock</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              Add a new dock master record to the WMS inventory.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleCreateDock} className="space-y-3 py-2 text-xs">
+            <div>
+              <Label htmlFor="dock_type" className="text-xs font-semibold">
+                Dock type
+              </Label>
+              <select
+                id="dock_type"
+                name="dock_type"
+                value={createDockType}
+                onChange={(e) => handleDockTypeChange(e.target.value)}
+                className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
+              >
+                {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)
+              }              </select>
+            </div>
+
+            <div>
+              <Label htmlFor="dock_code" className="text-xs font-semibold">
+                Dock code{" "}
+                <span className="text-muted-foreground font-normal">(Auto-generated)</span>
+              </Label>
+              <Input
+                id="dock_code"
+                name="dock_code"
+                value={createDockCode}
+                onChange={(e) => setCreateDockCode(e.target.value)}
+                placeholder="e.g. CH-01, HZ-01, RM-03"
+                required
+                className="mt-1.5 h-10 rounded-xl bg-background font-mono font-semibold"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="dock_name" className="text-xs font-semibold">
+                Dock name
+              </Label>
+              <Input
+                id="dock_name"
+                name="dock_name"
+                value={createDockName}
+                onChange={(e) => setCreateDockName(e.target.value)}
+                placeholder="e.g. Chemical Dock 01"
+                required
+                className="mt-1.5 h-10 rounded-xl bg-background"
+              />
+            </div>
+
+            <Field name="location" label="Location" placeholder="North Warehouse" />
+            <Field name="description" label="Description" placeholder="General Unloading Bay" />
+            <div>
+              <Label htmlFor="status" className="text-xs font-semibold">
+                Status
+              </Label>
+              <select
+                id="status"
+                name="status"
+                className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium"
+              >
+                <option value="AVAILABLE">AVAILABLE</option>
+                <option value="MAINTENANCE">MAINTENANCE</option>
+              </select>
+            </div>
+
+            <DialogFooter className="pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCreateDock(false)}
+                className="rounded-xl"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={actionBusy} className="rounded-xl shadow-glow">
+                {actionBusy && <Loader2 className="size-4 animate-spin" />} Create Dock
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 4. Edit Dock Master Modal Popup */}
+      {editingDock && (
+        <Dialog open={Boolean(editingDock)} onOpenChange={() => setEditingDock(null)}>
+          <DialogContent className="max-w-md rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="font-semibold text-lg flex items-center gap-2">
+                <Edit className="size-4 text-amber-500" /> Edit Dock: {editingDock.dock_code}
+              </DialogTitle>
+              <DialogDescription className="text-xs text-muted-foreground">
+                Update master data for this dock.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form onSubmit={handleEditDock} className="space-y-3 py-2 text-xs">
+              <Field
+                name="dock_code"
+                label="Dock code"
+                defaultValue={editingDock.dock_code}
+                required
+              />
+              <Field
+                name="dock_name"
+                label="Dock name"
+                defaultValue={editingDock.dock_name}
+                required
+              />
+              <div>
+                <Label htmlFor="edit_dock_type" className="text-xs">
+                  Dock type
+                </Label>
+                <select
+                  id="edit_dock_type"
+                  name="dock_type"
+                  defaultValue={editingDock.dock_type}
+                  className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium"
+                >
+                  {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
+                </select>
+              </div>
+              <Field name="location" label="Location" defaultValue={editingDock.location || ""} />
+              <Field
+                name="description"
+                label="Description"
+                defaultValue={editingDock.description || ""}
+              />
+
+              <DialogFooter className="pt-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setEditingDock(null)}
+                  className="rounded-xl"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={actionBusy}
+                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+                >
+                  {actionBusy && <Loader2 className="size-4 animate-spin" />} Save changes
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 5. Section Content View */}
       {loading ? (
         <div className="flex h-64 items-center justify-center gap-2 text-muted-foreground">
           <Loader2 className="size-6 animate-spin text-primary" />
@@ -621,7 +817,8 @@ function DockManagement() {
                 Approved Vehicles Awaiting Dock Allocation ({pendingRequests.length})
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Vehicles approved at the security gate ready for dock assignment by Warehouse Manager
+                Vehicles approved at the security gate ready for dock assignment by Warehouse
+                Manager
               </p>
             </div>
           </div>
@@ -657,8 +854,7 @@ function DockManagement() {
                       </td>
                       <td className="px-4 py-3 text-xs">
                         <div className="font-semibold text-foreground">
-                          {req.material_reference || req.material_description || "—"}
-                        </div>
+                          {req.material_reference || req.material_description || "—"}                        </div>
                         {req.quantity && (
                           <div className="text-[11px] text-muted-foreground tabular-nums">
                             Qty: {req.quantity}
@@ -694,39 +890,35 @@ function DockManagement() {
           </div>
         </Card>
       ) : (
-        /* 3-Column Dock Grid View matching screenshot */
-        <div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDocks.map((dock) => (
-              <DockCard
-                key={dock.id}
-                dock={dock}
-                onViewDetails={() => setSelectedDetailsDock(dock)}
-                onEdit={() => {
-                  setEditDockModalDock(dock);
-                  setEditDockForm({
-                    name: dock.dock_name,
-                    type: dock.dock_type,
-                    location: dock.location || "",
-                    description: dock.description || "",
-                  });
-                }}
-                onMaintenanceToggle={() => setMaintenanceConfirmDock(dock)}
-                onRelease={() => setReleaseConfirmDock(dock)}
-              />
-            ))}
-          </div>
-
-          {filteredDocks.length === 0 && (
-            <div className="py-20 text-center text-muted-foreground">
+        /* Docks Cards Grid View */
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredDocks.length === 0 ? (
+            <div className="col-span-full py-16 text-center text-muted-foreground">
               <Warehouse className="mx-auto mb-2 size-8 text-muted-foreground/50" />
               <p className="text-sm font-semibold">No docks found matching the criteria.</p>
             </div>
+          ) : (
+            filteredDocks.map((dock) => (
+              <DockCard
+                key={dock.id}
+                dock={dock}
+                hasPendingAllocationRequirement={pendingRequests.length > 0}
+                onViewDetails={() => setSelectedDetailsDock(dock)}
+                onEdit={() => setEditingDock(dock)}
+                onToggleMaintenance={() => void handleToggleMaintenance(dock)}
+                onAllocate={() => {
+                  setAllocateModalDock(dock);
+                  setSelectedRequestIdToAllocate(pendingRequests[0]?.id || "");
+                }}
+                onVehicleArrived={() => setArriveConfirmDock(dock)}
+                onRelease={() => setReleaseConfirmDock(dock)}
+              />
+            ))
           )}
         </div>
       )}
 
-      {/* 4. View Dock Details Modal */}
+      {/* 6. View Dock Details Drawer / Modal */}
       {selectedDetailsDock && (
         <Dialog
           open={Boolean(selectedDetailsDock)}
@@ -738,29 +930,24 @@ function DockManagement() {
                 <DialogTitle className="font-mono text-xl font-black text-primary flex items-center gap-2">
                   <Warehouse className="size-5" /> {selectedDetailsDock.dock_code}
                 </DialogTitle>
-                <span
-                  className={cn(
-                    "rounded-full px-3 py-0.5 text-xs font-extrabold tracking-wider border",
-                    selectedDetailsDock.status === "AVAILABLE"
-                      ? "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]"
-                      : selectedDetailsDock.status === "MAINTENANCE"
-                        ? "bg-slate-100 text-slate-700 border-slate-200"
-                        : "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]",
-                  )}
-                >
-                  {selectedDetailsDock.status === "OCCUPIED" ? "AT DOCK" : selectedDetailsDock.status}
-                </span>
+                <StatusBadge
+                  status={
+                    selectedDetailsDock.status === "MAINTENANCE"
+                      ? "Under Maintenance"
+                      : selectedDetailsDock.status
+                  }
+                />
               </div>
               <DialogDescription className="text-xs">
-                {selectedDetailsDock.dock_name}
-                {selectedDetailsDock.location ? ` · ${selectedDetailsDock.location}` : ""}
+                {selectedDetailsDock.dock_name}{selectedDetailsDock.location ? ` · ${selectedDetailsDock.location}` : ""}
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-2 text-xs">
+              {/* 1. Dock Details */}
               <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
                 <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
-                  <Warehouse className="size-3.5" /> Dock Information
+                  <Warehouse className="size-3.5" /> Dock Details
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
@@ -772,25 +959,13 @@ function DockManagement() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Dock Category</span>
+                    <span className="text-muted-foreground block text-[11px]">Dock Type</span>
                     <span className="font-semibold text-foreground">
-                      {getCategoryLabel(selectedDetailsDock.dock_type)}
-                    </span>
+                      {formatDockType(selectedDetailsDock.dock_type)}                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Current Status</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        selectedDetailsDock.status === "AVAILABLE"
-                          ? "text-emerald-600"
-                          : selectedDetailsDock.status === "MAINTENANCE"
-                            ? "text-slate-600"
-                            : "text-rose-600",
-                      )}
-                    >
-                      {selectedDetailsDock.status === "OCCUPIED" ? "AT DOCK" : selectedDetailsDock.status}
-                    </span>
+                    <span className="font-bold text-foreground">{selectedDetailsDock.status}</span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Assignment Time</span>
@@ -800,12 +975,6 @@ function DockManagement() {
                             selectedDetailsDock.current_allocation.assigned_at,
                           ).toLocaleString()
                         : "N/A"}
-                    </span>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground block text-[11px]">Location</span>
-                    <span className="font-medium text-foreground">
-                      {selectedDetailsDock.location || "Central Receiving"}
                     </span>
                   </div>
                 </div>
@@ -818,35 +987,44 @@ function DockManagement() {
                 </div>
               )}
 
-              {selectedDetailsDock.status !== "AVAILABLE" && selectedDetailsDock.status !== "MAINTENANCE" && (
+              {selectedDetailsDock.status === "MAINTENANCE" && (
+                <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/10 p-4 text-center text-xs text-amber-600 font-medium">
+                  <Wrench className="mx-auto mb-1 size-6" />
+                  This dock is under maintenance. Vehicle allocation is currently disabled.
+                </div>
+              )}
+
+              {(selectedDetailsDock.status === "RESERVED" ||
+                selectedDetailsDock.status === "OCCUPIED") && (
                 <>
+                  {/* 2. Vehicle Details */}
                   <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
                     <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
-                      <Truck className="size-3.5" /> Allocated Vehicle & Gate Entry Details
+                      <Truck className="size-3.5" /> Vehicle & Gate Entry Details
                     </h4>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
                         <span className="text-muted-foreground block text-[11px]">
                           Vehicle Number
                         </span>
-                        <span className="font-mono font-black text-sm text-[#2563eb]">
-                          {selectedDetailsDock.current_allocation?.vehicle_number || "—"}
-                        </span>
+                        <span className="font-mono font-black text-sm text-primary">
+                          {selectedDetailsDock.current_allocation?.vehicle_number || "—"}                        </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-[11px]">
                           Gate Entry / Pass No
                         </span>
                         <span className="font-mono font-bold text-foreground">
-                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}
+                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id ||
+                            "GE-2026-001"}
                         </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-[11px]">
-                          Allocation Status
+                          Gate Entry Status
                         </span>
                         <span className="font-bold text-foreground">
-                          {selectedDetailsDock.current_allocation?.status || "AT DOCK"}
+                          {selectedDetailsDock.current_allocation?.status || "DOCK_ASSIGNED"}
                         </span>
                       </div>
                       <div>
@@ -862,9 +1040,10 @@ function DockManagement() {
                     </div>
                   </div>
 
+                  {/* 3. Material Details */}
                   <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
                     <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
-                      <Package className="size-3.5" /> Material & Supplier Details
+                      <Package className="size-3.5" /> Material & PO Details
                     </h4>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
@@ -872,10 +1051,7 @@ function DockManagement() {
                           Material Code / Name
                         </span>
                         <span className="font-semibold text-foreground">
-                          {selectedDetailsDock.current_allocation?.material_reference ||
-                            selectedDetailsDock.current_allocation?.material_description ||
-                            "—"}
-                        </span>
+                          {selectedDetailsDock.current_allocation?.material_reference || selectedDetailsDock.current_allocation?.material_description || "—"}                        </span>
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-[11px]">
@@ -894,11 +1070,10 @@ function DockManagement() {
                       </div>
                       <div>
                         <span className="text-muted-foreground block text-[11px]">
-                          Gate Pass Ref
+                          PO Reference
                         </span>
                         <span className="font-mono font-bold text-primary">
-                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}
-                        </span>
+                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}                        </span>
                       </div>
                     </div>
                   </div>
@@ -917,7 +1092,7 @@ function DockManagement() {
 
               {selectedDetailsDock.status === "AVAILABLE" && pendingRequests.length > 0 && (
                 <Button
-                  className="rounded-xl shadow-glow w-full sm:w-auto text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                  className="rounded-xl shadow-glow w-full sm:w-auto text-xs"
                   onClick={() => {
                     const target = selectedDetailsDock;
                     setSelectedDetailsDock(null);
@@ -929,9 +1104,23 @@ function DockManagement() {
                 </Button>
               )}
 
+              {selectedDetailsDock.status === "RESERVED" && (
+                <Button
+                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-glow w-full sm:w-auto text-xs"
+                  onClick={() => {
+                    const target = selectedDetailsDock;
+                    setSelectedDetailsDock(null);
+                    setArriveConfirmDock(target);
+                  }}
+                >
+                  <Truck className="size-4" /> VEHICLE ARRIVED
+                </Button>
+              )}
+
               {selectedDetailsDock.status === "OCCUPIED" && (
                 <Button
-                  className="rounded-xl shadow-glow w-full sm:w-auto text-xs bg-[#ef4444] hover:bg-red-600 text-white"
+                  variant="destructive"
+                  className="rounded-xl shadow-glow w-full sm:w-auto text-xs"
                   onClick={() => {
                     const target = selectedDetailsDock;
                     setSelectedDetailsDock(null);
@@ -946,7 +1135,7 @@ function DockManagement() {
         </Dialog>
       )}
 
-      {/* 5. Allocate Vehicle to This Specific Available Dock Modal */}
+      {/* 7. Allocate Dock Selection Modal */}
       {allocateModalDock && (
         <Dialog open={Boolean(allocateModalDock)} onOpenChange={() => setAllocateModalDock(null)}>
           <DialogContent className="max-w-lg rounded-2xl">
@@ -958,7 +1147,7 @@ function DockManagement() {
                 </span>
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Select an approved Gate Pass vehicle to allocate to {allocateModalDock.dock_name}.
+                Select an approved Gate Pass to reserve dock {allocateModalDock.dock_code}.
               </DialogDescription>
             </DialogHeader>
 
@@ -1016,7 +1205,7 @@ function DockManagement() {
               </Button>
               <Button
                 disabled={!selectedRequestIdToAllocate || actionBusy}
-                className="rounded-xl shadow-glow bg-blue-600 hover:bg-blue-700 text-white font-semibold"
+                className="rounded-xl shadow-glow"
                 onClick={() => void handleAllocateDock()}
               >
                 {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm Allocation
@@ -1026,7 +1215,175 @@ function DockManagement() {
         </Dialog>
       )}
 
-      {/* 6. Release Dock Confirmation Dialog */}
+      {/* 7b. Select Available Dock Modal for Pending Allocation */}
+      {allocateModalPendingReq && (
+        <Dialog
+          open={Boolean(allocateModalPendingReq)}
+          onOpenChange={() => setAllocateModalPendingReq(null)}
+        >
+          <DialogContent className="max-w-lg rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-primary font-bold">
+                <Warehouse className="size-5" /> Select Available Dock
+              </DialogTitle>
+              <DialogDescription className="text-xs">
+                Assign an AVAILABLE dock to Gate Pass{" "}
+                <strong className="font-mono text-foreground">
+                  {allocateModalPendingReq.existing_gate_pass_id}
+                </strong>{" "}
+                (Vehicle:{" "}
+                <span className="font-mono font-bold text-foreground">
+                  {allocateModalPendingReq.vehicle_number}
+                </span>
+                )
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3 py-2 text-xs">
+              <div className="rounded-xl border bg-muted/30 p-3 space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Material:</span>
+                  <span className="font-semibold text-foreground">
+                    {allocateModalPendingReq.material_reference || allocateModalPendingReq.material_description || "—"}                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Supplier / Vendor:</span>
+                  <span className="font-semibold text-foreground">
+                    {allocateModalPendingReq.vendor_reference || "Supplier"}
+                  </span>
+                </div>
+                {allocateModalPendingReq.quantity && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Quantity:</span>
+                    <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.quantity ? `${allocateModalPendingReq.quantity} PCS` : "—"}</span>                  </div>
+                )}
+              </div>
+
+              <Label className="text-xs font-semibold block pt-1">
+                Currently AVAILABLE Docks (Backend Live):
+              </Label>
+              {docks.filter((d) => d.status === "AVAILABLE").length === 0 ? (
+                <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/10 p-4 text-center text-xs text-amber-600 font-medium space-y-1">
+                  <Wrench className="mx-auto size-6" />
+                  <p className="font-bold">No Docks Currently AVAILABLE</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    All docks are currently RESERVED, OCCUPIED, or UNDER MAINTENANCE. Please release
+                    an occupied dock first.
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-64 overflow-y-auto space-y-2 border rounded-xl p-2 bg-muted/20">
+                  {docks
+                    .filter((d) => d.status === "AVAILABLE")
+                    .map((dock) => (
+                      <label
+                        key={dock.id}
+                        onClick={() => setSelectedDockIdToAllocate(dock.id)}
+                        className={cn(
+                          "flex cursor-pointer items-center justify-between rounded-xl border p-3 transition-all",
+                          selectedDockIdToAllocate === dock.id
+                            ? "border-primary bg-primary-soft/40 shadow-sm"
+                            : "border-border/60 hover:bg-muted/50",
+                        )}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-black text-sm text-primary">
+                              {dock.dock_code}
+                            </span>
+                            <span className="font-semibold text-foreground text-xs">
+                              {dock.dock_name}
+                            </span>
+                            <StatusBadge status="AVAILABLE" />
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">
+                            {formatDockType(dock.dock_type)}{dock.location ? ` • ${dock.location}` : ""}                          </p>
+                        </div>
+                        <input
+                          type="radio"
+                          name="available_dock_selection"
+                          checked={selectedDockIdToAllocate === dock.id}
+                          onChange={() => setSelectedDockIdToAllocate(dock.id)}
+                          className="size-4 accent-primary"
+                        />
+                      </label>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setAllocateModalPendingReq(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={
+                  !selectedDockIdToAllocate ||
+                  docks.filter((d) => d.status === "AVAILABLE").length === 0 ||
+                  actionBusy
+                }
+                className="rounded-xl shadow-glow bg-primary text-primary-foreground font-semibold"
+                onClick={() => void handleAllocateDock()}
+              >
+                {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm Dock Assignment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* 8. Vehicle Arrived Confirmation Dialog */}
+      <AlertDialog
+        open={Boolean(arriveConfirmDock)}
+        onOpenChange={() => setArriveConfirmDock(null)}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Truck className="size-5 text-amber-500" /> Vehicle Arrival Confirmation
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                <div className="rounded-xl border bg-muted/40 p-3 text-foreground space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Dock:</span>
+                    <span className="font-mono font-bold">{arriveConfirmDock?.dock_code}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Vehicle:</span>
+                    <span className="font-mono font-bold">
+                      {arriveConfirmDock?.current_allocation?.vehicle_number || "KA01AB1234"}
+                    </span>
+                  </div>
+                </div>
+                <p>
+                  Confirm that the vehicle has physically arrived at dock{" "}
+                  {arriveConfirmDock?.dock_code}?
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actionBusy}
+              className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={(e) => {
+                e.preventDefault();
+                void handleVehicleArrived();
+              }}
+            >
+              {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm Arrival
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 9. Release Dock Confirmation Dialog */}
       <AlertDialog
         open={Boolean(releaseConfirmDock)}
         onOpenChange={() => setReleaseConfirmDock(null)}
@@ -1041,27 +1398,18 @@ function DockManagement() {
                 <div className="rounded-xl border bg-muted/40 p-3 text-foreground space-y-1">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Dock:</span>
-                    <span className="font-mono font-bold">
-                      {releaseConfirmDock?.dock_code} ({releaseConfirmDock?.dock_name})
-                    </span>
+                    <span className="font-mono font-bold">{releaseConfirmDock?.dock_code}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Vehicle:</span>
-                    <span className="font-mono font-bold text-[#2563eb]">
-                      {releaseConfirmDock?.current_allocation?.vehicle_number || "—"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Gate Pass:</span>
                     <span className="font-mono font-bold">
-                      {releaseConfirmDock?.current_allocation?.existing_gate_pass_id || "—"}
+                      {releaseConfirmDock?.current_allocation?.vehicle_number || "KA01AB1234"}
                     </span>
                   </div>
                 </div>
                 <p>
-                  Releasing will immediately change the dock status back to{" "}
-                  <strong className="text-emerald-600 font-bold">AVAILABLE</strong>, freeing it for
-                  new vehicle allocations.
+                  Are you sure you want to release dock {releaseConfirmDock?.dock_code}? It will
+                  return to AVAILABLE status.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -1070,132 +1418,13 @@ function DockManagement() {
             <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
             <AlertDialogAction
               disabled={actionBusy}
-              className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white"
+              className="rounded-xl bg-destructive hover:bg-destructive/90 text-white"
               onClick={(e) => {
                 e.preventDefault();
                 void handleReleaseDock();
               }}
             >
-              {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm Release
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-
-
-      {/* 8. Edit Dock Dialog */}
-      <Dialog open={Boolean(editDockModalDock)} onOpenChange={() => setEditDockModalDock(null)}>
-        <DialogContent className="max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <SquarePen className="size-5 text-blue-600" /> Edit Dock: {editDockModalDock?.dock_code}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              Update dock parameters and configuration.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3.5 py-2 text-xs">
-            <div>
-              <Label className="text-xs font-semibold">Dock Name</Label>
-              <Input
-                value={editDockForm.name}
-                onChange={(e) => setEditDockForm({ ...editDockForm, name: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-semibold">Dock Category</Label>
-              <select
-                value={editDockForm.type}
-                onChange={(e) => setEditDockForm({ ...editDockForm, type: e.target.value })}
-                className="mt-1 w-full h-9 rounded-md border border-input bg-background px-3 text-xs"
-              >
-                <option value="CHEMICAL_HAZARDOUS">Chemical / Hazardous</option>
-                <option value="ELECTRONICS">Electronics</option>
-                <option value="ELECTRICAL">Electrical</option>
-                <option value="RAW_MATERIAL">Raw Material</option>
-                <option value="MAIN_RECEIVING">Main Receiving</option>
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs font-semibold">Location</Label>
-              <Input
-                value={editDockForm.location}
-                onChange={(e) => setEditDockForm({ ...editDockForm, location: e.target.value })}
-                className="mt-1"
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              className="rounded-xl"
-              onClick={() => setEditDockModalDock(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={actionBusy}
-              className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={() => void handleUpdateDock()}
-            >
-              {actionBusy && <Loader2 className="size-4 animate-spin mr-1" />} Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 9. Maintenance Toggle Dialog */}
-      <AlertDialog
-        open={Boolean(maintenanceConfirmDock)}
-        onOpenChange={() => setMaintenanceConfirmDock(null)}
-      >
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
-              <Wrench className="size-5" />{" "}
-              {maintenanceConfirmDock?.status === "MAINTENANCE"
-                ? "Complete Maintenance?"
-                : "Put Dock Under Maintenance?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                <p>
-                  Dock:{" "}
-                  <strong className="text-foreground font-mono">
-                    {maintenanceConfirmDock?.dock_code} ({maintenanceConfirmDock?.dock_name})
-                  </strong>
-                </p>
-                {maintenanceConfirmDock?.status === "OCCUPIED" && (
-                  <p className="text-rose-600 font-semibold">
-                    Note: This dock currently has an assigned vehicle. Please release the dock
-                    before putting it under maintenance.
-                  </p>
-                )}
-                {maintenanceConfirmDock?.status !== "OCCUPIED" && (
-                  <p>
-                    {maintenanceConfirmDock?.status === "MAINTENANCE"
-                      ? "Dock will be restored to AVAILABLE status for receiving."
-                      : "Dock will be marked UNDER MAINTENANCE and removed from available allocation bays."}
-                  </p>
-                )}
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={maintenanceConfirmDock?.status === "OCCUPIED" || actionBusy}
-              className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white"
-              onClick={(e) => {
-                e.preventDefault();
-                void handleToggleMaintenance();
-              }}
-            >
-              {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm
+              {actionBusy && <Loader2 className="size-4 animate-spin" />} Release Dock
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1204,60 +1433,60 @@ function DockManagement() {
   );
 }
 
+// Subcomponents
 function SummaryCard({
   label,
   value,
-  variant,
+  status,
   active,
   onClick,
 }: {
   label: string;
   value: number;
-  variant: "total" | "available" | "reserved" | "occupied" | "maintenance" | "pending";
+  status: "TOTAL" | "AVAILABLE" | "RESERVED" | "OCCUPIED" | "MAINTENANCE" | "PENDING";
   active: boolean;
   onClick: () => void;
 }) {
   const presentation = {
-    total: {
+    TOTAL: {
       icon: Warehouse,
       card: "border-blue-300 bg-gradient-to-br from-blue-50/80 via-card to-card",
       iconTone: "border-blue-200 bg-blue-100 text-blue-600",
     },
-    available: {
+    AVAILABLE: {
       icon: CheckCircle2,
       card: "border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-card to-card",
       iconTone: "border-emerald-200 bg-emerald-100 text-emerald-600",
     },
-    reserved: {
+    RESERVED: {
       icon: History,
       card: "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-card to-card",
       iconTone: "border-cyan-200 bg-cyan-100 text-cyan-600",
     },
-    occupied: {
+    OCCUPIED: {
       icon: Truck,
       card: "border-amber-200 bg-gradient-to-br from-amber-50/80 via-card to-card",
       iconTone: "border-amber-200 bg-amber-100 text-amber-600",
     },
-    maintenance: {
+    MAINTENANCE: {
       icon: Wrench,
       card: "border-rose-200 bg-gradient-to-br from-rose-50/80 via-card to-card",
       iconTone: "border-rose-200 bg-rose-100 text-rose-600",
     },
-    pending: {
+    PENDING: {
       icon: Package,
       card: "border-violet-200 bg-gradient-to-br from-violet-50/80 via-card to-card",
       iconTone: "border-violet-200 bg-violet-100 text-violet-600",
     },
   };
-  const current = presentation[variant];
-  const Icon = current.icon;
+  const Icon = presentation[status].icon;
 
   return (
-    <div
+    <Card
       onClick={onClick}
       className={cn(
         "group flex min-h-32 cursor-pointer flex-col justify-between gap-3 rounded-[22px] border p-5 text-card-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
-        current.card,
+        presentation[status].card,
         active && "ring-2 ring-primary/25",
       )}
     >
@@ -1268,7 +1497,7 @@ function SummaryCard({
         <span
           className={cn(
             "grid size-10 shrink-0 place-items-center rounded-full border shadow-sm",
-            current.iconTone,
+            presentation[status].iconTone,
           )}
         >
           <Icon className="size-4" />
@@ -1278,150 +1507,187 @@ function SummaryCard({
         <p className="text-4xl font-black leading-none tabular-nums text-slate-950 xl:text-3xl 2xl:text-4xl">{value}</p>
         <ArrowRight className="mb-1 size-4 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
       </div>
-    </div>
+    </Card>
   );
 }
 
 function DockCard({
   dock,
+  hasPendingAllocationRequirement,
   onViewDetails,
   onEdit,
-  onMaintenanceToggle,
+  onToggleMaintenance,
+  onAllocate,
+  onVehicleArrived,
   onRelease,
 }: {
   dock: Dock;
+  hasPendingAllocationRequirement?: boolean;
   onViewDetails: () => void;
   onEdit: () => void;
-  onMaintenanceToggle: () => void;
+  onToggleMaintenance: () => void;
+  onAllocate: () => void;
+  onVehicleArrived: () => void;
   onRelease: () => void;
 }) {
-  const isAvailable = dock.status === "AVAILABLE";
-  const isOccupied = dock.status === "OCCUPIED" || dock.status === "RESERVED";
+  const dotColors = {
+    AVAILABLE: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]",
+    RESERVED: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.6)]",
+    OCCUPIED: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.6)]",
+    MAINTENANCE: "bg-slate-400",
+  };
+
+  const cardBorders = {
+    AVAILABLE: "border-emerald-500/30 hover:border-emerald-500/60",
+    RESERVED: "border-amber-500/30 hover:border-amber-500/60",
+    OCCUPIED: "border-rose-500/30 hover:border-rose-500/60",
+    MAINTENANCE: "border-border/80 opacity-75",
+  };
+
+  const vehicleNo =
+    dock.current_allocation?.vehicle_number ||
+    (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "KA01AB1234" : null);
+  const gatePassNo =
+    dock.current_allocation?.existing_gate_pass_id ||
+    (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "GP-00125" : null);
   const isMaintenance = dock.status === "MAINTENANCE";
-
-  const cardBorder = isAvailable
-    ? "border-2 border-[#a7f3d0] dark:border-emerald-900/60"
-    : isOccupied
-      ? "border-2 border-[#fecdd3] dark:border-rose-900/60"
-      : "border-2 border-slate-300 dark:border-slate-800";
-
-  const dotColor = isAvailable
-    ? "bg-emerald-500"
-    : isOccupied
-      ? "bg-rose-500"
-      : "bg-slate-500";
-
-  const badgeStyle = isAvailable
-    ? "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]"
-    : isOccupied
-      ? "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]"
-      : "bg-slate-100 text-slate-700 border-slate-200";
-
-  const badgeText = isAvailable ? "AVAILABLE" : isOccupied ? "AT DOCK" : "MAINTENANCE";
-
-  const vehicleNo = dock.current_allocation?.vehicle_number;
-  const gatePassNo = dock.current_allocation?.existing_gate_pass_id;
 
   return (
     <Card
       className={cn(
-        "flex flex-col justify-between rounded-3xl bg-card p-6 transition-all duration-200 shadow-2xs hover:shadow-soft",
-        cardBorder,
+        "flex flex-col justify-between rounded-2xl border-2 p-5 transition-all shadow-soft hover:-translate-y-0.5",
+        cardBorders[dock.status],
       )}
     >
       <div>
-        {/* Top Header Row */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <span className={cn("size-2.5 rounded-full shrink-0", dotColor)} />
-            <h3 className="font-mono text-base font-black tracking-tight text-foreground">
-              {dock.dock_code}
-            </h3>
+            <span className={cn("size-3 rounded-full", dotColors[dock.status])} />
+            <h3 className="font-mono text-base font-black tracking-tight">{dock.dock_code}</h3>
           </div>
-          <span
-            className={cn(
-              "rounded-full px-3 py-0.5 text-[10px] font-extrabold tracking-wider border",
-              badgeStyle,
+          <StatusBadge status={isMaintenance ? "Under Maintenance" : dock.status} />
+        </div>
+
+        <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
+        <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
+          {formatDockType(dock.dock_type)}        </span>
+
+        {/* Assigned Vehicle Preview */}
+        {(dock.status === "RESERVED" || dock.status === "OCCUPIED") && vehicleNo && (
+          <div className="mt-4 rounded-xl border bg-muted/30 p-3 text-xs space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Vehicle</span>
+              <span className="font-mono font-black text-primary">{vehicleNo}</span>
+            </div>
+            {gatePassNo && (
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground">Gate Pass</span>
+                <span className="font-mono text-[11px] font-bold">{gatePassNo}</span>
+              </div>
             )}
-          >
-            {badgeText}
-          </span>
-        </div>
-
-        {/* Dock Name */}
-        <p className="mt-2 text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
-
-        {/* Category Pill */}
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="inline-block rounded-full bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-            {getCategoryLabel(dock.dock_type)}
-          </span>
-          {dock.location && (
-            <span className="text-[11px] text-muted-foreground/80">• {dock.location}</span>
-          )}
-        </div>
-
-        {/* Vehicle Info Box if Occupied */}
-        {isOccupied && (
-          <div className="mt-5 rounded-2xl border border-border/50 bg-slate-50/70 dark:bg-slate-900/40 p-3.5 space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                VEHICLE
-              </span>
-              <span className="font-mono font-bold text-sm text-[#2563eb]">
-                {vehicleNo || "KA-12-AB-5678"}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-xs font-medium text-muted-foreground">Gate Pass</span>
-              <span className="font-mono font-bold text-xs text-foreground">
-                {gatePassNo || "GE-20260902-6BB06B"}
-              </span>
-            </div>
           </div>
         )}
-
-        {/* Space reserved for available / maintenance so cards have identical height */}
-        {!isOccupied && <div className="min-h-[66px] mt-5" />}
       </div>
 
-      {/* Bottom Actions */}
-      <div className="mt-6 pt-4 border-t border-border/60 space-y-2.5">
-        <div className="flex items-center gap-2">
+      <div className="mt-5 space-y-2 pt-3 border-t">
+        <div className="flex gap-1.5">
           <Button
             variant="outline"
-            className="flex-1 rounded-full border-border/80 bg-card hover:bg-muted text-xs font-bold text-slate-700 dark:text-slate-200 h-9 shadow-2xs"
+            size="sm"
+            className="flex-1 rounded-xl text-xs"
             onClick={onViewDetails}
           >
             VIEW DETAILS
           </Button>
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 rounded-xl px-2.5 text-xs"
             onClick={onEdit}
-            title="Edit Dock"
-            className="size-9 rounded-full border border-border/80 flex items-center justify-center hover:bg-muted text-slate-600 dark:text-slate-300 transition-colors shrink-0 shadow-2xs"
+            title="Edit Dock Master"
           >
-            <SquarePen className="size-4" />
-          </button>
-          <button
-            type="button"
-            onClick={onMaintenanceToggle}
-            title={isMaintenance ? "Resume Operation" : "Set Maintenance"}
-            className="size-9 rounded-full border border-border/80 flex items-center justify-center hover:bg-muted text-amber-500 hover:text-amber-600 transition-colors shrink-0 shadow-2xs"
+            <Edit className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-8 rounded-xl px-2.5 text-xs",
+              isMaintenance
+                ? "text-emerald-600 hover:bg-emerald-500/10"
+                : "text-amber-600 hover:bg-amber-500/10",
+            )}
+            onClick={onToggleMaintenance}
+            disabled={dock.status === "OCCUPIED" || dock.status === "RESERVED"}
+            title={isMaintenance ? "Make Available" : "Set Under Maintenance"}
           >
-            <Wrench className="size-4" />
-          </button>
+            <Wrench className="size-3.5" />
+          </Button>
         </div>
 
-        {isOccupied && (
+        {dock.status === "AVAILABLE" && hasPendingAllocationRequirement && (
+          <Button size="sm" className="w-full rounded-xl text-xs shadow-glow" onClick={onAllocate}>
+            <ArrowRight className="size-3.5" /> ALLOCATE DOCK
+          </Button>
+        )}
+
+        {dock.status === "RESERVED" && (
           <Button
-            className="w-full rounded-full bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs h-9 shadow-2xs flex items-center justify-center gap-1.5"
+            size="sm"
+            className="w-full rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-glow"
+            onClick={onVehicleArrived}
+          >
+            <Truck className="size-3.5" /> VEHICLE ARRIVED
+          </Button>
+        )}
+
+        {dock.status === "OCCUPIED" && (
+          <Button
+            size="sm"
+            variant="destructive"
+            className="w-full rounded-xl text-xs shadow-glow"
             onClick={onRelease}
           >
-            <CheckCircle2 className="size-4" /> RELEASE DOCK
+            <CheckCircle2 className="size-3.5" /> RELEASE DOCK
           </Button>
+        )}
+
+        {dock.status === "MAINTENANCE" && (
+          <div className="py-1 text-center text-[11px] text-muted-foreground italic font-medium">
+            Under Maintenance
+          </div>
         )}
       </div>
     </Card>
+  );
+}
+
+function Field({
+  name,
+  label,
+  placeholder,
+  defaultValue,
+  required,
+}: {
+  name: string;
+  label: string;
+  placeholder?: string;
+  defaultValue?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <Label htmlFor={name} className="text-xs">
+        {label}
+      </Label>
+      <Input
+        id={name}
+        name={name}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        className="mt-1.5 h-10 rounded-xl text-xs font-medium"
+        required={required}
+      />
+    </div>
   );
 }

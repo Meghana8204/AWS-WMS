@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.dock.domain.enums import (
@@ -24,163 +24,36 @@ from app.modules.dock.infrastructure.persistence.models import (
 )
 from app.modules.procurement.infrastructure.persistence.models import NotificationModel
 
-PREDEFINED_DOCKS = [
-    {
-        "code": "CH-01",
-        "name": "Chemical/Hazardous Dock 01",
-        "type": "CHEMICAL_HAZARDOUS",
-        "location": "South Warehouse - HazMat Bay 1",
-        "description": "Ventilated hazardous cargo bay with containment protocol for chemicals and coatings.",
-    },
-    {
-        "code": "CH-02",
-        "name": "Chemical/Hazardous Dock 02",
-        "type": "CHEMICAL_HAZARDOUS",
-        "location": "South Warehouse - HazMat Bay 2",
-        "description": "Secondary hazardous and volatile materials receiving dock.",
-    },
-    {
-        "code": "EC-01",
-        "name": "Electronics Dock 01",
-        "type": "ELECTRONICS",
-        "location": "West Warehouse - Bay 1",
-        "description": "ESD-controlled dock for sensitive electronic circuits, microcontrollers, and chips.",
-    },
-    {
-        "code": "EC-02",
-        "name": "Electronics Dock 02",
-        "type": "ELECTRONICS",
-        "location": "West Warehouse - Bay 2",
-        "description": "Secondary ESD-compliant dock for electronic devices and sensor components.",
-    },
-    {
-        "code": "EL-01",
-        "name": "Electrical Dock 01",
-        "type": "ELECTRICAL",
-        "location": "East Warehouse - Bay 1",
-        "description": "Specialized inbound dock for electrical components, wires, cables, and switchgear.",
-    },
-    {
-        "code": "EL-02",
-        "name": "Electrical Dock 02",
-        "type": "ELECTRICAL",
-        "location": "East Warehouse - Bay 2",
-        "description": "Secondary dock for electrical hardware and sub-assemblies.",
-    },
-    {
-        "code": "RM-01",
-        "name": "Raw Material Dock 01",
-        "type": "RAW_MATERIAL",
-        "location": "North Warehouse - Bay 1",
-        "description": "Dedicated inbound dock for raw materials, metals, and standard fabrication items.",
-    },
-    {
-        "code": "RM-02",
-        "name": "Raw Material Dock 02",
-        "type": "RAW_MATERIAL",
-        "location": "North Warehouse - Bay 2",
-        "description": "Secondary inbound dock for raw materials and heavy bulk cargo.",
-    },
-    {
-        "code": "MR-01",
-        "name": "Main Receiving Dock 01",
-        "type": "MAIN_RECEIVING",
-        "location": "Central Receiving - Main Bay 1",
-        "description": "Primary high-throughput receiving dock for general consignments and mixed shipments.",
-    },
-    {
-        "code": "MR-02",
-        "name": "Main Receiving Dock 02",
-        "type": "MAIN_RECEIVING",
-        "location": "Central Receiving - Main Bay 2",
-        "description": "Secondary high-throughput receiving dock for overflow inbound shipments.",
-    },
-]
-
 
 class DockAllocationService:
 
     @staticmethod
-    async def sync_predefined_docks(session: AsyncSession) -> None:
-        """
-        Synchronizes the system to have exactly the 9 predefined static docks in both dock_masters
-        and warehouse_dock. Any non-predefined docks are safely cleaned up.
-        """
-        predefined_codes = {d["code"] for d in PREDEFINED_DOCKS}
-
-        # 1. Fetch existing docks in dock_masters
-        existing_res = await session.execute(select(DockMasterModel))
-        existing_docks = existing_res.scalars().all()
-        existing_by_code = {d.dock_code: d for d in existing_docks}
-
-        # 2. Upsert the 9 predefined docks
-        for d in PREDEFINED_DOCKS:
-            if d["code"] in existing_by_code:
-                model = existing_by_code[d["code"]]
-                model.dock_name = d["name"]
-                model.dock_type = d["type"]
-                model.location = d["location"]
-                model.description = d["description"]
-                model.is_active = True
-                if model.status not in ["AVAILABLE", "OCCUPIED", "RESERVED"]:
-                    model.status = "AVAILABLE"
-            else:
-                new_dock = DockMasterModel(
+    async def seed_default_docks_if_empty(session: AsyncSession) -> None:
+        """Helper to seed initial 9 docks when explicitly invoked (e.g. by test fixtures or setup scripts)."""
+        result = await session.execute(select(func.count(DockMasterModel.id)))
+        if result.scalar() == 0:
+            initial_docks = [
+                {"code": "RM-01", "name": "Raw Material Dock 01", "type": DockType.RAW_MATERIAL.value, "location": "North Warehouse"},
+                {"code": "RM-02", "name": "Raw Material Dock 02", "type": DockType.RAW_MATERIAL.value, "location": "East Warehouse"},
+                {"code": "CH-01", "name": "Chemical/Hazardous Dock 01", "type": DockType.CHEMICAL_HAZARDOUS.value, "location": "South Warehouse"},
+                {"code": "CH-02", "name": "Chemical/Hazardous Dock 02", "type": DockType.CHEMICAL_HAZARDOUS.value, "location": "South Warehouse"},
+                {"code": "EL-01", "name": "Electrical Dock 01", "type": DockType.ELECTRICAL.value, "location": "North Warehouse"},
+                {"code": "EL-02", "name": "Electrical Dock 02", "type": DockType.ELECTRICAL.value, "location": "North Warehouse"},
+                {"code": "EC-01", "name": "Electronics Dock 01", "type": DockType.ELECTRONICS.value, "location": "West Warehouse"},
+                {"code": "EC-02", "name": "Electronics Dock 02", "type": DockType.ELECTRONICS.value, "location": "West Warehouse"},
+                {"code": "MR-01", "name": "Main Receiving Dock", "type": DockType.MAIN_RECEIVING.value, "location": "North Warehouse"},
+            ]
+            for d in initial_docks:
+                dock = DockMasterModel(
                     dock_code=d["code"],
                     dock_name=d["name"],
                     dock_type=d["type"],
                     location=d["location"],
-                    description=d["description"],
-                    status="AVAILABLE",
+                    status=DockStatus.AVAILABLE.value,
                     is_active=True,
                 )
-                session.add(new_dock)
-
-        # 3. Clean up non-predefined docks from dock_masters
-        for d in existing_docks:
-            if d.dock_code not in predefined_codes:
-                await session.execute(
-                    update(DockAllocationRequestModel)
-                    .where(DockAllocationRequestModel.assigned_dock_id == d.id)
-                    .values(assigned_dock_id=None)
-                )
-                await session.delete(d)
-
-        # 4. Synchronize warehouse_dock table
-        try:
-            from app.modules.gate.infrastructure.persistence.models import DockModel
-            wh_res = await session.execute(select(DockModel))
-            wh_docks = wh_res.scalars().all()
-            wh_by_code = {d.dock_number: d for d in wh_docks}
-
-            for d in PREDEFINED_DOCKS:
-                if d["code"] in wh_by_code:
-                    wh_model = wh_by_code[d["code"]]
-                    wh_model.dock_type = d["type"]
-                    wh_model.warehouse_id = "WH-01"
-                    wh_model.capacity = 1
-                else:
-                    new_wh_dock = DockModel(
-                        dock_number=d["code"],
-                        dock_type=d["type"],
-                        warehouse_id="WH-01",
-                        capacity=1,
-                        status="AVAILABLE",
-                    )
-                    session.add(new_wh_dock)
-
-            for d in wh_docks:
-                if d.dock_number not in predefined_codes:
-                    await session.delete(d)
-        except Exception:
-            pass
-
-        await session.commit()
-
-    @staticmethod
-    async def seed_default_docks_if_empty(session: AsyncSession) -> None:
-        """Alias to sync_predefined_docks to ensure exactly 9 docks exist."""
-        await DockAllocationService.sync_predefined_docks(session)
+                session.add(dock)
+            await session.commit()
 
     @staticmethod
     async def sync_pending_gate_entries(session: AsyncSession) -> None:
@@ -256,19 +129,12 @@ class DockAllocationService:
     ) -> List[DockMasterModel]:
         query = select(DockMasterModel).where(DockMasterModel.is_active == True)
         if dock_type and isinstance(dock_type, str) and dock_type.strip().upper() != "ALL":
-            target_type = dock_type.strip().upper()
-            if target_type == "ELECTRONIC":
-                query = query.where(DockMasterModel.dock_type.in_(["ELECTRONICS", "ELECTRONIC"]))
-            else:
-                query = query.where(DockMasterModel.dock_type == target_type)
+            query = query.where(DockMasterModel.dock_type == dock_type.strip().upper())
         if status and isinstance(status, str) and status.strip().upper() != "ALL":
             query = query.where(DockMasterModel.status == status.strip().upper())
+        query = query.order_by(DockMasterModel.dock_code)
         result = await session.execute(query)
-        docks = list(result.scalars().all())
-
-        order_map = {d["code"]: idx for idx, d in enumerate(PREDEFINED_DOCKS)}
-        docks.sort(key=lambda x: order_map.get(x.dock_code, 999))
-        return docks
+        return list(result.scalars().all())
 
     @staticmethod
     async def get_active_allocations_for_docks(
@@ -376,26 +242,13 @@ class DockAllocationService:
             pass
 
     @staticmethod
-    async def _sync_warehouse_dock_status(session: AsyncSession, dock_code: str, new_status: str) -> None:
-        """Safely sync status to legacy warehouse_dock table."""
-        try:
-            from app.modules.gate.infrastructure.persistence.models import DockModel
-            stmt = select(DockModel).where(DockModel.dock_number == dock_code)
-            res = await session.execute(stmt)
-            dock = res.scalars().first()
-            if dock:
-                dock.status = new_status
-        except Exception:
-            pass
-
-    @staticmethod
     async def allocate_dock(
         session: AsyncSession,
         allocation_request_id: uuid.UUID,
         dock_id: uuid.UUID,
         allocated_by: str,
     ) -> DockAllocationRequestModel:
-        """Allocate dock with strict backend pessimistic concurrency lock (AVAILABLE -> OCCUPIED)."""
+        """Allocate dock with strict backend pessimistic concurrency lock (AVAILABLE -> RESERVED / DOCK_ASSIGNED)."""
         # 1. Lock Dock with pessimistic FOR UPDATE
         dock_query = await session.execute(
             select(DockMasterModel).where(DockMasterModel.id == dock_id).with_for_update()
@@ -416,17 +269,6 @@ class DockAllocationService:
                 detail="This dock is no longer available.\n\nAnother user has already allocated this dock.\n\nPlease select another available dock.",
             )
 
-        # Check if dock already has an active allocation (prevent double allocation)
-        active_alloc_stmt = select(DockAllocationRequestModel).where(
-            DockAllocationRequestModel.assigned_dock_id == dock_id,
-            DockAllocationRequestModel.status.in_(["DOCK_ASSIGNED", "RESERVED", "OCCUPIED"]),
-        )
-        if (await session.execute(active_alloc_stmt)).scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="This dock is already allocated to another vehicle. Please select an available dock.",
-            )
-
         # 2. Lock Allocation Request
         req_query = await session.execute(
             select(DockAllocationRequestModel)
@@ -443,7 +285,7 @@ class DockAllocationService:
                 detail=f"Allocation request is already in status '{req.status}'",
             )
 
-        # 3. Perform Allocation (AWAITING_DOCK -> DOCK_ASSIGNED & Dock status -> OCCUPIED)
+        # 3. Perform Allocation (AWAITING_DOCK -> DOCK_ASSIGNED)
         previous_dock_status = dock.status
         previous_req_status = req.status
 
@@ -452,8 +294,7 @@ class DockAllocationService:
         req.assigned_at = datetime.now(timezone.utc)
         req.status = "DOCK_ASSIGNED"
 
-        dock.status = DockStatus.OCCUPIED.value
-        await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "OCCUPIED")
+        dock.status = DockStatus.RESERVED.value
 
         # Update GateEntryModel if present
         await DockAllocationService._sync_gate_entry_status(
@@ -469,14 +310,14 @@ class DockAllocationService:
             new_status="DOCK_ASSIGNED",
             performed_by=allocated_by,
             performed_at=datetime.now(timezone.utc),
-            remarks=f"Allocated Dock {dock.dock_code} (Status updated to OCCUPIED / DOCK_ASSIGNED)",
+            remarks=f"Allocated Dock {dock.dock_code} (Status updated to DOCK_ASSIGNED)",
         )
         session.add(hist)
 
         dock_hist = DockStatusHistoryModel(
             dock_id=dock_id,
             previous_status=previous_dock_status,
-            new_status=DockStatus.OCCUPIED.value,
+            new_status=DockStatus.RESERVED.value,
             reason=f"Allocated to Gate Pass {req.existing_gate_pass_id} (DOCK_ASSIGNED)",
             changed_by=allocated_by,
             changed_at=datetime.now(timezone.utc),
@@ -640,11 +481,10 @@ class DockAllocationService:
             old_dock = (await session.execute(select(DockMasterModel).where(DockMasterModel.id == old_dock_id))).scalar_one_or_none()
             if old_dock:
                 old_dock.status = DockStatus.AVAILABLE.value
-                await DockAllocationService._sync_warehouse_dock_status(session, old_dock.dock_code, "AVAILABLE")
                 session.add(
                     DockStatusHistoryModel(
                         dock_id=old_dock.id,
-                        previous_status=DockStatus.OCCUPIED.value,
+                        previous_status=DockStatus.RESERVED.value,
                         new_status=DockStatus.AVAILABLE.value,
                         reason=f"Reassigned to {new_dock.dock_code}. Reason: {reason}",
                         changed_by=reassigned_by,
@@ -655,8 +495,7 @@ class DockAllocationService:
         # Update assignment & new dock status
         req.assigned_dock_id = new_dock_id
         req.assigned_by = reassigned_by
-        new_dock.status = DockStatus.OCCUPIED.value
-        await DockAllocationService._sync_warehouse_dock_status(session, new_dock.dock_code, "OCCUPIED")
+        new_dock.status = DockStatus.RESERVED.value
 
         await DockAllocationService._sync_gate_entry_status(
             session, req.existing_gate_pass_id, req.vehicle_number, "DOCK_ASSIGNED", new_dock.dock_code
@@ -666,7 +505,7 @@ class DockAllocationService:
             DockStatusHistoryModel(
                 dock_id=new_dock_id,
                 previous_status=DockStatus.AVAILABLE.value,
-                new_status=DockStatus.OCCUPIED.value,
+                new_status=DockStatus.RESERVED.value,
                 reason=f"Reassigned from old dock. Reason: {reason}",
                 changed_by=reassigned_by,
                 changed_at=datetime.now(timezone.utc),
@@ -861,15 +700,14 @@ class DockAllocationService:
             )
             dock = dock_query.scalar_one_or_none()
             if dock:
-                if dock.status not in [DockStatus.OCCUPIED.value, DockStatus.RESERVED.value]:
+                if dock.status != DockStatus.OCCUPIED.value:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Dock can only be released when it is OCCUPIED or RESERVED",
+                        detail="Dock can only be released when it is OCCUPIED",
                     )
                 old_dock_st = dock.status
                 dock.status = DockStatus.AVAILABLE.value
                 dock_code = dock.dock_code
-                await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "AVAILABLE")
 
                 session.add(
                     DockStatusHistoryModel(
@@ -927,7 +765,6 @@ class DockAllocationService:
             if dock:
                 old_st = dock.status
                 dock.status = DockStatus.AVAILABLE.value
-                await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "AVAILABLE")
                 session.add(
                     DockStatusHistoryModel(
                         dock_id=dock.id,

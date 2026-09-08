@@ -522,22 +522,6 @@ class FinishedGoodsRequestResponse(ApiModel):
     updated_at: datetime
 
 
-class SendMaterialRequestToSupplierRequest(ApiModel):
-    supplier_id: Optional[str] = None
-    notes: Optional[str] = None
-
-
-class MaterialRequestMatchingSupplierResponse(ApiModel):
-    supplier_id: str
-    supplier_name: str
-    supplier_code: Optional[str] = None
-    primary_contact_name: Optional[str] = None
-    primary_email: Optional[str] = None
-    phone: Optional[str] = None
-    main_materials: List[str] = []
-    is_matched: bool = False
-
-
 class MaterialStockResponse(ApiModel):
     id: str
     material_id: Optional[str] = None

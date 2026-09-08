@@ -200,26 +200,12 @@ def _send_sync(
         lf.write(f"System: {platform.system()} | Host: {settings.email_host}:{settings.email_port}\n")
     raise RuntimeError(error_message)
 
-
-def mask_email(email: str | None) -> str:
-    """Mask email for safe logging without exposing PII (e.g. j***e@example.com)."""
-    if not email or "@" not in email:
-        return "<empty-or-invalid>"
-    local, domain = email.split("@", 1)
-    if len(local) <= 2:
-        masked_local = local[0] + "*"
-    else:
-        masked_local = local[0] + "*" * (len(local) - 2) + local[-1]
-    return f"{masked_local}@{domain}"
-
-
 async def send_email(
     to_email: str,
     subject: str,
     body: str,
     html_body: str | None = None,
     attachments: Iterable[tuple[str, bytes, str]] = (),
-    raise_on_missing: bool = True,
 ):
     """
     Sends an email using SMTP settings from the configuration.
@@ -233,10 +219,7 @@ async def send_email(
         or not settings.email_host_password
         or "your_app_password" in settings.email_host_password.lower()
     ):
-        err_msg = "SMTP credentials not configured or using placeholder credentials in .env (EMAIL_HOST_USER / EMAIL_HOST_PASSWORD)."
-        logger.warning(err_msg)
-        if raise_on_missing:
-            raise RuntimeError(err_msg)
+        logger.warning("SMTP credentials not configured or using placeholder. Skipping live email dispatch.")
         return False
 
     try:
