@@ -11,6 +11,7 @@ export function StatCard({
   icon: Icon,
   tone = "primary",
   to,
+  showArrow = false,
 }: {
   label: string;
   value: string;
@@ -18,6 +19,7 @@ export function StatCard({
   icon: LucideIcon;
   tone?: "primary" | "teal" | "success" | "warning" | "danger";
   to?: string;
+  showArrow?: boolean;
 }) {
   const tones: Record<string, string> = {
     primary: "bg-primary-soft text-primary",
@@ -32,7 +34,9 @@ export function StatCard({
         <span className={cn("grid size-9 place-items-center rounded-xl", tones[tone])}>
           <Icon className="size-4" />
         </span>
-        <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+        {to && showArrow && (
+          <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+        )}
       </div>
       <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
       <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>

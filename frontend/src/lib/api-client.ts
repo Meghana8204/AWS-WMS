@@ -264,6 +264,15 @@ export const api = {
   async getDockHistory(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
   },
+  async getDockTypes(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-types`);
+  },
+  async getDockOverviewMetrics(): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/docks/availability`);
+  },
+  async getPendingAllocations(): Promise<any[]> {
+    return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
+  },
   async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
       method: "POST",
@@ -514,11 +523,6 @@ export const api = {
 
   async completeReceiving(gateEntryId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/complete-receiving`, {
-      method: "POST",
-    });
-  },
-  async releaseDock(gateEntryId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${gateEntryId}/release`, {
       method: "POST",
     });
   },

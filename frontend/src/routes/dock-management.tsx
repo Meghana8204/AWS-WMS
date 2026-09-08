@@ -105,13 +105,25 @@ type DockHistory = {
   remarks?: string | null;
 };
 
+const FALLBACK_DOCK_TYPES = [
+  "RAW_MATERIAL",
+  "CHEMICAL_HAZARDOUS",
+  "ELECTRICAL",
+  "CHEMICAL",
+  "HAZARDOUS_ITEMS",
+  "ELECTRONICS",
+  "MAIN_RECEIVING",
+];
+
 function formatDockType(value: string) {
+  if (!value) return "Standard";
   return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
-  const words = dockType.split("_").filter(Boolean);
-  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : dockType.slice(0, 2)).toUpperCase();
+function generateDockCodeAndName(dockType?: string, existingDocks: { dock_code?: string }[] = []) {
+  const effectiveType = dockType || "RAW_MATERIAL";
+  const words = effectiveType.split("_").filter(Boolean);
+  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : effectiveType.slice(0, 2)).toUpperCase() || "DK";
   const regex = new RegExp(`^${prefix}-?(\\d+)`, "i");
   let maxNum = 0;
 
@@ -129,7 +141,7 @@ function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: 
   const nextNumStr = String(maxNum + 1).padStart(2, "0");
   return {
     code: `${prefix}-${nextNumStr}`,
-    name: `${formatDockType(dockType)} Dock ${nextNumStr}`,
+    name: `${formatDockType(effectiveType)} Dock ${nextNumStr}`,
   };
 }
 
@@ -152,7 +164,7 @@ function DockManagement() {
   });
   const [pendingRequests, setPendingRequests] = useState<AllocationRequest[]>([]);
   const [history, setHistory] = useState<DockHistory[]>([]);
-  const [dockTypes, setDockTypes] = useState<string[]>([]);
+  const [dockTypes, setDockTypes] = useState<string[]>(FALLBACK_DOCK_TYPES);
   const [loading, setLoading] = useState(true);
 
   // Filter & tab controls
@@ -178,7 +190,7 @@ function DockManagement() {
   const [showCreateDock, setShowCreateDock] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  const [createDockType, setCreateDockType] = useState("");
+  const [createDockType, setCreateDockType] = useState(FALLBACK_DOCK_TYPES[0]);
   const [createDockCode, setCreateDockCode] = useState("");
   const [createDockName, setCreateDockName] = useState("");
 
@@ -205,14 +217,15 @@ function DockManagement() {
         api.getDockOverviewMetrics().catch(() => null),
         api.getPendingAllocations().catch(() => []),
         api.getDockHistory().catch(() => []),
-        api.getDockTypes(),
+        api.getDockTypes().catch(() => FALLBACK_DOCK_TYPES),
       ]);
 
       setDocks(docksRes);
       setPendingRequests(pendingRes);
       setHistory(historyRes);
-      setDockTypes(dockTypesRes);
-      setCreateDockType((current) => current || dockTypesRes[0] || "");
+      const effectiveTypes = dockTypesRes && dockTypesRes.length > 0 ? dockTypesRes : FALLBACK_DOCK_TYPES;
+      setDockTypes(effectiveTypes);
+      setCreateDockType((current) => current || effectiveTypes[0] || "RAW_MATERIAL");
 
       if (overviewRes) {
         setMetrics(overviewRes);

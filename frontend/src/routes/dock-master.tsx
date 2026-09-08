@@ -56,9 +56,10 @@ const DOCK_TYPE_CONFIG: Record<string, { prefix: string; namePrefix: string }> =
 };
 
 function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
-  const config = DOCK_TYPE_CONFIG[dockType] || {
-    prefix: dockType.slice(0, 2).toUpperCase(),
-    namePrefix: `${dockType.replaceAll("_", " ")} Dock`,
+  const effectiveType = dockType || "RAW_MATERIAL";
+  const config = DOCK_TYPE_CONFIG[effectiveType] || {
+    prefix: effectiveType.slice(0, 2).toUpperCase() || "DK",
+    namePrefix: `${effectiveType.replaceAll("_", " ")} Dock`,
   };
 
   const prefix = config.prefix;
