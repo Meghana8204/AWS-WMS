@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { DamagePhoto } from "@/components/wms/damage-photo";
 import {
@@ -345,14 +345,15 @@ function GrnPageWorkflow() {
       const docksList = Array.isArray(docksRes) ? docksRes : [];
       const allocsList = Array.isArray(allocsRes) ? allocsRes : [];
 
-      if (docksList.length > 0) {
+      if (docksList.length > 0 || allocsList.length > 0) {
         const enrichedDocks = docksList.map((d: any) => {
           const num = d.dock_number || d.dock_code || d.name || `DOCK-${d.id}`;
           const currentAlloc = d.current_allocation || allocsList.find(
             (a: any) =>
-              (a.assigned_dock_id && a.assigned_dock_id === d.id) ||
+              (a.assigned_dock_id && (a.assigned_dock_id === d.id || String(a.assigned_dock_id) === String(d.id))) ||
               (a.assigned_dock_code && a.assigned_dock_code === num) ||
-              (a.assigned_dock?.dock_number && a.assigned_dock?.dock_number === num)
+              (a.assigned_dock?.dock_number && a.assigned_dock?.dock_number === num) ||
+              (a.assigned_dock?.dock_code && a.assigned_dock?.dock_code === num)
           );
 
           return {
@@ -371,10 +372,21 @@ function GrnPageWorkflow() {
 
         setDockOptions(enrichedDocks);
 
-        // Auto-select first dock if none selected yet
+        // Auto-detect dock allocated to current shipment or gate pass
         setHeader((prev) => {
-          if (!prev.receiving_dock && enrichedDocks.length > 0) {
-            return { ...prev, receiving_dock: enrichedDocks[0].dock_number };
+          if (prev.receiving_dock) return prev;
+          const matched = enrichedDocks.find((d: any) => {
+            const alloc = d.current_allocation;
+            if (!alloc) return false;
+            return (
+              (prev.vehicle_number && alloc.vehicle_number && alloc.vehicle_number.toUpperCase() === prev.vehicle_number.toUpperCase()) ||
+              (prev.gate_entry_number && alloc.existing_gate_pass_id && alloc.existing_gate_pass_id.toUpperCase() === prev.gate_entry_number.toUpperCase()) ||
+              (prev.po_number && alloc.material_reference && alloc.material_reference.includes(prev.po_number)) ||
+              (prev.supplier_name && alloc.vendor_reference && alloc.vendor_reference.toLowerCase().includes(prev.supplier_name.toLowerCase()))
+            );
+          });
+          if (matched) {
+            return { ...prev, receiving_dock: matched.dock_number };
           }
           return prev;
         });
@@ -383,6 +395,64 @@ function GrnPageWorkflow() {
       console.warn("Failed to load warehouse dock allocations:", err);
     }
   }, []);
+
+  // Resolved Allocated Dock from Warehouse Dock Allocation
+  const allocatedDockInfo = useMemo(() => {
+    if (header.receiving_dock) {
+      const match = dockOptions.find(
+        (d: any) => d.dock_number === header.receiving_dock || d.id === header.receiving_dock
+      );
+      if (match) {
+        return {
+          dock_number: match.dock_number,
+          dock_name: match.dock_name || match.dock_type || match.dock_number,
+          status: match.status,
+          is_allocated: true,
+        };
+      }
+      return {
+        dock_number: header.receiving_dock,
+        dock_name: header.receiving_dock,
+        status: "ALLOCATED",
+        is_allocated: true,
+      };
+    }
+
+    const matched = dockOptions.find((d: any) => {
+      const alloc = d.current_allocation;
+      if (!alloc) return false;
+      const vMatch =
+        header.vehicle_number &&
+        alloc.vehicle_number &&
+        alloc.vehicle_number.trim().toUpperCase() === header.vehicle_number.trim().toUpperCase();
+      const gMatch =
+        header.gate_entry_number &&
+        alloc.existing_gate_pass_id &&
+        alloc.existing_gate_pass_id.trim().toUpperCase() === header.gate_entry_number.trim().toUpperCase();
+      const pMatch =
+        header.po_number &&
+        ((alloc.material_reference && alloc.material_reference.includes(header.po_number)) ||
+          (alloc.po_number && alloc.po_number === header.po_number));
+      return Boolean(vMatch || gMatch || pMatch);
+    });
+
+    if (matched) {
+      return {
+        dock_number: matched.dock_number,
+        dock_name: matched.dock_name || matched.dock_type || matched.dock_number,
+        status: matched.status,
+        is_allocated: true,
+      };
+    }
+
+    return null;
+  }, [dockOptions, header.receiving_dock, header.vehicle_number, header.gate_entry_number, header.po_number]);
+
+  useEffect(() => {
+    if (allocatedDockInfo?.dock_number && header.receiving_dock !== allocatedDockInfo.dock_number) {
+      setHeader((prev) => ({ ...prev, receiving_dock: allocatedDockInfo.dock_number }));
+    }
+  }, [allocatedDockInfo?.dock_number, header.receiving_dock]);
 
   useEffect(() => {
     void loadWarehouseDocks();
@@ -977,7 +1047,7 @@ function GrnPageWorkflow() {
 
   async function saveGrnHeader(): Promise<string> {
     if (!header.receiving_dock.trim()) {
-      throw new Error("Please select a Receiving Dock on Step 1.");
+      throw new Error("No Receiving Dock assigned by warehouse dock allocation. Please ensure a dock is allocated before proceeding.");
     }
     if (header.receipt_type === "PO_RECEIPT" && !header.po_number.trim()) {
       throw new Error("Please select a PO on Step 1.");
@@ -3091,47 +3161,58 @@ function GrnPageWorkflow() {
                   </div>
 
                   {/* 7. Receiving Dock */}
-                  <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
-                    <label className="text-[11px] font-bold uppercase text-primary block mb-1">
-                      7. Receiving Dock *
-                    </label>
-                    <select
-                      value={header.receiving_dock}
-                      onChange={(e) => setHeader({ ...header, receiving_dock: e.target.value })}
-                      className="w-full rounded-lg border bg-background px-3 py-2 text-sm font-bold text-foreground focus:ring-2 focus:ring-primary/40"
-                    >
-                      {dockOptions.length > 0 ? (
-                        dockOptions.map((d: any, idx: number) => {
-                          const isAllocatedToCurrent =
-                            (header.vehicle_number && d.allocated_vehicle && d.allocated_vehicle.toLowerCase() === header.vehicle_number.toLowerCase()) ||
-                            (header.gate_entry_number && d.allocated_gate_pass && d.allocated_gate_pass.toLowerCase() === header.gate_entry_number.toLowerCase());
+                  <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold uppercase text-primary tracking-wide">
+                          7. Receiving Dock *
+                        </span>
+                        {header.receiving_dock ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Allocated by Warehouse
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            Pending Dock Allocation
+                          </span>
+                        )}
+                      </div>
 
-                          const statusLabel = isAllocatedToCurrent
-                            ? "⭐ Allocated to this shipment"
-                            : d.allocated_vehicle
-                              ? `Occupied: ${d.allocated_vehicle}`
-                              : d.status || "Available";
+                      <div className="mt-2 flex items-baseline gap-2">
+                        {header.receiving_dock ? (
+                          <>
+                            <p className="text-base font-black tracking-tight text-foreground font-mono">
+                              {header.receiving_dock}
+                            </p>
+                            {allocatedDockInfo?.dock_name && allocatedDockInfo.dock_name !== header.receiving_dock && (
+                              <span className="text-xs font-medium text-muted-foreground">
+                                ({allocatedDockInfo.dock_name})
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">
+                            Pending Warehouse Dock Allocation
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                          return (
-                            <option key={d.dock_number || d.id || `dock_${idx}`} value={d.dock_number}>
-                              {d.dock_number} — {d.dock_name || d.dock_type || "Bay"} ({statusLabel})
-                            </option>
-                          );
-                        })
+                    <p className="text-[11px] text-muted-foreground mt-2 flex items-center gap-1 font-medium">
+                      {header.receiving_dock ? (
+                        <>
+                          <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+                          Assigned via Warehouse Dock Allocation
+                        </>
                       ) : (
                         <>
-                          <option value="DOCK-01">DOCK-01 (Standard Receiving)</option>
-                          <option value="DOCK-02">DOCK-02 (Heavy Unloading)</option>
-                          <option value="DOCK-03">DOCK-03 (Cold Bay / Quarantine)</option>
+                          <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+                          Allocated automatically from Warehouse Dock Management
                         </>
                       )}
-                    </select>
-                    {header.receiving_dock && (
-                      <p className="text-[10px] text-muted-foreground mt-1.5 flex items-center gap-1 font-medium">
-                        <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
-                        Selected Receiving Dock: <b className="text-foreground font-mono">{header.receiving_dock}</b>
-                      </p>
-                    )}
+                    </p>
                   </div>
 
                   {/* 8. GRN Number */}
