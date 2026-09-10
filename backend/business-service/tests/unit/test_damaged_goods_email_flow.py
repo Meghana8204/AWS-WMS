@@ -685,3 +685,61 @@ async def test_scenario_c_supplier_fails_procurement_succeeds(mock_uow, mock_cur
         assert response.procurement_status == "SENT"
         assert "Supplier SMTP Host Unreachable" in response.supplier_error
         assert response.email_delivered is True
+
+
+# 12. Test upload_damage_evidence response schema and media path format
+@pytest.mark.asyncio
+async def test_upload_damage_evidence_response_structure(mock_uow, mock_current_user):
+    from app.modules.receiving.infrastructure.api.router import upload_damage_evidence
+    from starlette.datastructures import UploadFile
+    import io
+
+    line_uuid = uuid.uuid4()
+    grn_uuid = uuid.uuid4()
+    mock_line = SimpleNamespace(
+        id=line_uuid,
+        grn_id=grn_uuid,
+        item_code="MAT-PHOTO-01",
+        material_name="Photo Material",
+        damaged_quantity=Decimal("2"),
+    )
+
+    mock_evidence = SimpleNamespace(
+        id=uuid.uuid4(),
+        grn_line_id=line_uuid,
+        damaged_quantity=Decimal("2"),
+        reason="Cracked screen",
+        remarks="Test remark",
+        file_name="MAT-PHOTO-01_test.jpg",
+        file_path=f"/media/damage_evidence/{grn_uuid}/{line_uuid}/MAT-PHOTO-01_test.jpg",
+        uploaded_by="inspector_1",
+        uploaded_at="2026-09-08T12:00:00Z",
+    )
+
+    with patch(
+        "app.modules.receiving.infrastructure.api.router.SqlAlchemyGrnRepository.add_damage_evidence",
+        new=AsyncMock(return_value=mock_evidence),
+    ):
+        mock_uow.session.get = AsyncMock(return_value=mock_line)
+
+        test_file = UploadFile(
+            filename="damage.jpg",
+            file=io.BytesIO(b"fake-image-bytes"),
+        )
+
+        resp = await upload_damage_evidence(
+            grn_line_id=str(line_uuid),
+            damaged_quantity=2.0,
+            reason="Cracked screen",
+            remarks="Test remark",
+            file=test_file,
+            uow=mock_uow,
+            user=mock_current_user,
+            _perm=None,
+        )
+
+        assert resp.evidence_id == str(mock_evidence.id)
+        assert resp.grn_line_id == str(line_uuid)
+        assert resp.file_path.startswith("/media/damage_evidence/")
+        assert resp.file_name == mock_evidence.file_name
+
