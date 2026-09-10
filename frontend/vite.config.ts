@@ -1,9 +1,10 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
-export default defineConfig({
+export default (defineConfig as any)({
   server: {
     port: 8080,
     strictPort: true,
+    host: "0.0.0.0",
   },
   resolve: {
     tsconfigPaths: true,

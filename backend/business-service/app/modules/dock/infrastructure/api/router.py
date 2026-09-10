@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, desc
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database.session import UnitOfWork, get_uow
@@ -46,11 +47,18 @@ async def get_dock_availability(uow: UnitOfWork = Depends(get_uow)):
 
 @router.get("/docks", response_model=List[DockMasterResponse])
 async def list_docks(
-    dock_type: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None, alias="status"),
+    dock_type: Optional[str] = None,
+    status: Optional[str] = None,
+    status_filter: Optional[str] = None,
     uow: UnitOfWork = Depends(get_uow),
 ):
-    docks = await DockAllocationService.list_docks(uow.session, dock_type=dock_type, status=status_filter)
+    actual_status = status if status is not None else status_filter
+    if isinstance(actual_status, str) and actual_status.strip().upper() == "ALL":
+        actual_status = None
+    if isinstance(dock_type, str) and dock_type.strip().upper() == "ALL":
+        dock_type = None
+
+    docks = await DockAllocationService.list_docks(uow.session, dock_type=dock_type, status=actual_status)
     dock_ids = [d.id for d in docks]
     alloc_map = await DockAllocationService.get_active_allocations_for_docks(uow.session, dock_ids)
 
@@ -263,14 +271,19 @@ async def update_dock_status(
 
 @router.get("/dock-allocation-requests", response_model=List[AllocationRequestResponse])
 async def list_allocation_requests(
-    status_filter: Optional[str] = Query(None),
+    status_filter: Optional[str] = None,
+    status: Optional[str] = None,
     uow: UnitOfWork = Depends(get_uow),
 ):
+    actual_status = status_filter if status_filter is not None else status
+    if isinstance(actual_status, str) and actual_status.strip().upper() == "ALL":
+        actual_status = None
+
     query = select(DockAllocationRequestModel).options(
         selectinload(DockAllocationRequestModel.assigned_dock),
     )
-    if status_filter:
-        query = query.where(DockAllocationRequestModel.status == status_filter.upper())
+    if actual_status and isinstance(actual_status, str):
+        query = query.where(DockAllocationRequestModel.status == actual_status.strip().upper())
     query = query.order_by(
         desc(DockAllocationRequestModel.priority == "URGENT"),
         desc(DockAllocationRequestModel.priority == "HIGH"),
@@ -374,7 +387,45 @@ async def list_pending_allocation_requests(uow: UnitOfWork = Depends(get_uow)):
     return res_list
 
 
+async def _build_allocation_response(
+    session: AsyncSession, r: DockAllocationRequestModel
+) -> AllocationRequestResponse:
+    dock_code = None
+    if r.assigned_dock_id:
+        try:
+            d = await session.get(DockMasterModel, r.assigned_dock_id)
+            if d:
+                dock_code = d.dock_code
+        except Exception:
+            dock_code = None
+    return AllocationRequestResponse(
+        id=r.id,
+        existing_gate_pass_id=r.existing_gate_pass_id,
+        vendor_reference=r.vendor_reference,
+        vehicle_number=r.vehicle_number,
+        material_reference=r.material_reference,
+        material_description=r.material_description,
+        quantity=r.quantity,
+        security_approved_at=r.security_approved_at,
+        priority=r.priority,
+        status=r.status,
+        assigned_dock_id=r.assigned_dock_id,
+        assigned_dock_code=dock_code,
+        assigned_by=r.assigned_by,
+        assigned_at=r.assigned_at,
+        arrived_at=r.arrived_at,
+        started_at=r.started_at,
+        completed_at=r.completed_at,
+        released_at=r.released_at,
+        cancelled_at=r.cancelled_at,
+        cancellation_reason=r.cancellation_reason,
+        created_at=r.created_at,
+        updated_at=r.updated_at,
+    )
+
+
 @router.post("/dock-allocation-requests/auto-create", response_model=AllocationRequestResponse, status_code=201)
+@router.post("/dock-allocation-requests/auto", response_model=AllocationRequestResponse, status_code=status.HTTP_201_CREATED)
 async def auto_create_allocation_request(
     req: AutoCreateAllocationRequest,
     uow: UnitOfWork = Depends(get_uow),
@@ -389,7 +440,7 @@ async def auto_create_allocation_request(
         quantity=req.quantity,
         priority=req.priority,
     )
-    return AllocationRequestResponse.model_validate(created)
+    return await _build_allocation_response(uow.session, created)
 
 
 @router.post("/dock-allocations", response_model=AllocationRequestResponse)
@@ -404,7 +455,7 @@ async def allocate_dock(
         dock_id=req.dock_id,
         allocated_by=user.username,
     )
-    return AllocationRequestResponse.model_validate(allocated)
+    return await _build_allocation_response(uow.session, allocated)
 
 
 @router.patch("/dock-allocations/{id}/reassign", response_model=AllocationRequestResponse)
@@ -421,7 +472,7 @@ async def reassign_dock(
         reassigned_by=user.username,
         reason=req.reason,
     )
-    return AllocationRequestResponse.model_validate(reassigned)
+    return await _build_allocation_response(uow.session, reassigned)
 
 
 @router.post("/dock-allocations/{id}/arrive", response_model=AllocationRequestResponse)
@@ -431,7 +482,7 @@ async def mark_vehicle_arrived(
     uow: UnitOfWork = Depends(get_uow),
 ):
     arrived = await DockAllocationService.mark_vehicle_arrived(uow.session, id, user.username)
-    return AllocationRequestResponse.model_validate(arrived)
+    return await _build_allocation_response(uow.session, arrived)
 
 
 @router.post("/dock-allocations/{id}/start-receiving", response_model=AllocationRequestResponse)
@@ -441,7 +492,7 @@ async def start_receiving(
     uow: UnitOfWork = Depends(get_uow),
 ):
     req = await DockAllocationService.start_receiving(uow.session, id, user.username)
-    return AllocationRequestResponse.model_validate(req)
+    return await _build_allocation_response(uow.session, req)
 
 
 @router.post("/dock-allocations/{id}/complete", response_model=AllocationRequestResponse)
@@ -451,7 +502,7 @@ async def complete_receiving(
     uow: UnitOfWork = Depends(get_uow),
 ):
     req = await DockAllocationService.complete_receiving(uow.session, id, user.username)
-    return AllocationRequestResponse.model_validate(req)
+    return await _build_allocation_response(uow.session, req)
 
 
 @router.post("/dock-allocations/{id}/release", response_model=AllocationRequestResponse)
@@ -461,7 +512,7 @@ async def release_dock(
     uow: UnitOfWork = Depends(get_uow),
 ):
     released = await DockAllocationService.release_dock(uow.session, id, user.username)
-    return AllocationRequestResponse.model_validate(released)
+    return await _build_allocation_response(uow.session, released)
 
 
 @router.post("/dock-allocations/{id}/cancel", response_model=AllocationRequestResponse)
@@ -471,7 +522,7 @@ async def cancel_request(
     uow: UnitOfWork = Depends(get_uow),
 ):
     req = await DockAllocationService.cancel_request(uow.session, id, user.username)
-    return AllocationRequestResponse.model_validate(req)
+    return await _build_allocation_response(uow.session, req)
 
 
 @router.get("/dock-history", response_model=List[DockAllocationHistoryResponse])

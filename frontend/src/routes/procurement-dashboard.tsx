@@ -189,7 +189,7 @@ function ProcurementDashboard() {
         <StatCard
           label="Open POs"
           value={loading ? "..." : String(stats.openPos)}
-          delta={`Value: ₹${parseFloat(stats.totalPoValue || 0).toLocaleString()}`}
+          delta={`Value: ₹${Number(stats.totalPoValue || 0).toLocaleString()}`}
           icon={FileText}
           tone="teal"
           to="/procurement/purchase-orders"

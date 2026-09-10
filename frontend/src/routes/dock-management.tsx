@@ -105,13 +105,25 @@ type DockHistory = {
   remarks?: string | null;
 };
 
+const FALLBACK_DOCK_TYPES = [
+  "RAW_MATERIAL",
+  "CHEMICAL_HAZARDOUS",
+  "ELECTRICAL",
+  "CHEMICAL",
+  "HAZARDOUS_ITEMS",
+  "ELECTRONICS",
+  "MAIN_RECEIVING",
+];
+
 function formatDockType(value: string) {
+  if (!value) return "Standard";
   return value.replaceAll("_", " ").toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: string }[]) {
-  const words = dockType.split("_").filter(Boolean);
-  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : dockType.slice(0, 2)).toUpperCase();
+function generateDockCodeAndName(dockType?: string, existingDocks: { dock_code?: string }[] = []) {
+  const effectiveType = dockType || "RAW_MATERIAL";
+  const words = effectiveType.split("_").filter(Boolean);
+  const prefix = (words.length > 1 ? words.map((word) => word[0]).join("") : effectiveType.slice(0, 2)).toUpperCase() || "DK";
   const regex = new RegExp(`^${prefix}-?(\\d+)`, "i");
   let maxNum = 0;
 
@@ -129,11 +141,11 @@ function generateDockCodeAndName(dockType: string, existingDocks: { dock_code?: 
   const nextNumStr = String(maxNum + 1).padStart(2, "0");
   return {
     code: `${prefix}-${nextNumStr}`,
-    name: `${formatDockType(dockType)} Dock ${nextNumStr}`,
+    name: `${formatDockType(effectiveType)} Dock ${nextNumStr}`,
   };
 }
 
-export function DockManagement() {
+function DockManagement() {
   const [docks, setDocks] = useState<Dock[]>([]);
   const [metrics, setMetrics] = useState<{
     total_docks: number;
@@ -152,7 +164,7 @@ export function DockManagement() {
   });
   const [pendingRequests, setPendingRequests] = useState<AllocationRequest[]>([]);
   const [history, setHistory] = useState<DockHistory[]>([]);
-  const [dockTypes, setDockTypes] = useState<string[]>([]);
+  const [dockTypes, setDockTypes] = useState<string[]>(FALLBACK_DOCK_TYPES);
   const [loading, setLoading] = useState(true);
 
   // Filter & tab controls
@@ -166,7 +178,9 @@ export function DockManagement() {
   const [selectedDetailsDock, setSelectedDetailsDock] = useState<Dock | null>(null);
   const [editingDock, setEditingDock] = useState<Dock | null>(null);
   const [allocateModalDock, setAllocateModalDock] = useState<Dock | null>(null);
-  const [allocateModalPendingReq, setAllocateModalPendingReq] = useState<AllocationRequest | null>(null);
+  const [allocateModalPendingReq, setAllocateModalPendingReq] = useState<AllocationRequest | null>(
+    null,
+  );
   const [selectedRequestIdToAllocate, setSelectedRequestIdToAllocate] = useState<string>("");
   const [selectedDockIdToAllocate, setSelectedDockIdToAllocate] = useState<string>("");
 
@@ -176,7 +190,7 @@ export function DockManagement() {
   const [showCreateDock, setShowCreateDock] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  const [createDockType, setCreateDockType] = useState("");
+  const [createDockType, setCreateDockType] = useState(FALLBACK_DOCK_TYPES[0]);
   const [createDockCode, setCreateDockCode] = useState("");
   const [createDockName, setCreateDockName] = useState("");
 
@@ -203,14 +217,15 @@ export function DockManagement() {
         api.getDockOverviewMetrics().catch(() => null),
         api.getPendingAllocations().catch(() => []),
         api.getDockHistory().catch(() => []),
-        api.getDockTypes().catch(() => []),
+        api.getDockTypes().catch(() => FALLBACK_DOCK_TYPES),
       ]);
 
       setDocks(docksRes);
       setPendingRequests(pendingRes);
       setHistory(historyRes);
-      setDockTypes(dockTypesRes);
-      setCreateDockType((current) => current || dockTypesRes[0] || "");
+      const effectiveTypes = dockTypesRes && dockTypesRes.length > 0 ? dockTypesRes : FALLBACK_DOCK_TYPES;
+      setDockTypes(effectiveTypes);
+      setCreateDockType((current) => current || effectiveTypes[0] || "RAW_MATERIAL");
 
       if (overviewRes) {
         setMetrics(overviewRes);
@@ -250,7 +265,13 @@ export function DockManagement() {
   }, []);
 
   const isAnyModalOpen = Boolean(
-    selectedDetailsDock || allocateModalDock || allocateModalPendingReq || arriveConfirmDock || releaseConfirmDock || showCreateDock || editingDock
+    selectedDetailsDock ||
+    allocateModalDock ||
+    allocateModalPendingReq ||
+    arriveConfirmDock ||
+    releaseConfirmDock ||
+    showCreateDock ||
+    editingDock,
   );
 
   useEffect(() => {
@@ -286,7 +307,8 @@ export function DockManagement() {
     try {
       await api.allocateDock(reqId, dockId);
       toast.success(`Dock ${dockCode} allocated successfully`, {
-        description: "Status updated to RESERVED. Notifications dispatched to Store Manager & Quality Inspector.",
+        description:
+          "Status updated to RESERVED. Notifications dispatched to Store Manager & Quality Inspector.",
       });
       setAllocateModalPendingReq(null);
       setAllocateModalDock(null);
@@ -419,10 +441,7 @@ export function DockManagement() {
 
   // Filtered Docks
   const filteredDocks = docks.filter((dock) => {
-    const matchesTab =
-      activeTab === "ALL" ||
-      activeTab === "HISTORY" ||
-      dock.status === activeTab;
+    const matchesTab = activeTab === "ALL" || activeTab === "HISTORY" || dock.status === activeTab;
     const matchesType = dockTypeFilter === "ALL" || dock.dock_type === dockTypeFilter;
     const q = searchTerm.toLowerCase().trim();
     const matchesSearch =
@@ -442,17 +461,26 @@ export function DockManagement() {
           <Button variant="outline" className="rounded-xl text-xs" onClick={() => void loadAll()}>
             <RefreshCw className="size-4" /> Refresh
           </Button>
-          <Button className="rounded-xl text-xs shadow-glow" onClick={() => setShowCreateDock(true)}>
-            <Plus className="size-4" /> + New Dock
+          <Button
+            className="rounded-xl text-xs shadow-glow"
+            onClick={() => setShowCreateDock(true)}
+          >
+            <Plus className="size-4" /> New Dock
           </Button>
         </div>
       }
     >
       {/* Summary cards use the same neutral surfaces and semantic tokens as the rest of the app. */}
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           label="Total Docks"
-          value={metrics.total_docks || (metrics.available_docks + metrics.reserved_docks + metrics.occupied_docks + metrics.maintenance_docks)}
+          value={
+            metrics.total_docks ||
+            metrics.available_docks +
+              metrics.reserved_docks +
+              metrics.occupied_docks +
+              metrics.maintenance_docks
+          }
           status="TOTAL"
           active={activeTab === "ALL"}
           onClick={() => setActiveTab("ALL")}
@@ -508,7 +536,17 @@ export function DockManagement() {
           </div>
 
           <div className="flex flex-wrap items-center gap-1">
-            {(["ALL", "AVAILABLE", "RESERVED", "OCCUPIED", "MAINTENANCE", "PENDING", "HISTORY"] as const).map((tab) => (
+            {(
+              [
+                "ALL",
+                "AVAILABLE",
+                "RESERVED",
+                "OCCUPIED",
+                "MAINTENANCE",
+                "PENDING",
+                "HISTORY",
+              ] as const
+            ).map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -519,7 +557,13 @@ export function DockManagement() {
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {tab === "ALL" ? "TOTAL DOCKS" : tab === "MAINTENANCE" ? "UNDER MAINTENANCE" : tab === "PENDING" ? "PENDING ALLOCATIONS" : tab}
+                {tab === "ALL"
+                  ? "TOTAL DOCKS"
+                  : tab === "MAINTENANCE"
+                    ? "UNDER MAINTENANCE"
+                    : tab === "PENDING"
+                      ? "PENDING ALLOCATIONS"
+                      : tab}
                 {tab === "PENDING" && pendingRequests.length > 0 && (
                   <span className="rounded-full bg-primary text-primary-foreground px-1.5 py-0.5 text-[10px] font-mono font-black">
                     {pendingRequests.length}
@@ -567,13 +611,14 @@ export function DockManagement() {
                 onChange={(e) => handleDockTypeChange(e.target.value)}
                 className="mt-1.5 h-10 w-full rounded-xl border bg-background px-3 text-xs font-medium focus:ring-2 focus:ring-primary"
               >
-                {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)}
-              </select>
+                {dockTypes.map((type) => <option key={type} value={type}>{formatDockType(type)}</option>)
+              }              </select>
             </div>
 
             <div>
               <Label htmlFor="dock_code" className="text-xs font-semibold">
-                Dock code <span className="text-muted-foreground font-normal">(Auto-generated)</span>
+                Dock code{" "}
+                <span className="text-muted-foreground font-normal">(Auto-generated)</span>
               </Label>
               <Input
                 id="dock_code"
@@ -648,8 +693,18 @@ export function DockManagement() {
             </DialogHeader>
 
             <form onSubmit={handleEditDock} className="space-y-3 py-2 text-xs">
-              <Field name="dock_code" label="Dock code" defaultValue={editingDock.dock_code} required />
-              <Field name="dock_name" label="Dock name" defaultValue={editingDock.dock_name} required />
+              <Field
+                name="dock_code"
+                label="Dock code"
+                defaultValue={editingDock.dock_code}
+                required
+              />
+              <Field
+                name="dock_name"
+                label="Dock name"
+                defaultValue={editingDock.dock_name}
+                required
+              />
               <div>
                 <Label htmlFor="edit_dock_type" className="text-xs">
                   Dock type
@@ -664,7 +719,11 @@ export function DockManagement() {
                 </select>
               </div>
               <Field name="location" label="Location" defaultValue={editingDock.location || ""} />
-              <Field name="description" label="Description" defaultValue={editingDock.description || ""} />
+              <Field
+                name="description"
+                label="Description"
+                defaultValue={editingDock.description || ""}
+              />
 
               <DialogFooter className="pt-3">
                 <Button
@@ -675,7 +734,11 @@ export function DockManagement() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={actionBusy} className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white">
+                <Button
+                  type="submit"
+                  disabled={actionBusy}
+                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
+                >
                   {actionBusy && <Loader2 className="size-4 animate-spin" />} Save changes
                 </Button>
               </DialogFooter>
@@ -754,7 +817,8 @@ export function DockManagement() {
                 Approved Vehicles Awaiting Dock Allocation ({pendingRequests.length})
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Vehicles approved at the security gate ready for dock assignment by Warehouse Manager
+                Vehicles approved at the security gate ready for dock assignment by Warehouse
+                Manager
               </p>
             </div>
           </div>
@@ -781,17 +845,26 @@ export function DockManagement() {
                 ) : (
                   pendingRequests.map((req) => (
                     <tr key={req.id} className="hover:bg-muted/20">
-                      <td className="px-4 py-3 font-mono font-bold text-primary">{req.existing_gate_pass_id}</td>
+                      <td className="px-4 py-3 font-mono font-bold text-primary">
+                        {req.existing_gate_pass_id}
+                      </td>
                       <td className="px-4 py-3 font-mono font-bold">{req.vehicle_number}</td>
-                      <td className="px-4 py-3 text-xs font-medium">{req.vendor_reference || "Vendor"}</td>
+                      <td className="px-4 py-3 text-xs font-medium">
+                        {req.vendor_reference || "Vendor"}
+                      </td>
                       <td className="px-4 py-3 text-xs">
                         <div className="font-semibold text-foreground">
-                          {req.material_reference || req.material_description || "—"}
-                        </div>
-                        {req.quantity && <div className="text-[11px] text-muted-foreground tabular-nums">Qty: {req.quantity}</div>}
+                          {req.material_reference || req.material_description || "—"}                        </div>
+                        {req.quantity && (
+                          <div className="text-[11px] text-muted-foreground tabular-nums">
+                            Qty: {req.quantity}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-muted-foreground font-mono">
-                        {req.security_approved_at ? new Date(req.security_approved_at).toLocaleString() : "—"}
+                        {req.security_approved_at
+                          ? new Date(req.security_approved_at).toLocaleString()
+                          : "—"}
                       </td>
                       <td className="px-4 py-3 text-xs">
                         <StatusBadge status="AWAITING_DOCK" />
@@ -847,14 +920,23 @@ export function DockManagement() {
 
       {/* 6. View Dock Details Drawer / Modal */}
       {selectedDetailsDock && (
-        <Dialog open={Boolean(selectedDetailsDock)} onOpenChange={() => setSelectedDetailsDock(null)}>
+        <Dialog
+          open={Boolean(selectedDetailsDock)}
+          onOpenChange={() => setSelectedDetailsDock(null)}
+        >
           <DialogContent className="max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center justify-between">
                 <DialogTitle className="font-mono text-xl font-black text-primary flex items-center gap-2">
                   <Warehouse className="size-5" /> {selectedDetailsDock.dock_code}
                 </DialogTitle>
-                <StatusBadge status={selectedDetailsDock.status === "MAINTENANCE" ? "Under Maintenance" : selectedDetailsDock.status} />
+                <StatusBadge
+                  status={
+                    selectedDetailsDock.status === "MAINTENANCE"
+                      ? "Under Maintenance"
+                      : selectedDetailsDock.status
+                  }
+                />
               </div>
               <DialogDescription className="text-xs">
                 {selectedDetailsDock.dock_name}{selectedDetailsDock.location ? ` · ${selectedDetailsDock.location}` : ""}
@@ -869,14 +951,17 @@ export function DockManagement() {
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <span className="text-muted-foreground block text-[11px]">Dock Code & Name</span>
-                    <span className="font-mono font-bold text-foreground">{selectedDetailsDock.dock_code} ({selectedDetailsDock.dock_name})</span>
+                    <span className="text-muted-foreground block text-[11px]">
+                      Dock Code & Name
+                    </span>
+                    <span className="font-mono font-bold text-foreground">
+                      {selectedDetailsDock.dock_code} ({selectedDetailsDock.dock_name})
+                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Dock Type</span>
                     <span className="font-semibold text-foreground">
-                      {formatDockType(selectedDetailsDock.dock_type)}
-                    </span>
+                      {formatDockType(selectedDetailsDock.dock_type)}                    </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground block text-[11px]">Current Status</span>
@@ -886,7 +971,9 @@ export function DockManagement() {
                     <span className="text-muted-foreground block text-[11px]">Assignment Time</span>
                     <span className="font-mono text-foreground font-medium">
                       {selectedDetailsDock.current_allocation?.assigned_at
-                        ? new Date(selectedDetailsDock.current_allocation.assigned_at).toLocaleString()
+                        ? new Date(
+                            selectedDetailsDock.current_allocation.assigned_at,
+                          ).toLocaleString()
                         : "N/A"}
                     </span>
                   </div>
@@ -917,19 +1004,25 @@ export function DockManagement() {
                     </h4>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">Vehicle Number</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          Vehicle Number
+                        </span>
                         <span className="font-mono font-black text-sm text-primary">
-                          {selectedDetailsDock.current_allocation?.vehicle_number || "—"}
-                        </span>
+                          {selectedDetailsDock.current_allocation?.vehicle_number || "—"}                        </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">Gate Entry / Pass No</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          Gate Entry / Pass No
+                        </span>
                         <span className="font-mono font-bold text-foreground">
-                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "GE-2026-001"}
+                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id ||
+                            "GE-2026-001"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">Gate Entry Status</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          Gate Entry Status
+                        </span>
                         <span className="font-bold text-foreground">
                           {selectedDetailsDock.current_allocation?.status || "DOCK_ASSIGNED"}
                         </span>
@@ -938,7 +1031,9 @@ export function DockManagement() {
                         <span className="text-muted-foreground block text-[11px]">Approved At</span>
                         <span className="font-mono text-muted-foreground">
                           {selectedDetailsDock.current_allocation?.security_approved_at
-                            ? new Date(selectedDetailsDock.current_allocation.security_approved_at).toLocaleString()
+                            ? new Date(
+                                selectedDetailsDock.current_allocation.security_approved_at,
+                              ).toLocaleString()
                             : "—"}
                         </span>
                       </div>
@@ -952,15 +1047,19 @@ export function DockManagement() {
                     </h4>
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">Material Code / Name</span>
-                        <span className="font-semibold text-foreground">
-                          {selectedDetailsDock.current_allocation?.material_reference || selectedDetailsDock.current_allocation?.material_description || "—"}
+                        <span className="text-muted-foreground block text-[11px]">
+                          Material Code / Name
                         </span>
+                        <span className="font-semibold text-foreground">
+                          {selectedDetailsDock.current_allocation?.material_reference || selectedDetailsDock.current_allocation?.material_description || "—"}                        </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">Vendor / Supplier</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          Vendor / Supplier
+                        </span>
                         <span className="font-semibold text-foreground">
-                          {selectedDetailsDock.current_allocation?.vendor_reference || "Approved Supplier"}
+                          {selectedDetailsDock.current_allocation?.vendor_reference ||
+                            "Approved Supplier"}
                         </span>
                       </div>
                       <div>
@@ -970,10 +1069,11 @@ export function DockManagement() {
                         </span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground block text-[11px]">PO Reference</span>
-                        <span className="font-mono font-bold text-primary">
-                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}
+                        <span className="text-muted-foreground block text-[11px]">
+                          PO Reference
                         </span>
+                        <span className="font-mono font-bold text-primary">
+                          {selectedDetailsDock.current_allocation?.existing_gate_pass_id || "—"}                        </span>
                       </div>
                     </div>
                   </div>
@@ -982,7 +1082,11 @@ export function DockManagement() {
             </div>
 
             <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Button variant="outline" className="rounded-xl" onClick={() => setSelectedDetailsDock(null)}>
+              <Button
+                variant="outline"
+                className="rounded-xl"
+                onClick={() => setSelectedDetailsDock(null)}
+              >
                 Close
               </Button>
 
@@ -1074,7 +1178,8 @@ export function DockManagement() {
                           <span className="font-mono font-bold">{req.vehicle_number}</span>
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                          {req.vendor_reference || "Vendor"} · {req.material_reference || req.material_description || "Material"}
+                          {req.vendor_reference || "Vendor"} ·{" "}
+                          {req.material_reference || req.material_description || "Material"}
                         </p>
                       </div>
                       <input
@@ -1112,14 +1217,25 @@ export function DockManagement() {
 
       {/* 7b. Select Available Dock Modal for Pending Allocation */}
       {allocateModalPendingReq && (
-        <Dialog open={Boolean(allocateModalPendingReq)} onOpenChange={() => setAllocateModalPendingReq(null)}>
+        <Dialog
+          open={Boolean(allocateModalPendingReq)}
+          onOpenChange={() => setAllocateModalPendingReq(null)}
+        >
           <DialogContent className="max-w-lg rounded-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-primary font-bold">
                 <Warehouse className="size-5" /> Select Available Dock
               </DialogTitle>
               <DialogDescription className="text-xs">
-                Assign an AVAILABLE dock to Gate Pass <strong className="font-mono text-foreground">{allocateModalPendingReq.existing_gate_pass_id}</strong> (Vehicle: <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.vehicle_number}</span>)
+                Assign an AVAILABLE dock to Gate Pass{" "}
+                <strong className="font-mono text-foreground">
+                  {allocateModalPendingReq.existing_gate_pass_id}
+                </strong>{" "}
+                (Vehicle:{" "}
+                <span className="font-mono font-bold text-foreground">
+                  {allocateModalPendingReq.vehicle_number}
+                </span>
+                )
               </DialogDescription>
             </DialogHeader>
 
@@ -1128,28 +1244,31 @@ export function DockManagement() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Material:</span>
                   <span className="font-semibold text-foreground">
-                    {allocateModalPendingReq.material_reference || allocateModalPendingReq.material_description || "—"}
-                  </span>
+                    {allocateModalPendingReq.material_reference || allocateModalPendingReq.material_description || "—"}                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Supplier / Vendor:</span>
-                  <span className="font-semibold text-foreground">{allocateModalPendingReq.vendor_reference || "Supplier"}</span>
+                  <span className="font-semibold text-foreground">
+                    {allocateModalPendingReq.vendor_reference || "Supplier"}
+                  </span>
                 </div>
                 {allocateModalPendingReq.quantity && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Quantity:</span>
-                    <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.quantity ?? "—"}</span>
-                  </div>
+                    <span className="font-mono font-bold text-foreground">{allocateModalPendingReq.quantity ? `${allocateModalPendingReq.quantity} PCS` : "—"}</span>                  </div>
                 )}
               </div>
 
-              <Label className="text-xs font-semibold block pt-1">Currently AVAILABLE Docks (Backend Live):</Label>
+              <Label className="text-xs font-semibold block pt-1">
+                Currently AVAILABLE Docks (Backend Live):
+              </Label>
               {docks.filter((d) => d.status === "AVAILABLE").length === 0 ? (
                 <div className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/10 p-4 text-center text-xs text-amber-600 font-medium space-y-1">
                   <Wrench className="mx-auto size-6" />
                   <p className="font-bold">No Docks Currently AVAILABLE</p>
                   <p className="text-[11px] text-muted-foreground">
-                    All docks are currently RESERVED, OCCUPIED, or UNDER MAINTENANCE. Please release an occupied dock first.
+                    All docks are currently RESERVED, OCCUPIED, or UNDER MAINTENANCE. Please release
+                    an occupied dock first.
                   </p>
                 </div>
               ) : (
@@ -1172,12 +1291,13 @@ export function DockManagement() {
                             <span className="font-mono font-black text-sm text-primary">
                               {dock.dock_code}
                             </span>
-                            <span className="font-semibold text-foreground text-xs">{dock.dock_name}</span>
+                            <span className="font-semibold text-foreground text-xs">
+                              {dock.dock_name}
+                            </span>
                             <StatusBadge status="AVAILABLE" />
                           </div>
                           <p className="text-[11px] text-muted-foreground">
-                            {formatDockType(dock.dock_type)}{dock.location ? ` · ${dock.location}` : ""}
-                          </p>
+                            {formatDockType(dock.dock_type)}{dock.location ? ` • ${dock.location}` : ""}                          </p>
                         </div>
                         <input
                           type="radio"
@@ -1201,7 +1321,11 @@ export function DockManagement() {
                 Cancel
               </Button>
               <Button
-                disabled={!selectedDockIdToAllocate || docks.filter((d) => d.status === "AVAILABLE").length === 0 || actionBusy}
+                disabled={
+                  !selectedDockIdToAllocate ||
+                  docks.filter((d) => d.status === "AVAILABLE").length === 0 ||
+                  actionBusy
+                }
                 className="rounded-xl shadow-glow bg-primary text-primary-foreground font-semibold"
                 onClick={() => void handleAllocateDock()}
               >
@@ -1236,7 +1360,10 @@ export function DockManagement() {
                     </span>
                   </div>
                 </div>
-                <p>Confirm that the vehicle has physically arrived at dock {arriveConfirmDock?.dock_code}?</p>
+                <p>
+                  Confirm that the vehicle has physically arrived at dock{" "}
+                  {arriveConfirmDock?.dock_code}?
+                </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1280,7 +1407,10 @@ export function DockManagement() {
                     </span>
                   </div>
                 </div>
-                <p>Are you sure you want to release dock {releaseConfirmDock?.dock_code}? It will return to AVAILABLE status.</p>
+                <p>
+                  Are you sure you want to release dock {releaseConfirmDock?.dock_code}? It will
+                  return to AVAILABLE status.
+                </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -1318,12 +1448,36 @@ function SummaryCard({
   onClick: () => void;
 }) {
   const presentation = {
-    TOTAL: { icon: Warehouse, tone: "bg-primary-soft text-primary" },
-    AVAILABLE: { icon: CheckCircle2, tone: "bg-success-soft text-success" },
-    RESERVED: { icon: History, tone: "bg-warning-soft text-warning-foreground" },
-    OCCUPIED: { icon: Truck, tone: "bg-danger-soft text-destructive" },
-    MAINTENANCE: { icon: Wrench, tone: "bg-muted text-muted-foreground" },
-    PENDING: { icon: Package, tone: "bg-primary-soft text-primary" },
+    TOTAL: {
+      icon: Warehouse,
+      card: "border-blue-300 bg-gradient-to-br from-blue-50/80 via-card to-card",
+      iconTone: "border-blue-200 bg-blue-100 text-blue-600",
+    },
+    AVAILABLE: {
+      icon: CheckCircle2,
+      card: "border-emerald-200 bg-gradient-to-br from-emerald-50/80 via-card to-card",
+      iconTone: "border-emerald-200 bg-emerald-100 text-emerald-600",
+    },
+    RESERVED: {
+      icon: History,
+      card: "border-cyan-200 bg-gradient-to-br from-cyan-50/80 via-card to-card",
+      iconTone: "border-cyan-200 bg-cyan-100 text-cyan-600",
+    },
+    OCCUPIED: {
+      icon: Truck,
+      card: "border-amber-200 bg-gradient-to-br from-amber-50/80 via-card to-card",
+      iconTone: "border-amber-200 bg-amber-100 text-amber-600",
+    },
+    MAINTENANCE: {
+      icon: Wrench,
+      card: "border-rose-200 bg-gradient-to-br from-rose-50/80 via-card to-card",
+      iconTone: "border-rose-200 bg-rose-100 text-rose-600",
+    },
+    PENDING: {
+      icon: Package,
+      card: "border-violet-200 bg-gradient-to-br from-violet-50/80 via-card to-card",
+      iconTone: "border-violet-200 bg-violet-100 text-violet-600",
+    },
   };
   const Icon = presentation[status].icon;
 
@@ -1331,19 +1485,28 @@ function SummaryCard({
     <Card
       onClick={onClick}
       className={cn(
-        "group cursor-pointer gap-0 rounded-2xl border border-border/70 bg-card p-4 text-card-foreground shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
-        active && "border-primary/50 ring-2 ring-primary/20",
+        "group flex min-h-32 cursor-pointer flex-col justify-between gap-3 rounded-[22px] border p-5 text-card-foreground shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift",
+        presentation[status].card,
+        active && "ring-2 ring-primary/25",
       )}
     >
       <div className="flex items-center justify-between">
-        <span className={cn("grid size-9 place-items-center rounded-xl", presentation[status].tone)}>
+        <p className="min-w-0 pr-2 text-[11px] font-black uppercase leading-tight text-slate-500">
+          {label}
+        </p>
+        <span
+          className={cn(
+            "grid size-10 shrink-0 place-items-center rounded-full border shadow-sm",
+            presentation[status].iconTone,
+          )}
+        >
           <Icon className="size-4" />
         </span>
-        <ArrowRight className="size-3 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
       </div>
-      <p className="mt-3 text-2xl font-bold tracking-tight tabular-nums">{value}</p>
-      <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{label}</p>
-      <p className="mt-1.5 text-[10px] font-semibold text-muted-foreground/80">Click to filter</p>
+      <div className="flex items-end justify-between gap-2">
+        <p className="text-4xl font-black leading-none tabular-nums text-slate-950 xl:text-3xl 2xl:text-4xl">{value}</p>
+        <ArrowRight className="mb-1 size-4 -translate-x-1 text-muted-foreground opacity-0 transition-all group-hover:translate-x-0 group-hover:opacity-100" />
+      </div>
     </Card>
   );
 }
@@ -1381,8 +1544,12 @@ function DockCard({
     MAINTENANCE: "border-border/80 opacity-75",
   };
 
-  const vehicleNo = dock.current_allocation?.vehicle_number || (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "KA01AB1234" : null);
-  const gatePassNo = dock.current_allocation?.existing_gate_pass_id || (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "GP-00125" : null);
+  const vehicleNo =
+    dock.current_allocation?.vehicle_number ||
+    (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "KA01AB1234" : null);
+  const gatePassNo =
+    dock.current_allocation?.existing_gate_pass_id ||
+    (dock.status === "RESERVED" || dock.status === "OCCUPIED" ? "GP-00125" : null);
   const isMaintenance = dock.status === "MAINTENANCE";
 
   return (
@@ -1403,16 +1570,13 @@ function DockCard({
 
         <p className="text-xs font-semibold text-muted-foreground">{dock.dock_name}</p>
         <span className="mt-2 inline-block rounded-lg bg-muted px-2 py-0.5 font-mono text-[10px] font-bold text-muted-foreground uppercase">
-          {formatDockType(dock.dock_type)}
-        </span>
+          {formatDockType(dock.dock_type)}        </span>
 
         {/* Assigned Vehicle Preview */}
         {(dock.status === "RESERVED" || dock.status === "OCCUPIED") && vehicleNo && (
           <div className="mt-4 rounded-xl border bg-muted/30 p-3 text-xs space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">
-                Vehicle
-              </span>
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">Vehicle</span>
               <span className="font-mono font-black text-primary">{vehicleNo}</span>
             </div>
             {gatePassNo && (
@@ -1449,7 +1613,9 @@ function DockCard({
             size="sm"
             className={cn(
               "h-8 rounded-xl px-2.5 text-xs",
-              isMaintenance ? "text-emerald-600 hover:bg-emerald-500/10" : "text-amber-600 hover:bg-amber-500/10",
+              isMaintenance
+                ? "text-emerald-600 hover:bg-emerald-500/10"
+                : "text-amber-600 hover:bg-amber-500/10",
             )}
             onClick={onToggleMaintenance}
             disabled={dock.status === "OCCUPIED" || dock.status === "RESERVED"}
@@ -1460,11 +1626,7 @@ function DockCard({
         </div>
 
         {dock.status === "AVAILABLE" && hasPendingAllocationRequirement && (
-          <Button
-            size="sm"
-            className="w-full rounded-xl text-xs shadow-glow"
-            onClick={onAllocate}
-          >
+          <Button size="sm" className="w-full rounded-xl text-xs shadow-glow" onClick={onAllocate}>
             <ArrowRight className="size-3.5" /> ALLOCATE DOCK
           </Button>
         )}

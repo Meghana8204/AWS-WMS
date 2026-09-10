@@ -180,11 +180,6 @@ function Quotations() {
     setReason(mode === "SELECT" ? "L1 Cost Effective Bid" : "");
     setProcurementComments("");
     setRejectionJustification("");
-
-    if (mode === "SELECT") {
-      // No longer automatically rejecting others
-    }
-
     setIsModalOpen(true);
   };
 

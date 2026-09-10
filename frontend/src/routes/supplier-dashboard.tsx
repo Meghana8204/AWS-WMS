@@ -40,6 +40,7 @@ function SupplierDashboard() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
   const [asns, setAsns] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [qualityIssues, setQualityIssues] = useState<any[]>([]);
 
   useEffect(() => {
@@ -62,16 +63,18 @@ function SupplierDashboard() {
     const fetchAllData = async () => {
       try {
         const sid = userInfo.supplierId || "";
-        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedQualityIssues] = await Promise.all([
+        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedPurchaseOrders, fetchedQualityIssues] = await Promise.all([
           api.getRfqs(sid),
           api.getQuotations(undefined, sid),
           api.getAsns(sid),
+          api.getPurchaseOrders({ supplierId: sid }),
           api.getQualityIssues(),
         ]);
 
         setRfqs(fetchedRfqs);
         setQuotations(fetchedQuotes);
         setAsns(fetchedAsns);
+        setPurchaseOrders(fetchedPurchaseOrders);
         setQualityIssues(fetchedQualityIssues);
       } catch (error: any) {
         toast.error("Error loading dashboard data: " + error.message);
@@ -98,6 +101,12 @@ function SupplierDashboard() {
   const rfqsPending = rfqs.filter((r) => !bidRfqIds.has(r.id)).length;
   const quotesSubmitted = quotations.length;
   const asnsDispatched = asns.length;
+  const asnsByPoId = asns.reduce<Record<string, any[]>>((groups, asn) => {
+    const key = asn.po_id || asn.poId || asn.po_number || asn.poNumber;
+    if (!key) return groups;
+    groups[String(key)] = [...(groups[String(key)] || []), asn];
+    return groups;
+  }, {});
 
   return (
     <AppShell title="Supplier Portal" subtitle={`Welcome back, ${username}`}>
@@ -324,35 +333,64 @@ function SupplierDashboard() {
                   </div>
                 ) : (
                   <div className="divide-y divide-border/60">
-                    {quotations.map((q, idx) => (
-                      <div
-                        key={q.id || `quo-${idx}`}
-                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
-                      >
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold">
-                              Quote Reference: {String(q.id).substring(0, 8).toUpperCase()}
-                            </h4>
-                            <span className="rounded-full bg-success-soft/30 text-success px-2 py-0.5 text-[10px] font-bold uppercase">
-                              {q.status}
+                    {quotations.map((q, idx) => {
+                      const isRejected = String(q.status || "").toUpperCase() === "REJECTED";
+                      const isDeclined = String(q.status || "").toUpperCase() === "DECLINED";
+                      const rejectionLines = String(q.remarks || "")
+                        .split("\n")
+                        .filter((line: string) => line.startsWith("Rejected by "));
+                      const rejectionReason = rejectionLines[rejectionLines.length - 1];
+                      const quotationRfqId = q.rfqId || q.rfq_id;
+                      return (
+                        <div
+                          key={q.id || `quo-${idx}`}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 hover:bg-muted/10 transition-colors"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-sm font-bold">
+                                Quote Reference: {q.id.substring(0, 8).toUpperCase()}
+                              </h4>
+                              <span
+                                className={cn(
+                                  "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+                                  isRejected || isDeclined
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-success-soft/30 text-success",
+                                )}
+                              >
+                                {q.status}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                              <span>RFQ ID: {quotationRfqId}</span>
+                              <span>Date: {new Date(q.created_at).toLocaleDateString()}</span>
+                            </div>
+                            {(isRejected || isDeclined) && (
+                              <div className="max-w-xl rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-xs">
+                                <p className="flex items-center gap-1.5 font-bold text-destructive">
+                                  <AlertCircle className="size-3.5" />
+                                  {isDeclined ? "Your decline reason" : "Rejection reason"}
+                                </p>
+                                <p className="mt-1 text-muted-foreground">
+                                  {rejectionReason ||
+                                    q.remarks ||
+                                    "Please contact procurement for more details."}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-foreground">
+                              INR {parseFloat(q.total_amount || 0).toLocaleString()}
+                            </span>
+                            <span className="block text-[10px] text-muted-foreground mt-0.5">
+                              {q.lines?.length || 0} items quoted
                             </span>
                           </div>
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>RFQ ID: {q.rfq_id || q.rfqId}</span>
-                            <span>Date: {q.created_at || q.createdAt ? new Date(q.created_at || q.createdAt).toLocaleDateString() : "—"}</span>
-                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="text-sm font-extrabold text-foreground">
-                            INR {parseFloat(q.total_amount || q.totalAmount || 0).toLocaleString()}
-                          </span>
-                          <span className="block text-[10px] text-muted-foreground mt-0.5">
-                            {q.lines?.length || 0} items quoted
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -363,12 +401,57 @@ function SupplierDashboard() {
           <TabsContent value="asns">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
-                <CardTitle className="text-base font-bold">Advance Shipping Notices</CardTitle>
+                <CardTitle className="text-base font-bold">Purchase Orders & Advance Shipping Notices</CardTitle>
                 <CardDescription className="text-xs">
-                  Track shipment transit notifications and vehicle arrivals.
+                  Create multiple shipment notices against the same purchase order and track dispatched ASNs.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="border-b border-border/60">
+                  {purchaseOrders.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No issued purchase orders available for ASN creation.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/60">
+                      {purchaseOrders.map((po, idx) => {
+                        const poAsns = [
+                          ...(asnsByPoId[String(po.id)] || []),
+                          ...(asnsByPoId[String(po.poNumber || po.po_number)] || []),
+                        ];
+                        return (
+                          <div
+                            key={po.id || `po-${idx}`}
+                            className="flex flex-col gap-4 p-5 transition-colors hover:bg-muted/10 lg:flex-row lg:items-center lg:justify-between"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="font-mono text-sm font-bold">{po.poNumber || po.po_number}</h4>
+                                <span className="rounded-full bg-primary-soft/40 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                                  {po.status}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>{po.items?.length || 0} items</span>
+                                <span>ASNs created: {poAsns.length}</span>
+                                <span>
+                                  Delivery: {po.expectedDeliveryDate || po.expected_delivery_date || "N/A"}
+                                </span>
+                              </div>
+                            </div>
+                            <Button asChild size="sm" className="rounded-xl text-xs">
+                              <Link to="/supplier/asns/new" search={{ poId: po.id }}>
+                                <Plus className="mr-1.5 size-3.5" />
+                                {poAsns.length > 0 ? "Add ASN" : "Create ASN"}
+                              </Link>
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {asns.length === 0 ? (
                   <div className="p-8 text-center text-xs text-muted-foreground">
                     No ASNs dispatched.

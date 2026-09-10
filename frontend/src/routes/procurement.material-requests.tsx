@@ -7,14 +7,8 @@ import {
   Loader2,
   Calendar,
   ArrowRight,
-  Package,
   Building2,
-  CheckCircle2,
   Clock,
-  ExternalLink,
-  X,
-  FileText,
-  Info,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
@@ -23,7 +17,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 function formatDisplayDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
@@ -272,7 +265,7 @@ function MaterialRequests() {
                               {item.materialName || item.material_name || "—"}
                             </td>
                             <td className="p-3 text-center font-bold text-orange-600 tabular-nums">
-                              {item.quantity}
+                              {Math.floor(Number(item.quantity || 0))}
                             </td>
                             <td className="p-3 text-[10px] font-black uppercase text-muted-foreground">
                               {item.uom}

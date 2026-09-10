@@ -165,16 +165,18 @@ class GateEntryVerificationDomainService:
         mismatches: list[MismatchField] = []
         if ocr_result.supplier_name and po_details.supplier_name and ocr_result.supplier_name.strip().upper() != po_details.supplier_name.strip().upper():
             mismatches.append(MismatchField.SUPPLIER_NAME)
-        if ocr_result.product_material and po_details.product_material and ocr_result.product_material.strip().upper() != po_details.product_material.strip().upper():
+        ocr_material = getattr(ocr_result, "material_description", getattr(ocr_result, "product_material", None))
+        if ocr_material and po_details.product_material and ocr_material.strip().upper() != po_details.product_material.strip().upper():
             mismatches.append(MismatchField.PRODUCT_MATERIAL)
-        if ocr_result.quantity is not None and po_details.total_quantity is not None and Decimal(str(ocr_result.quantity)) != Decimal(str(po_details.total_quantity)):
+        ocr_qty = getattr(ocr_result, "total_quantity", getattr(ocr_result, "quantity", None))
+        if ocr_qty is not None and po_details.total_quantity is not None and Decimal(str(ocr_qty)) != Decimal(str(po_details.total_quantity)):
             mismatches.append(MismatchField.QUANTITY)
 
         low_anpr = anpr_result is not None and anpr_result.confidence < self.anpr_confidence_threshold
         if mismatches or low_anpr:
             return VerificationResult(
                 status=GateEntryStatus.MANUAL_VERIFICATION_REQUIRED,
-                verification_type=VerificationResultType.MISMATCH if mismatches else VerificationResultType.LOW_CONFIDENCE,
+                verification_type=VerificationResultType.MISMATCHED if mismatches else VerificationResultType.LOW_CONFIDENCE,
                 mismatched_fields=mismatches,
                 reasons=["Mismatches detected" if mismatches else "Low ANPR confidence"],
             )

@@ -4,6 +4,7 @@ Purchase Order module has been removed.
 """
 from __future__ import annotations
 
+from datetime import date, datetime
 import uuid
 from decimal import Decimal
 from typing import List, Optional
@@ -35,6 +36,7 @@ from app.modules.procurement.domain.supplier import (
 )
 from app.modules.procurement.domain.value_objects import (
     AsnId,
+    PurchaseOrderId,
     QuotationId,
     RfqId,
     SupplierId,
@@ -456,10 +458,18 @@ class SqlAlchemyRfqRepository(RfqRepository):
         return [self._to_aggregate(e) for e in result.scalars().all()]
 
     def _to_aggregate(self, model: RfqModel) -> RFQ:
+        rfq_date_val = model.rfq_date
+        if not rfq_date_val:
+            from datetime import date
+            if hasattr(model, "created_at") and model.created_at:
+                rfq_date_val = model.created_at.date() if hasattr(model.created_at, "date") else date.today()
+            else:
+                rfq_date_val = date.today()
+
         return RFQ(
             id=RfqId.of(model.id),
             rfq_number=model.rfq_number,
-            rfq_date=model.rfq_date,
+            rfq_date=rfq_date_val,
             warehouse=model.warehouse,
             procurement_officer=model.procurement_officer,
             status=model.status,
@@ -794,6 +804,30 @@ class SqlAlchemyArrivalNotificationRepository(ArrivalNotificationRepository):
         )
         self._session.add(model)
         await self._session.flush()
+
+    async def get_by_id(self, notification_id: str) -> Optional[ArrivalNotification]:
+        res = await self._session.execute(
+            select(ArrivalNotificationModel).where(ArrivalNotificationModel.id == notification_id)
+        )
+        m = res.scalar_one_or_none()
+        if not m:
+            return None
+        return ArrivalNotification(
+            id=m.id,
+            asn_id=str(m.asn_id),
+            asn_number=m.asn_number,
+            po_id=m.po_id,
+            po_number=m.po_number,
+            warehouse_id=m.warehouse_id,
+            supplier_name=m.supplier_name,
+            vehicle_number=m.vehicle_number,
+            expected_arrival_time=m.expected_arrival_time,
+            driver_phone=m.driver_phone,
+            message=m.message,
+            status=m.status,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+        )
 
     async def list_all(self) -> List[ArrivalNotification]:
         res = await self._session.execute(select(ArrivalNotificationModel).order_by(ArrivalNotificationModel.created_at.desc()))

@@ -228,10 +228,11 @@ class SqlAlchemyGateEntryRepository(GateEntryRepository):
                 except ValueError:
                     pass
 
+        raw_status = entity.status.strip().upper().replace(" ", "_") if entity.status else "PENDING_VERIFICATION"
         try:
-            parsed_status = GateEntryStatus(entity.status)
+            parsed_status = GateEntryStatus(raw_status)
         except ValueError:
-            parsed_status = getattr(GateEntryStatus, entity.status, GateEntryStatus.APPROVED)
+            parsed_status = getattr(GateEntryStatus, raw_status, GateEntryStatus.PENDING_VERIFICATION)
 
         v_res = None
         if entity.verification_type:

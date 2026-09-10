@@ -24,6 +24,22 @@ class NotificationResponse(ApiModel):
     link: Optional[str] = None
     is_read: bool = False
     created_at: datetime
+    dock_code: Optional[str] = None
+    dock_name: Optional[str] = None
+    dock_location: Optional[str] = None
+    dock_type: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    allocation_time: Optional[Union[datetime, str]] = None
+    gate_pass_number: Optional[str] = None
+    vehicle_number: Optional[str] = None
+    driver_name: Optional[str] = None
+    driver_phone: Optional[str] = None
+    asn_number: Optional[str] = None
+    po_number: Optional[str] = None
+    grn_number: Optional[str] = None
+    supplier_name: Optional[str] = None
+    notification_type: Optional[str] = None
+    payload_json: Optional[str] = None
 
 
 
@@ -169,7 +185,7 @@ class RfqItemSchema(ApiModel):
 
 
 class CreateRfqRequest(ApiModel):
-    rfq_date: date
+    rfq_date: Optional[date] = Field(default_factory=date.today)
     material_request_number: Optional[str] = None
     required_delivery_date: Optional[date] = None
     warehouse: Optional[str] = None
@@ -425,6 +441,7 @@ class CreateMaterialRequest(ApiModel):
     warehouse_id: str = Field(..., min_length=1, description="Warehouse identifier")
     department: str = Field(..., min_length=1, description="Department name")
     requested_by: str = Field(..., min_length=1, description="Requester user name")
+    priority: Optional[str] = "MEDIUM"
     required_date: date
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = Field(..., min_length=1, description="Requested materials list")
@@ -458,10 +475,51 @@ class MaterialRequestResponse(ApiModel):
     department: str
     requested_by: str
     status: str
+    priority: str = "MEDIUM"
     required_date: date
     remarks: Optional[str] = None
     items: List[MaterialRequestItemSchema] = []
     created_at: datetime
+
+
+class CreateFinishedGoodsRequest(ApiModel):
+    warehouse_id: str = Field(..., min_length=1, description="Warehouse identifier")
+    finished_goods_code: Optional[str] = None
+    finished_goods_name: str = Field(..., min_length=1, description="Finished goods name")
+    quantity: Decimal = Field(..., gt=0, description="Quantity must be strictly greater than zero")
+    uom: str = Field("PCS", min_length=1, description="Unit of measurement")
+    required_date: date
+    requested_by: str = Field(..., min_length=1, description="Requester user name")
+    remarks: Optional[str] = None
+
+    @field_validator("warehouse_id", "finished_goods_name", "requested_by", "uom")
+    @classmethod
+    def validate_required_text(cls, v: str) -> str:
+        clean = v.strip()
+        if not clean:
+            raise ValueError("Field cannot be empty")
+        return clean
+
+    @field_validator("uom")
+    @classmethod
+    def normalize_uom(cls, v: str) -> str:
+        return v.strip().upper()
+
+
+class FinishedGoodsRequestResponse(ApiModel):
+    id: str
+    request_number: str
+    warehouse_id: str
+    finished_goods_code: Optional[str] = None
+    finished_goods_name: str
+    quantity: Decimal
+    uom: str
+    required_date: date
+    requested_by: str
+    status: str
+    remarks: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class MaterialStockResponse(ApiModel):
@@ -549,3 +607,43 @@ class ChangePasswordRequest(ApiModel):
 class DevLoginRequest(ApiModel):
     username: str
     password: str
+
+
+class DamagedMaterialPhotoSchema(ApiModel):
+    id: str
+    file_name: str
+    url: str
+
+
+class DamagedMaterialItemSchema(ApiModel):
+    item_code: str
+    material_name: str
+    damaged_quantity: float
+    uom: str
+    reason: str
+    photos: List[DamagedMaterialPhotoSchema] = []
+
+
+class NotificationHistoryItemSchema(ApiModel):
+    recipient_type: str
+    recipient: str
+    status: str
+    sent_at: str
+
+
+class PoDamagedGoodsResponse(ApiModel):
+    has_damaged_goods: bool
+    po_number: Optional[str] = None
+    grn_number: Optional[str] = None
+    grn_id: Optional[str] = None
+    supplier_name: Optional[str] = None
+    warehouse_name: Optional[str] = None
+    damage_reported_at: Optional[str] = None
+    damaged_materials_count: int = 0
+    total_damaged_quantity: float = 0.0
+    status: str = "Damage Reported"
+    supplier_notification_status: str = "Sent"
+    procurement_notification_status: str = "Sent"
+    materials: List[DamagedMaterialItemSchema] = []
+    notification_history: List[NotificationHistoryItemSchema] = []
+

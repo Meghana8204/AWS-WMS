@@ -139,17 +139,13 @@ async def test_canonical_material_master_and_procurement_flow():
         if suppliers:
             supplier_id = suppliers[0].get("supplier_id") or suppliers[0].get("supplierId") or suppliers[0].get("id")
         else:
-            sup_payload = {
-                "supplier_name": "Apex Electrical Supply Ltd",
-                "registered_company_name": f"Apex Electrical Supply {uuid.uuid4().hex[:6]}",
-                "vendor_type": "Manufacturer",
-                "category": ["Electrical"],
-                "industry": "Manufacturing",
-                "gstin": f"27AABCT{uuid.uuid4().hex[:4]}1Z5".upper(),
-            }
-            new_sup = await client.post("/api/v1/procurement/suppliers", json=sup_payload, headers=headers)
-            new_sup_data = new_sup.json()
-            supplier_id = new_sup_data.get("supplier_id") or new_sup_data.get("supplierId") or new_sup_data.get("id")
+            sup_id = uuid.uuid4()
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text("INSERT INTO supplier (id, supplier_name, registered_company_name, vendor_type, category, industry, gstin, status, created_at, updated_at) VALUES (:id, 'Apex Electrical Supply Ltd', 'Apex Electrical Ltd', 'Manufacturer', '[\"Electrical\"]', 'Manufacturing', :gstin, 'Active', NOW(), NOW())"),
+                    {"id": sup_id, "gstin": f"27AABCT{uuid.uuid4().hex[:4]}1Z5".upper()},
+                )
+            supplier_id = str(sup_id)
 
         rfq_payload = {
             "rfq_date": str(date.today()),

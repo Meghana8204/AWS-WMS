@@ -3,7 +3,7 @@ Supplier SQLAlchemy ORM Model.
 """
 from datetime import datetime, timezone
 from sqlalchemy import Column, DateTime, Float, Integer, String
-from app.database import Base
+from app.database.base import Base
 
 
 class SupplierModel(Base):

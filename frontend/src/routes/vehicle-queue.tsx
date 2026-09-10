@@ -6,15 +6,7 @@ import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
-
-type VehicleQueueSearch = {
-  module?: string;
-};
-
 export const Route = createFileRoute("/vehicle-queue")({
-  validateSearch: (search: Record<string, unknown>): VehicleQueueSearch => ({
-    module: typeof search.module === "string" ? search.module : undefined,
-  }),
   head: () => ({ meta: [{ title: "Inbound Arrivals · NexusWMS" }] }),
   component: InboundArrivals,
 });
@@ -60,16 +52,12 @@ type Dock = {
   vehicle_number?: string;
 };
 function InboundArrivals() {
-  const { module } = Route.useSearch();
-  const isGrnModule = module === "grn";
-
   const [arrivals, setArrivals] = useState<Arrival[]>([]);
   const [docks, setDocks] = useState<Dock[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [selectedDock, setSelectedDock] = useState<Record<string, string>>({});
   const [assigning, setAssigning] = useState<string | null>(null);
-
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
@@ -85,13 +73,11 @@ function InboundArrivals() {
       if (!quiet) setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     void load();
     const timer = window.setInterval(() => void load(true), 5000);
     return () => window.clearInterval(timer);
   }, [load]);
-
   async function assignDock(arrival: Arrival) {
     const dockId = selectedDock[arrival.id];
     if (!dockId) {
@@ -114,7 +100,22 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
-
+  async function startMovement(arrival: Arrival) {
+    setAssigning(arrival.id);
+    try {
+      await api.startDockMovement(arrival.id);
+      toast.success("Vehicle instructed to move", {
+        description: `${arrival.vehicle_number} is moving to ${arrival.assigned_dock_id}.`,
+      });
+      await load(true);
+    } catch (error) {
+      toast.error("Unable to start dock movement", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    } finally {
+      setAssigning(null);
+    }
+  }
   async function confirmDockArrival(arrival: Arrival) {
     setAssigning(arrival.id);
     try {
@@ -131,15 +132,10 @@ function InboundArrivals() {
       setAssigning(null);
     }
   }
-
   return (
     <AppShell
       title="Inbound arrivals"
-      subtitle={
-        isGrnModule
-          ? "Track approved inbound vehicles and warehouse arrivals"
-          : "Track approved inbound vehicles, dock assignments, and warehouse arrivals"
-      }
+      subtitle="Approved gate entries awaiting warehouse dock assignment"
       actions={
         <Button variant="outline" className="rounded-xl" onClick={() => void load()}>
           <RefreshCw className="size-4" /> Refresh
@@ -152,7 +148,7 @@ function InboundArrivals() {
           value={arrivals.filter((a) => a.status === "AWAITING_DOCK").length}
         />
         <Summary
-          label="Dock assigned"
+          label="Dock assigned / moving"
           value={arrivals.filter((a) => a.status !== "AWAITING_DOCK").length}
         />
         <Summary
@@ -197,13 +193,13 @@ function InboundArrivals() {
                   <ArrivalRows
                     key={arrival.id}
                     arrival={arrival}
-                    isGrnModule={isGrnModule}
                     expanded={expanded === arrival.id}
                     onToggle={() => setExpanded(expanded === arrival.id ? null : arrival.id)}
                     docks={docks}
                     selected={selectedDock[arrival.id] || ""}
                     onSelect={(dockId) => setSelectedDock((v) => ({ ...v, [arrival.id]: dockId }))}
                     onAssign={() => void assignDock(arrival)}
+                    onMove={() => void startMovement(arrival)}
                     onCheckIn={() => void confirmDockArrival(arrival)}
                     busy={assigning === arrival.id}
                   />
@@ -218,24 +214,24 @@ function InboundArrivals() {
 }
 function ArrivalRows({
   arrival,
-  isGrnModule,
   expanded,
   onToggle,
   docks,
   selected,
   onSelect,
   onAssign,
+  onMove,
   onCheckIn,
   busy,
 }: {
   arrival: Arrival;
-  isGrnModule: boolean;
   expanded: boolean;
   onToggle: () => void;
   docks: Dock[];
   selected: string;
   onSelect: (id: string) => void;
   onAssign: () => void;
+  onMove: () => void;
   onCheckIn: () => void;
   busy: boolean;
 }) {
@@ -287,11 +283,11 @@ function ArrivalRows({
           <td colSpan={7} className="bg-muted/20 px-4 py-5">
             <ArrivalDetails
               arrival={arrival}
-              isGrnModule={isGrnModule}
               docks={docks}
               selected={selected}
               onSelect={onSelect}
               onAssign={onAssign}
+              onMove={onMove}
               onCheckIn={onCheckIn}
               busy={busy}
             />
@@ -311,20 +307,20 @@ function Summary({ label, value }: { label: string; value: number }) {
 }
 function ArrivalDetails({
   arrival,
-  isGrnModule,
   docks,
   selected,
   onSelect,
   onAssign,
+  onMove,
   onCheckIn,
   busy,
 }: {
   arrival: Arrival;
-  isGrnModule: boolean;
   docks: Dock[];
   selected: string;
   onSelect: (id: string) => void;
   onAssign: () => void;
+  onMove: () => void;
   onCheckIn: () => void;
   busy: boolean;
 }) {
@@ -351,7 +347,7 @@ function ArrivalDetails({
           <Detail label="Arrival time" value={new Date(arrival.arrival_time).toLocaleString()} />
         </dl>
       </div>
-      <div className={`grid gap-5 ${isGrnModule ? "lg:grid-cols-2" : "lg:grid-cols-3"}`}>
+      <div className="grid gap-5 md:grid-cols-2">
         <div>
           <h3 className="mb-3 flex items-center gap-2 font-semibold">
             <Boxes className="size-4 text-primary" /> Gate entry information
@@ -361,8 +357,6 @@ function ArrivalDetails({
             <dd className="font-mono">{arrival.gate_entry_number}</dd>
             <dt className="text-muted-foreground">Entry time</dt>
             <dd>{new Date(arrival.arrival_time).toLocaleString()}</dd>
-            <dt className="text-muted-foreground">Assigned dock</dt>
-            <dd className="font-mono font-semibold">{arrival.assigned_dock_id || "—"}</dd>
             <dt className="text-muted-foreground">Transporter</dt>
             <dd>{arrival.shipment.transporter || "—"}</dd>
             <dt className="text-muted-foreground">Packages</dt>
@@ -399,78 +393,6 @@ function ArrivalDetails({
             ))}
           </div>
         </div>
-        {!isGrnModule && (
-          <div>
-            <h3 className="mb-3 flex items-center gap-2 font-semibold">
-              <Warehouse className="size-4 text-primary" /> Dock assignment
-            </h3>
-            {arrival.status === "AT_DOCK" ? (
-              <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-                <p className="font-semibold">Vehicle arrived at {arrival.assigned_dock_id}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Checked in by {arrival.dock_checked_in_by || "—"}
-                  <br />
-                  {arrival.dock_arrival_at
-                    ? new Date(arrival.dock_arrival_at).toLocaleString()
-                    : "—"}
-                  <br />
-                  Dock status: OCCUPIED
-                </p>
-              </div>
-            ) : arrival.status === "DOCK_ASSIGNED" || arrival.status === "MOVING_TO_DOCK" ? (
-              <div className="rounded-xl border border-success/30 bg-success-soft p-4">
-                <p className="font-semibold">Assigned to {arrival.assigned_dock_id}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  By {arrival.assigned_by || "—"}
-                  <br />
-                  {arrival.assigned_at ? new Date(arrival.assigned_at).toLocaleString() : "—"}
-                </p>
-                <Button className="mt-3 w-full rounded-xl" disabled={busy} onClick={onCheckIn}>
-                  {busy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Warehouse className="size-4" />
-                  )}{" "}
-                  Vehicle arrived at dock
-                </Button>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  {docks.map((d) => (
-                    <label
-                      key={d.id}
-                      className={`flex items-center gap-3 rounded-xl border p-3 text-sm ${d.status === "AVAILABLE" ? "cursor-pointer bg-card" : "cursor-not-allowed opacity-50"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected === d.id}
-                        disabled={d.status !== "AVAILABLE"}
-                        onChange={() => onSelect(selected === d.id ? "" : d.id)}
-                      />
-                      <span className="font-mono font-semibold">{d.id}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">
-                        {d.zone} · {d.status}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                <Button
-                  className="mt-3 w-full rounded-xl"
-                  disabled={!selected || busy}
-                  onClick={onAssign}
-                >
-                  {busy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ArrowRight className="size-4" />
-                  )}{" "}
-                  Assign dock
-                </Button>
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

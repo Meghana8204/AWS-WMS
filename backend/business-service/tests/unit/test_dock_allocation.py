@@ -16,26 +16,49 @@ from app.modules.dock.infrastructure.persistence.models import (
     DockStatusHistoryModel,
 )
 # Ensure models are imported
-import app.modules.procurement.infrastructure.persistence.models  # noqa
+from app.modules.procurement.infrastructure.persistence.models import NotificationModel
 import app.modules.receiving.infrastructure.persistence.models  # noqa
 import app.modules.gate.infrastructure.persistence.models  # noqa
 
 
+from app.database.session import AsyncSessionFactory, engine
+from sqlalchemy import update, delete
+
+
 @pytest.fixture
 async def async_session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    async_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session_factory() as session:
+    async with AsyncSessionFactory() as session:
+        # Reset tables and seed test docks
+        await session.execute(delete(DockStatusHistoryModel))
+        await session.execute(delete(DockAllocationHistoryModel))
+        await session.execute(delete(DockAllocationRequestModel))
+        await session.execute(delete(DockMasterModel))
+        await session.execute(delete(NotificationModel))
+        await session.commit()
+
+        await DockAllocationService.seed_default_docks_if_empty(session)
+        from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+        await session.execute(update(GateEntryModel).values(status="GATE_EXIT_COMPLETED"))
+        await session.commit()
+
         yield session
 
-    await engine.dispose()
+        await session.execute(update(GateEntryModel).values(status="GATE_EXIT_COMPLETED"))
+        await session.execute(update(DockMasterModel).values(status="AVAILABLE"))
+        await session.execute(delete(DockStatusHistoryModel))
+        await session.execute(delete(DockAllocationHistoryModel))
+        await session.execute(delete(DockAllocationRequestModel))
+        await session.commit()
+
+
 
 
 @pytest.mark.asyncio
 async def test_seed_and_get_overview_metrics(async_session):
+    await DockAllocationService.seed_default_docks_if_empty(async_session)
     metrics = await DockAllocationService.get_overview_metrics(async_session)
     assert metrics["total_docks"] == 9
     assert metrics["available_docks"] == 9
@@ -97,12 +120,10 @@ async def test_auto_create_allocation_request_idempotent(async_session):
     )
     assert req2.id == req1.id
 
-    # Verify notification sent to WAREHOUSE manager
+    # Verify no pre-allocation notification was sent during request creation
     from app.modules.procurement.infrastructure.persistence.models import NotificationModel
     notifs = (await async_session.execute(select(NotificationModel).where(NotificationModel.user_role == "WAREHOUSE"))).scalars().all()
-    assert len(notifs) >= 1
-    assert "NEW DOCK ALLOCATION REQUEST" in notifs[0].title
-    assert "GP-2026-00100" in notifs[0].message
+    assert len(notifs) == 0
 
 
 @pytest.mark.asyncio
@@ -211,17 +232,23 @@ async def test_dock_notifications_on_allocation(async_session):
     # Check notification records in session
     from app.modules.procurement.infrastructure.persistence.models import NotificationModel
 
-    notifs = (await async_session.execute(select(NotificationModel))).scalars().all()
+    notifs = (await async_session.execute(select(NotificationModel).where(NotificationModel.link.like(f"%{req.id}%")))).scalars().all()
     roles_notified = {n.user_role for n in notifs}
+    assert "WAREHOUSE" in roles_notified
     assert "QUALITY_INSPECTOR" in roles_notified
     assert "STORE_MANAGER" in roles_notified
 
     qi_notif = next(n for n in notifs if n.user_role == "QUALITY_INSPECTOR")
-    assert qi_notif.title == "DOCK ALLOCATED"
+    assert qi_notif.title == "DOCK ALLOCATION CONFIRMED"
+    assert "GP-2026-00125" in qi_notif.message
     assert "KA01AB1234" in qi_notif.message
+    assert "Proceed directly to Dock" in qi_notif.message
+    assert qi_notif.dock_code == dock1.dock_code
+    assert qi_notif.gate_pass_number == "GP-2026-00125"
 
     sm_notif = next(n for n in notifs if n.user_role == "STORE_MANAGER")
-    assert sm_notif.title == "DOCK ALLOCATED"
+    assert sm_notif.title == "DOCK ALLOCATION CONFIRMED"
+    assert "GP-2026-00125" in sm_notif.message
     assert "KA01AB1234" in sm_notif.message
 
 
