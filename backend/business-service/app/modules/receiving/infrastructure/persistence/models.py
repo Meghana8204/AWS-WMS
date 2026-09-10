@@ -381,6 +381,11 @@ class GrnLineModel(Base):
         nullable=True,
     )
 
+    variant_code: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
     uom: Mapped[Optional[str]] = mapped_column(
         String(32),
         nullable=True,

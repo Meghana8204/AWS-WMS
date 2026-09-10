@@ -369,6 +369,7 @@ class PurchaseOrderModel(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED")
 
     rfq_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=True)
+    quotation_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("quotation.id"), nullable=True)
     supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
 
     supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -419,6 +420,7 @@ class PurchaseOrderModel(Base):
     )
 
     rfq: Mapped[Optional["RfqModel"]] = relationship("RfqModel")
+    quotation: Mapped[Optional["QuotationModel"]] = relationship("QuotationModel")
 
 
 class POApprovalHistoryModel(Base):

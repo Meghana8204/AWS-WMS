@@ -391,6 +391,7 @@ async def lifespan(app: FastAPI):
                     po_date DATE NOT NULL DEFAULT CURRENT_DATE,
                     status VARCHAR(32) NOT NULL,
                     rfq_id UUID REFERENCES rfq(id),
+                    quotation_id UUID REFERENCES quotation(id),
                     supplier_id UUID REFERENCES supplier(id),
                     supplier_name VARCHAR(255),
                     warehouse_id VARCHAR(64),
@@ -434,6 +435,7 @@ async def lifespan(app: FastAPI):
         # Ensure purchase_order has missing columns
         for col in [
             ("subtotal", "NUMERIC(18, 4) DEFAULT 0"),
+            ("quotation_id", "UUID REFERENCES quotation(id)"),
             ("discount_amount", "NUMERIC(18, 4) DEFAULT 0"),
             ("tax_amount", "NUMERIC(18, 4) DEFAULT 0"),
             ("freight_charges", "NUMERIC(18, 4) DEFAULT 0"),
@@ -1142,6 +1144,7 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS qr_payload TEXT;")
             await run_ddl("ALTER TABLE grn_batch_qr ALTER COLUMN batch_id DROP NOT NULL;")
             await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS uq_grn_batch_qr_item_code ON grn_batch_qr (item_code);")
+            await run_ddl("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS variant_code VARCHAR(128);")
             logger.debug("Ensured GRN module tables exist")
         except Exception as e:
             logger.warning(f"Failed to create GRN module tables: {e}")

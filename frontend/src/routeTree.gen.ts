@@ -42,6 +42,7 @@ import { Route as PickTasksRouteImport } from './routes/pick-tasks'
 import { Route as ProcurementDashboardRouteImport } from './routes/procurement-dashboard'
 import { Route as PurchaseOrderRouteImport } from './routes/purchase-order'
 import { Route as PutawayTasksRouteImport } from './routes/putaway-tasks'
+import { Route as ReceivingRouteImport } from './routes/receiving'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SubmitQuotationRouteImport } from './routes/submit-quotation'
@@ -243,6 +244,11 @@ const PurchaseOrderRoute = PurchaseOrderRouteImport.update({
 const PutawayTasksRoute = PutawayTasksRouteImport.update({
   id: '/putaway-tasks',
   path: '/putaway-tasks',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReceivingRoute = ReceivingRouteImport.update({
+  id: '/receiving',
+  path: '/receiving',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -448,6 +454,7 @@ export interface FileRoutesByFullPath {
   '/procurement-dashboard': typeof ProcurementDashboardRoute
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
+  '/receiving': typeof ReceivingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
@@ -515,6 +522,7 @@ export interface FileRoutesByTo {
   '/procurement-dashboard': typeof ProcurementDashboardRoute
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
+  '/receiving': typeof ReceivingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
@@ -581,6 +589,7 @@ export interface FileRoutesById {
   '/procurement-dashboard': typeof ProcurementDashboardRoute
   '/purchase-order': typeof PurchaseOrderRoute
   '/putaway-tasks': typeof PutawayTasksRoute
+  '/receiving': typeof ReceivingRoute
   '/reports': typeof ReportsRoute
   '/settings': typeof SettingsRoute
   '/submit-quotation': typeof SubmitQuotationRoute
@@ -650,6 +659,7 @@ export interface FileRouteTypes {
     | '/procurement-dashboard'
     | '/purchase-order'
     | '/putaway-tasks'
+    | '/receiving'
     | '/reports'
     | '/settings'
     | '/submit-quotation'
@@ -717,6 +727,7 @@ export interface FileRouteTypes {
     | '/procurement-dashboard'
     | '/purchase-order'
     | '/putaway-tasks'
+    | '/receiving'
     | '/reports'
     | '/settings'
     | '/submit-quotation'
@@ -782,6 +793,7 @@ export interface FileRouteTypes {
     | '/procurement-dashboard'
     | '/purchase-order'
     | '/putaway-tasks'
+    | '/receiving'
     | '/reports'
     | '/settings'
     | '/submit-quotation'
@@ -850,6 +862,7 @@ export interface RootRouteChildren {
   ProcurementDashboardRoute: typeof ProcurementDashboardRoute
   PurchaseOrderRoute: typeof PurchaseOrderRoute
   PutawayTasksRoute: typeof PutawayTasksRoute
+  ReceivingRoute: typeof ReceivingRoute
   ReportsRoute: typeof ReportsRoute
   SettingsRoute: typeof SettingsRoute
   SubmitQuotationRoute: typeof SubmitQuotationRoute
@@ -1110,6 +1123,13 @@ declare module '@tanstack/react-router' {
       path: '/putaway-tasks'
       fullPath: '/putaway-tasks'
       preLoaderRoute: typeof PutawayTasksRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/receiving': {
+      id: '/receiving'
+      path: '/receiving'
+      fullPath: '/receiving'
+      preLoaderRoute: typeof ReceivingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -1402,6 +1422,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProcurementDashboardRoute: ProcurementDashboardRoute,
   PurchaseOrderRoute: PurchaseOrderRoute,
   PutawayTasksRoute: PutawayTasksRoute,
+  ReceivingRoute: ReceivingRoute,
   ReportsRoute: ReportsRoute,
   SettingsRoute: SettingsRoute,
   SubmitQuotationRoute: SubmitQuotationRoute,

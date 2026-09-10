@@ -722,12 +722,16 @@ class GrnSummaryResponse(ApiModel):
 
     po_number: str | None = None
     supplier_name: str | None = None
+    supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     receipt_type: str
     status: str
 
     warehouse_name: str | None = None
     dock_number: str | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
 
     receipt_date: datetime | None = None
     received_by: str | None = None

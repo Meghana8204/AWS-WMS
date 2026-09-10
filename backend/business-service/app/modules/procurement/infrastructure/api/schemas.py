@@ -359,6 +359,7 @@ class PurchaseOrderResponse(ApiModel):
     status: str
     rfq_id: Optional[str] = None
     supplier_id: Optional[str] = None
+    quotation_id: Optional[str] = None
     supplier_name: Optional[str] = None
     warehouse_id: Optional[str] = None
     total_amount: Decimal
@@ -386,6 +387,7 @@ class PurchaseOrderResponse(ApiModel):
     selection_date: Optional[datetime] = None
     selected_by: Optional[str] = None
     rejection_reason: Optional[str] = None
+    quotation: Optional[QuotationResponse] = None
     items: List[PurchaseOrderItemSchema] = []
     history: List[POApprovalHistorySchema] = []
     created_at: Optional[datetime] = None

@@ -37,6 +37,21 @@ function getApiErrorMessage(payload: unknown, fallback: string): string {
   }
   return fallback;
 }
+export function resolveMediaUrl(path?: string | null): string {
+  if (!path) return "";
+  const trimmed = path.trim();
+  if (
+    trimmed.startsWith("blob:") ||
+    trimmed.startsWith("data:") ||
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://")
+  ) {
+    return trimmed;
+  }
+  const cleanPath = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${BUSINESS_API_URL}${cleanPath}`;
+}
+
 function getAuthToken(): string | null {
   if (typeof window !== "undefined") {
     return localStorage.getItem("auth_token");
@@ -82,7 +97,7 @@ export const api = {
     supplierId?: string;
     mustChangePassword?: boolean;
   }> {
-    if (username.startsWith("supplier_")) {
+    if (username.toLowerCase().startsWith("supplier_") || username.toLowerCase().startsWith("sup_") || username.toLowerCase().startsWith("vendor_")) {
       const response = await request<any>(
         `${BUSINESS_API_URL}/api/v1/procurement/auth/supplier-login`,
         {
@@ -95,8 +110,8 @@ export const api = {
         token: response.token,
         username: response.username,
         roles: ["SUPPLIER"],
-        supplierId: response.supplierId,
-        mustChangePassword: response.mustChangePassword,
+        supplierId: response.supplierId || response.supplier_id,
+        mustChangePassword: response.mustChangePassword ?? response.must_change_password,
       };
       localStorage.setItem("auth_token", supplierUser.token);
       localStorage.setItem("user_info", JSON.stringify(supplierUser));
@@ -226,6 +241,9 @@ export const api = {
   async getDockHistory(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-history`);
   },
+  async getDockTypes(): Promise<string[]> {
+    return request<string[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-types`);
+  },
   async allocateDock(allocationRequestId: string, dockId: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations`, {
       method: "POST",
@@ -238,11 +256,6 @@ export const api = {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ new_dock_id: newDockId, reason }),
-    });
-  },
-  async markVehicleArrived(allocationRequestId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocations/${allocationRequestId}/arrive`, {
-      method: "POST",
     });
   },
   async startReceiving(allocationRequestId: string): Promise<any> {
@@ -332,10 +345,10 @@ export const api = {
       },
     );
   },
-  async assignDock(gateEntryId: string, dockId: string): Promise<any> {
+  async assignDock(gateEntryId: string, dockId: string, storeId?: string): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/gate-entries/${gateEntryId}/assign-dock`, {
       method: "POST",
-      body: JSON.stringify({ dock_id: dockId }),
+      body: JSON.stringify({ dock_id: dockId, store_id: storeId }),
     });
   },
   async startDockMovement(gateEntryId: string): Promise<any> {
@@ -1064,6 +1077,26 @@ export const api = {
       return [];
     }
   },
+  async getQualityIssues(): Promise<any[]> {
+    try {
+      const data = await request<any[]>(`${BUSINESS_API_URL}/api/gate-entries/quality/issues`, {
+        cache: "no-store",
+      });
+      return Array.isArray(data) ? data : [];
+    } catch {
+      return [];
+    }
+  },
+  async createSupplierDamageClaim(reportId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quality/damage-reports/${reportId}/claims`, {
+      method: "POST",
+    });
+  },
+  async forwardQualityIssue(gateEntryId: string): Promise<any> {
+    return request<any>(`${BUSINESS_API_URL}/api/gate-entries/quality/issues/${gateEntryId}/forward`, {
+      method: "POST",
+    });
+  },
   async createAsn(data: any): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/procurement/asns`, {
       method: "POST",
@@ -1562,5 +1595,7 @@ export const api = {
   }> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${materialId}/next-variant-code`);
   },
+  resolveMediaUrl(path?: string | null): string {
+    return resolveMediaUrl(path);
+  },
 };
-

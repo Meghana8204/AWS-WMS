@@ -196,6 +196,73 @@ function ApprovalDetail() {
             </CardContent>
           </Card>
 
+          {po.quotation && (
+            <Card className="border-border/40 shadow-soft overflow-hidden">
+              <CardHeader className="bg-muted/10 border-b border-border/60">
+                <div className="flex items-center gap-2">
+                  <FileText className="size-4 text-primary" />
+                  <CardTitle className="text-sm font-bold uppercase tracking-wider">
+                    Supplier Quotation
+                  </CardTitle>
+                </div>
+                <CardDescription className="text-xs">
+                  Same supplier quotation selected by Procurement for this finance proposal.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <InfoField label="Quotation ID" value={po.quotationId || po.quotation.id} mono />
+                  <InfoField label="Status" value={po.quotation.status || "Submitted"} />
+                  <InfoField
+                    label="Validity"
+                    value={po.quotation.quotationValidity || po.quotation.quotation_validity || "Not specified"}
+                  />
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-border/50">
+                  <table className="w-full min-w-[620px] text-left text-xs">
+                    <thead className="bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2">Item</th>
+                        <th className="px-3 py-2 text-right">Qty</th>
+                        <th className="px-3 py-2">UOM</th>
+                        <th className="px-3 py-2 text-right">Quoted Rate</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/50">
+                      {po.quotation.lines?.map((line: any, idx: number) => (
+                        <tr key={line.id || `${line.itemCode || line.item_code}-${idx}`}>
+                          <td className="px-3 py-2">
+                            <p className="font-semibold text-foreground">
+                              {line.materialName || line.material_name || line.itemCode || line.item_code}
+                            </p>
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              {line.itemCode || line.item_code}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">
+                            {Math.floor(Number(line.quantity || 0))}
+                          </td>
+                          <td className="px-3 py-2 font-semibold text-muted-foreground">
+                            {line.uom || "PCS"}
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono font-bold">
+                            ₹ {Number(line.unitPrice || line.unit_price || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <InfoField label="Delivery Time" value={po.quotation.deliveryTime || po.quotation.delivery_time || "Not specified"} />
+                  <InfoField label="Payment Terms" value={po.quotation.paymentTerms || po.quotation.payment_terms || po.paymentTerms || "Not specified"} />
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="border-border/40 shadow-soft">
             <CardHeader className="bg-muted/10 border-b border-border/60">
               <div className="flex items-center gap-2">

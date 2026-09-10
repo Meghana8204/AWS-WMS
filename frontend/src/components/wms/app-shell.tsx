@@ -25,6 +25,7 @@ import {
   Sliders,
   PanelLeft,
   PanelLeftClose,
+  Menu,
   AlertTriangle,
   QrCode,
   PlusCircle,
@@ -34,13 +35,14 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
+
 const grnNav = [
   { label: "Dashboard", to: "/grn?tab=dashboard", icon: LayoutDashboard },
   { label: "Create GRN", to: "/grn?tab=wizard", icon: PlusCircle },
   { label: "Inbound Arrivals", to: "/vehicle-queue?module=grn", icon: Truck },
-  { label: "GRN History", to: "/grn?tab=records", icon: ClipboardList },
-  { label: "QR Code Labels", to: "/grn?tab=wizard&page=6", icon: QrCode },
+  { label: "GRN History", to: "/grn?tab=records", icon: ClipboardList }
 ];
+
 const warehouseNav = [
   { label: "Dashboard", to: "/warehouse-dashboard", icon: LayoutDashboard },
   { label: "Material Master", to: "/warehouse/materials", icon: Database },
@@ -50,9 +52,10 @@ const warehouseNav = [
   { label: "Inbound Arrivals", to: "/vehicle-queue?module=warehouse", icon: ListOrdered },
   { label: "Vehicle Exit", to: "/vehicle-exit", icon: LogOut },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
-  { label: "Dock / Receiving", to: "/receiving", icon: PackageCheck },
+  { label: "Dock / Receiving", to: "/dock-management", icon: PackageCheck },
   { label: "Reports", to: "/reports", icon: BarChart3 },
 ];
+
 const procurementNav = [
   { label: "Dashboard", to: "/procurement-dashboard", icon: LayoutDashboard },
   { label: "Suppliers", to: "/master-data", icon: Building2 },
@@ -62,11 +65,13 @@ const procurementNav = [
   { label: "Purchase Orders", to: "/procurement/purchase-orders", icon: FileText },
   { label: "ASNs", to: "/procurement/asns", icon: Truck },
 ];
+
 const supplierNav = [
   { label: "Dashboard", to: "/supplier-dashboard", icon: LayoutDashboard },
   { label: "Quotation Portal", to: "/submit-quotation", icon: FileBadge },
   { label: "ASNs", to: "/supplier/asns/new", icon: Truck },
 ];
+
 const financeNav = [
   { label: "Dashboard", to: "/finance-dashboard", icon: LayoutDashboard },
   { label: "Pending Approvals", to: "/finance/approvals", icon: FileCheck2 },
@@ -90,6 +95,7 @@ export function AppShell({
   actions?: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [dark, setDark] = useState(false);
   const [mounted, setMounted] = useState(false);
   const location = useRouterState({ select: (s) => s.location });
@@ -253,13 +259,113 @@ export function AppShell({
                       : warehouseNav;
   const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
   const nav = navigationPending ? [] : resolvedNav;
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [fullHref]);
   const handleLogout = () => {
     api.logout();
     toast.success("Logged out successfully");
     navigate({ to: "/login" });
   };
+  const isActiveNavItem = (to: string) => {
+    if (to.includes("?")) {
+      const [targetPath, targetQuery] = to.split("?");
+      const targetParams = new URLSearchParams(targetQuery);
+      const targetTab = targetParams.get("tab");
+      const targetPage = targetParams.get("page");
+      const targetModule = targetParams.get("module");
+      const currentParams = new URLSearchParams(searchStr);
+      const currentTab = currentParams.get("tab") || (path === "/grn" ? "dashboard" : "");
+      const currentPage = currentParams.get("page") || "";
+      const currentModule = currentParams.get("module") || "";
+      if (targetPage && targetTab) {
+        return path === targetPath && targetTab === currentTab && targetPage === currentPage;
+      }
+      if (targetTab) {
+        return path === targetPath && targetTab === currentTab && (!targetPage || !currentPage || targetTab !== "wizard");
+      }
+      if (targetModule) {
+        return path === targetPath && (targetModule === currentModule || (!currentModule && targetModule === "warehouse"));
+      }
+      return fullHref === to || (searchStr ? fullHref.startsWith(to) : to === "/grn?tab=dashboard");
+    }
+    return path === to || (to !== "/dashboard" && path.startsWith(to));
+  };
   return (
     <div className="flex min-h-screen w-full bg-background">
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            className="absolute inset-0 bg-background/70 backdrop-blur-sm"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          <aside className="relative flex h-full w-[min(84vw,320px)] flex-col border-r border-sidebar-border bg-sidebar shadow-2xl">
+            <div className="flex h-16 items-center justify-between gap-2 border-b border-sidebar-border/40 px-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-glow">
+                  <Warehouse className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold tracking-tight">NexusWMS</p>
+                  <p className="truncate text-[11px] text-muted-foreground">Pune DC - Plant 1200</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close navigation menu"
+                className="grid size-9 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={() => setMobileSidebarOpen(false)}
+              >
+                <PanelLeftClose className="size-[18px]" />
+              </button>
+            </div>
+
+            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
+              {navigationPending &&
+                Array.from({ length: 5 }).map((_, index) => (
+                  <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
+                ))}
+              {nav.map((item) => {
+                const active = isActiveNavItem(item.to);
+                return (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    title={item.label}
+                    className={cn(
+                      "group flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-sidebar-foreground transition-all",
+                      "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                      active && "bg-primary-soft text-primary shadow-soft",
+                    )}
+                  >
+                    <item.icon className={cn("size-[18px] shrink-0", active && "text-primary")} />
+                    <span className="truncate">{item.label}</span>
+                    {(item as any).badge && (
+                      <span className="ml-auto grid size-5 place-items-center rounded-full bg-destructive text-[10px] font-semibold text-destructive-foreground">
+                        {(item as any).badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="border-t border-sidebar-border p-3">
+              <button
+                suppressHydrationWarning
+                onClick={handleLogout}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-destructive transition-colors hover:bg-danger-soft"
+              >
+                <LogOut className="size-[18px]" />
+                <span>Logout</span>
+              </button>
+            </div>
+          </aside>
+        </div>
+      )}
+
       <aside
         className={cn(
           "sticky top-0 hidden h-screen shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-[width] duration-300 md:flex",
@@ -297,29 +403,7 @@ export function AppShell({
               <div key={index} className="h-10 animate-pulse rounded-xl bg-sidebar-accent/60" />
             ))}
           {nav.map((item) => {
-            let active = false;
-            if (item.to.includes("?")) {
-              const [targetPath, targetQuery] = item.to.split("?");
-              const targetParams = new URLSearchParams(targetQuery);
-              const targetTab = targetParams.get("tab");
-              const targetPage = targetParams.get("page");
-              const targetModule = targetParams.get("module");
-              const currentParams = new URLSearchParams(searchStr);
-              const currentTab = currentParams.get("tab") || (path === "/grn" ? "dashboard" : "");
-              const currentPage = currentParams.get("page") || "";
-              const currentModule = currentParams.get("module") || "";
-              if (targetPage && targetTab) {
-                active = path === targetPath && targetTab === currentTab && targetPage === currentPage;
-              } else if (targetTab) {
-                active = path === targetPath && targetTab === currentTab && (!targetPage || !currentPage || targetTab !== "wizard");
-              } else if (targetModule) {
-                active = path === targetPath && (targetModule === currentModule || (!currentModule && targetModule === "warehouse"));
-              } else {
-                active = fullHref === item.to || (searchStr ? fullHref.startsWith(item.to) : item.to === "/grn?tab=dashboard");
-              }
-            } else {
-              active = path === item.to || (item.to !== "/dashboard" && path.startsWith(item.to));
-            }
+            const active = isActiveNavItem(item.to);
             return (
               <Link
                 key={item.to}
@@ -372,12 +456,15 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 glass-strong">
           <div className="flex h-16 items-center gap-3 px-4 lg:px-7">
-            <Link
-              to={isGrnRoute || isGrnUser ? "/grn" : (nav[0]?.to ?? "/grn")}
-              className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
+            <button
+              type="button"
+              aria-label="Open navigation menu"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="group relative grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground md:hidden"
             >
-              <Warehouse className="size-4" />
-            </Link>
+              <Warehouse className="size-4 transition-opacity duration-150 group-hover:opacity-0 group-focus-visible:opacity-0" />
+              <Menu className="absolute size-4 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </button>
             <div className="relative hidden max-w-md flex-1 items-center sm:flex">
               <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground" />
               <input
@@ -509,25 +596,6 @@ export function AppShell({
             {children}
           </div>
         </main>
-
-        <nav className="sticky bottom-0 z-30 grid grid-cols-5 border-t border-border glass-strong md:hidden">
-          {nav.slice(0, 5).map((item) => {
-            const active = path === item.to;
-            return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={cn(
-                  "flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium text-muted-foreground",
-                  active && "text-primary",
-                )}
-              >
-                <item.icon className="size-[18px]" />
-                {item.label.split(" ")[0]}
-              </Link>
-            );
-          })}
-        </nav>
       </div>
     </div>
   );

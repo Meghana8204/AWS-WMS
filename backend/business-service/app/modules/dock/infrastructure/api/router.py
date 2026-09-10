@@ -475,16 +475,6 @@ async def reassign_dock(
     return await _build_allocation_response(uow.session, reassigned)
 
 
-@router.post("/dock-allocations/{id}/arrive", response_model=AllocationRequestResponse)
-async def mark_vehicle_arrived(
-    id: uuid.UUID,
-    user: CurrentUser = Depends(require_permission("gate:write")),
-    uow: UnitOfWork = Depends(get_uow),
-):
-    arrived = await DockAllocationService.mark_vehicle_arrived(uow.session, id, user.username)
-    return await _build_allocation_response(uow.session, arrived)
-
-
 @router.post("/dock-allocations/{id}/start-receiving", response_model=AllocationRequestResponse)
 async def start_receiving(
     id: uuid.UUID,

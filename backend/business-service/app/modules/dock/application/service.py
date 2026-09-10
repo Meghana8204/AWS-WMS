@@ -539,83 +539,6 @@ class DockAllocationService:
         return req
 
     @staticmethod
-    async def mark_vehicle_arrived(
-        session: AsyncSession, allocation_request_id: uuid.UUID, performed_by: str
-    ) -> DockAllocationRequestModel:
-        """Vehicle Arrival transition (DOCK_ASSIGNED/RESERVED -> OCCUPIED)."""
-        from sqlalchemy import desc
-        req_query = await session.execute(
-            select(DockAllocationRequestModel)
-            .where(
-                (DockAllocationRequestModel.id == allocation_request_id) |
-                (DockAllocationRequestModel.assigned_dock_id == allocation_request_id)
-            )
-            .order_by(desc(DockAllocationRequestModel.created_at))
-            .with_for_update()
-        )
-        req = req_query.scalars().first()
-
-        if not req:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Allocation request not found")
-
-        dock_code = "N/A"
-        if req.assigned_dock_id:
-            dock_query = await session.execute(
-                select(DockMasterModel).where(DockMasterModel.id == req.assigned_dock_id).with_for_update()
-            )
-            dock = dock_query.scalar_one_or_none()
-            if dock:
-                old_dock_st = dock.status
-                dock.status = DockStatus.OCCUPIED.value
-                dock_code = dock.dock_code
-
-                session.add(
-                    DockStatusHistoryModel(
-                        dock_id=dock.id,
-                        previous_status=old_dock_st,
-                        new_status=DockStatus.OCCUPIED.value,
-                        reason=f"Vehicle {req.vehicle_number} arrived",
-                        changed_by=performed_by,
-                        changed_at=datetime.now(timezone.utc),
-                    )
-                )
-
-        # Update GateEntryModel if present
-        await DockAllocationService._sync_gate_entry_status(
-            session, req.existing_gate_pass_id, req.vehicle_number, "OCCUPIED"
-        )
-
-        previous_status = req.status
-        req.status = "OCCUPIED"
-        req.arrived_at = datetime.now(timezone.utc)
-
-        session.add(
-            DockAllocationHistoryModel(
-                allocation_request_id=req.id,
-                dock_id=req.assigned_dock_id,
-                action=AllocationAction.ARRIVED.value,
-                previous_status=previous_status,
-                new_status="OCCUPIED",
-                performed_by=performed_by,
-                performed_at=datetime.now(timezone.utc),
-                remarks=f"Vehicle arrived at allocated Dock {dock_code}",
-            )
-        )
-
-        # Vehicle arrival notification
-        session.add(
-            NotificationModel(
-                user_role="STORE_MANAGER",
-                title="VEHICLE ARRIVED AT DOCK",
-                message=f"Vehicle {req.vehicle_number} has arrived at Dock {dock_code} for Gate Pass {req.existing_gate_pass_id}.",
-                link=f"/dock-management?requestId={req.id}",
-            )
-        )
-
-        await session.commit()
-        return req
-
-    @staticmethod
     async def start_receiving(
         session: AsyncSession, allocation_request_id: uuid.UUID, performed_by: str
     ) -> DockAllocationRequestModel:
@@ -677,7 +600,7 @@ class DockAllocationService:
     async def release_dock(
         session: AsyncSession, allocation_request_id: uuid.UUID, performed_by: str
     ) -> DockAllocationRequestModel:
-        """Release Dock transition (OCCUPIED -> AVAILABLE only)."""
+        """Release Dock transition (RESERVED/OCCUPIED -> AVAILABLE)."""
         from sqlalchemy import desc
         req_query = await session.execute(
             select(DockAllocationRequestModel)
@@ -700,10 +623,10 @@ class DockAllocationService:
             )
             dock = dock_query.scalar_one_or_none()
             if dock:
-                if dock.status != DockStatus.OCCUPIED.value:
+                if dock.status not in {DockStatus.RESERVED.value, DockStatus.OCCUPIED.value}:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Dock can only be released when it is OCCUPIED",
+                        detail="Dock can only be released when it is RESERVED or OCCUPIED",
                     )
                 old_dock_st = dock.status
                 dock.status = DockStatus.AVAILABLE.value

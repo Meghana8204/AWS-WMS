@@ -129,13 +129,35 @@ function PurchaseOrder() {
     );
   }
 
-  const subtotal = Number(poData.subtotal) || 0;
-  const discountAmount = Number(poData.discountAmount) || 0;
-  const freightCharges = Number(poData.freightCharges) || 0;
-  const taxAmount = Number(poData.taxAmount) || 0;
+  const toNumber = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const selectedQuotation = poData.quotation || null;
+  const quotedLines = Array.isArray(selectedQuotation?.lines) ? selectedQuotation.lines : [];
+  const quotationSubtotal = quotedLines.reduce((sum: number, line: any) => {
+    return sum + toNumber(line.quantity) * toNumber(line.unitPrice);
+  }, 0);
+  const subtotal = quotationSubtotal || toNumber(poData.subtotal);
+  const discountAmount = toNumber(selectedQuotation?.discount ?? poData.discountAmount);
+  const freightCharges = toNumber(selectedQuotation?.freightCharges ?? poData.freightCharges);
+  const quotationTaxPercentage = toNumber(selectedQuotation?.tax);
   const taxableAmount = subtotal - discountAmount;
+  const taxAmount = selectedQuotation
+    ? Math.max(taxableAmount, 0) * quotationTaxPercentage / 100
+    : toNumber(poData.taxAmount);
   const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
-  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const taxPercentage = selectedQuotation
+    ? quotationTaxPercentage
+    : taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const quotationTotal =
+    toNumber(selectedQuotation?.totalAmount) ||
+    toNumber(poData.totalAmount) ||
+    Math.max(taxableAmount, 0) + taxAmount + freightCharges;
+  const itemsQuoted = quotedLines.length || poData.items?.length || 0;
+  const expectedDelivery =
+    selectedQuotation?.expectedDeliveryDate || poData.expectedDeliveryDate || "Not specified";
+  const paymentTerms = selectedQuotation?.paymentTerms || poData.paymentTerms || "Not specified";
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -360,7 +382,7 @@ function PurchaseOrder() {
             icon={CheckCircle2}
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <SummaryMetric label="Items quoted" value={`${poData.items?.length || 0}`} />
+              <SummaryMetric label="Items quoted" value={`${itemsQuoted}`} />
               <SummaryMetric label="Subtotal" value={formatCurrency(subtotal)} />
               <SummaryMetric
                 label={`Discount (${discountPercentage.toFixed(2)}%)`}
@@ -374,14 +396,14 @@ function PurchaseOrder() {
               <SummaryMetric label="Freight charges" value={formatCurrency(freightCharges)} />
               <SummaryMetric
                 label="Quotation total"
-                value={formatCurrency(Number(poData.totalAmount) || 0)}
+                value={formatCurrency(quotationTotal)}
                 valueClassName="text-primary"
                 emphasis
               />
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <span>Expected delivery: {poData.expectedDeliveryDate || "Not specified"}</span>
-              <span>Payment: {poData.paymentTerms || "Not specified"}</span>
+              <span>Expected delivery: {expectedDelivery}</span>
+              <span>Payment: {paymentTerms}</span>
             </div>
           </SectionCard>
 

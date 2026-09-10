@@ -287,6 +287,10 @@ async def get_grn_context(
                 material_name=line.material_name,
                 material_category=line.material_category,
                 uom=line.uom,
+                variant_code=line.variant_code,
+                size=line.size,
+                color=line.color,
+                grade=line.grade,
                 ordered_quantity=line.ordered_quantity,
                 received_quantity=line.received_quantity,
                 balance_quantity=line.balance_quantity,
@@ -404,6 +408,7 @@ async def update_grn_lines(
                 item_code=line.item_code,
                 material_name=line.material_name,
                 material_category=line.material_category,
+                variant_code=line.variant_code,
                 uom=line.uom,
                 ordered_quantity=line.ordered_quantity,
                 received_quantity=line.received_quantity,
@@ -427,7 +432,7 @@ async def update_grn_lines(
 @router.post("/lines/{grn_line_id}/damage-evidence", response_model=DamageEvidenceResponse)
 async def upload_damage_evidence(
     grn_line_id: str,
-    damaged_quantity: float = Form(...),
+    damaged_quantity: float = Form(default=1.0),
     reason: str | None = Form(default=None),
     remarks: str | None = Form(default=None),
     file: UploadFile = File(...),
@@ -435,15 +440,35 @@ async def upload_damage_evidence(
     user: CurrentUser = Depends(get_current_user),
     _perm=Depends(require_permission("receiving:write")),
 ) -> DamageEvidenceResponse:
+    from app.modules.receiving.infrastructure.persistence.models import GrnLineModel
+    line = None
+    line_uuid = None
+
     try:
         line_uuid = uuid.UUID(grn_line_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid GRN line ID")
+        line = await uow.session.get(GrnLineModel, line_uuid)
+    except (ValueError, TypeError):
+        pass
 
-    from app.modules.receiving.infrastructure.persistence.models import GrnLineModel
-    line = await uow.session.get(GrnLineModel, line_uuid)
+    if not line:
+        stmt = (
+            select(GrnLineModel)
+            .where(
+                or_(
+                    GrnLineModel.item_code == grn_line_id,
+                    cast(GrnLineModel.id, String) == grn_line_id,
+                )
+            )
+            .order_by(GrnLineModel.id.desc())
+            .limit(1)
+        )
+        res = await uow.session.execute(stmt)
+        line = res.scalar_one_or_none()
+
     if not line:
         raise HTTPException(status_code=404, detail="GRN line not found")
+
+    line_uuid = line.id
 
     grn_id_str = str(line.grn_id)
     mat_code = re.sub(r"[^A-Za-z0-9_-]", "_", line.item_code or "material")[:50]
@@ -1846,7 +1871,5 @@ async def get_grn_detail(
             for doc in grn.documents
         ],
     )
-
-
 
 

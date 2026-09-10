@@ -14,7 +14,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.enums import TA_CENTER, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
@@ -1392,6 +1392,7 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             id=uuid.uuid4(),
             po_number=po_number,
             rfq_id=rfq.id,
+            quotation_id=quotation.id if quotation else None,
             supplier_id=supplier_uuid,
             supplier_name=supplier.supplier_name if supplier else "Unknown",
             supplier_code=supplier.supplier_code if supplier else None,
@@ -1479,6 +1480,50 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def _get_purchase_order_quotation(
+    session,
+    po: PurchaseOrderModel,
+) -> Optional[QuotationModel]:
+    try:
+        state = inspect(po)
+        if "quotation" not in state.unloaded and po.quotation:
+            return po.quotation
+    except Exception:
+        pass
+
+    quotation_id = getattr(po, "quotation_id", None)
+    if quotation_id:
+        res = await session.execute(
+            select(QuotationModel)
+            .options(
+                selectinload(QuotationModel.lines),
+                selectinload(QuotationModel.documents),
+            )
+            .where(QuotationModel.id == quotation_id)
+        )
+        quotation = res.scalar_one_or_none()
+        if quotation:
+            return quotation
+
+    if not po.rfq_id or not po.supplier_id:
+        return None
+
+    res = await session.execute(
+        select(QuotationModel)
+        .options(
+            selectinload(QuotationModel.lines),
+            selectinload(QuotationModel.documents),
+        )
+        .where(
+            QuotationModel.rfq_id == po.rfq_id,
+            QuotationModel.supplier_id == po.supplier_id,
+        )
+        .order_by(QuotationModel.created_at.desc())
+        .limit(1)
+    )
+    return res.scalar_one_or_none()
+
+
 @router.get("/purchase-orders", response_model=List[PurchaseOrderResponse])
 async def list_purchase_orders(
     search: Optional[str] = Query(None),
@@ -1490,6 +1535,8 @@ async def list_purchase_orders(
         stmt = select(PurchaseOrderModel).options(
             selectinload(PurchaseOrderModel.items),
             selectinload(PurchaseOrderModel.history),
+            selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.lines),
+            selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.documents),
             selectinload(PurchaseOrderModel.rfq),
         )
 
@@ -1507,7 +1554,11 @@ async def list_purchase_orders(
         res = await uow.session.execute(stmt)
         entities = res.scalars().all()
         logger.info(f"Retrieved {len(entities)} purchase orders from DB")
-        return [_to_po_response(e) for e in entities]
+        responses = []
+        for entity in entities:
+            quotation = await _get_purchase_order_quotation(uow.session, entity)
+            responses.append(_to_po_response(entity, quotation=quotation))
+        return responses
     except Exception as e:
         logger.error(f"List POs failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1526,6 +1577,7 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
             selectinload(PurchaseOrderModel.items),
             selectinload(PurchaseOrderModel.history),
             selectinload(PurchaseOrderModel.rfq),
+            selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.lines),
         )
         .where(PurchaseOrderModel.id == po_id)
     )
@@ -1535,7 +1587,19 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
 
     buffer = BytesIO()
     styles = getSampleStyleSheet()
-    right_style = ParagraphStyle("Right", parent=styles["BodyText"], alignment=TA_RIGHT)
+    app_blue = colors.HexColor("#2563eb")
+    app_teal = colors.HexColor("#0d9488")
+    app_ink = colors.HexColor("#0f172a")
+    app_muted = colors.HexColor("#64748b")
+    app_line = colors.HexColor("#dbe5f0")
+    app_soft = colors.HexColor("#eff6ff")
+    right_style = ParagraphStyle("Right", parent=styles["BodyText"], alignment=TA_RIGHT, fontSize=8, leading=10, textColor=app_ink)
+    title_style = ParagraphStyle("PoTitle", parent=styles["Title"], alignment=TA_CENTER, textColor=colors.white, fontSize=20, leading=24, spaceAfter=0)
+    subtitle_style = ParagraphStyle("PoSubtitle", parent=styles["BodyText"], alignment=TA_CENTER, textColor=colors.HexColor("#dbeafe"), fontSize=8, leading=11)
+    label_style = ParagraphStyle("PoLabel", parent=styles["BodyText"], textColor=app_muted, fontName="Helvetica-Bold", fontSize=7, leading=9)
+    value_style = ParagraphStyle("PoValue", parent=styles["BodyText"], textColor=app_ink, fontSize=8, leading=10)
+    item_style = ParagraphStyle("PoItem", parent=styles["BodyText"], textColor=app_ink, fontSize=7.2, leading=8.5)
+    small_style = ParagraphStyle("PoSmall", parent=styles["BodyText"], textColor=app_muted, fontSize=7, leading=8)
     document = SimpleDocTemplate(
         buffer,
         pagesize=A4,
@@ -1546,27 +1610,78 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
         title=f"Purchase Order {po.po_number}",
     )
 
+    def text(value) -> str:
+        return str(value) if value not in (None, "") else "-"
+
+    def money(value) -> str:
+        return f"INR {Decimal(str(value or 0)):,.2f}"
+
+    quotation = getattr(po, "quotation", None)
+    item_subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
+    if quotation:
+        quote_lines = list(getattr(quotation, "lines", []) or [])
+        quote_subtotal = sum((line.quantity * line.unit_price for line in quote_lines), Decimal("0.0"))
+        calc_subtotal = quote_subtotal if quote_subtotal > 0 else item_subtotal
+        calc_discount = Decimal(str(quotation.discount or 0))
+        tax_percentage = Decimal(str(quotation.tax or 0))
+        taxable_amount = max(calc_subtotal - calc_discount, Decimal("0.0"))
+        calculated_tax = taxable_amount * tax_percentage / Decimal("100")
+        calc_tax = calculated_tax if calculated_tax > 0 else Decimal(str(po.tax_amount or 0))
+        calc_freight = Decimal(str(quotation.freight_charges or 0))
+        calculated_total = taxable_amount + calc_tax + calc_freight
+        calc_grand_total = Decimal(str(quotation.total_amount or 0)) or calculated_total
+    else:
+        stored_subtotal = Decimal(str(po.subtotal or 0))
+        calc_subtotal = stored_subtotal if stored_subtotal > 0 else item_subtotal
+        calc_discount = Decimal(str(po.discount_amount or 0))
+        calc_tax = Decimal(str(po.tax_amount or 0))
+        calc_freight = Decimal(str(po.freight_charges or 0))
+        calc_grand_total = Decimal(str(po.total_amount or 0))
+        taxable_amount = max(calc_subtotal - calc_discount, Decimal("0.0"))
+        tax_percentage = (
+            (calc_tax * Decimal("100") / taxable_amount).quantize(Decimal("0.01"))
+            if taxable_amount > 0 and calc_tax > 0
+            else Decimal("0.0")
+        )
+    calc_additional = Decimal(str(po.additional_charges or 0))
+    if calc_grand_total <= 0:
+        calc_grand_total = max(calc_subtotal - calc_discount, Decimal("0.0")) + calc_tax + calc_freight + calc_additional
+
     story = [
-        Paragraph("PURCHASE ORDER", styles["Title"]),
-        Spacer(1, 4 * mm),
         Table(
             [
-                ["PO Number", po.po_number, "Date", str(po.po_date)],
-                ["Status", po.status, "Expected Delivery", str(po.expected_delivery_date or "-")],
-                ["Supplier", po.supplier_name or "-", "Payment Terms", po.payment_terms or "-"],
-                ["Supplier Address", po.supplier_address or "-", "Delivery Address", po.delivery_address or "-"],
+                [Paragraph("PURCHASE ORDER", title_style)],
+                [Paragraph(f"NexusWMS Procurement | {po.po_number}", subtitle_style)],
+            ],
+            colWidths=[180 * mm],
+            style=TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), app_blue),
+                ("BOX", (0, 0), (-1, -1), 0.8, app_blue),
+                ("TOPPADDING", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 10),
+            ]),
+        ),
+        Spacer(1, 5 * mm),
+        Table(
+            [
+                [Paragraph("PO NUMBER", label_style), Paragraph(text(po.po_number), value_style), Paragraph("DATE", label_style), Paragraph(text(po.po_date), value_style)],
+                [Paragraph("STATUS", label_style), Paragraph(text(po.status), value_style), Paragraph("EXPECTED DELIVERY", label_style), Paragraph(text(po.expected_delivery_date), value_style)],
+                [Paragraph("SUPPLIER", label_style), Paragraph(text(po.supplier_name), value_style), Paragraph("PAYMENT TERMS", label_style), Paragraph(text(po.payment_terms), value_style)],
+                [Paragraph("SUPPLIER ADDRESS", label_style), Paragraph(text(po.supplier_address), value_style), Paragraph("DELIVERY ADDRESS", label_style), Paragraph(text(po.delivery_address), value_style)],
             ],
             colWidths=[28 * mm, 62 * mm, 34 * mm, 56 * mm],
             style=TableStyle([
-                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#e2e8f0")),
-                ("BACKGROUND", (2, 0), (2, -1), colors.HexColor("#e2e8f0")),
-                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BACKGROUND", (0, 0), (0, -1), app_soft),
+                ("BACKGROUND", (2, 0), (2, -1), app_soft),
+                ("GRID", (0, 0), (-1, -1), 0.45, app_line),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#bfdbfe")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("LEADING", (0, 0), (-1, -1), 10),
-                ("PADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
             ]),
         ),
         Spacer(1, 7 * mm),
@@ -1578,51 +1693,70 @@ async def download_purchase_order_pdf(id: str, uow: UnitOfWork = Depends(get_uow
 
         item_rows.append([
             str(index),
-            item.material_code,
-            item.material_name or "-",
-            f"{item.quantity:,.2f}",
-            item.uom,
-            f"{item.unit_price:,.2f}",
-            f"{line_gross:,.2f}",
+            Paragraph(text(item.material_code), item_style),
+            Paragraph(text(item.material_name), item_style),
+            Paragraph(f"{item.quantity:,.2f}", item_style),
+            Paragraph(text(item.uom), item_style),
+            Paragraph(money(item.unit_price), item_style),
+            Paragraph(money(line_gross), item_style),
         ])
-
-    normalized_po = _to_po_response(po)
-    calc_subtotal = normalized_po.subtotal
-    calc_discount = normalized_po.discount_amount
-    calc_tax = normalized_po.tax_amount
-    calc_freight = po.freight_charges or Decimal("0.0")
-    calc_additional = po.additional_charges or Decimal("0.0")
-    calc_grand_total = normalized_po.total_amount
 
     story.append(Table(
         item_rows,
         repeatRows=1,
-        colWidths=[8 * mm, 25 * mm, 53 * mm, 20 * mm, 15 * mm, 27 * mm, 32 * mm],
+        colWidths=[8 * mm, 24 * mm, 58 * mm, 18 * mm, 16 * mm, 28 * mm, 28 * mm],
         style=TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+            ("BACKGROUND", (0, 0), (-1, 0), app_ink),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("GRID", (0, 0), (-1, -1), 0.4, app_line),
+            ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#bfdbfe")),
+            ("ALIGN", (0, 0), (0, -1), "CENTER"),
             ("ALIGN", (3, 1), (3, -1), "RIGHT"),
             ("ALIGN", (5, 1), (-1, -1), "RIGHT"),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("PADDING", (0, 0), (-1, -1), 5),
+            ("FONTSIZE", (0, 0), (-1, 0), 7.5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]),
     ))
 
 
-    def fmt(val): return f"INR {val:,.2f}"
-
     story.extend([
         Spacer(1, 6 * mm),
-        Paragraph(f"Subtotal: {fmt(calc_subtotal)}", right_style),
-        Paragraph(f"Discount: - {fmt(calc_discount)}", right_style),
-        Paragraph(f"Tax (GST {normalized_po.tax_percentage:g}%): {fmt(calc_tax)}", right_style),
-        Paragraph(f"Freight: {fmt(calc_freight)}", right_style),
-        Paragraph(f"Additional charges: {fmt(calc_additional)}", right_style),
-        Spacer(1, 2 * mm),
-        Paragraph(f"<b>Grand Total: {fmt(calc_grand_total)}</b>", right_style),
+        Table(
+            [
+                ["", Paragraph("ORDER SUMMARY", label_style), ""],
+                ["", Paragraph("Subtotal", value_style), Paragraph(money(calc_subtotal), right_style)],
+                ["", Paragraph("Discount", value_style), Paragraph(f"- {money(calc_discount)}", right_style)],
+                ["", Paragraph(f"GST ({tax_percentage:g}%)", value_style), Paragraph(money(calc_tax), right_style)],
+                ["", Paragraph("Freight charges", value_style), Paragraph(money(calc_freight), right_style)],
+                ["", Paragraph("Additional charges", value_style), Paragraph(money(calc_additional), right_style)],
+                ["", Paragraph("<b>Grand Total</b>", value_style), Paragraph(f"<b>{money(calc_grand_total)}</b>", right_style)],
+            ],
+            colWidths=[92 * mm, 46 * mm, 42 * mm],
+            style=TableStyle([
+                ("SPAN", (1, 0), (2, 0)),
+                ("BACKGROUND", (1, 0), (2, 0), app_soft),
+                ("BACKGROUND", (1, 1), (2, 5), colors.HexColor("#f8fafc")),
+                ("BACKGROUND", (1, 6), (2, 6), colors.HexColor("#dbeafe")),
+                ("LINEABOVE", (1, 6), (2, 6), 1.0, app_blue),
+                ("BOX", (1, 0), (2, 6), 0.8, colors.HexColor("#bfdbfe")),
+                ("INNERGRID", (1, 0), (2, 6), 0.35, app_line),
+                ("LEFTPADDING", (1, 0), (2, 6), 8),
+                ("RIGHTPADDING", (1, 0), (2, 6), 8),
+                ("TOPPADDING", (1, 0), (2, 6), 6),
+                ("BOTTOMPADDING", (1, 0), (2, 6), 6),
+            ]),
+        ),
+        Spacer(1, 5 * mm),
+        Paragraph(
+            "This purchase order is generated from backend procurement records. Amounts reflect the approved PO values stored in NexusWMS.",
+            small_style,
+        ),
     ])
     document.build(story)
 
@@ -1642,7 +1776,9 @@ async def get_purchase_order_by_number(po_number: str, uow: UnitOfWork = Depends
     try:
         stmt = select(PurchaseOrderModel).options(
             selectinload(PurchaseOrderModel.items),
-            selectinload(PurchaseOrderModel.history)
+            selectinload(PurchaseOrderModel.history),
+            selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.lines),
+            selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.documents),
         ).where(PurchaseOrderModel.po_number == po_number)
         res = await uow.session.execute(stmt)
         po = res.scalar_one_or_none()
@@ -1650,7 +1786,8 @@ async def get_purchase_order_by_number(po_number: str, uow: UnitOfWork = Depends
         if not po:
             raise HTTPException(status_code=404, detail=f"Purchase Order {po_number} not found")
 
-        return _to_po_response(po)
+        quotation = await _get_purchase_order_quotation(uow.session, po)
+        return _to_po_response(po, quotation=quotation)
     except HTTPException:
         raise
     except Exception as e:
@@ -1662,13 +1799,16 @@ async def get_purchase_order_by_number(po_number: str, uow: UnitOfWork = Depends
 async def get_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow)):
     stmt = select(PurchaseOrderModel).options(
         selectinload(PurchaseOrderModel.items),
-        selectinload(PurchaseOrderModel.history)
+        selectinload(PurchaseOrderModel.history),
+        selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.lines),
+        selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.documents),
     ).where(PurchaseOrderModel.id == uuid.UUID(id))
     res = await uow.session.execute(stmt)
     po = res.scalar_one_or_none()
     if not po:
         raise HTTPException(status_code=404, detail="Purchase Order not found")
-    return _to_po_response(po)
+    quotation = await _get_purchase_order_quotation(uow.session, po)
+    return _to_po_response(po, quotation=quotation)
 
 
 @router.get("/finance-approvals", response_model=List[PurchaseOrderResponse])
@@ -1676,11 +1816,17 @@ async def list_finance_approvals(uow: UnitOfWork = Depends(get_uow)):
     stmt = select(PurchaseOrderModel).options(
         selectinload(PurchaseOrderModel.items),
         selectinload(PurchaseOrderModel.history),
+        selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.lines),
+        selectinload(PurchaseOrderModel.quotation).selectinload(QuotationModel.documents),
         joinedload(PurchaseOrderModel.rfq)
     ).where(PurchaseOrderModel.status == "PENDING_FINANCE").order_by(PurchaseOrderModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
-    return [_to_po_response(e) for e in entities]
+    responses = []
+    for entity in entities:
+        quotation = await _get_purchase_order_quotation(uow.session, entity)
+        responses.append(_to_po_response(entity, quotation=quotation))
+    return responses
 
 
 @router.post("/purchase-orders/{id}/approve")
@@ -1969,41 +2115,57 @@ async def resubmit_purchase_order(id: str, request: dict, uow: UnitOfWork = Depe
         raise HTTPException(status_code=500, detail=f"Resubmit failed: {str(e)}")
 
 
-def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
+def _to_po_response(
+    po: PurchaseOrderModel,
+    quotation: Optional[QuotationModel] = None,
+) -> PurchaseOrderResponse:
 
     rfq_number = None
+    response_quotation = quotation
     try:
         from sqlalchemy import inspect
         state = inspect(po)
         if state and "rfq" not in state.unloaded:
             if po.rfq:
                 rfq_number = po.rfq.rfq_number
+        if response_quotation is None and state and "quotation" not in state.unloaded:
+            response_quotation = po.quotation
     except Exception as e:
         logger.warning(f"Could not load rfq_number for PO {po.id}: {e}")
 
-    subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
-    discount_amount = Decimal(str(getattr(po, "discount_amount", 0) or 0))
-    stored_subtotal = Decimal(str(getattr(po, "subtotal", 0) or 0))
-    stored_tax = Decimal(str(getattr(po, "tax_amount", 0) or 0))
-    if abs(stored_subtotal - subtotal) > Decimal("0.01") and Decimal("0") <= stored_tax <= Decimal("100"):
+    if response_quotation:
+        subtotal = sum((line.quantity * line.unit_price for line in response_quotation.lines), Decimal("0.0"))
+        discount_amount = Decimal(str(response_quotation.discount or 0))
+        tax_percentage = Decimal(str(response_quotation.tax or 0))
         taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_percentage = stored_tax
         tax_amount = taxable_amount * tax_percentage / Decimal("100")
-        total_amount = (
-            taxable_amount
-            + tax_amount
-            + Decimal(str(getattr(po, "freight_charges", 0) or 0))
-            + Decimal(str(getattr(po, "additional_charges", 0) or 0))
-        )
+        freight_charges = Decimal(str(response_quotation.freight_charges or 0))
+        total_amount = Decimal(str(response_quotation.total_amount or 0))
     else:
-        tax_amount = stored_tax
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_percentage = (
-            (tax_amount * Decimal("100") / taxable_amount).quantize(Decimal("0.01"))
-            if taxable_amount > 0
-            else Decimal("0.0")
-        )
-        total_amount = Decimal(str(po.total_amount or 0))
+        subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
+        discount_amount = Decimal(str(getattr(po, "discount_amount", 0) or 0))
+        stored_subtotal = Decimal(str(getattr(po, "subtotal", 0) or 0))
+        stored_tax = Decimal(str(getattr(po, "tax_amount", 0) or 0))
+        freight_charges = Decimal(str(getattr(po, "freight_charges", 0) or 0))
+        if abs(stored_subtotal - subtotal) > Decimal("0.01") and Decimal("0") <= stored_tax <= Decimal("100"):
+            taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+            tax_percentage = stored_tax
+            tax_amount = taxable_amount * tax_percentage / Decimal("100")
+            total_amount = (
+                taxable_amount
+                + tax_amount
+                + freight_charges
+                + Decimal(str(getattr(po, "additional_charges", 0) or 0))
+            )
+        else:
+            tax_amount = stored_tax
+            taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+            tax_percentage = (
+                (tax_amount * Decimal("100") / taxable_amount).quantize(Decimal("0.01"))
+                if taxable_amount > 0
+                else Decimal("0.0")
+            )
+            total_amount = Decimal(str(po.total_amount or 0))
 
     return PurchaseOrderResponse(
         id=str(po.id),
@@ -2012,6 +2174,11 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         status=po.status,
         rfq_id=str(po.rfq_id) if po.rfq_id else None,
         rfq_number=rfq_number,
+        quotation_id=(
+            str(getattr(po, "quotation_id", None))
+            if getattr(po, "quotation_id", None)
+            else str(response_quotation.id) if response_quotation else None
+        ),
         supplier_id=str(po.supplier_id),
         supplier_name=po.supplier_name,
         supplier_code=getattr(po, "supplier_code", None),
@@ -2029,7 +2196,7 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         discount_amount=discount_amount,
         tax_amount=tax_amount,
         tax_percentage=tax_percentage,
-        freight_charges=getattr(po, "freight_charges", Decimal("0.0")),
+        freight_charges=freight_charges,
         additional_charges=getattr(po, "additional_charges", Decimal("0.0")),
         expected_delivery_date=po.expected_delivery_date,
         payment_terms=getattr(po, "payment_terms", None),
@@ -2038,6 +2205,7 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
         procurement_comments=getattr(po, "procurement_comments", None),
         selected_by=getattr(po, "selected_by", None),
         rejection_reason=getattr(po, "rejection_reason", None),
+        quotation=_to_quotation_response(response_quotation) if response_quotation else None,
         items=[
             PurchaseOrderItemSchema(
                 material_id=str(it.material_id) if getattr(it, "material_id", None) else None,

@@ -363,8 +363,6 @@ function ArrivalDetails({
             <dd>
               {arrival.shipment.number_of_packages ?? "—"} {arrival.shipment.package_type || ""}
             </dd>
-            <dt className="text-muted-foreground">Method</dt>
-            <dd>{arrival.shipment.shipping_method || "—"}</dd>
             <dt className="text-muted-foreground">Expected arrival</dt>
             <dd>
               {arrival.expected_arrival_at

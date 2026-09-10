@@ -49,7 +49,7 @@ export const Route = createFileRoute("/dock-management")({
       {
         name: "description",
         content:
-          "Real-time warehouse dock allocation, vehicle arrival tracking, status management, and operational overview.",
+          "Real-time warehouse dock allocation, status management, and operational overview.",
       },
     ],
   }),
@@ -184,7 +184,6 @@ function DockManagement() {
   const [selectedRequestIdToAllocate, setSelectedRequestIdToAllocate] = useState<string>("");
   const [selectedDockIdToAllocate, setSelectedDockIdToAllocate] = useState<string>("");
 
-  const [arriveConfirmDock, setArriveConfirmDock] = useState<Dock | null>(null);
   const [releaseConfirmDock, setReleaseConfirmDock] = useState<Dock | null>(null);
 
   const [showCreateDock, setShowCreateDock] = useState(false);
@@ -268,7 +267,6 @@ function DockManagement() {
     selectedDetailsDock ||
     allocateModalDock ||
     allocateModalPendingReq ||
-    arriveConfirmDock ||
     releaseConfirmDock ||
     showCreateDock ||
     editingDock,
@@ -317,27 +315,6 @@ function DockManagement() {
       await loadAll(true);
     } catch (error) {
       toast.error("Allocation failed", {
-        description: error instanceof Error ? error.message : undefined,
-      });
-    } finally {
-      setActionBusy(false);
-    }
-  }
-
-  async function handleVehicleArrived() {
-    if (!arriveConfirmDock) return;
-    const reqId = arriveConfirmDock.current_allocation?.id || arriveConfirmDock.id;
-    setActionBusy(true);
-    try {
-      await api.markVehicleArrived(reqId);
-      toast.success(`Vehicle Arrived at ${arriveConfirmDock.dock_code}`, {
-        description: "Dock status updated to OCCUPIED.",
-      });
-      setArriveConfirmDock(null);
-      setSelectedDetailsDock(null);
-      await loadAll(true);
-    } catch (error) {
-      toast.error("Vehicle arrival update failed", {
         description: error instanceof Error ? error.message : undefined,
       });
     } finally {
@@ -910,7 +887,6 @@ function DockManagement() {
                   setAllocateModalDock(dock);
                   setSelectedRequestIdToAllocate(pendingRequests[0]?.id || "");
                 }}
-                onVehicleArrived={() => setArriveConfirmDock(dock)}
                 onRelease={() => setReleaseConfirmDock(dock)}
               />
             ))
@@ -1104,20 +1080,8 @@ function DockManagement() {
                 </Button>
               )}
 
-              {selectedDetailsDock.status === "RESERVED" && (
-                <Button
-                  className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-glow w-full sm:w-auto text-xs"
-                  onClick={() => {
-                    const target = selectedDetailsDock;
-                    setSelectedDetailsDock(null);
-                    setArriveConfirmDock(target);
-                  }}
-                >
-                  <Truck className="size-4" /> VEHICLE ARRIVED
-                </Button>
-              )}
-
-              {selectedDetailsDock.status === "OCCUPIED" && (
+              {(selectedDetailsDock.status === "RESERVED" ||
+                selectedDetailsDock.status === "OCCUPIED") && (
                 <Button
                   variant="destructive"
                   className="rounded-xl shadow-glow w-full sm:w-auto text-xs"
@@ -1336,54 +1300,7 @@ function DockManagement() {
         </Dialog>
       )}
 
-      {/* 8. Vehicle Arrived Confirmation Dialog */}
-      <AlertDialog
-        open={Boolean(arriveConfirmDock)}
-        onOpenChange={() => setArriveConfirmDock(null)}
-      >
-        <AlertDialogContent className="rounded-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <Truck className="size-5 text-amber-500" /> Vehicle Arrival Confirmation
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                <div className="rounded-xl border bg-muted/40 p-3 text-foreground space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Dock:</span>
-                    <span className="font-mono font-bold">{arriveConfirmDock?.dock_code}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Vehicle:</span>
-                    <span className="font-mono font-bold">
-                      {arriveConfirmDock?.current_allocation?.vehicle_number || "KA01AB1234"}
-                    </span>
-                  </div>
-                </div>
-                <p>
-                  Confirm that the vehicle has physically arrived at dock{" "}
-                  {arriveConfirmDock?.dock_code}?
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={actionBusy}
-              className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white"
-              onClick={(e) => {
-                e.preventDefault();
-                void handleVehicleArrived();
-              }}
-            >
-              {actionBusy && <Loader2 className="size-4 animate-spin" />} Confirm Arrival
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* 9. Release Dock Confirmation Dialog */}
+      {/* 8. Release Dock Confirmation Dialog */}
       <AlertDialog
         open={Boolean(releaseConfirmDock)}
         onOpenChange={() => setReleaseConfirmDock(null)}
@@ -1518,7 +1435,6 @@ function DockCard({
   onEdit,
   onToggleMaintenance,
   onAllocate,
-  onVehicleArrived,
   onRelease,
 }: {
   dock: Dock;
@@ -1527,7 +1443,6 @@ function DockCard({
   onEdit: () => void;
   onToggleMaintenance: () => void;
   onAllocate: () => void;
-  onVehicleArrived: () => void;
   onRelease: () => void;
 }) {
   const dotColors = {
@@ -1631,17 +1546,7 @@ function DockCard({
           </Button>
         )}
 
-        {dock.status === "RESERVED" && (
-          <Button
-            size="sm"
-            className="w-full rounded-xl text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-glow"
-            onClick={onVehicleArrived}
-          >
-            <Truck className="size-3.5" /> VEHICLE ARRIVED
-          </Button>
-        )}
-
-        {dock.status === "OCCUPIED" && (
+        {(dock.status === "RESERVED" || dock.status === "OCCUPIED") && (
           <Button
             size="sm"
             variant="destructive"

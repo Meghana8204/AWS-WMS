@@ -30,6 +30,7 @@ from app.events.outbox_repository import to_outbox_row
 from app.modules.storage.infrastructure.persistence.models import HandlingUnitModel, PutawayTaskModel, StorageLocationModel
 from app.modules.storage.application.location_strategy import recommend_storage_location
 from app.modules.store.infrastructure.persistence.models import StoreModel, StoreManagerUserModel
+from app.modules.dock.infrastructure.persistence.models import DockMasterModel
 from app.modules.quarantine.infrastructure.persistence.models import QuarantineRecordModel
 from app.modules.gate.application.ocr_pipeline import EnterprisePoOcrEngine
 from app.modules.gate.domain.aggregate import GateEntry
@@ -1192,6 +1193,38 @@ async def assign_arrival_dock(
 
     # 3. Search in DockMasterModel to map dock_code
     if dock is None:
+        dm_res = await uow.session.execute(
+            select(DockMasterModel).where(
+                or_(
+                    DockMasterModel.dock_code == dock_id_raw,
+                    func.upper(DockMasterModel.dock_code) == dock_id_raw.upper(),
+                )
+            )
+        )
+        dm = dm_res.scalar_one_or_none()
+        if dm:
+            dock_res = await uow.session.execute(
+                select(DockModel).where(
+                    or_(
+                        DockModel.dock_number == dm.dock_code,
+                        func.upper(DockModel.dock_number) == dm.dock_code.upper(),
+                    )
+                )
+            )
+            dock = dock_res.scalar_one_or_none()
+            if dock is None:
+                dock = DockModel(
+                    dock_number=dm.dock_code.upper(),
+                    warehouse_id=(dm.location or "WH-001").strip().upper(),
+                    dock_type=dm.dock_type,
+                    capacity=1,
+                    status=(dm.status or "AVAILABLE").strip().upper(),
+                )
+                uow.session.add(dock)
+                await uow.session.flush()
+
+    # 4. Search in DockMasterModel by UUID and map dock_code
+    if dock is None:
         try:
             val_uuid = uuid.UUID(dock_id_raw)
             dm_res = await uow.session.execute(select(DockMasterModel).where(DockMasterModel.id == val_uuid))
@@ -1206,6 +1239,16 @@ async def assign_arrival_dock(
                     )
                 )
                 dock = dock_res.scalar_one_or_none()
+                if dock is None:
+                    dock = DockModel(
+                        dock_number=dm.dock_code.upper(),
+                        warehouse_id=(dm.location or "WH-001").strip().upper(),
+                        dock_type=dm.dock_type,
+                        capacity=1,
+                        status=(dm.status or "AVAILABLE").strip().upper(),
+                    )
+                    uow.session.add(dock)
+                    await uow.session.flush()
         except ValueError:
             pass
 
@@ -1224,26 +1267,36 @@ async def assign_arrival_dock(
     if occupied.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail=f"Dock {dock_id} is already occupied")
 
-    # Validate Store assignment
-    if not request.store_id or not request.store_id.strip():
-        raise HTTPException(status_code=422, detail="Store assignment is required for post-arrival assignment")
-
-    raw_store_id = request.store_id.strip()
     store = None
-    try:
-        store_uuid = uuid.UUID(raw_store_id)
-        store = await uow.session.get(StoreModel, store_uuid)
-    except ValueError:
-        pass
+    raw_store_id = request.store_id.strip() if request.store_id else ""
+    if raw_store_id:
+        try:
+            store_uuid = uuid.UUID(raw_store_id)
+            store = await uow.session.get(StoreModel, store_uuid)
+        except ValueError:
+            pass
 
-    if store is None:
+    if raw_store_id and store is None:
         store_res = await uow.session.execute(
             select(StoreModel).where(func.upper(StoreModel.store_code) == raw_store_id.upper())
         )
         store = store_res.scalars().first()
 
     if store is None:
-        raise HTTPException(status_code=422, detail=f"Store '{raw_store_id}' does not exist")
+        dock_wh = (dock.warehouse_id or "").strip().upper()
+        store_stmt = select(StoreModel).where(func.upper(StoreModel.status) == "ACTIVE")
+        if dock_wh:
+            store_stmt = store_stmt.where(func.upper(StoreModel.warehouse_id) == dock_wh)
+        store_res = await uow.session.execute(store_stmt.order_by(StoreModel.store_code).limit(1))
+        store = store_res.scalars().first()
+
+    if store is None:
+        detail = (
+            f"Store '{raw_store_id}' does not exist"
+            if raw_store_id
+            else "No active store is available for this dock warehouse"
+        )
+        raise HTTPException(status_code=422, detail=detail)
 
     if (store.status or "").strip().upper() != "ACTIVE":
         raise HTTPException(status_code=422, detail=f"Store '{store.store_name}' ({store.store_code}) is inactive")

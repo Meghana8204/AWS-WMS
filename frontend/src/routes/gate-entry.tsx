@@ -110,6 +110,7 @@ type GateEntryRecord = {
   driverName: string;
   status: string;
   assignedDock?: string;
+  dockAllocationStatus?: string;
   verificationStatus?: string | null;
   truckPhotoBase64?: string | null;
   verificationResult?: { reasons?: string[] } | null;
@@ -191,6 +192,55 @@ function GateEntry() {
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const approvalDialog = useRef<HTMLDialogElement>(null);
 
+  const refreshDockAllocationForEntry = useCallback(async (entry: GateEntryRecord) => {
+    const passNumber = entry.gate_entry_number || entry.id;
+    try {
+      const [allocationRequests, gateEntries] = await Promise.all([
+        api.getDockAllocationRequests().catch(() => []),
+        api.getGateEntries().catch(() => []),
+      ]);
+      const allocation = allocationRequests.find((request: any) => {
+        const requestPass = String(request.existing_gate_pass_id || "").toUpperCase();
+        const requestVehicle = String(request.vehicle_number || "").toUpperCase();
+        return (
+          requestPass === String(passNumber).toUpperCase() ||
+          requestPass === String(entry.id).toUpperCase() ||
+          requestVehicle === String(entry.vehiclePlate || "").toUpperCase()
+        );
+      });
+      const freshGateEntry = gateEntries.find((candidate: any) => {
+        return (
+          String(candidate.id || "").toUpperCase() === String(entry.id).toUpperCase() ||
+          String(candidate.gate_entry_number || candidate.gateEntryNumber || "").toUpperCase() ===
+            String(passNumber).toUpperCase()
+        );
+      });
+      const assignedDock =
+        allocation?.assigned_dock_code ||
+        allocation?.assignedDockCode ||
+        allocation?.dock_code ||
+        freshGateEntry?.assignedDock ||
+        freshGateEntry?.assigned_dock_id ||
+        freshGateEntry?.assignedDockId;
+      const dockAllocationStatus =
+        allocation?.status ||
+        freshGateEntry?.dockAllocationStatus ||
+        freshGateEntry?.status ||
+        (assignedDock ? "DOCK_ASSIGNED" : "AWAITING_DOCK");
+
+      setLastCreatedEntry((current) => {
+        if (!current || current.id !== entry.id) return current;
+        return {
+          ...current,
+          assignedDock: assignedDock || current.assignedDock,
+          dockAllocationStatus,
+        };
+      });
+    } catch {
+      // The confirmation dialog can still be useful even if the background refresh fails.
+    }
+  }, []);
+
   useEffect(() => {
     const element = approvalDialog.current;
     if (!lastCreatedEntry || !element) return;
@@ -225,6 +275,15 @@ function GateEntry() {
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
   }, [lastCreatedEntry]);
+
+  useEffect(() => {
+    if (!lastCreatedEntry) return;
+    void refreshDockAllocationForEntry(lastCreatedEntry);
+    const timer = window.setInterval(() => {
+      void refreshDockAllocationForEntry(lastCreatedEntry);
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [lastCreatedEntry?.id, refreshDockAllocationForEntry]);
 
   const handleVehicleNumberChange = (rawVal: string) => {
     setVehicleNumber(formatVehicleNumber(rawVal));
@@ -717,18 +776,84 @@ function GateEntry() {
     if (poDocument) form.append("po_document", poDocument);
     if (vehiclePhoto) form.append("vehicle_photo", vehiclePhoto);
 
-    // Instead of direct submission, fetch docks and open modal
+    // Approve the gate entry. Warehouse dock-management will allocate the dock.
     try {
-      setLoadingDocks(true);
-      const dockList = await api.getDocks();
-      setDocks(dockList);
-      setPendingFormData(form);
-      setSelectedDockId(null);
-      setIsDockModalOpen(true);
+      setSubmitting(true);
+      const entry = await api.createGateEntry(form);
+
+      const createdVehicle =
+        entry.vehicleNumber ||
+        entry.vehicle_number ||
+        entry.vehiclePlate ||
+        entry.vehicle_plate ||
+        vehicleNumber;
+      const createdPo = entry.poNumber || entry.po_number || poNumber;
+      const createdGateNumber = entry.gateEntryNumber || entry.gate_entry_number;
+      const createdDriver = entry.driverName || entry.driver_name || driverName;
+      const assignedDock =
+        entry.assignedDock ||
+        entry.assigned_dock_id ||
+        entry.assignedDockId ||
+        entry.assigned_dock_code;
+
+      localStorage.setItem(
+        "verified_gate_po",
+        JSON.stringify({
+          gateEntryId: entry.id,
+          poNumber,
+          supplierName,
+          materialDescription,
+          totalQuantity,
+          poDate,
+          deliveryDate,
+          vehicleNumber,
+          verifiedAt: new Date().toISOString(),
+        }),
+      );
+      toast.success("Gate entry approved", {
+        description: assignedDock
+          ? `Dock ${assignedDock} is assigned.`
+          : "Warehouse Manager can now allocate a dock in Dock Management.",
+      });
+
+      setLastCreatedEntry({
+        id: entry.id,
+        gate_entry_number: createdGateNumber,
+        poNumber: createdPo,
+        poStatus: entry.poStatus,
+        asnNumber: entry.asnNumber,
+        asnStatus: entry.asnStatus,
+        vehiclePlate: createdVehicle,
+        driverName: createdDriver,
+        status: entry.status,
+        assignedDock,
+        dockAllocationStatus: assignedDock ? "DOCK_ASSIGNED" : "AWAITING_DOCK",
+        verificationStatus: poVerificationStatus,
+      });
+
+      setPoDocument(null);
+      setVehiclePhoto(null);
+      setAsnReference("");
+      setPoNumber("");
+      setPoVerificationStatus(null);
+      setSupplierName("");
+      setMaterialDescription("");
+      setTotalQuantity("");
+      setArrivalLineItems([]);
+      setPoDate("");
+      setDeliveryDate("");
+      setVehicleNumber("");
+      setDriverName("Driver");
+      setLicenseNumber("");
+      setDriverPhone("");
+      setPendingFormData(null);
+      await loadEntries(true);
     } catch (error) {
-      toast.error("Failed to load available docks");
+      toast.error("Gate entry approval failed", {
+        description: error instanceof Error ? error.message : undefined,
+      });
     } finally {
-      setLoadingDocks(false);
+      setSubmitting(false);
     }
   }
 
@@ -1522,16 +1647,26 @@ function GateEntry() {
                   </div>
                 </div>
 
-                {lastCreatedEntry.assignedDock && (
-                  <div className="pt-1 border-t border-border/40">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Assigned Dock
-                    </span>
-                    <p className="mt-0.5 font-mono text-sm font-black text-primary">
-                      {lastCreatedEntry.assignedDock}
-                    </p>
-                  </div>
-                )}
+                <div className="pt-1 border-t border-border/40">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Dock Allocation
+                  </span>
+                  {lastCreatedEntry.assignedDock ? (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg border border-primary/20 bg-primary-soft/40 px-2.5 py-1 font-mono text-sm font-black text-primary">
+                        {lastCreatedEntry.assignedDock}
+                      </span>
+                      <StatusBadge status={lastCreatedEntry.dockAllocationStatus || "DOCK_ASSIGNED"} />
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <StatusBadge status={lastCreatedEntry.dockAllocationStatus || "AWAITING_DOCK"} />
+                      <span className="text-[11px] font-medium text-muted-foreground">
+                        Waiting for Warehouse Manager allocation in Dock Management.
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1611,7 +1746,7 @@ function GateEntry() {
                   const isAvailable = status === "AVAILABLE";
                   const isOccupied = status === "OCCUPIED" || status === "UNLOADING";
                   const isMaintenance = status === "MAINTENANCE";
-                  const dockIdentifier = dock.dock_number || dock.dock_code || dock.id;
+                  const dockIdentifier = dock.id || dock.dock_number || dock.dock_code;
 
                   return (
                     <button

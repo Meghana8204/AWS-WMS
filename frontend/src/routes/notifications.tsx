@@ -509,6 +509,7 @@ function Notifications() {
             const payloadData = extractGrnPayload(n);
             const totals = payloadData?.totals;
             const hasTotals = totals && totals.ordered_qty > 0;
+            const notificationDate = n.created_at || n.createdAt || payloadData?.receiptDate;
 
             return (
               <Card
@@ -577,8 +578,8 @@ function Notifications() {
                         )}
                       </div>
                       <span className="text-[10px] text-muted-foreground font-medium">
-                        {n.created_at && !Number.isNaN(new Date(n.created_at).getTime())
-                          ? new Date(n.created_at).toLocaleString()
+                        {notificationDate && !Number.isNaN(new Date(notificationDate).getTime())
+                          ? new Date(notificationDate).toLocaleString()
                           : "Date unavailable"}
                       </span>
                     </div>
@@ -656,35 +657,6 @@ function Notifications() {
 
                     {/* CARD FOOTER ACTION LINKS */}
                     <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-border/40">
-                      <div className="flex items-center gap-2">
-                        {payloadData?.poNumber && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2.5 rounded-lg text-xs font-bold text-primary hover:bg-primary/10"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.location.href = `/purchase-order?po_number=${payloadData.poNumber}`;
-                            }}
-                          >
-                            <ExternalLink className="mr-1 size-3" /> View PO ({payloadData.poNumber})
-                          </Button>
-                        )}
-                        {payloadData?.grnNumber && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 px-2.5 rounded-lg text-xs font-bold text-teal-600 hover:bg-teal-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.location.href = `/grn?tab=records`;
-                            }}
-                          >
-                            <FileText className="mr-1 size-3" /> View GRN ({payloadData.grnNumber})
-                          </Button>
-                        )}
-                      </div>
-
                       <Button
                         size="sm"
                         variant={isDamage ? "default" : "outline"}

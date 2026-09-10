@@ -1,25 +1,21 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  FileText,
-  Search,
-  Filter,
-  Loader2,
+  Building2,
   Calendar,
   Download,
   Eye,
-  Building2,
-  CreditCard,
-  ArrowUpRight,
+  FileText,
+  Filter,
+  Loader2,
   Package,
-  History,
+  Search,
 } from "lucide-react";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 import { requireRole } from "@/lib/auth-utils";
 
 export const Route = createFileRoute("/procurement/purchase-orders")({
@@ -27,16 +23,33 @@ export const Route = createFileRoute("/procurement/purchase-orders")({
   component: PurchaseOrders,
 });
 
+const statusOptions = [
+  { value: "ALL", label: "All POs" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "SENT", label: "Sent" },
+  { value: "PENDING", label: "Finance pending" },
+  { value: "REJECTED", label: "Rejected" },
+];
+
 function PurchaseOrders() {
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
+  const formatCurrency = (value: unknown) =>
+    new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 0,
+    }).format(Number(value) || 0);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const data = await api.getPurchaseOrders();
-      setOrders(data);
+      setOrders(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Failed to fetch purchase orders:", error);
       toast.error("Failed to load purchase orders");
@@ -49,124 +62,175 @@ function PurchaseOrders() {
     fetchData();
   }, []);
 
+  const filteredOrders = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return orders.filter((po) => {
+      const status = String(po.status || "").toUpperCase();
+      const matchesStatus =
+        statusFilter === "ALL" ||
+        (statusFilter === "PENDING" && (status.includes("PENDING") || status.includes("PROPOSAL"))) ||
+        (statusFilter === "APPROVED" && status.includes("APPROV")) ||
+        (statusFilter === "REJECTED" && status.includes("REJECT")) ||
+        status === statusFilter;
+
+      const matchesSearch =
+        !q ||
+        po.poNumber?.toLowerCase().includes(q) ||
+        po.po_number?.toLowerCase().includes(q) ||
+        po.supplierName?.toLowerCase().includes(q) ||
+        po.supplier_name?.toLowerCase().includes(q) ||
+        po.procurementOfficer?.toLowerCase().includes(q) ||
+        po.rfqNumber?.toLowerCase().includes(q);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [orders, search, statusFilter]);
+
+  const downloadPo = async (po: any) => {
+    try {
+      setDownloadingId(po.id);
+      await api.downloadPoPdf(po.id, po.poNumber || po.po_number);
+      toast.success("Purchase Order PDF generated and downloaded");
+    } catch (e: any) {
+      toast.error("Failed to generate PDF", {
+        description: e?.message || "Please try again.",
+      });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   return (
     <AppShell
       title="Purchase Orders"
-      subtitle="Track and manage official purchase orders issued to suppliers"
+      subtitle="All supplier purchase orders, finance decisions, and downloadable PO PDFs"
     >
-      <div className="mb-6 flex flex-wrap items-center gap-4">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            placeholder="Search PO number, supplier..."
-            className="h-10 w-full rounded-xl border border-border bg-card pl-10 pr-4 text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
-        <Button variant="outline" className="rounded-xl border-border">
-          <Filter className="mr-2 size-4" /> Filter
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="size-8 animate-spin text-primary" />
-        </div>
-      ) : orders.length === 0 ? (
-        <Card className="flex h-64 flex-col items-center justify-center p-6 text-center border-dashed border-border/50 bg-muted/20">
-          <FileText className="size-12 text-muted-foreground/30 mb-4" />
-          <h3 className="text-lg font-semibold text-muted-foreground">No purchase orders found</h3>
-          <p className="text-sm text-muted-foreground/70">
-            Start by finalizing a supplier selection from the quotations comparison matrix.
-          </p>
-          <Button variant="outline" className="mt-4 rounded-xl" asChild>
-            <Link to="/procurement/rfqs">View active RFQs</Link>
-          </Button>
-        </Card>
-      ) : (
-        <div className="grid gap-4">
-          {orders.map((po) => (
-            <Card
-              key={po.id}
-              className="overflow-hidden border-border/50 transition-all hover:border-primary/30 hover:shadow-soft"
+      <div className="space-y-6">
+        <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/70 p-3 shadow-sm sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search PO number, supplier, RFQ, officer..."
+              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="hidden size-4 text-muted-foreground sm:block" />
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-11 w-full rounded-xl border border-border bg-background px-3 text-xs font-bold outline-none transition focus:border-primary/40 focus:ring-2 focus:ring-primary/15 sm:w-44"
             >
-              <div className="flex flex-col p-5 md:flex-row md:items-center">
-                <div className="mb-4 flex flex-1 items-start gap-4 md:mb-0">
-                  <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-teal-soft/30 text-teal-600">
-                    <FileText className="size-6" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-foreground tracking-tight">{po.poNumber}</h3>
-                      <StatusBadge status={po.status} />
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground font-medium">
-                      <Building2 className="size-3.5" />
-                      {po.supplierName || "Independent Supplier"}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <span className="text-[10px] text-teal-700 bg-teal-soft/20 px-2 py-0.5 rounded-md border border-teal-200 uppercase font-bold">
-                        ₹ {parseFloat(po.totalAmount || po.total_amount || 0).toLocaleString()}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/50">
-                        {po.warehouseId || "Main Warehouse"}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md border border-border/50 font-mono">
-                        Ref: {po.rfqNumber || po.rfq_id?.substring(0, 8) || "N/A"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+              {statusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
-                <div className="flex items-center justify-between border-t border-border/40 pt-4 md:border-0 md:pt-0">
-                  <div className="mr-8 text-right hidden md:block">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground font-bold">
-                        <Calendar className="size-3" /> Delivery Date
+        {loading ? (
+          <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-border/60 bg-muted/10">
+            <Loader2 className="size-8 animate-spin text-primary" />
+          </div>
+        ) : filteredOrders.length === 0 ? (
+          <Card className="flex h-64 flex-col items-center justify-center border-dashed border-border/50 bg-muted/20 p-6 text-center">
+            <FileText className="mb-4 size-12 text-muted-foreground/30" />
+            <h3 className="text-lg font-semibold text-muted-foreground">No purchase orders found</h3>
+            <p className="text-sm text-muted-foreground/70">
+              Try a different search or finalize a supplier selection from quotations.
+            </p>
+            <Button variant="outline" className="mt-4 rounded-xl" asChild>
+              <Link to="/procurement/rfqs">View active RFQs</Link>
+            </Button>
+          </Card>
+        ) : (
+          <div className="grid gap-4">
+            {filteredOrders.map((po) => {
+              const poNumber = po.poNumber || po.po_number || "PO Draft";
+              const supplierName = po.supplierName || po.supplier_name || "Independent Supplier";
+              const totalAmount = po.totalAmount ?? po.total_amount;
+              const itemCount = po.items?.length || po.lines?.length || 0;
+              const deliveryDate = po.expectedDeliveryDate || po.expected_delivery_date || "Not scheduled";
+              const isDownloading = downloadingId === po.id;
+
+              return (
+                <Card
+                  key={po.id}
+                  className="group overflow-hidden border-border/50 bg-card transition-all hover:border-primary/35 hover:shadow-soft"
+                >
+                  <div className="grid gap-4 p-4 lg:grid-cols-[1fr_auto] lg:items-center lg:p-5">
+                    <div className="flex min-w-0 gap-4">
+                      <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-teal-500/20 to-primary/20 text-teal-700 ring-1 ring-teal-500/15">
+                        <FileText className="size-6" />
                       </div>
-                      <p className="text-sm font-semibold">
-                        {po.expectedDeliveryDate || po.expected_delivery_date || "—"}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-mono text-base font-black tracking-tight text-foreground">
+                            {poNumber}
+                          </h3>
+                          <StatusBadge status={po.status || "DRAFT"} />
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <Building2 className="size-3.5" />
+                            {supplierName}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Package className="size-3.5" />
+                            {itemCount} line items
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <Calendar className="size-3.5" />
+                            {deliveryDate}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-lg border border-teal-500/20 bg-teal-500/10 px-2.5 py-1 text-xs font-black text-teal-700">
+                            {formatCurrency(totalAmount)}
+                          </span>
+                          <span className="rounded-lg border border-border/60 bg-muted/35 px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+                            {po.warehouseId || po.deliveryWarehouseName || "Main Warehouse"}
+                          </span>
+                          {(po.rfqNumber || po.rfq_id) && (
+                            <span className="rounded-lg border border-primary/20 bg-primary-soft/20 px-2.5 py-1 font-mono text-xs font-bold text-primary">
+                              Ref: {po.rfqNumber || String(po.rfq_id).substring(0, 8)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" className="rounded-xl h-9" asChild>
-                      <Link to="/purchase-order" search={{ poId: po.id }}>
-                        <Eye className="mr-1.5 size-3.5" />{" "}
-                        {po.status === "REJECTED" ? "View Details" : "View"}
-                      </Link>
-                    </Button>
-                    {po.status === "APPROVED" && (
+
+                    <div className="grid gap-2 border-t border-border/50 pt-4 sm:flex sm:items-center lg:border-0 lg:pt-0">
+                      <Button variant="outline" className="h-10 rounded-xl font-semibold" asChild>
+                        <Link to="/purchase-order" search={{ poId: po.id }}>
+                          <Eye className="mr-1.5 size-3.5" />
+                          View
+                        </Link>
+                      </Button>
                       <Button
-                        variant="outline"
-                        className="rounded-xl h-9 border-primary/30 text-primary hover:bg-primary-soft"
-                        disabled={downloadingId === po.id}
-                        onClick={async () => {
-                          try {
-                            setDownloadingId(po.id);
-                            await api.downloadPoPdf(po.id, po.poNumber);
-                            toast.success("Purchase Order PDF generated and downloaded");
-                          } catch (e: any) {
-                            toast.error("Failed to generate PDF");
-                          } finally {
-                            setDownloadingId(null);
-                          }
-                        }}
+                        className="h-10 rounded-xl bg-primary font-semibold shadow-glow hover:bg-primary/90"
+                        disabled={isDownloading}
+                        onClick={() => downloadPo(po)}
                       >
-                        {downloadingId === po.id ? (
-                          <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                        {isDownloading ? (
+                          <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                         ) : (
                           <Download className="mr-1.5 size-3.5" />
                         )}
-                        PDF
+                        Download PDF
                       </Button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }

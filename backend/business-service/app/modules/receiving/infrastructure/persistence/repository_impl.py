@@ -32,6 +32,7 @@ from app.events.outbox_repository import to_outbox_row
 from app.modules.procurement.infrastructure.persistence.models import (
     AsnModel,
     MaterialModel,
+    MaterialVariantModel,
     PurchaseOrderModel,
     SupplierModel,
 )
@@ -243,6 +244,29 @@ class SqlAlchemyGrnRepository(GrnRepository):
             ordered_by_item[item.material_code] += quantity
 
             material_category = getattr(item, 'category', None)
+            variant_code = getattr(item, "variant_code", None)
+            variant_size = None
+            variant_color = None
+            variant_grade = None
+            variant_uom = None
+
+            if getattr(item, "material_variant_id", None) or variant_code:
+                variant_filters = []
+                if getattr(item, "material_variant_id", None):
+                    variant_filters.append(MaterialVariantModel.id == item.material_variant_id)
+                if variant_code:
+                    variant_filters.append(MaterialVariantModel.variant_code == variant_code)
+                variant_res = await self._session.execute(
+                    select(MaterialVariantModel).where(or_(*variant_filters))
+                )
+                variant = variant_res.scalars().first()
+                if variant:
+                    variant_code = variant_code or variant.variant_code
+                    variant_size = variant.size
+                    variant_color = variant.color
+                    variant_grade = variant.grade
+                    variant_uom = variant.uom
+
             if not material_category:
                 mat_res = await self._session.execute(
                     select(MaterialModel.category).where(
@@ -257,7 +281,11 @@ class SqlAlchemyGrnRepository(GrnRepository):
                     ordered_quantity=quantity,
                     material_name=item.material_name,
                     material_category=material_category or "General",
-                    uom=item.uom,
+                    uom=variant_uom or item.uom,
+                    variant_code=variant_code,
+                    size=variant_size,
+                    color=variant_color,
+                    grade=variant_grade,
                 )
             )
 
@@ -928,6 +956,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                             item_code=line.item_code,
                             material_name=line.material_name or line.item_code,
                             material_category=line.material_category or "General",
+                            variant_code=line.variant_code,
                             uom=line.uom or "PCS",
                             ordered_quantity=line.ordered_quantity,
                             received_quantity=Decimal("0"),
