@@ -1259,7 +1259,7 @@ async def assign_arrival_dock(
 
     try:
         model = await uow.session.get(GateEntryModel, uuid.UUID(entry_id))
-    except ValueError:
+    except (ValueError, TypeError):
         model = None
     if model is None:
         raise NotFoundException(f"Inbound arrival '{entry_id}' not found")

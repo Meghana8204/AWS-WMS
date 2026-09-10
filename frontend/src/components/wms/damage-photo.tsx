@@ -1,13 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { api } from "@/lib/api-client";
+import { api, resolveMediaUrl } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 
 type Props = {
-    lineId?: string;
-    damagedQuantity: number;
-    reason?: string;
-    onSuccess?: (evidence: { evidenceId: string; fileName?: string; filePath?: string; file?: File }) => void;
+  lineId?: string;
+  damagedQuantity: number;
+  reason?: string;
+  existingPhotos?: DamagePhotoItem[];
+  onSuccess?: (evidence: {
+    evidenceId?: string;
+    evidenceIds: string[];
+    photos: DamagePhotoItem[];
+    filePath?: string;
+    file?: File;
+  }) => void;
 };
 
 // Reset photo/save state when the material, quantity or reason changes.
@@ -126,7 +133,10 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
             }
         }
 
-        void openCamera();
+        const opened = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
 
         return () => {
             cancelled = true;
@@ -174,6 +184,26 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
             report("Wait for the camera preview, then try again.");
             return;
         }
+      } catch (cause) {
+        if (cancelled) return;
+        stopStream();
+        setCameraOpen(false);
+        setReady(false);
+
+        const name = cause instanceof Error ? cause.name : "";
+        const message =
+          name === "NotAllowedError"
+            ? "Camera permission denied. Allow camera access in your browser."
+            : name === "NotFoundError"
+              ? "No camera device found on this system."
+              : name === "NotReadableError"
+                ? "Camera is in use by another application."
+                : cause instanceof Error
+                  ? cause.message
+                  : "Unable to open camera.";
+        report(message);
+      }
+    }
 
         captureLock.current = true;
         setCapturing(true);
@@ -312,6 +342,38 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
                 setUploading(false);
             }
         }
+        const result = await api.uploadDamageEvidence(lineId.trim(), data);
+        const evidenceId = result?.evidence_id || result?.evidenceId || photoId;
+        const serverPath = result?.file_path || result?.filePath;
+        const resolvedUrl = serverPath ? resolveMediaUrl(serverPath) : previewUrl;
+        return {
+          id: photoId,
+          evidenceId: String(evidenceId),
+          previewUrl: resolvedUrl,
+          fileName: file.name,
+          file,
+        };
+      } catch (err) {
+        console.warn("Server upload failed, using local photo cache:", err);
+      }
+    }
+    return {
+      id: photoId,
+      evidenceId: photoId,
+      previewUrl,
+      fileName: file.name,
+      file,
+    };
+  }
+
+  // Handle capture from live video
+  async function capturePhoto() {
+    const video = videoRef.current;
+    if (actionLock.current || saving) return;
+
+    if (!validQuantity) {
+      report("Damaged quantity must be greater than zero.");
+      return;
     }
 
     return (
@@ -450,5 +512,7 @@ function PhotoEditor({ lineId, damagedQuantity, reason, onSuccess }: Props) {
                 before leaving this page.
             </p>
         </div>
-    );
+      )}
+    </div>
+  );
 }

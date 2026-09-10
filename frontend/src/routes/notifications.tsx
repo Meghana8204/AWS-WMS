@@ -227,6 +227,8 @@ function Notifications() {
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [userRole, setUserRole] = useState("WAREHOUSE");
+  const [activeFilter, setActiveFilter] = useState<"ALL" | "DAMAGE" | "ARRIVAL" | "UNREAD">("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Modal State for Damaged Goods Details
   const [showDamageModal, setShowDamageModal] = useState(false);
@@ -252,7 +254,7 @@ function Notifications() {
           : "WAREHOUSE";
     setUserRole(role);
     void fetchData(role, false);
-    const timer = window.setInterval(() => void fetchData(role, true), 2000);
+    const timer = window.setInterval(() => void fetchData(role, true), 2500);
     const refresh = () => void fetchData(role, true);
     window.addEventListener("focus", refresh);
     window.addEventListener("notifications:refresh", refresh);
@@ -319,10 +321,10 @@ function Notifications() {
   const fetchData = async (role: string, quiet = false) => {
     try {
       if (!quiet) setLoading(true);
-      if (role === "WAREHOUSE") {
+      if (role === "WAREHOUSE" || role === "GRN" || role === "RECEIVING" || role === "STORE_MANAGER") {
         const [arrivalData, workflowData] = await Promise.all([
-          api.getArrivalNotifications(),
-          api.getNotifications("WAREHOUSE"),
+          api.getArrivalNotifications().catch(() => []),
+          api.getNotifications(role).catch(() => []),
         ]);
         const arrivals = (Array.isArray(arrivalData) ? arrivalData : []).map((n: any) => ({
           id: n?.id,
@@ -471,23 +473,116 @@ function Notifications() {
     return [];
   };
 
+  // Counts for tabs
+  const damageCount = useMemo(
+    () =>
+      notifications.filter(
+        (n) =>
+          /damage|reject|quarantine/i.test(n.title || "") ||
+          /damaged\/rejected goods|damaged items:/i.test(n.message || ""),
+      ).length,
+    [notifications],
+  );
+
+  const arrivalCount = useMemo(
+    () => notifications.filter((n) => n.type === "arrival" || /arrival/i.test(n.title || "")).length,
+    [notifications],
+  );
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.is_read).length,
+    [notifications],
+  );
+
+  // Filtered notifications list
+  const filteredNotifications = useMemo(() => {
+    let list = notifications;
+
+    if (activeFilter === "DAMAGE") {
+      list = list.filter(
+        (n) =>
+          /damage|reject|quarantine/i.test(n.title || "") ||
+          /damaged\/rejected goods|damaged items:/i.test(n.message || ""),
+      );
+    } else if (activeFilter === "ARRIVAL") {
+      list = list.filter((n) => n.type === "arrival" || /arrival/i.test(n.title || ""));
+    } else if (activeFilter === "UNREAD") {
+      list = list.filter((n) => !n.is_read);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (n) =>
+          (n.title && n.title.toLowerCase().includes(q)) ||
+          (n.message && n.message.toLowerCase().includes(q)) ||
+          (n.po_number && n.po_number.toLowerCase().includes(q)) ||
+          (n.supplier_name && n.supplier_name.toLowerCase().includes(q)),
+      );
+    }
+
+    return list;
+  }, [notifications, activeFilter, searchQuery]);
+
   return (
     <AppShell
       title="Notification centre"
       subtitle="Stay updated with procurement and supply chain alerts"
     >
+      {/* FILTER TABS & SEARCH BAR */}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Tabs
+          value={activeFilter}
+          onValueChange={(val: any) => setActiveFilter(val)}
+          className="w-full sm:w-auto"
+        >
+          <TabsList className="grid grid-cols-4 rounded-xl p-1 bg-muted/60">
+            <TabsTrigger value="ALL" className="rounded-lg text-xs font-semibold">
+              All ({notifications.length})
+            </TabsTrigger>
+            <TabsTrigger value="DAMAGE" className="rounded-lg text-xs font-semibold flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-rose-500 inline-block" />
+              Damaged ({damageCount})
+            </TabsTrigger>
+            <TabsTrigger value="ARRIVAL" className="rounded-lg text-xs font-semibold flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-blue-500 inline-block" />
+              Arrivals ({arrivalCount})
+            </TabsTrigger>
+            <TabsTrigger value="UNREAD" className="rounded-lg text-xs font-semibold flex items-center gap-1.5">
+              <span className="size-2 rounded-full bg-amber-500 inline-block" />
+              Unread ({unreadCount})
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
+        <div className="relative max-w-xs w-full">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search notifications..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="h-9 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex h-64 items-center justify-center">
           <Loader2 className="size-8 animate-spin text-primary" />
         </div>
-      ) : notifications.length === 0 ? (
+      ) : filteredNotifications.length === 0 ? (
         <Card className="items-center gap-2 rounded-2xl border-dashed p-14 text-center shadow-none">
-          <span className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground">
+          <span className="grid size-14 place-items-center rounded-2xl bg-muted text-muted-foreground mx-auto">
             <Inbox className="size-6" />
           </span>
-          <p className="mt-2 text-sm font-semibold">Nothing in this queue</p>
-          <p className="max-w-xs text-xs text-muted-foreground">
-            Your notification history is empty.
+          <p className="mt-2 text-sm font-semibold">No notifications found</p>
+          <p className="max-w-xs text-xs text-muted-foreground mx-auto">
+            {searchQuery
+              ? `No alerts matching "${searchQuery}".`
+              : activeFilter === "DAMAGE"
+                ? "No damaged or rejected goods notices at this time."
+                : "Your notification history is empty."}
           </p>
         </Card>
       ) : (
@@ -589,6 +684,46 @@ function Notifications() {
                         <span className="px-2.5 py-0.5 rounded-md bg-muted font-mono font-bold text-foreground">
                           PO: {payloadData.poNumber}
                         </span>
+                        {!n.is_read && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs text-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/50"
+                            onClick={() => handleMarkRead(n.id)}
+                          >
+                            Mark Read
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Metadata Summary Chips */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      {grn && (
+                        <div className="rounded-xl border border-border/80 bg-background/80 p-2.5 shadow-2xs">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            GRN Number
+                          </div>
+                          <div className="font-mono text-xs font-bold text-foreground mt-0.5">{grn}</div>
+                        </div>
+                      )}
+                      {po && (
+                        <div className="rounded-xl border border-border/80 bg-background/80 p-2.5 shadow-2xs">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            PO Number
+                          </div>
+                          <div className="font-mono text-xs font-bold text-foreground mt-0.5">{po}</div>
+                        </div>
+                      )}
+                      {supplier && (
+                        <div className="rounded-xl border border-border/80 bg-background/80 p-2.5 shadow-2xs">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            Supplier
+                          </div>
+                          <div className="text-xs font-bold text-foreground truncate mt-0.5" title={supplier}>
+                            {supplier}
+                          </div>
+                        </div>
                       )}
                       {payloadData?.grnNumber && (
                         <span className="px-2.5 py-0.5 rounded-md bg-primary/10 text-primary font-mono font-bold">
@@ -604,6 +739,162 @@ function Notifications() {
                         <span className="px-2.5 py-0.5 rounded-md bg-muted text-muted-foreground font-mono">
                           Vehicle: {payloadData.vehicleNumber}
                         </span>
+                      </div>
+
+                      <div className="overflow-hidden rounded-xl border border-rose-200 dark:border-rose-900/60 bg-background shadow-2xs">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-b border-rose-200 dark:border-rose-900/60 bg-rose-50/80 dark:bg-rose-950/40 text-[11px] font-extrabold text-rose-900 dark:text-rose-200 uppercase tracking-wider">
+                              <th className="p-2.5 text-center w-10">#</th>
+                              <th className="p-2.5">Material Code & Name</th>
+                              <th className="p-2.5 text-right w-36">Damaged Qty</th>
+                              <th className="p-2.5">Defect / Damage Reason</th>
+                              <th className="p-2.5 text-center w-28">QA Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-rose-100 dark:divide-rose-900/40 font-mono">
+                            {damageData.items.length > 0 ? (
+                              damageData.items.map((item, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="hover:bg-rose-50/40 dark:hover:bg-rose-950/20 transition-colors"
+                                >
+                                  <td className="p-2.5 text-center text-muted-foreground font-semibold">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="p-2.5 font-sans">
+                                    <div className="font-mono font-bold text-foreground text-xs">
+                                      {item.code}
+                                    </div>
+                                    {item.name && (
+                                      <div className="text-[11px] text-muted-foreground font-medium">
+                                        {item.name}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="p-2.5 text-right font-bold">
+                                    <span className="inline-block px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                      {item.quantity}
+                                    </span>
+                                  </td>
+                                  <td className="p-2.5 font-sans text-xs text-foreground font-medium">
+                                    {item.reason}
+                                  </td>
+                                  <td className="p-2.5 text-center">
+                                    <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-100 text-rose-800 dark:bg-rose-900 dark:text-rose-200 border border-rose-300 dark:border-rose-700">
+                                      DAMAGED
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={5} className="p-4 text-center text-xs text-muted-foreground font-sans">
+                                  {n.message}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Inspector Remarks Callout Box */}
+                    {damageData.remarks && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-900/50 dark:bg-amber-950/20 p-3 text-xs flex items-start gap-2.5">
+                        <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold text-amber-900 dark:text-amber-200">
+                            Inspector Remarks / Notes:
+                          </span>
+                          <p className="text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed font-sans">
+                            {damageData.remarks}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Footer Info */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/40">
+                      <div className="text-[11px] text-muted-foreground font-medium">
+                        Quarantine Location: <b className="text-foreground">QUARANTINE-ZONE-A</b>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              );
+            }
+
+            // =========================================================================
+            // 📦 2. STANDARD / ARRIVAL / WORKFLOW NOTIFICATIONS
+            // =========================================================================
+            return (
+              <Card
+                key={n.id}
+                className={cn(
+                  "group relative overflow-hidden rounded-2xl border border-border/60 p-5 transition-all hover:border-primary/30 hover:shadow-soft",
+                  !n.is_read && "bg-primary-soft/5 border-primary/20",
+                )}
+              >
+                {!n.is_read && <div className="absolute left-0 top-0 h-full w-1 bg-primary" />}
+
+                <div className="flex items-start gap-4">
+                  <div
+                    className={cn(
+                      "grid size-11 shrink-0 place-items-center rounded-2xl",
+                      n.type === "arrival"
+                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+                        : n.title?.includes("Approved")
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                          : n.title?.includes("Rejected") || n.title?.includes("Failed")
+                            ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                            : "bg-primary-soft text-primary",
+                    )}
+                  >
+                    {n.type === "arrival" ? (
+                      <Truck className="size-5" />
+                    ) : n.title?.includes("Inventory") || n.title?.includes("Putaway") ? (
+                      <Package className="size-5" />
+                    ) : (
+                      <FileText className="size-5" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="font-bold text-sm text-foreground">{n.title}</h3>
+                      <span className="text-[11px] text-muted-foreground font-medium bg-muted/40 px-2 py-0.5 rounded">
+                        {formatNotificationDate(n.created_at || n.createdAt)}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
+                      {n.message}
+                    </p>
+
+                    <div className="mt-3 pt-3 border-t border-border/40 flex items-center justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {n.po_number && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted font-mono font-bold">
+                            PO: {n.po_number}
+                          </span>
+                        )}
+                        {n.supplier_name && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-muted font-medium">
+                            {n.supplier_name}
+                          </span>
+                        )}
+                      </div>
+
+                      {!n.is_read && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-xs text-primary hover:bg-primary-soft/20 font-semibold"
+                          onClick={() => handleMarkRead(n.id)}
+                        >
+                          Mark Read
+                        </Button>
                       )}
                     </div>
 

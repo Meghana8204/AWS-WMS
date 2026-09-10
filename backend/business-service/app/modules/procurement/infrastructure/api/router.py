@@ -1094,6 +1094,7 @@ async def unblock_supplier(
 @router.post("/rfqs", response_model=RfqResponse, status_code=status.HTTP_201_CREATED)
 async def create_rfq(
     request: CreateRfqRequest,
+    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> RfqResponse:
@@ -1113,6 +1114,8 @@ async def create_rfq(
         rfq_id = await use_case.handle(command)
         await uow.commit()
 
+        if request.supplier_ids:
+            background_tasks.add_task(_notify_suppliers_rfq, str(rfq_id.value))
 
         stmt = select(RfqModel).options(
             selectinload(RfqModel.items),
@@ -1175,20 +1178,27 @@ async def _notify_suppliers_rfq(rfq_id: str):
     import string
     import hashlib
     import os
+    from sqlalchemy import or_
 
     sent = 0
     failed = 0
     total = 0
     deliveries = []
     async with session_scope() as session:
+        clause = RfqModel.rfq_number == str(rfq_id)
+        try:
+            target_uuid = uuid.UUID(str(rfq_id))
+            clause = or_(RfqModel.id == target_uuid, clause)
+        except Exception:
+            pass
 
         stmt = (
             select(RfqModel)
             .options(
-                selectinload(RfqModel.suppliers).joinedload(SupplierModel.contact),
+                selectinload(RfqModel.suppliers).selectinload(SupplierModel.contact),
                 selectinload(RfqModel.items)
             )
-            .where(RfqModel.id == rfq_id)
+            .where(clause)
         )
         res = await session.execute(stmt)
         rfq = res.scalar_one_or_none()
@@ -1204,15 +1214,17 @@ async def _notify_suppliers_rfq(rfq_id: str):
             su_res = await session.execute(su_stmt)
             sup_user = su_res.scalar_one_or_none()
 
-
             chars = string.ascii_letters + string.digits
             temp_password = "".join(random.choices(chars, k=10))
             password_hash = hashlib.sha256(temp_password.encode()).hexdigest()
 
             if not sup_user:
-
-                code = supplier.supplier_code or "".join(c for c in supplier.supplier_name if c.isalnum()).lower()[:10]
+                code = supplier.supplier_code or "".join(c for c in (supplier.supplier_name or "supplier") if c.isalnum()).lower()[:10]
                 username = f"supplier_{code.lower()}"
+                
+                existing_user = await session.execute(select(SupplierUserModel).where(SupplierUserModel.username == username))
+                if existing_user.scalar_one_or_none():
+                    username = f"{username}_{random.randint(100, 999)}"
 
                 sup_user = SupplierUserModel(
                     id=uuid.uuid4(),
@@ -1229,15 +1241,31 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
             email = None
             if supplier.contact and supplier.contact.primary_email:
-                email = supplier.contact.primary_email
+                email = supplier.contact.primary_email.strip()
+
+            if not email:
+                sc_stmt = select(SupplierContactModel).where(SupplierContactModel.supplier_id == supplier.id)
+                sc_res = await session.execute(sc_stmt)
+                sup_contact = sc_res.scalar_one_or_none()
+                if sup_contact:
+                    email = (sup_contact.primary_email or sup_contact.secondary_email or "").strip()
 
             if email:
                 subject = f"Request for Quotation - {rfq.rfq_number}"
 
-
                 materials_str = ""
+                items_payload = []
                 for idx, item in enumerate(rfq.items):
-                    materials_str += f"\nMaterial: {item.material_name}\nQuantity: {item.quantity} {item.uom}\nRequired Delivery: {item.required_delivery_date}\nWarehouse: {item.warehouse}\n"
+                    deliv_date = str(item.required_delivery_date) if item.required_delivery_date else (str(rfq.required_delivery_date) if rfq.required_delivery_date else "Standard")
+                    wh = str(item.warehouse) if item.warehouse else (str(rfq.warehouse) if rfq.warehouse else "Main")
+                    qty_str = f"{item.quantity} {item.uom}"
+                    materials_str += f"\nMaterial: {item.material_name}\nQuantity: {qty_str}\nRequired Delivery: {deliv_date}\nWarehouse: {wh}\n"
+                    items_payload.append({
+                        "material": item.material_name or item.material_code,
+                        "quantity": qty_str,
+                        "delivery": deliv_date,
+                        "warehouse": wh,
+                    })
 
                 login_link = f"http://localhost:8080/login?redirect=/submit-quotation?rfqId={rfq.id}"
 
@@ -1252,19 +1280,28 @@ async def _notify_suppliers_rfq(rfq_id: str):
                     f"Temporary Password: {temp_password}\n\n"
                     f"Note: This temporary access password was generated for your quotation submission.\n"
                 )
+
+                details_payload = [
+                    ("RFQ Number", rfq.rfq_number),
+                    ("RFQ Date", str(rfq.rfq_date)),
+                    ("Procurement Officer", rfq.procurement_officer or "Procurement Team"),
+                    ("Warehouse", rfq.warehouse or "Main Warehouse"),
+                ]
+                if rfq.closing_date:
+                    details_payload.append(("Closing Date", str(rfq.closing_date)))
+
                 html_body = render_premium_email(
                     eyebrow="Request for quotation",
                     title=f"Quotation requested · {rfq.rfq_number}",
                     greeting=f"Hello {supplier.supplier_name},",
                     intro="You have been invited to submit a commercial quotation. Review the requirements and respond through the secure supplier portal.",
-                    details=(),
-                    items=(),
-                    items_heading=None,
+                    details=details_payload,
+                    items=items_payload,
+                    items_heading="Requested Materials",
                     credentials=[("Username", username), ("Temporary password", temp_password)],
                     primary_cta=("Review & submit quotation", login_link),
                     note="Please submit your quotation before the RFQ closing date. Pricing and delivery commitments entered in the portal will form part of your official response.",
                 )
-
 
                 os.makedirs(os.path.join("media_uploads", "emails"), exist_ok=True)
                 email_path = os.path.join("media_uploads", "emails", f"rfq_{rfq.rfq_number}_{username}.html")
@@ -1276,9 +1313,8 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
                 deliveries.append((email, subject, body, html_body))
             else:
-                logger.warning(f"No primary email configured for supplier {supplier.id}")
+                logger.warning(f"No primary email configured for supplier {supplier.id} ({supplier.supplier_name})")
                 failed += 1
-
 
         await session.commit()
         results = await asyncio.gather(
@@ -2070,6 +2106,7 @@ def _to_po_response(po: PurchaseOrderModel) -> PurchaseOrderResponse:
 
 @router.get("/rfqs", response_model=List[RfqResponse])
 async def list_rfqs(
+    supplier_id: Optional[str] = Query(None),
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> List[RfqResponse]:
@@ -2081,7 +2118,14 @@ async def list_rfqs(
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
         )
-    ).order_by(RfqModel.created_at.desc())
+    )
+    if supplier_id:
+        try:
+            supp_uuid = uuid.UUID(supplier_id)
+            stmt = stmt.where(RfqModel.suppliers.any(SupplierModel.id == supp_uuid))
+        except ValueError:
+            pass
+    stmt = stmt.order_by(RfqModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
     return [_to_rfq_response(e) for e in entities]
@@ -2093,6 +2137,12 @@ async def get_rfq(
     uow: UnitOfWork = Depends(get_uow),
     _user: CurrentUser = Depends(get_current_user),
 ) -> RfqResponse:
+    try:
+        target_uuid = uuid.UUID(id)
+        clause = or_(RfqModel.id == target_uuid, RfqModel.rfq_number == id)
+    except ValueError:
+        clause = (RfqModel.rfq_number == id)
+
     stmt = select(RfqModel).options(
         selectinload(RfqModel.items),
         selectinload(RfqModel.suppliers).options(
@@ -2101,7 +2151,7 @@ async def get_rfq(
             selectinload(SupplierModel.bank_info),
             selectinload(SupplierModel.documents),
         )
-    ).where(RfqModel.id == id)
+    ).where(clause)
     res = await uow.session.execute(stmt)
     entity = res.scalar_one_or_none()
     if not entity:
@@ -2316,10 +2366,19 @@ async def list_quotations(
         selectinload(QuotationModel.documents),
     )
     if rfq_id:
-        stmt = stmt.where(QuotationModel.rfq_id == rfq_id)
+        try:
+            rfq_uuid = uuid.UUID(rfq_id)
+            stmt = stmt.where(or_(QuotationModel.rfq_id == rfq_uuid, cast(QuotationModel.rfq_id, String) == rfq_id))
+        except ValueError:
+            stmt = stmt.where(cast(QuotationModel.rfq_id, String) == rfq_id)
     if supplier_id:
-        stmt = stmt.where(QuotationModel.supplier_id == supplier_id)
+        try:
+            supp_uuid = uuid.UUID(supplier_id)
+            stmt = stmt.where(or_(QuotationModel.supplier_id == supp_uuid, cast(QuotationModel.supplier_id, String) == supplier_id))
+        except ValueError:
+            stmt = stmt.where(cast(QuotationModel.supplier_id, String) == supplier_id)
 
+    stmt = stmt.order_by(QuotationModel.created_at.desc())
     res = await uow.session.execute(stmt)
     entities = res.scalars().all()
 
@@ -2716,7 +2775,11 @@ async def list_asns(
             )
         )
         if supplier_id:
-            stmt = stmt.where(resolved_supplier_id == supplier_id)
+            try:
+                supp_uuid = uuid.UUID(supplier_id)
+                stmt = stmt.where(or_(resolved_supplier_id == supp_uuid, cast(resolved_supplier_id, String) == supplier_id))
+            except ValueError:
+                stmt = stmt.where(cast(resolved_supplier_id, String) == supplier_id)
 
         res = await uow.session.execute(stmt)
         rows = res.all()
@@ -3065,7 +3128,18 @@ async def list_arrival_notifications(uow: UnitOfWork = Depends(get_uow)):
 @router.get("/notifications", response_model=List[NotificationResponse])
 async def list_notifications(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
     normalized_role = role.strip().upper()
-    stmt = select(NotificationModel).where(NotificationModel.user_role == normalized_role).order_by(NotificationModel.created_at.desc())
+    if normalized_role in ("GRN", "RECEIVING"):
+        roles_to_match = ["GRN", "RECEIVING", "WAREHOUSE", "STORE_MANAGER"]
+    elif normalized_role == "WAREHOUSE":
+        roles_to_match = ["WAREHOUSE", "GRN", "RECEIVING", "STORE_MANAGER", "QUALITY_INSPECTOR"]
+    elif normalized_role == "STORE_MANAGER":
+        roles_to_match = ["STORE_MANAGER", "WAREHOUSE", "GRN", "RECEIVING"]
+    elif normalized_role == "QUALITY_INSPECTOR":
+        roles_to_match = ["QUALITY_INSPECTOR", "WAREHOUSE", "GRN"]
+    else:
+        roles_to_match = [normalized_role]
+
+    stmt = select(NotificationModel).where(NotificationModel.user_role.in_(roles_to_match)).order_by(NotificationModel.created_at.desc())
     res = await uow.session.execute(stmt)
     notifications = res.scalars().all()
     return [
@@ -3097,9 +3171,16 @@ async def mark_notification_read(id: str, uow: UnitOfWork = Depends(get_uow)):
 @router.post("/notifications/read-all")
 async def mark_all_notifications_read(role: str = Query(...), uow: UnitOfWork = Depends(get_uow)):
     normalized_role = role.strip().upper()
+    if normalized_role in ("GRN", "RECEIVING"):
+        roles_to_match = ["GRN", "RECEIVING", "WAREHOUSE", "STORE_MANAGER"]
+    elif normalized_role == "WAREHOUSE":
+        roles_to_match = ["WAREHOUSE", "GRN", "RECEIVING", "STORE_MANAGER", "QUALITY_INSPECTOR"]
+    else:
+        roles_to_match = [normalized_role]
+
     result = await uow.session.execute(
         update(NotificationModel)
-        .where(NotificationModel.user_role == normalized_role, NotificationModel.is_read.is_(False))
+        .where(NotificationModel.user_role.in_(roles_to_match), NotificationModel.is_read.is_(False))
         .values(is_read=True)
     )
     await uow.commit()
