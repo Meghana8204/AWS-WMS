@@ -63,6 +63,9 @@ class AllocationRequestResponse(BaseModel):
     status: str
     assigned_dock_id: Optional[uuid.UUID] = None
     assigned_dock_code: Optional[str] = None
+    assigned_store_id: Optional[uuid.UUID] = None
+    assigned_store_code: Optional[str] = None
+    assigned_store_name: Optional[str] = None
     assigned_by: Optional[str] = None
     assigned_at: Optional[datetime] = None
     arrived_at: Optional[datetime] = None
@@ -87,6 +90,12 @@ class DockMasterResponse(BaseModel):
     description: Optional[str] = None
     status: str
     is_active: bool
+    store_id: Optional[uuid.UUID] = None
+    store_code: Optional[str] = None
+    store_name: Optional[str] = None
+    assigned_store_id: Optional[uuid.UUID] = None
+    assigned_store_code: Optional[str] = None
+    assigned_store_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     current_allocation: Optional[AllocationRequestResponse] = None

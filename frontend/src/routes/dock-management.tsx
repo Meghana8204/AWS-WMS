@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { getUserInfo } from "@/lib/auth-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -72,6 +73,9 @@ type AllocationRequest = {
   arrived_at?: string | null;
   released_at?: string | null;
   created_at: string;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
 };
 
 type Dock = {
@@ -85,6 +89,12 @@ type Dock = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  store_id?: string | null;
+  store_code?: string | null;
+  store_name?: string | null;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
   current_allocation?: AllocationRequest | null;
 };
 
@@ -169,6 +179,76 @@ function DockManagement() {
   const [selectedRequestIdToAllocate, setSelectedRequestIdToAllocate] = useState<string>("");
   const [selectedDockIdToAllocate, setSelectedDockIdToAllocate] = useState<string>("");
   const [releaseConfirmDock, setReleaseConfirmDock] = useState<Dock | null>(null);
+
+  // User Auth & Store Context
+  const userInfo = getUserInfo();
+  const userRoles = userInfo?.roles || [];
+  const isWarehouseManager = userRoles.includes("WAREHOUSE_MANAGER") || userRoles.includes("WAREHOUSE");
+  const isStoreUser =
+    userRoles.includes("STORE_MANAGER") ||
+    userRoles.includes("STORE_KEEPER") ||
+    userRoles.includes("STORE");
+
+  const [currentUserStore, setCurrentUserStore] = useState<{ id?: string; code?: string; name?: string } | null>(null);
+
+  useEffect(() => {
+    if (userInfo?.store_id || userInfo?.storeId || userInfo?.store_code || userInfo?.storeCode) {
+      setCurrentUserStore({
+        id: userInfo?.store_id || userInfo?.storeId,
+        code: userInfo?.store_code || userInfo?.storeCode,
+      });
+    } else if (isStoreUser) {
+      api.getMyStore().then((res) => {
+        if (res) {
+          setCurrentUserStore({
+            id: res.id,
+            code: res.store_code,
+            name: res.store_name,
+          });
+        }
+      }).catch(() => {
+        // ignore if not configured
+      });
+    }
+  }, [isStoreUser, userInfo?.store_id, userInfo?.storeId, userInfo?.store_code, userInfo?.storeCode]);
+
+  const canReleaseDock = useCallback((dock: Dock | null | undefined): boolean => {
+    if (!dock) return false;
+    // Warehouse managers are strictly forbidden from releasing docks
+    if (isWarehouseManager) return false;
+    // Only assigned store managers / keepers can release docks
+    if (!isStoreUser) return false;
+
+    const userStoreId = currentUserStore?.id || userInfo?.store_id || userInfo?.storeId;
+    const userStoreCode = (currentUserStore?.code || userInfo?.store_code || userInfo?.storeCode || "").toUpperCase();
+
+    if (!userStoreId && !userStoreCode) return false;
+
+    const dockStoreId = dock.assigned_store_id || dock.store_id || dock.current_allocation?.assigned_store_id;
+    const dockStoreCode = (dock.assigned_store_code || dock.store_code || dock.current_allocation?.assigned_store_code || "").toUpperCase();
+
+    let mappedCode = "";
+    if (
+      dock.dock_type === "CHEMICAL_HAZARDOUS" ||
+      dock.dock_type === "CHEMICAL" ||
+      dock.dock_type === "HAZARDOUS_ITEMS" ||
+      dock.dock_type === "ELECTRONICS" ||
+      dock.dock_type === "ELECTRONIC" ||
+      dock.dock_type === "ELECTRICAL" ||
+      dock.dock_type === "RAW_MATERIAL" ||
+      dock.dock_type === "MAIN_RECEIVING"
+    ) {
+      mappedCode = "STR-001";
+    }
+
+    const matchesId = Boolean(userStoreId && dockStoreId && userStoreId === dockStoreId);
+    const matchesCode = Boolean(userStoreCode && (
+      (dockStoreCode && userStoreCode === dockStoreCode) ||
+      (mappedCode && userStoreCode === mappedCode)
+    ));
+
+    return matchesId || matchesCode;
+  }, [currentUserStore, isStoreUser, isWarehouseManager, userInfo]);
 
   // Edit & Maintenance Modals
   const [editDockModalDock, setEditDockModalDock] = useState<Dock | null>(null);
@@ -355,6 +435,11 @@ function DockManagement() {
 
   async function handleReleaseDock() {
     if (!releaseConfirmDock) return;
+    if (!canReleaseDock(releaseConfirmDock)) {
+      toast.error("Unauthorized: Only the assigned Store Manager can release this dock.");
+      setReleaseConfirmDock(null);
+      return;
+    }
     const reqId = releaseConfirmDock.current_allocation?.id || releaseConfirmDock.id;
     setActionBusy(true);
     try {
@@ -694,6 +779,7 @@ function DockManagement() {
               <DockCard
                 key={dock.id}
                 dock={dock}
+                canRelease={canReleaseDock(dock)}
                 onViewDetails={() => setSelectedDetailsDock(dock)}
                 onEdit={() => {
                   setEditDockModalDock(dock);
@@ -705,7 +791,13 @@ function DockManagement() {
                   });
                 }}
                 onMaintenanceToggle={() => setMaintenanceConfirmDock(dock)}
-                onRelease={() => setReleaseConfirmDock(dock)}
+                onRelease={() => {
+                  if (canReleaseDock(dock)) {
+                    setReleaseConfirmDock(dock);
+                  } else {
+                    toast.error("Unauthorized: Only the assigned Store Manager can release this dock.");
+                  }
+                }}
               />
             ))}
           </div>
@@ -795,7 +887,15 @@ function DockManagement() {
                         : "N/A"}
                     </span>
                   </div>
-                  <div className="col-span-2">
+                  <div>
+                    <span className="text-muted-foreground block text-[11px]">Assigned Store</span>
+                    <span className="font-semibold text-foreground">
+                      {selectedDetailsDock.assigned_store_name
+                        ? `${selectedDetailsDock.assigned_store_name} (${selectedDetailsDock.assigned_store_code || selectedDetailsDock.store_code})`
+                        : (selectedDetailsDock.store_name || selectedDetailsDock.assigned_store_code || selectedDetailsDock.store_code || "Central Warehouse")}
+                    </span>
+                  </div>
+                  <div>
                     <span className="text-muted-foreground block text-[11px]">Location</span>
                     <span className="font-medium text-foreground">
                       {selectedDetailsDock.location || "Central Receiving"}
@@ -922,7 +1022,7 @@ function DockManagement() {
                 </Button>
               )}
 
-              {selectedDetailsDock.status === "OCCUPIED" && (
+              {selectedDetailsDock.status === "OCCUPIED" && canReleaseDock(selectedDetailsDock) && (
                 <Button
                   className="rounded-xl shadow-glow w-full sm:w-auto text-xs bg-[#ef4444] hover:bg-red-600 text-white"
                   onClick={() => {
@@ -1271,12 +1371,14 @@ function SummaryCard({
 
 function DockCard({
   dock,
+  canRelease,
   onViewDetails,
   onEdit,
   onMaintenanceToggle,
   onRelease,
 }: {
   dock: Dock;
+  canRelease: boolean;
   onViewDetails: () => void;
   onEdit: () => void;
   onMaintenanceToggle: () => void;
@@ -1343,6 +1445,11 @@ function DockCard({
           <span className="inline-block rounded-full bg-slate-100 dark:bg-slate-800/80 px-2.5 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
             {getCategoryLabel(dock.dock_type)}
           </span>
+          {(dock.assigned_store_code || dock.store_code) && (
+            <span className="inline-block rounded-full bg-blue-50 dark:bg-blue-950/50 border border-blue-200/60 dark:border-blue-800/40 px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300">
+              {dock.assigned_store_name ? `${dock.assigned_store_name} (${dock.assigned_store_code || dock.store_code})` : (dock.store_name || dock.assigned_store_code || dock.store_code)}
+            </span>
+          )}
           {dock.location && (
             <span className="text-[11px] text-muted-foreground/80">• {dock.location}</span>
           )}
@@ -1400,7 +1507,7 @@ function DockCard({
           </button>
         </div>
 
-        {isOccupied && (
+        {isOccupied && canRelease && (
           <Button
             className="w-full rounded-full bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs h-9 shadow-2xs flex items-center justify-center gap-1.5"
             onClick={onRelease}

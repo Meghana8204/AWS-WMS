@@ -113,8 +113,32 @@ class DockAllocationService:
         existing_docks = existing_res.scalars().all()
         existing_by_code = {d.dock_code: d for d in existing_docks}
 
-        # 2. Upsert the 9 predefined docks
+        # 2. Upsert the predefined docks and associate them with corresponding stores if present
+        store_by_code = {}
+        dock_store_map = {
+            "CH-01": "STR-001",
+            "CH-02": "STR-001",
+            "EL-01": "STR-001",
+            "EL-02": "STR-001",
+            "RM-01": "STR-001",
+            "RM-02": "STR-001",
+            "EC-01": "STR-001",
+            "EC-02": "STR-001",
+            "MR-01": "STR-001",
+            "MR-02": "STR-001",
+        }
+        try:
+            from app.modules.store.infrastructure.persistence.models import StoreModel
+            stores_res = await session.execute(select(StoreModel))
+            stores = stores_res.scalars().all()
+            store_by_code = {s.store_code.strip().upper(): s for s in stores if s.store_code}
+        except Exception:
+            pass
+
         for d in PREDEFINED_DOCKS:
+            default_store = store_by_code.get(dock_store_map.get(d["code"], ""))
+            default_store_id = default_store.id if default_store else None
+
             if d["code"] in existing_by_code:
                 model = existing_by_code[d["code"]]
                 model.dock_name = d["name"]
@@ -122,6 +146,8 @@ class DockAllocationService:
                 model.location = d["location"]
                 model.description = d["description"]
                 model.is_active = True
+                if default_store_id and not model.store_id:
+                    model.store_id = default_store_id
                 if model.status not in ["AVAILABLE", "OCCUPIED", "RESERVED"]:
                     model.status = "AVAILABLE"
             else:
@@ -133,6 +159,7 @@ class DockAllocationService:
                     description=d["description"],
                     status="AVAILABLE",
                     is_active=True,
+                    store_id=default_store_id,
                 )
                 session.add(new_dock)
 
@@ -148,7 +175,7 @@ class DockAllocationService:
 
         # 4. Synchronize warehouse_dock table
         try:
-            from app.modules.gate.infrastructure.persistence.models import DockModel
+            from app.modules.gate.infrastructure.persistence.models import DockModel, DockAssignmentModel
             wh_res = await session.execute(select(DockModel))
             wh_docks = wh_res.scalars().all()
             wh_by_code = {d.dock_number: d for d in wh_docks}
@@ -171,11 +198,16 @@ class DockAllocationService:
 
             for d in wh_docks:
                 if d.dock_number not in predefined_codes:
-                    await session.delete(d)
+                    has_assignment = (
+                        await session.execute(
+                            select(DockAssignmentModel.id).where(DockAssignmentModel.dock_number == d.dock_number)
+                        )
+                    ).first()
+                    if not has_assignment:
+                        await session.delete(d)
+            await session.commit()
         except Exception:
-            pass
-
-        await session.commit()
+            await session.rollback()
 
     @staticmethod
     async def seed_default_docks_if_empty(session: AsyncSession) -> None:
@@ -452,6 +484,17 @@ class DockAllocationService:
         req.assigned_at = datetime.now(timezone.utc)
         req.status = "DOCK_ASSIGNED"
 
+        if not req.assigned_store_id and dock.store_id:
+            req.assigned_store_id = dock.store_id
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreModel
+                st_obj = await session.get(StoreModel, dock.store_id)
+                if st_obj:
+                    req.assigned_store_code = st_obj.store_code
+                    req.assigned_store_name = st_obj.store_name
+            except Exception:
+                pass
+
         dock.status = DockStatus.OCCUPIED.value
         await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "OCCUPIED")
 
@@ -519,6 +562,18 @@ class DockAllocationService:
                             driver_name = asn_obj.driver_name
                         if not driver_phone and asn_obj.driver_contact:
                             driver_phone = asn_obj.driver_contact
+                try:
+                    from app.modules.gate.infrastructure.persistence.models import DockAssignmentModel
+                    da_res = await session.execute(
+                        select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge.id)
+                    )
+                    da = da_res.scalar_one_or_none()
+                    if da and da.assigned_store_id:
+                        req.assigned_store_id = da.assigned_store_id
+                        req.assigned_store_code = da.assigned_store_code
+                        req.assigned_store_name = da.assigned_store_name
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -876,6 +931,27 @@ class DockAllocationService:
         await DockAllocationService._sync_gate_entry_status(
             session, req.existing_gate_pass_id, req.vehicle_number, "RELEASED"
         )
+
+        try:
+            from app.modules.gate.infrastructure.persistence.models import DockAssignmentModel, GateEntryModel
+            if req.existing_gate_pass_id:
+                ge_res = await session.execute(
+                    select(GateEntryModel).where(
+                        (GateEntryModel.gate_entry_number == req.existing_gate_pass_id) |
+                        (GateEntryModel.vehicle_number == req.vehicle_number)
+                    )
+                )
+                ge_obj = ge_res.scalars().first()
+                if ge_obj:
+                    da_res = await session.execute(
+                        select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge_obj.id)
+                    )
+                    da = da_res.scalar_one_or_none()
+                    if da:
+                        da.dock_released_by = performed_by
+                        da.dock_released_at = datetime.now(timezone.utc)
+        except Exception:
+            pass
 
         session.add(
             DockAllocationHistoryModel(

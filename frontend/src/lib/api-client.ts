@@ -1792,6 +1792,14 @@ export const api = {
       },
     );
   },
+  async deleteStore(idOrCode: string): Promise<any> {
+    return request<any>(
+      `${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(idOrCode)}`,
+      {
+        method: "DELETE",
+      },
+    );
+  },
   async getStoreHierarchy(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/stores/hierarchy/all`);
   },

@@ -21,6 +21,7 @@ class DockMasterModel(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="AVAILABLE", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 
@@ -39,6 +40,9 @@ class DockAllocationRequestModel(Base):
     priority: Mapped[str] = mapped_column(String(32), nullable=False, default="NORMAL")
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING_ALLOCATION", index=True)
     assigned_dock_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("dock_masters.id", ondelete="SET NULL"), nullable=True)
+    assigned_store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
+    assigned_store_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    assigned_store_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -25,6 +25,7 @@ import {
   Download,
   Grid,
   Box,
+  Trash2,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
@@ -48,6 +49,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { api } from "@/lib/api-client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -203,6 +214,30 @@ function WarehouseStores() {
   const [selectedStoreForBinQr, setSelectedStoreForBinQr] = useState<Store | null>(null);
   const [binQrDataUrl, setBinQrDataUrl] = useState<string | null>(null);
   const [loadingBinQr, setLoadingBinQr] = useState(false);
+
+  // Delete Store State
+  const [deleteStoreModal, setDeleteStoreModal] = useState<Store | null>(null);
+  const [deletingStore, setDeletingStore] = useState(false);
+
+  const handleDeleteStore = async () => {
+    if (!deleteStoreModal) return;
+    if (stores.length <= 1) {
+      toast.error("Cannot delete the sole remaining Chemical Store in the system.");
+      setDeleteStoreModal(null);
+      return;
+    }
+    setDeletingStore(true);
+    try {
+      await api.deleteStore(deleteStoreModal.id);
+      toast.success(`Store ${deleteStoreModal.store_name} (${deleteStoreModal.store_code}) deleted.`);
+      setDeleteStoreModal(null);
+      await loadData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete store");
+    } finally {
+      setDeletingStore(false);
+    }
+  };
 
   const handleViewZoneQR = async (z: any, parentStore: Store) => {
     setSelectedZoneForQr(z);
@@ -1034,6 +1069,16 @@ function WarehouseStores() {
                                   }
                                 >
                                   <Power className="size-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => setDeleteStoreModal(store)}
+                                  className="size-7 rounded-lg text-muted-foreground hover:text-rose-500"
+                                  title="Delete Store"
+                                  disabled={stores.length <= 1}
+                                >
+                                  <Trash2 className="size-3.5" />
                                 </Button>
                               </div>
                             </td>
@@ -2087,6 +2132,36 @@ function WarehouseStores() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Store Confirmation Modal */}
+      <AlertDialog
+        open={Boolean(deleteStoreModal)}
+        onOpenChange={() => setDeleteStoreModal(null)}
+      >
+        <AlertDialogContent className="rounded-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-destructive">
+              Delete Store {deleteStoreModal?.store_name}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete store <strong>{deleteStoreModal?.store_code}</strong> ({deleteStoreModal?.store_name}) and all its associated zones and bins. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-xl bg-destructive hover:bg-destructive/90 text-white font-semibold"
+              disabled={deletingStore}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteStore();
+              }}
+            >
+              {deletingStore && <Loader2 className="size-4 animate-spin mr-1" />} Delete Store
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
