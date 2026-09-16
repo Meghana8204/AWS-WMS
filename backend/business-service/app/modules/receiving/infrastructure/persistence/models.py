@@ -1,4 +1,4 @@
-"""
+﻿"""
 SQLAlchemy ORM models for the Goods Receiving / GRN module.
 
 Workflow:
@@ -21,7 +21,6 @@ Important business rules:
 6. Each GRN line can have multiple batches
 7. One Batch -> One QR Code
 """
-
 from __future__ import annotations
 
 import uuid
@@ -83,14 +82,14 @@ class GrnModel(Base):
     po_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         GUID,
         nullable=True,
-        unique=True,
+        unique=False,
         index=True,
     )
 
     po_number: Mapped[Optional[str]] = mapped_column(
         String(64),
         nullable=True,
-        unique=True,
+        unique=False,
         index=True,
     )
 
@@ -303,6 +302,21 @@ class GrnModel(Base):
         cascade="all, delete-orphan",
     )
 
+    documents: Mapped[list["GrnDocumentModel"]] = relationship(
+        back_populates="grn",
+        cascade="all, delete-orphan",
+    )
+
+    receiving_sessions: Mapped[list["GrnReceivingSessionModel"]] = relationship(
+        back_populates="grn",
+        cascade="all, delete-orphan",
+    )
+
+
+# ============================================================
+# 2. GRN ITEM / MATERIAL RECEIVING DETAILS
+# ============================================================
+
 
 # ============================================================
 # 2. GRN ITEM / MATERIAL RECEIVING DETAILS
@@ -363,6 +377,11 @@ class GrnLineModel(Base):
     )
 
     material_category: Mapped[Optional[str]] = mapped_column(
+        String(128),
+        nullable=True,
+    )
+
+    variant_code: Mapped[Optional[str]] = mapped_column(
         String(128),
         nullable=True,
     )
@@ -612,18 +631,7 @@ class GrnDamageEvidenceModel(Base):
 
 
 class GrnBatchModel(Base):
-    """
-    Stores batches created from Quality Approved Quantity.
-
-    Example:
-
-    Quality Approved = 200 PCS
-
-    BATCH-001 = 100
-    BATCH-002 = 100
-
-    Total Batch Quantity must equal 200.
-    """
+    """Stores batches created from quality-approved quantity."""
 
     __tablename__ = "grn_batch"
 
@@ -787,18 +795,7 @@ class GrnDocumentModel(Base):
 
 
 class GrnBatchQrModel(Base):
-    """
-    Material-wise QR code.
-
-    Business rule:
-
-        One Material (item_code) -> One Unique QR
-        All batches of the same material share this QR code and QR ID.
-
-    Example:
-
-        Material Code: ITEM-A -> QR-ITEM-A (Shared across BATCH-001, BATCH-002, etc.)
-    """
+    """Stores the material-wise QR code shared by batches of the same item."""
 
     __tablename__ = "grn_batch_qr"
 
@@ -867,14 +864,7 @@ class GrnBatchQrModel(Base):
 
 
 class GrnDamageLotModel(Base):
-    """
-    Stores Damage Lot created for damaged / rejected material lines.
-
-    Chain of Connection:
-        GRN -> GRN Line -> Damage Evidence -> Damage Lot -> Damage QR -> Quarantine Area
-
-    Example QR ID: DMG-GRN-2026-0001-MAT-001-01
-    """
+    """Stores damage lots created for damaged or rejected material lines."""
 
     __tablename__ = "grn_damage_lot"
 
@@ -1194,10 +1184,7 @@ class InventoryReceiptPostingModel(Base):
 
 
 class GrnReceivingSessionModel(Base):
-    """
-    Child table capturing each receiving session/truck arrival for multi-delivery POs.
-    Source of truth for vehicle, driver, and gate entry per receiving session.
-    """
+    """Captures each receiving session or truck arrival for multi-delivery POs."""
 
     __tablename__ = "grn_receiving_session"
 

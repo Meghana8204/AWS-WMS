@@ -101,13 +101,45 @@ class DockOptionResponse(ApiModel):
     status: str | None = None
 
 
+class GrnHistoryItemResponse(ApiModel):
+    grn_id: str
+    grn_number: str
+    receipt_date: datetime | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
+    dock_number: str | None = None
+    received_quantity: Decimal = Decimal("0")
+    accepted_quantity: Decimal = Decimal("0")
+    rejected_quantity: Decimal = Decimal("0")
+    cumulative_received: Decimal = Decimal("0")
+    balance_quantity: Decimal = Decimal("0")
+    status: str = "COMPLETED"
+
+
+class PoProgressResponse(ApiModel):
+    po_quantity: Decimal = Decimal("0")
+    cumulative_received: Decimal = Decimal("0")
+    cumulative_accepted: Decimal = Decimal("0")
+    cumulative_rejected: Decimal = Decimal("0")
+    balance_quantity: Decimal = Decimal("0")
+    percentage_received: Decimal = Decimal("0")
+    po_status: str = "OPEN"
+
+
 class GrnContextLineResponse(ApiModel):
     item_code: str
     material_name: str | None = None
     material_category: str | None = None
     uom: str | None = None
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
 
     ordered_quantity: Decimal | None = None
+    cumulative_received_quantity: Decimal = Decimal("0")
+    cumulative_accepted_quantity: Decimal = Decimal("0")
+    cumulative_rejected_quantity: Decimal = Decimal("0")
     received_quantity: Decimal = Decimal("0")
     good_quantity: Decimal = Decimal("0")
     damaged_quantity: Decimal = Decimal("0")
@@ -144,6 +176,7 @@ class GrnContextResponse(ApiModel):
 
     supplier_name: str | None = None
     supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     warehouse_id: str | None = None
     warehouse_name: str | None = None
@@ -158,6 +191,8 @@ class GrnContextResponse(ApiModel):
     prefilled_dock_number: str | None = None
     field_sources: dict | None = None
     lines: list[GrnContextLineResponse] = Field(default_factory=list)
+    grn_history: list[GrnHistoryItemResponse] = Field(default_factory=list)
+    po_progress: PoProgressResponse | None = None
 
 
 class CreateGrnHeaderRequest(ApiModel):
@@ -176,8 +211,12 @@ class CreateGrnHeaderRequest(ApiModel):
 
     receipt_type: ReceiptType = "PO_RECEIPT"
 
+    grn_id: str | None = None
     po_id: str | None = None
     po_number: str | None = Field(default=None, max_length=64)
+
+    gate_entry_id: str | None = None
+    gate_entry_number: str | None = Field(default=None, max_length=64)
 
     # Manual receiving dock selected on the GRN page.
     dock_number: str = Field(min_length=1, max_length=32)
@@ -195,8 +234,11 @@ class CreateGrnHeaderRequest(ApiModel):
     verification_notes: str | None = None
 
     @field_validator(
+        "grn_id",
         "po_id",
         "po_number",
+        "gate_entry_id",
+        "gate_entry_number",
         "invoice_number",
         "supplier_name",
         "supplier_company_name",
@@ -257,6 +299,19 @@ class GrnHeaderResponse(ApiModel):
     updated_at: datetime | None = None
 
 
+class UpdateGrnStepRequest(ApiModel):
+    current_step: int = Field(ge=1, le=6)
+    max_completed_step: int | None = Field(default=None, ge=0, le=6)
+
+
+class UpdateGrnStepResponse(ApiModel):
+    grn_id: str
+    status: str
+    current_step: int
+    max_completed_step: int
+    completed_steps: list[int] = Field(default_factory=list)
+
+
 # ============================================================================
 # PAGE 2 - ITEM RECEIVING DETAILS
 # ============================================================================
@@ -273,9 +328,15 @@ class GrnLineReceivingRequest(ApiModel):
     """
 
     item_code: str = Field(min_length=1, max_length=64)
+    material_name: str | None = Field(default=None, max_length=256)
+    material_category: str | None = Field(default=None, max_length=128)
+    variant_code: str | None = Field(default=None, max_length=128)
+    uom: str | None = Field(default=None, max_length=32)
 
     good_quantity: NonNegativeQuantity = Decimal("0")
     damaged_quantity: NonNegativeQuantity = Decimal("0")
+    allow_over_receipt: bool = False
+    over_receipt_reason: str | None = None
 
     @field_validator("item_code")
     @classmethod
@@ -290,6 +351,8 @@ class GrnLineReceivingRequest(ApiModel):
 
 class UpdateGrnLinesRequest(ApiModel):
     lines: list[GrnLineReceivingRequest] = Field(min_length=1)
+    allow_over_receipt: bool = False
+    over_receipt_reason: str | None = None
 
 
 class DamageEvidenceResponse(ApiModel):
@@ -314,6 +377,10 @@ class GrnLineResponse(ApiModel):
     material_name: str | None = None
     material_category: str | None = None
     uom: str | None = None
+    variant_code: str | None = None
+    size: str | None = None
+    color: str | None = None
+    grade: str | None = None
 
     ordered_quantity: Decimal | None = None
     received_quantity: Decimal = Decimal("0")
@@ -372,12 +439,15 @@ class QualityInspectionLineRequest(ApiModel):
     the allowed decisions in one central place.
     """
 
-    grn_line_id: str = Field(min_length=1)
+    grn_line_id: str | None = None
+    item_code: str | None = None
     quality_result: str = Field(min_length=1, max_length=32)
 
     accepted_quantity: NonNegativeQuantity = Decimal("0")
     rejected_quantity: NonNegativeQuantity = Decimal("0")
     quality_approved_quantity: NonNegativeQuantity = Decimal("0")
+    good_quantity: NonNegativeQuantity | None = None
+    damaged_quantity: NonNegativeQuantity | None = None
 
     @field_validator("quality_result")
     @classmethod
@@ -397,11 +467,10 @@ class QualityInspectionRequest(ApiModel):
 class QualityInspectionLineResponse(ApiModel):
     grn_line_id: str
     item_code: str
-
-    quality_result: str
+    quality_result: str | None = None
     accepted_quantity: Decimal | None = None
-    rejected_quantity: Decimal
-    quality_approved_quantity: Decimal
+    rejected_quantity: Decimal | None = None
+    quality_approved_quantity: Decimal | None = None
 
 
 class QualityInspectionResponse(ApiModel):
@@ -513,10 +582,16 @@ class GrnDamageVendorNotifyResponse(ApiModel):
     status: str
     grn_number: str
     vendor_email: str
+    supplier_email: str = ""
+    procurement_email: str = ""
+    supplier_status: str = "FAILED"  # SENT | FAILED | NOT_CONFIGURED
+    procurement_status: str = "FAILED"  # SENT | FAILED | NOT_CONFIGURED
+    supplier_error: str | None = None
+    procurement_error: str | None = None
     email_delivered: bool
     email_html_url: str | None = None
     procurement_notified: bool
-    summary: str
+    summary: str | None = None
 
 
 # ============================================================================
@@ -573,11 +648,19 @@ class CompleteGrnResponse(ApiModel):
     grn_number: str | None = None
 
     status: str
+    po_status: str | None = None
 
     posted_by: str | None = None
     posted_at: datetime | None = None
 
     message: str | None = None
+    procurement_notified: bool = False
+    vendor_email_sent: bool = False
+    total_ordered_qty: float | None = None
+    total_good_qty: float | None = None
+    total_damaged_qty: float | None = None
+    total_pending_delivery_qty: float | None = None
+    total_acceptable_qty_outstanding: float | None = None
 
 
 # ============================================================================
@@ -602,6 +685,7 @@ class GrnDetailResponse(ApiModel):
 
     supplier_name: str | None = None
     supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     warehouse_id: str | None = None
     warehouse_name: str | None = None
@@ -621,6 +705,8 @@ class GrnDetailResponse(ApiModel):
 
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    current_step: int = 1
+    max_completed_step: int = 0
 
     lines: list[GrnLineResponse] = Field(default_factory=list)
     documents: list[GrnDocumentResponse] = Field(default_factory=list)
@@ -636,15 +722,21 @@ class GrnSummaryResponse(ApiModel):
 
     po_number: str | None = None
     supplier_name: str | None = None
+    supplier_company_name: str | None = None
+    supplier_email: str | None = None
 
     receipt_type: str
     status: str
 
     warehouse_name: str | None = None
     dock_number: str | None = None
+    vehicle_number: str | None = None
+    driver_name: str | None = None
 
     receipt_date: datetime | None = None
     received_by: str | None = None
+    current_step: int = 1
+    max_completed_step: int = 0
 
 
 class GrnListResponse(ApiModel):

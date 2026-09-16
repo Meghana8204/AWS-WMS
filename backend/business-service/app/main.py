@@ -1,7 +1,7 @@
 """
 FastAPI entrypoint for ams-wms-business-service.
 """
-# Reload triggered for Material Master schema update
+# Reload triggered for Unexpected Delivery GRN Quality schema 2
 from __future__ import annotations
 
 import asyncio
@@ -149,6 +149,15 @@ async def lifespan(app: FastAPI):
             "ON material (material_code) WHERE material_code IS NOT NULL"
         )
         logger.info("Ensured canonical Material Master columns and legacy data mapping")
+
+        # Allow nullable PO columns in inventory_receipt_posting for Unexpected Delivery
+        try:
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN po_id DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN po_number DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN asn_id DROP NOT NULL")
+            await run_ddl("ALTER TABLE inventory_receipt_posting ALTER COLUMN asn_number DROP NOT NULL")
+        except Exception:
+            pass
 
         # Add columns to asn
         for col in [
@@ -395,6 +404,7 @@ async def lifespan(app: FastAPI):
                     po_date DATE NOT NULL DEFAULT CURRENT_DATE,
                     status VARCHAR(32) NOT NULL,
                     rfq_id UUID REFERENCES rfq(id),
+                    quotation_id UUID REFERENCES quotation(id),
                     supplier_id UUID REFERENCES supplier(id),
                     supplier_name VARCHAR(255),
                     warehouse_id VARCHAR(64),
@@ -438,6 +448,7 @@ async def lifespan(app: FastAPI):
         # Ensure purchase_order has missing columns
         for col in [
             ("subtotal", "NUMERIC(18, 4) DEFAULT 0"),
+            ("quotation_id", "UUID REFERENCES quotation(id)"),
             ("discount_amount", "NUMERIC(18, 4) DEFAULT 0"),
             ("tax_amount", "NUMERIC(18, 4) DEFAULT 0"),
             ("freight_charges", "NUMERIC(18, 4) DEFAULT 0"),
@@ -515,6 +526,11 @@ async def lifespan(app: FastAPI):
                 ("driver_phone", "VARCHAR(32)"),
                 ("asn_number", "VARCHAR(64)"),
                 ("po_number", "VARCHAR(64)"),
+                ("grn_number", "VARCHAR(64)"),
+                ("supplier_name", "VARCHAR(255)"),
+                ("notification_type", "VARCHAR(64)"),
+                ("idempotency_key", "VARCHAR(255)"),
+                ("payload_json", "TEXT"),
             ]:
                 try:
                     await run_ddl(f"ALTER TABLE notification ADD COLUMN IF NOT EXISTS {col} {col_type}")
@@ -857,16 +873,21 @@ async def lifespan(app: FastAPI):
                     task_number VARCHAR(64) UNIQUE NOT NULL,
                     grn_id UUID,
                     grn_number VARCHAR(64),
+                    handling_unit_id UUID,
                     item_code VARCHAR(64) NOT NULL,
                     material_name VARCHAR(256),
                     quantity NUMERIC(18, 4) NOT NULL,
                     uom VARCHAR(32),
                     warehouse_id VARCHAR(64),
                     source_location VARCHAR(64),
+                    destination_store_id UUID,
+                    destination_zone_id UUID,
+                    destination_bin_id UUID,
                     destination_location_id UUID,
                     destination_zone VARCHAR(32),
                     destination_rack VARCHAR(32),
                     destination_bin VARCHAR(32),
+                    destination_bin_code VARCHAR(64),
                     location_assigned_by VARCHAR(128),
                     location_assigned_at TIMESTAMP WITH TIME ZONE,
                     assigned_to VARCHAR(128),
@@ -877,12 +898,27 @@ async def lifespan(app: FastAPI):
                     rotation_policy VARCHAR(16),
                     placement_metadata JSON,
                     status VARCHAR(32) NOT NULL DEFAULT 'OPEN',
+                    started_by VARCHAR(128),
+                    started_at TIMESTAMP WITH TIME ZONE,
+                    completed_by VARCHAR(128),
+                    completed_at TIMESTAMP WITH TIME ZONE,
                     created_by VARCHAR(128) NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         except Exception: pass
         for column, column_type in [
+            ("handling_unit_id", "UUID"),
+            ("destination_store_id", "UUID"),
+            ("destination_zone_id", "UUID"),
+            ("destination_bin_id", "UUID"),
+            ("destination_location_id", "UUID"),
+            ("destination_zone", "VARCHAR(128)"),
+            ("destination_rack", "VARCHAR(64)"),
+            ("destination_bin", "VARCHAR(64)"),
+            ("destination_bin_code", "VARCHAR(64)"),
+            ("location_assigned_by", "VARCHAR(128)"),
+            ("location_assigned_at", "TIMESTAMP WITH TIME ZONE"),
             ("assigned_to", "VARCHAR(128)"),
             ("assigned_by", "VARCHAR(128)"),
             ("assigned_at", "TIMESTAMP WITH TIME ZONE"),
@@ -890,6 +926,10 @@ async def lifespan(app: FastAPI):
             ("handling_requirement", "VARCHAR(128)"),
             ("rotation_policy", "VARCHAR(16)"),
             ("placement_metadata", "JSON"),
+            ("started_by", "VARCHAR(128)"),
+            ("started_at", "TIMESTAMP WITH TIME ZONE"),
+            ("completed_by", "VARCHAR(128)"),
+            ("completed_at", "TIMESTAMP WITH TIME ZONE"),
         ]:
             try:
                 await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {column} {column_type}")
@@ -1117,6 +1157,7 @@ async def lifespan(app: FastAPI):
             await run_ddl("ALTER TABLE grn_batch_qr ADD COLUMN IF NOT EXISTS qr_payload TEXT;")
             await run_ddl("ALTER TABLE grn_batch_qr ALTER COLUMN batch_id DROP NOT NULL;")
             await run_ddl("CREATE UNIQUE INDEX IF NOT EXISTS uq_grn_batch_qr_item_code ON grn_batch_qr (item_code);")
+            await run_ddl("ALTER TABLE grn_line ADD COLUMN IF NOT EXISTS variant_code VARCHAR(128);")
             logger.debug("Ensured GRN module tables exist")
         except Exception as e:
             logger.warning(f"Failed to create GRN module tables: {e}")
@@ -1217,13 +1258,9 @@ async def lifespan(app: FastAPI):
     scheduler.start()
 
     try:
-        from app.database.session import session_scope
-        from app.modules.dock.application.service import DockAllocationService
-        async with session_scope() as session:
-            await DockAllocationService.sync_predefined_docks(session)
-        logger.info("Predefined docks synchronized successfully (9 static docks active)")
+        _consumer_task = asyncio.create_task(start_notification_consumer())
     except Exception as exc:
-        logger.warning(f"Predefined docks synchronization failed: {exc}")
+        logger.debug(f"Notification consumer task failed to start: {exc}")
 
     logger.info("business-service started", extra={"extra_fields": {"environment": settings.environment}})
 

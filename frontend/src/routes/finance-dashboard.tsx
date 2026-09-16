@@ -166,7 +166,7 @@ function FinanceDashboard() {
                           </p>
                           <p className="text-[11px] text-muted-foreground">
                             {rfqApprovals.length} Proposal(s) awaiting signature ·{" "}
-                            {rfqApprovals.map((p: any) => p.supplierName).join(", ")}
+                            {rfqApprovals.map((p: any) => p.supplier_name || p.supplierName || "Supplier").join(", ")}
                           </p>
                         </div>
                       </div>

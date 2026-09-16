@@ -102,7 +102,7 @@ async def get_current_user(
                 subject="admin",
                 username="admin",
                 roles=["ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                permissions=["gate:read", "gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         elif token == "mock-jwt-warehouse-token":
@@ -110,7 +110,7 @@ async def get_current_user(
                 subject="warehouse_manager",
                 username="warehouse_manager",
                 roles=["WAREHOUSE", "ADMIN"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                permissions=["gate:read", "gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         elif token == "mock-jwt-gate-entry-token":
@@ -118,7 +118,7 @@ async def get_current_user(
                 subject="gate_security",
                 username="gate_security",
                 roles=["GATE_SECURITY"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write"],
+                permissions=["gate:read", "gate:write", "gate:verify", "gate:entry:create", "gate:entry:read", "gate:entry:verify"],
                 raw_claims={},
             )
         elif token == "mock-jwt-grn-token":
@@ -126,7 +126,7 @@ async def get_current_user(
                 subject="grn_officer",
                 username="grn_officer",
                 roles=["GRN", "WAREHOUSE"],
-                permissions=["gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
+                permissions=["gate:read", "gate:entry:create", "gate:entry:read", "gate:entry:verify", "gate:write", "warehouse:write"],
                 raw_claims={},
             )
         elif token == "mock-jwt-warehouse-token":
@@ -317,6 +317,11 @@ def require_permission(*permissions: str):
     async def _checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
         user_roles = set(user.roles)
         if "ADMIN" in user_roles or "WAREHOUSE" in user_roles or "PROCUREMENT" in user_roles or "GRN" in user_roles:
+            return user
+        if "GATE_SECURITY" in user_roles and any(
+            permission in {"gate:read", "gate:write", "gate:verify", "gate:entry:read", "gate:entry:create", "gate:entry:verify"}
+            for permission in permissions
+        ):
             return user
         if any(p in user.permissions for p in permissions):
             return user

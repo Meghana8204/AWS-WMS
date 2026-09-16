@@ -40,6 +40,7 @@ function SupplierDashboard() {
   const [rfqs, setRfqs] = useState<any[]>([]);
   const [quotations, setQuotations] = useState<any[]>([]);
   const [asns, setAsns] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   const [qualityIssues, setQualityIssues] = useState<any[]>([]);
 
   useEffect(() => {
@@ -62,16 +63,18 @@ function SupplierDashboard() {
     const fetchAllData = async () => {
       try {
         const sid = userInfo.supplierId || "";
-        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedQualityIssues] = await Promise.all([
+        const [fetchedRfqs, fetchedQuotes, fetchedAsns, fetchedPurchaseOrders, fetchedQualityIssues] = await Promise.all([
           api.getRfqs(sid),
           api.getQuotations(undefined, sid),
           api.getAsns(sid),
+          api.getPurchaseOrders({ supplierId: sid }),
           api.getQualityIssues(),
         ]);
 
         setRfqs(fetchedRfqs);
         setQuotations(fetchedQuotes);
         setAsns(fetchedAsns);
+        setPurchaseOrders(fetchedPurchaseOrders);
         setQualityIssues(fetchedQualityIssues);
       } catch (error: any) {
         toast.error("Error loading dashboard data: " + error.message);
@@ -94,10 +97,16 @@ function SupplierDashboard() {
 
   // Calculated stats
   const rfqsReceived = rfqs.length;
-  const bidRfqIds = new Set(quotations.map((q) => q.rfq_id));
+  const bidRfqIds = new Set(quotations.map((q) => q.rfq_id || q.rfqId));
   const rfqsPending = rfqs.filter((r) => !bidRfqIds.has(r.id)).length;
   const quotesSubmitted = quotations.length;
   const asnsDispatched = asns.length;
+  const asnsByPoId = asns.reduce<Record<string, any[]>>((groups, asn) => {
+    const key = asn.po_id || asn.poId || asn.po_number || asn.poNumber;
+    if (!key) return groups;
+    groups[String(key)] = [...(groups[String(key)] || []), asn];
+    return groups;
+  }, {});
 
   return (
     <AppShell title="Supplier Portal" subtitle={`Welcome back, ${username}`}>
@@ -180,25 +189,32 @@ function SupplierDashboard() {
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               {qualityIssues.slice(0, 2).map((issue) => (
-                <div key={issue.gate_entry_id} className="rounded-xl border bg-card p-4">
+                <div key={issue.gate_entry_id || issue.id} className="rounded-xl border bg-card p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono font-bold">{issue.asn_number}</p>
+                      <p className="font-mono font-bold">{issue.asn_number || issue.claim_number || "Issue Report"}</p>
                       <p className="text-xs text-muted-foreground">{issue.po_number}</p>
                     </div>
                     <span className="rounded-full bg-destructive/10 px-2 py-1 text-[10px] font-bold text-destructive">
-                      INSPECTION FAILED
+                      {issue.status || "INSPECTION FAILED"}
                     </span>
                   </div>
                   {issue.image_base64 && (
                     <img
-                      src={`data:${issue.content_type};base64,${issue.image_base64}`}
+                      src={`data:${issue.content_type || 'image/jpeg'};base64,${issue.image_base64}`}
+                      alt="Failed receiving inspection"
+                      className="max-h-56 w-full rounded-lg border object-contain"
+                    />
+                  )}
+                  {issue.photos?.[0]?.image_base64 && (
+                    <img
+                      src={`data:${issue.photos[0].content_type || 'image/jpeg'};base64,${issue.photos[0].image_base64}`}
                       alt="Failed receiving inspection"
                       className="max-h-56 w-full rounded-lg border object-contain"
                     />
                   )}
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Vehicle {issue.vehicle_number} · Forwarded {issue.forwarded_at ? new Date(issue.forwarded_at).toLocaleString() : "—"}
+                    Vehicle {issue.vehicle_number || "—"} · Forwarded {issue.forwarded_at ? new Date(issue.forwarded_at).toLocaleString() : (issue.sent_at ? new Date(issue.sent_at).toLocaleString() : "—")}
                   </p>
                 </div>
               ))}
@@ -245,7 +261,7 @@ function SupplierDashboard() {
                         >
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-bold">{rfq.rfqNumber}</h4>
+                              <h4 className="text-sm font-bold">{rfq.rfqNumber || rfq.rfq_number}</h4>
                               <span
                                 className={cn(
                                   "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
@@ -260,7 +276,7 @@ function SupplierDashboard() {
                             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                               <span className="flex items-center gap-1">
                                 <Calendar className="size-3.5" /> Delivery:{" "}
-                                {rfq.requiredDeliveryDate || "N/A"}
+                                {rfq.requiredDeliveryDate || rfq.required_delivery_date || "N/A"}
                               </span>
                               <span className="flex items-center gap-1">
                                 <Building2 className="size-3.5" /> WH: {rfq.warehouse}
@@ -385,12 +401,57 @@ function SupplierDashboard() {
           <TabsContent value="asns">
             <Card className="border-border/40 shadow-soft">
               <CardHeader>
-                <CardTitle className="text-base font-bold">Advance Shipping Notices</CardTitle>
+                <CardTitle className="text-base font-bold">Purchase Orders & Advance Shipping Notices</CardTitle>
                 <CardDescription className="text-xs">
-                  Track shipment transit notifications and vehicle arrivals.
+                  Create multiple shipment notices against the same purchase order and track dispatched ASNs.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-0">
+                <div className="border-b border-border/60">
+                  {purchaseOrders.length === 0 ? (
+                    <div className="p-8 text-center text-xs text-muted-foreground">
+                      No issued purchase orders available for ASN creation.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-border/60">
+                      {purchaseOrders.map((po, idx) => {
+                        const poAsns = [
+                          ...(asnsByPoId[String(po.id)] || []),
+                          ...(asnsByPoId[String(po.poNumber || po.po_number)] || []),
+                        ];
+                        return (
+                          <div
+                            key={po.id || `po-${idx}`}
+                            className="flex flex-col gap-4 p-5 transition-colors hover:bg-muted/10 lg:flex-row lg:items-center lg:justify-between"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h4 className="font-mono text-sm font-bold">{po.poNumber || po.po_number}</h4>
+                                <span className="rounded-full bg-primary-soft/40 px-2 py-0.5 text-[10px] font-bold uppercase text-primary">
+                                  {po.status}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span>{po.items?.length || 0} items</span>
+                                <span>ASNs created: {poAsns.length}</span>
+                                <span>
+                                  Delivery: {po.expectedDeliveryDate || po.expected_delivery_date || "N/A"}
+                                </span>
+                              </div>
+                            </div>
+                            <Button asChild size="sm" className="rounded-xl text-xs">
+                              <Link to="/supplier/asns/new" search={{ poId: po.id }}>
+                                <Plus className="mr-1.5 size-3.5" />
+                                {poAsns.length > 0 ? "Add ASN" : "Create ASN"}
+                              </Link>
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
                 {asns.length === 0 ? (
                   <div className="p-8 text-center text-xs text-muted-foreground">
                     No ASNs dispatched.
@@ -404,11 +465,11 @@ function SupplierDashboard() {
                       >
                         <div className="space-y-1">
                           <div className="flex items-center gap-2">
-                            <h4 className="text-sm font-bold">ASN: {asn.asn_number}</h4>
+                            <h4 className="text-sm font-bold">ASN: {asn.asn_number || asn.asnNumber}</h4>
                             <span
                               className={cn(
                                 "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
-                                asn.status === "Received"
+                                (asn.status === "Received" || asn.status === "RECEIVED")
                                   ? "bg-success-soft/30 text-success"
                                   : "bg-blue-soft/30 text-blue-500",
                               )}
@@ -417,11 +478,11 @@ function SupplierDashboard() {
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            <span>Vehicle: {asn.vehicle_number || "—"}</span>
+                            <span>Vehicle: {asn.vehicle_number || asn.vehicleNumber || "—"}</span>
                             <span>
                               Arrival:{" "}
-                              {asn.expected_arrival_at
-                                ? new Date(asn.expected_arrival_at).toLocaleString()
+                              {(asn.expected_arrival_at || asn.expectedArrivalAt)
+                                ? new Date(asn.expected_arrival_at || asn.expectedArrivalAt).toLocaleString()
                                 : "—"}
                             </span>
                           </div>
@@ -431,7 +492,7 @@ function SupplierDashboard() {
                             Lines: {asn.lines?.length || 0}
                           </span>
                           <span className="block text-muted-foreground mt-0.5">
-                            Created: {new Date(asn.created_at).toLocaleDateString()}
+                            Created: {(asn.created_at || asn.createdAt) ? new Date(asn.created_at || asn.createdAt).toLocaleDateString() : "—"}
                           </span>
                           <Button
                             asChild

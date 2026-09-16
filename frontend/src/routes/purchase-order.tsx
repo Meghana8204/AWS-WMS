@@ -30,7 +30,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { api } from "@/lib/api-client";
+import { api, BUSINESS_API_URL } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 type POSearch = {
@@ -129,13 +129,35 @@ function PurchaseOrder() {
     );
   }
 
-  const subtotal = Number(poData.subtotal) || 0;
-  const discountAmount = Number(poData.discountAmount) || 0;
-  const freightCharges = Number(poData.freightCharges) || 0;
-  const taxAmount = Number(poData.taxAmount) || 0;
+  const toNumber = (value: unknown) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  const selectedQuotation = poData.quotation || null;
+  const quotedLines = Array.isArray(selectedQuotation?.lines) ? selectedQuotation.lines : [];
+  const quotationSubtotal = quotedLines.reduce((sum: number, line: any) => {
+    return sum + toNumber(line.quantity) * toNumber(line.unitPrice);
+  }, 0);
+  const subtotal = quotationSubtotal || toNumber(poData.subtotal);
+  const discountAmount = toNumber(selectedQuotation?.discount ?? poData.discountAmount);
+  const freightCharges = toNumber(selectedQuotation?.freightCharges ?? poData.freightCharges);
+  const quotationTaxPercentage = toNumber(selectedQuotation?.tax);
   const taxableAmount = subtotal - discountAmount;
+  const taxAmount = selectedQuotation
+    ? Math.max(taxableAmount, 0) * quotationTaxPercentage / 100
+    : toNumber(poData.taxAmount);
   const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
-  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const taxPercentage = selectedQuotation
+    ? quotationTaxPercentage
+    : taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const quotationTotal =
+    toNumber(selectedQuotation?.totalAmount) ||
+    toNumber(poData.totalAmount) ||
+    Math.max(taxableAmount, 0) + taxAmount + freightCharges;
+  const itemsQuoted = quotedLines.length || poData.items?.length || 0;
+  const expectedDelivery =
+    selectedQuotation?.expectedDeliveryDate || poData.expectedDeliveryDate || "Not specified";
+  const paymentTerms = selectedQuotation?.paymentTerms || poData.paymentTerms || "Not specified";
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -360,7 +382,7 @@ function PurchaseOrder() {
             icon={CheckCircle2}
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <SummaryMetric label="Items quoted" value={`${poData.items?.length || 0}`} />
+              <SummaryMetric label="Items quoted" value={`${itemsQuoted}`} />
               <SummaryMetric label="Subtotal" value={formatCurrency(subtotal)} />
               <SummaryMetric
                 label={`Discount (${discountPercentage.toFixed(2)}%)`}
@@ -374,14 +396,14 @@ function PurchaseOrder() {
               <SummaryMetric label="Freight charges" value={formatCurrency(freightCharges)} />
               <SummaryMetric
                 label="Quotation total"
-                value={formatCurrency(Number(poData.totalAmount) || 0)}
+                value={formatCurrency(quotationTotal)}
                 valueClassName="text-primary"
                 emphasis
               />
             </div>
             <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
-              <span>Expected delivery: {poData.expectedDeliveryDate || "Not specified"}</span>
-              <span>Payment: {poData.paymentTerms || "Not specified"}</span>
+              <span>Expected delivery: {expectedDelivery}</span>
+              <span>Payment: {paymentTerms}</span>
             </div>
           </SectionCard>
 
@@ -537,20 +559,33 @@ function PurchaseOrder() {
             {damagedGoodsData.materials?.some((m: any) => m.photos && m.photos.length > 0) && (
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Attached Damage Evidence Photos</h4>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {damagedGoodsData.materials.flatMap((m: any) =>
-                    (m.photos || []).map((p: any) => (
-                      <div
-                        key={p.id}
-                        className="group relative rounded-xl overflow-hidden border bg-black/5 cursor-pointer"
-                        onClick={() => setEnlargedPhoto(p.url)}
-                      >
-                        <img src={p.url} alt={p.file_name} className="h-24 w-full object-cover group-hover:scale-105 transition-transform" />
-                        <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-0.5 truncate font-mono">
-                          {m.item_code}: {p.file_name}
+                    (m.photos || []).map((p: any) => {
+                      const fullUrl = p.url?.startsWith("http") || p.url?.startsWith("data:")
+                        ? p.url
+                        : `${BUSINESS_API_URL}${p.url?.startsWith("/") ? "" : "/"}${p.url}`;
+                      return (
+                        <div
+                          key={p.id}
+                          className="group relative rounded-xl overflow-hidden border bg-black/5 cursor-pointer shadow-xs hover:border-rose-400 hover:shadow-md transition-all"
+                          onClick={() => setEnlargedPhoto(fullUrl)}
+                        >
+                          <img
+                            src={fullUrl}
+                            alt={p.file_name}
+                            className="h-28 w-full object-cover group-hover:scale-105 transition-transform"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23e11d48' stroke-width='2'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
+                            }}
+                          />
+                          <div className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[10px] px-2 py-1 truncate font-mono">
+                            {m.item_code}: {p.file_name}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>

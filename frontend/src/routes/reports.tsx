@@ -38,7 +38,7 @@ export const Route = createFileRoute("/reports")({
 
 type ReportTab = "inventory" | "movement" | "putaway" | "low-stock" | "quarantine";
 
-export function WarehouseReportsPage() {
+function WarehouseReportsPage() {
   const [activeTab, setActiveTab] = useState<ReportTab>("inventory");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

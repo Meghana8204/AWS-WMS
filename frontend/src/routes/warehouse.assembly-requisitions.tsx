@@ -51,7 +51,7 @@ export const Route = createFileRoute("/warehouse/assembly-requisitions")({
   component: WarehouseAssemblyRequisitionsPage,
 });
 
-export function WarehouseAssemblyRequisitionsPage() {
+function WarehouseAssemblyRequisitionsPage() {
   const [requisitions, setRequisitions] = useState<any[]>([]);
   const [stores, setStores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

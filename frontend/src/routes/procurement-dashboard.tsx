@@ -266,22 +266,27 @@ function ProcurementDashboard() {
 
               {supplierResults.length > 0 && (
                 <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">
-                  {supplierResults.slice(0, 5).map((s) => (
-                    <Link
-                      key={s.supplierId}
-                      to="/supplier/$supplierId"
-                      params={{ supplierId: s.supplierId }}
-                      className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
-                    >
-                      <Building2 className="size-4 text-primary" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{s.supplierName}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {s.supplierCode || `${s.supplierId.substring(0, 8)}...`}
-                        </p>
-                      </div>
-                    </Link>
-                  ))}
+                  {supplierResults.slice(0, 5).map((s) => {
+                    const sid = s.supplier_id || s.supplierId || s.id;
+                    const sname = s.supplier_name || s.supplierName || "Unknown Vendor";
+                    const scode = s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
+                    return (
+                      <Link
+                        key={sid}
+                        to="/supplier/$supplierId"
+                        params={{ supplierId: sid }}
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-accent"
+                      >
+                        <Building2 className="size-4 text-primary" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium">{sname}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {scode}
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -314,9 +319,9 @@ function ProcurementDashboard() {
                     >
                       <FileText className="size-4 text-teal" />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{po.poNumber}</p>
+                        <p className="truncate font-medium">{po.po_number || po.poNumber}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          {po.supplierName || "Supplier not specified"}
+                          {po.supplier_name || po.supplierName || "Supplier not specified"}
                         </p>
                       </div>
                       <StatusBadge status={po.status} className="h-4 px-1.5 text-[9px]" />
@@ -374,27 +379,33 @@ function ProcurementDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {suppliers.slice(0, 5).map((s) => (
-                    <tr key={s.supplierId} className="border-b border-border/60 last:border-0">
-                      <td className="py-3">
-                        <Link
-                          to="/supplier/$supplierId"
-                          params={{ supplierId: s.supplierId }}
-                          className="font-semibold text-primary hover:underline"
-                        >
-                          {s.supplierName}
-                        </Link>
-                        <p className="text-[11px] text-muted-foreground">
-                          {s.supplierCode || `${s.supplierId.substring(0, 8)}...`}
-                        </p>
-                      </td>
-                      <td className="py-3 text-muted-foreground">{s.category}</td>
-                      <td className="py-3 font-mono text-xs">{s.gstin}</td>
-                      <td className="py-3">
-                        <StatusBadge status={s.status || "Approved"} />
-                      </td>
-                    </tr>
-                  ))}
+                  {suppliers.slice(0, 5).map((s) => {
+                    const sid = s.supplier_id || s.supplierId || s.id;
+                    const sname = s.supplier_name || s.supplierName || "Unknown Vendor";
+                    const scode = s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
+                    const cat = Array.isArray(s.category) ? s.category.join(", ") : (s.category || "General");
+                    return (
+                      <tr key={sid} className="border-b border-border/60 last:border-0">
+                        <td className="py-3">
+                          <Link
+                            to="/supplier/$supplierId"
+                            params={{ supplierId: sid }}
+                            className="font-semibold text-primary hover:underline"
+                          >
+                            {sname}
+                          </Link>
+                          <p className="text-[11px] text-muted-foreground">
+                            {scode}
+                          </p>
+                        </td>
+                        <td className="py-3 text-muted-foreground">{cat}</td>
+                        <td className="py-3 font-mono text-xs">{s.gstin || "—"}</td>
+                        <td className="py-3">
+                          <StatusBadge status={s.status || "Approved"} />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

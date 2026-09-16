@@ -369,6 +369,7 @@ class PurchaseOrderModel(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED")
 
     rfq_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("rfq.id"), nullable=True)
+    quotation_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("quotation.id"), nullable=True)
     supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(GUID, ForeignKey("supplier.id"), nullable=True)
 
     supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -419,6 +420,7 @@ class PurchaseOrderModel(Base):
     )
 
     rfq: Mapped[Optional["RfqModel"]] = relationship("RfqModel")
+    quotation: Mapped[Optional["QuotationModel"]] = relationship("QuotationModel")
 
 
 class POApprovalHistoryModel(Base):
@@ -490,6 +492,24 @@ class MaterialRequestItemModel(Base):
     request: Mapped[MaterialRequestModel] = relationship("MaterialRequestModel", back_populates="items")
     material: Mapped[Optional["MaterialModel"]] = relationship("MaterialModel")
     variant: Mapped[Optional["MaterialVariantModel"]] = relationship("MaterialVariantModel")
+
+
+class FinishedGoodsRequestModel(Base):
+    __tablename__ = "finished_goods_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    request_number: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    finished_goods_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    finished_goods_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+    required_date: Mapped[date] = mapped_column(Date, nullable=False)
+    requested_by: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="PENDING")
+    remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now)
 
 
 class StockReservationModel(Base):
@@ -609,6 +629,11 @@ class NotificationModel(Base):
     driver_phone: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     asn_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     po_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    grn_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    supplier_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    notification_type: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    payload_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class SupplierUserModel(Base):

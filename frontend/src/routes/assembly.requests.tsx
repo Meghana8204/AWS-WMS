@@ -59,7 +59,7 @@ export const Route = createFileRoute("/assembly/requests")({
 
 const UOM_OPTIONS = ["PCS", "MTR", "KG", "LTR", "BOX", "PKT", "SET", "NOS"];
 
-export function AssemblyRequestsPage() {
+function AssemblyRequestsPage() {
   const [requests, setRequests] = useState<any[]>([]);
   const [masterMaterials, setMasterMaterials] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
