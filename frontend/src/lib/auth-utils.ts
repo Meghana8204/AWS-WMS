@@ -5,6 +5,12 @@ export interface UserInfo {
   username: string;
   roles: string[];
   supplierId?: string;
+  store_id?: string;
+  store_code?: string;
+  storeId?: string;
+  storeCode?: string;
+  employee_id?: string;
+  full_name?: string;
 }
 
 const AUTH_TOKEN_KEY = "auth_token";

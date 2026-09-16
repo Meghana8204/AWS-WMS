@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
+import { getUserInfo } from "@/lib/auth-utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -74,6 +75,9 @@ type AllocationRequest = {
   arrived_at?: string | null;
   released_at?: string | null;
   created_at: string;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
 };
 
 type Dock = {
@@ -87,6 +91,12 @@ type Dock = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  store_id?: string | null;
+  store_code?: string | null;
+  store_name?: string | null;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
   current_allocation?: AllocationRequest | null;
 };
 
@@ -324,6 +334,11 @@ function DockManagement() {
 
   async function handleReleaseDock() {
     if (!releaseConfirmDock) return;
+    if (!canReleaseDock(releaseConfirmDock)) {
+      toast.error("Unauthorized: Only the assigned Store Manager can release this dock.");
+      setReleaseConfirmDock(null);
+      return;
+    }
     const reqId = releaseConfirmDock.current_allocation?.id || releaseConfirmDock.id;
     setActionBusy(true);
     try {

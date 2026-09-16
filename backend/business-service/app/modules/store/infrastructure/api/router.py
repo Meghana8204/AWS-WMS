@@ -14,7 +14,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -934,6 +934,43 @@ async def update_store_status(
     bin_count_stmt = select(func.count(StoreBinModel.id)).where(StoreBinModel.store_id == store.id)
     b_count = (await uow.session.execute(bin_count_stmt)).scalar() or 0
     return _to_store_response(store, zones_count=z_count, bins_count=b_count)
+
+
+@router.delete("/{id_or_code}", status_code=status.HTTP_200_OK)
+async def delete_store(
+    id_or_code: str,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    if not _is_warehouse_or_admin(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Only Warehouse or Admin users can delete stores.",
+        )
+
+    store = await _resolve_store(uow.session, id_or_code)
+    if store is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Store '{id_or_code}' not found",
+        )
+
+    total_stores = (await uow.session.execute(select(func.count(StoreModel.id)))).scalar() or 0
+    if total_stores <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete the sole remaining Chemical Store in the system.",
+        )
+
+    # Clean up child records before deletion
+    await uow.session.execute(delete(StoreBinModel).where(StoreBinModel.store_id == store.id))
+    await uow.session.execute(delete(StoreZoneModel).where(StoreZoneModel.store_id == store.id))
+    await uow.session.execute(delete(StoreManagerUserModel).where(StoreManagerUserModel.store_id == store.id))
+
+    await uow.session.delete(store)
+    await uow.commit()
+
+    return {"message": f"Store '{store.store_name}' ({store.store_code}) deleted successfully."}
 
 
 # ==========================================

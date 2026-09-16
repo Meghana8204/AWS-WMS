@@ -51,6 +51,7 @@ class DockAllocationService:
                     location=d["location"],
                     status=DockStatus.AVAILABLE.value,
                     is_active=True,
+                    store_id=default_store_id,
                 )
                 session.add(dock)
             await session.commit()
@@ -360,6 +361,18 @@ class DockAllocationService:
                             driver_name = asn_obj.driver_name
                         if not driver_phone and asn_obj.driver_contact:
                             driver_phone = asn_obj.driver_contact
+                try:
+                    from app.modules.gate.infrastructure.persistence.models import DockAssignmentModel
+                    da_res = await session.execute(
+                        select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge.id)
+                    )
+                    da = da_res.scalar_one_or_none()
+                    if da and da.assigned_store_id:
+                        req.assigned_store_id = da.assigned_store_id
+                        req.assigned_store_code = da.assigned_store_code
+                        req.assigned_store_name = da.assigned_store_name
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -816,6 +829,27 @@ class DockAllocationService:
         await DockAllocationService._sync_gate_entry_status(
             session, req.existing_gate_pass_id, req.vehicle_number, "RELEASED"
         )
+
+        try:
+            from app.modules.gate.infrastructure.persistence.models import DockAssignmentModel, GateEntryModel
+            if req.existing_gate_pass_id:
+                ge_res = await session.execute(
+                    select(GateEntryModel).where(
+                        (GateEntryModel.gate_entry_number == req.existing_gate_pass_id) |
+                        (GateEntryModel.vehicle_number == req.vehicle_number)
+                    )
+                )
+                ge_obj = ge_res.scalars().first()
+                if ge_obj:
+                    da_res = await session.execute(
+                        select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge_obj.id)
+                    )
+                    da = da_res.scalar_one_or_none()
+                    if da:
+                        da.dock_released_by = performed_by
+                        da.dock_released_at = datetime.now(timezone.utc)
+        except Exception:
+            pass
 
         session.add(
             DockAllocationHistoryModel(

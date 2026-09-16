@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Set, Tuple
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, desc
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select, desc, or_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -29,9 +30,71 @@ from app.modules.dock.infrastructure.persistence.models import (
     DockMasterModel,
     DockStatusHistoryModel,
 )
-from app.security.dependencies import CurrentUser, require_permission
+from app.security.dependencies import CurrentUser, get_current_user, require_permission, _bearer_scheme
+from app.modules.store.infrastructure.persistence.models import StoreModel, StoreManagerUserModel
+from app.modules.gate.infrastructure.persistence.models import GateEntryModel, DockAssignmentModel
 
 router = APIRouter(prefix="/api/v1/warehouse", tags=["dock-management"])
+
+
+async def _get_store_user_context(user: CurrentUser, uow: UnitOfWork) -> Tuple[Set[uuid.UUID], Set[str]]:
+    """Returns (store_ids, store_codes) authorized for the current user."""
+    store_ids: Set[uuid.UUID] = set()
+    store_codes: Set[str] = set()
+
+    raw_id = getattr(user, "store_id", None) or (user.raw_claims.get("store_id") if user.raw_claims else None)
+    if raw_id:
+        try:
+            store_ids.add(uuid.UUID(str(raw_id)))
+        except (ValueError, TypeError):
+            pass
+
+    raw_code = getattr(user, "store_code", None) or (user.raw_claims.get("store_code") if user.raw_claims else None)
+    if raw_code:
+        store_codes.add(str(raw_code).strip().upper())
+
+    emp_id = (user.raw_claims.get("employee_id") if user.raw_claims else None) or user.subject or user.username
+    if emp_id:
+        st_res = await uow.session.execute(
+            select(StoreManagerUserModel).where(
+                or_(
+                    func.lower(StoreManagerUserModel.employee_id) == str(emp_id).strip().lower(),
+                    func.lower(StoreManagerUserModel.username) == str(emp_id).strip().lower(),
+                )
+            )
+        )
+        sm_users = st_res.scalars().all()
+        for sm in sm_users:
+            if sm.store_id:
+                store_ids.add(sm.store_id)
+            if getattr(sm, "store_code", None):
+                store_codes.add(str(sm.store_code).strip().upper())
+
+        st_res2 = await uow.session.execute(
+            select(StoreModel).where(
+                or_(
+                    func.lower(StoreModel.store_manager_id) == str(emp_id).strip().lower(),
+                    func.lower(StoreModel.store_manager_name) == str(emp_id).strip().lower(),
+                )
+            )
+        )
+        for sm_store in st_res2.scalars().all():
+            store_ids.add(sm_store.id)
+            if sm_store.store_code:
+                store_codes.add(sm_store.store_code.strip().upper())
+
+    if store_ids:
+        s_res = await uow.session.execute(select(StoreModel).where(StoreModel.id.in_(store_ids)))
+        for s in s_res.scalars().all():
+            if s.store_code:
+                store_codes.add(s.store_code.strip().upper())
+
+    if store_codes:
+        s_res = await uow.session.execute(select(StoreModel).where(func.upper(StoreModel.store_code).in_(store_codes)))
+        for s in s_res.scalars().all():
+            store_ids.add(s.id)
+
+    return store_ids, store_codes
 
 
 @router.get("/dock-types", response_model=List[str])
@@ -62,19 +125,76 @@ async def list_docks(
     dock_ids = [d.id for d in docks]
     alloc_map = await DockAllocationService.get_active_allocations_for_docks(uow.session, dock_ids)
 
-    from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+    from app.modules.gate.infrastructure.persistence.models import GateEntryModel, DockAssignmentModel
+    from app.modules.store.infrastructure.persistence.models import StoreModel
+
     ge_res = await uow.session.execute(select(GateEntryModel))
     ge_list = ge_res.scalars().all()
     ge_map_by_pass = {ge.gate_entry_number: ge for ge in ge_list if ge.gate_entry_number}
     ge_map_by_id = {str(ge.id): ge for ge in ge_list}
     ge_map_by_veh = {ge.vehicle_number: ge for ge in ge_list if ge.vehicle_number}
 
+    da_res = await uow.session.execute(select(DockAssignmentModel))
+    da_list = da_res.scalars().all()
+    da_map_by_ge = {da.gate_entry_id: da for da in da_list if da.gate_entry_id}
+    da_map_by_dock = {da.dock_number: da for da in da_list if da.dock_number}
+
+    stores_res = await uow.session.execute(select(StoreModel))
+    stores_list = stores_res.scalars().all()
+    store_by_id = {s.id: s for s in stores_list}
+    store_by_code = {s.store_code.strip().upper(): s for s in stores_list if s.store_code}
+
+    dock_type_map = {
+        "CHEMICAL_HAZARDOUS": "STR-001",
+        "CHEMICAL": "STR-001",
+        "HAZARDOUS_ITEMS": "STR-001",
+        "ELECTRICAL": "STR-001",
+        "RAW_MATERIAL": "STR-001",
+        "ELECTRONICS": "STR-001",
+        "ELECTRONIC": "STR-001",
+        "MAIN_RECEIVING": "STR-001",
+    }
+
     res = []
     for d in docks:
+        dock_store = store_by_id.get(d.store_id) if getattr(d, "store_id", None) else None
+        if not dock_store and d.dock_type in dock_type_map:
+            dock_store = store_by_code.get(dock_type_map[d.dock_type])
+
+        d_store_id = dock_store.id if dock_store else getattr(d, "store_id", None)
+        d_store_code = dock_store.store_code if dock_store else None
+        d_store_name = dock_store.store_name if dock_store else None
+
         alloc_req = alloc_map.get(d.id)
         current_alloc = None
+        assigned_sid = d_store_id
+        assigned_scode = d_store_code
+        assigned_sname = d_store_name
+
         if alloc_req:
             ge = ge_map_by_pass.get(alloc_req.existing_gate_pass_id) or ge_map_by_id.get(alloc_req.existing_gate_pass_id) or ge_map_by_veh.get(alloc_req.vehicle_number)
+            da = da_map_by_ge.get(ge.id) if ge else None
+            if not da:
+                da = da_map_by_dock.get(d.dock_code)
+
+            if getattr(alloc_req, "assigned_store_id", None):
+                assigned_sid = alloc_req.assigned_store_id
+                assigned_scode = getattr(alloc_req, "assigned_store_code", None)
+                assigned_sname = getattr(alloc_req, "assigned_store_name", None)
+            elif da and da.assigned_store_id:
+                assigned_sid = da.assigned_store_id
+                assigned_scode = da.assigned_store_code
+                assigned_sname = da.assigned_store_name
+
+            if assigned_sid and not assigned_scode and assigned_sid in store_by_id:
+                st = store_by_id[assigned_sid]
+                assigned_scode = st.store_code
+                assigned_sname = st.store_name
+            if assigned_scode and not assigned_sid and assigned_scode.strip().upper() in store_by_code:
+                st = store_by_code[assigned_scode.strip().upper()]
+                assigned_sid = st.id
+                assigned_sname = st.store_name
+
             mat_ref = alloc_req.material_reference
             if not mat_ref or mat_ref in ("General Material", "Material", "Inbound Goods"):
                 if ge:
@@ -97,6 +217,9 @@ async def list_docks(
                 status=alloc_req.status,
                 assigned_dock_id=alloc_req.assigned_dock_id,
                 assigned_dock_code=d.dock_code,
+                assigned_store_id=assigned_sid,
+                assigned_store_code=assigned_scode,
+                assigned_store_name=assigned_sname,
                 assigned_by=alloc_req.assigned_by,
                 assigned_at=alloc_req.assigned_at,
                 arrived_at=alloc_req.arrived_at,
@@ -118,6 +241,12 @@ async def list_docks(
                 description=d.description,
                 status=d.status,
                 is_active=d.is_active,
+                store_id=d_store_id or assigned_sid,
+                store_code=d_store_code or assigned_scode,
+                store_name=d_store_name or assigned_sname,
+                assigned_store_id=assigned_sid,
+                assigned_store_code=assigned_scode,
+                assigned_store_name=assigned_sname,
                 created_at=d.created_at,
                 updated_at=d.updated_at,
                 current_allocation=current_alloc,
@@ -391,13 +520,55 @@ async def _build_allocation_response(
     session: AsyncSession, r: DockAllocationRequestModel
 ) -> AllocationRequestResponse:
     dock_code = None
+    assigned_store_id = getattr(r, "assigned_store_id", None)
+    assigned_store_code = getattr(r, "assigned_store_code", None)
+    assigned_store_name = getattr(r, "assigned_store_name", None)
+
     if r.assigned_dock_id:
         try:
             d = await session.get(DockMasterModel, r.assigned_dock_id)
             if d:
                 dock_code = d.dock_code
+                if not assigned_store_id and getattr(d, "store_id", None):
+                    assigned_store_id = d.store_id
         except Exception:
             dock_code = None
+
+    if not assigned_store_id:
+        try:
+            from app.modules.gate.infrastructure.persistence.models import GateEntryModel, DockAssignmentModel
+            ge_conds = [
+                GateEntryModel.gate_entry_number == r.existing_gate_pass_id,
+                GateEntryModel.vehicle_number == r.vehicle_number,
+            ]
+            try:
+                ge_conds.append(GateEntryModel.id == uuid.UUID(r.existing_gate_pass_id))
+            except (ValueError, TypeError):
+                pass
+            ge_res = await session.execute(select(GateEntryModel).where(or_(*ge_conds)))
+            ge_obj = ge_res.scalars().first()
+            if ge_obj:
+                da_res = await session.execute(
+                    select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge_obj.id)
+                )
+                da = da_res.scalar_one_or_none()
+                if da and da.assigned_store_id:
+                    assigned_store_id = da.assigned_store_id
+                    assigned_store_code = da.assigned_store_code
+                    assigned_store_name = da.assigned_store_name
+        except Exception:
+            pass
+
+    if assigned_store_id and (not assigned_store_code or not assigned_store_name):
+        try:
+            from app.modules.store.infrastructure.persistence.models import StoreModel
+            st = await session.get(StoreModel, assigned_store_id)
+            if st:
+                assigned_store_code = assigned_store_code or st.store_code
+                assigned_store_name = assigned_store_name or st.store_name
+        except Exception:
+            pass
+
     return AllocationRequestResponse(
         id=r.id,
         existing_gate_pass_id=r.existing_gate_pass_id,
@@ -411,6 +582,9 @@ async def _build_allocation_response(
         status=r.status,
         assigned_dock_id=r.assigned_dock_id,
         assigned_dock_code=dock_code,
+        assigned_store_id=assigned_store_id,
+        assigned_store_code=assigned_store_code,
+        assigned_store_name=assigned_store_name,
         assigned_by=r.assigned_by,
         assigned_at=r.assigned_at,
         arrived_at=r.arrived_at,
@@ -498,10 +672,155 @@ async def complete_receiving(
 @router.post("/dock-allocations/{id}/release", response_model=AllocationRequestResponse)
 async def release_dock(
     id: uuid.UUID,
-    user: CurrentUser = Depends(require_permission("gate:write")),
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    released = await DockAllocationService.release_dock(uow.session, id, user.username)
+    # 1. Unauthenticated check (Case 5)
+    auth_hdr = request.headers.get("Authorization") or request.headers.get("authorization")
+    roles_hdr = request.headers.get("X-User-Roles") or request.headers.get("x-user-roles")
+    if credentials is None and not auth_hdr and not roles_hdr:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token or authentication credentials",
+        )
+
+    user: CurrentUser = await get_current_user(request, credentials)
+    roles_upper = {r.upper() for r in (user.roles or [])}
+
+    # 2. Reject Warehouse Manager explicitly (Case 3)
+    if "WAREHOUSE_MANAGER" in roles_upper or "WAREHOUSE" in roles_upper:
+        if "STORE_MANAGER" not in roles_upper and "STORE_KEEPER" not in roles_upper:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Warehouse Manager is not authorized to release docks. Dock release must be performed by the assigned Store Manager.",
+            )
+
+    # 3. Require Store Manager role (Case 4)
+    is_store_manager = "STORE_MANAGER" in roles_upper or "STORE_KEEPER" in roles_upper
+    if not is_store_manager:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Dock release must be performed by the assigned Store Manager.",
+        )
+
+    # 4. Resolve Store Manager's assigned store(s) (Case 6)
+    user_store_ids, user_store_codes = await _get_store_user_context(user, uow)
+    if not user_store_ids and not user_store_codes:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Store Manager does not have an assigned store.",
+        )
+
+    # 5. Look up allocation request & dock
+    req_res = await uow.session.execute(
+        select(DockAllocationRequestModel)
+        .where(
+            (DockAllocationRequestModel.id == id) |
+            (DockAllocationRequestModel.assigned_dock_id == id)
+        )
+        .order_by(desc(DockAllocationRequestModel.created_at))
+        .with_for_update()
+    )
+    req = req_res.scalars().first()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Allocation request or dock not found")
+
+    target_dock_id = req.assigned_dock_id or id
+    dock_res = await uow.session.execute(
+        select(DockMasterModel).where(DockMasterModel.id == target_dock_id).with_for_update()
+    )
+    dock = dock_res.scalar_one_or_none()
+
+    # 6. Determine the store associated with this dock / dock allocation
+    dock_store_ids: Set[uuid.UUID] = set()
+    dock_store_codes: Set[str] = set()
+
+    # From allocation request
+    if req.assigned_store_id:
+        dock_store_ids.add(req.assigned_store_id)
+    if req.assigned_store_code:
+        dock_store_codes.add(req.assigned_store_code.strip().upper())
+
+    # From Gate Entry & DockAssignmentModel
+    if req.existing_gate_pass_id or req.vehicle_number:
+        ge_conds = [
+            GateEntryModel.gate_entry_number == req.existing_gate_pass_id,
+            GateEntryModel.vehicle_number == req.vehicle_number,
+        ]
+        try:
+            ge_conds.append(GateEntryModel.id == uuid.UUID(req.existing_gate_pass_id))
+        except (ValueError, TypeError):
+            pass
+        ge_res = await uow.session.execute(select(GateEntryModel).where(or_(*ge_conds)))
+        ge_obj = ge_res.scalars().first()
+        if ge_obj:
+            da_res = await uow.session.execute(
+                select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge_obj.id)
+            )
+            da = da_res.scalar_one_or_none()
+            if da:
+                if da.assigned_store_id:
+                    dock_store_ids.add(da.assigned_store_id)
+                if da.assigned_store_code:
+                    dock_store_codes.add(da.assigned_store_code.strip().upper())
+
+    # From dock itself or DockAssignmentModel by dock code
+    if dock:
+        if getattr(dock, "store_id", None):
+            dock_store_ids.add(dock.store_id)
+        da_dock_res = await uow.session.execute(
+            select(DockAssignmentModel)
+            .where(DockAssignmentModel.dock_number == dock.dock_code)
+            .order_by(desc(DockAssignmentModel.assigned_at))
+        )
+        da_dock = da_dock_res.scalars().first()
+        if da_dock:
+            if da_dock.assigned_store_id:
+                dock_store_ids.add(da_dock.assigned_store_id)
+            if da_dock.assigned_store_code:
+                dock_store_codes.add(da_dock.assigned_store_code.strip().upper())
+
+    # Synchronize codes for store IDs
+    if dock_store_ids:
+        s_res = await uow.session.execute(select(StoreModel).where(StoreModel.id.in_(dock_store_ids)))
+        for s in s_res.scalars().all():
+            if s.store_code:
+                dock_store_codes.add(s.store_code.strip().upper())
+
+    # Fallback to predefined dock type mapping if no assignment store found
+    if not dock_store_ids and not dock_store_codes and dock:
+        dock_type_map = {
+            "CHEMICAL_HAZARDOUS": "STR-001",
+            "CHEMICAL": "STR-001",
+            "HAZARDOUS_ITEMS": "STR-001",
+            "ELECTRICAL": "STR-001",
+            "RAW_MATERIAL": "STR-001",
+            "ELECTRONICS": "STR-001",
+            "ELECTRONIC": "STR-001",
+            "MAIN_RECEIVING": "STR-001",
+        }
+        mapped_code = dock_type_map.get(dock.dock_type)
+        if mapped_code:
+            dock_store_codes.add(mapped_code)
+            s_res = await uow.session.execute(select(StoreModel).where(func.upper(StoreModel.store_code) == mapped_code))
+            for s in s_res.scalars().all():
+                dock_store_ids.add(s.id)
+
+    # 7. Check authorization: logged_in_user.store == dock.store (Case 1 & Case 2)
+    is_authorized = bool(
+        (dock_store_ids & user_store_ids) or
+        (dock_store_codes & user_store_codes)
+    )
+
+    if not is_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You can only release docks assigned to your Store.",
+        )
+
+    # 8. Release the dock
+    released = await DockAllocationService.release_dock(uow.session, req.id, user.username)
     return await _build_allocation_response(uow.session, released)
 
 

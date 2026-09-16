@@ -296,6 +296,19 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE dock_assignment ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
+        try:
+            await run_ddl("ALTER TABLE dock_masters ADD COLUMN IF NOT EXISTS store_id UUID")
+        except Exception: pass
+
+        for col in [
+            ("assigned_store_id", "UUID"),
+            ("assigned_store_code", "VARCHAR(64)"),
+            ("assigned_store_name", "VARCHAR(128)"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE dock_allocation_requests ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
         # Receiving/damage-claim compatibility for local databases created
         # before the damaged-goods workflow was introduced. SQLAlchemy's
         # create_all creates missing tables but intentionally does not add
