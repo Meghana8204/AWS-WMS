@@ -523,6 +523,9 @@ async def _build_allocation_response(
     assigned_store_id = getattr(r, "assigned_store_id", None)
     assigned_store_code = getattr(r, "assigned_store_code", None)
     assigned_store_name = getattr(r, "assigned_store_name", None)
+    assigned_sm_id = getattr(r, "assigned_store_manager_id", None)
+    assigned_sm_user = getattr(r, "assigned_store_manager_username", None)
+    assigned_sm_name = getattr(r, "assigned_store_manager_name", None)
 
     if r.assigned_dock_id:
         try:
@@ -534,7 +537,7 @@ async def _build_allocation_response(
         except Exception:
             dock_code = None
 
-    if not assigned_store_id:
+    if not assigned_store_id or not assigned_sm_id:
         try:
             from app.modules.gate.infrastructure.persistence.models import GateEntryModel, DockAssignmentModel
             ge_conds = [
@@ -552,10 +555,15 @@ async def _build_allocation_response(
                     select(DockAssignmentModel).where(DockAssignmentModel.gate_entry_id == ge_obj.id)
                 )
                 da = da_res.scalar_one_or_none()
-                if da and da.assigned_store_id:
-                    assigned_store_id = da.assigned_store_id
-                    assigned_store_code = da.assigned_store_code
-                    assigned_store_name = da.assigned_store_name
+                if da:
+                    if not assigned_store_id and da.assigned_store_id:
+                        assigned_store_id = da.assigned_store_id
+                        assigned_store_code = da.assigned_store_code
+                        assigned_store_name = da.assigned_store_name
+                    if not assigned_sm_id and da.assigned_store_manager_id:
+                        assigned_sm_id = da.assigned_store_manager_id
+                        assigned_sm_user = da.assigned_store_manager_username
+                        assigned_sm_name = da.assigned_store_manager_name
         except Exception:
             pass
 
@@ -566,6 +574,9 @@ async def _build_allocation_response(
             if st:
                 assigned_store_code = assigned_store_code or st.store_code
                 assigned_store_name = assigned_store_name or st.store_name
+                if not assigned_sm_id and st.store_manager_id:
+                    assigned_sm_id = st.store_manager_id
+                    assigned_sm_name = st.store_manager_name
         except Exception:
             pass
 
@@ -585,6 +596,9 @@ async def _build_allocation_response(
         assigned_store_id=assigned_store_id,
         assigned_store_code=assigned_store_code,
         assigned_store_name=assigned_store_name,
+        assigned_store_manager_id=assigned_sm_id,
+        assigned_store_manager_username=assigned_sm_user,
+        assigned_store_manager_name=assigned_sm_name,
         assigned_by=r.assigned_by,
         assigned_at=r.assigned_at,
         arrived_at=r.arrived_at,
@@ -628,6 +642,9 @@ async def allocate_dock(
         allocation_request_id=req.allocation_request_id,
         dock_id=req.dock_id,
         allocated_by=user.username,
+        store_manager_id=req.store_manager_id,
+        store_manager_username=req.store_manager_username,
+        store_manager_name=req.store_manager_name,
     )
     return await _build_allocation_response(uow.session, allocated)
 
@@ -807,13 +824,34 @@ async def release_dock(
             for s in s_res.scalars().all():
                 dock_store_ids.add(s.id)
 
-    # 7. Check authorization: logged_in_user.store == dock.store (Case 1 & Case 2)
-    is_authorized = bool(
+    # 7. Check authorization: logged_in_user matches assigned Store Manager or logged_in_user.store == dock.store
+    user_identifiers = {
+        str(user.username).strip().lower() if user.username else "",
+        str(user.subject).strip().lower() if user.subject else "",
+        str(user.raw_claims.get("employee_id") or "").strip().lower(),
+        str(user.raw_claims.get("sub") or "").strip().lower(),
+        str(user.raw_claims.get("username") or "").strip().lower(),
+    }
+    user_identifiers.discard("")
+
+    sm_direct_match = False
+    if req.assigned_store_manager_username and req.assigned_store_manager_username.strip().lower() in user_identifiers:
+        sm_direct_match = True
+    if req.assigned_store_manager_id and str(req.assigned_store_manager_id).strip().lower() in user_identifiers:
+        sm_direct_match = True
+
+    is_store_authorized = bool(
         (dock_store_ids & user_store_ids) or
         (dock_store_codes & user_store_codes)
     )
 
-    if not is_authorized:
+    if not sm_direct_match and not is_store_authorized:
+        if req.assigned_store_manager_name or req.assigned_store_manager_username:
+            target_sm = req.assigned_store_manager_name or req.assigned_store_manager_username
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied: Dock is assigned to Store Manager '{target_sm}'. Only the assigned Store Manager can release this dock.",
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You can only release docks assigned to your Store.",

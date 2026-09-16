@@ -27,7 +27,6 @@ async def test_quarantine_full_lifecycle_and_security():
                 text("""
                     INSERT INTO material_stock (id, material_code, material_name, category, on_hand, allocated, available, uom, warehouse_id, reorder_point)
                     VALUES (:id, :code, 'Damaged Pump Unit', 'RAW', 0, 0, 0, 'PCS', 'Main Warehouse', 10)
-                    ON CONFLICT (material_code) DO NOTHING
                 """),
                 {"id": str(uuid.uuid4()), "code": mat_code},
             )

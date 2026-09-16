@@ -309,6 +309,18 @@ async def lifespan(app: FastAPI):
                 await run_ddl(f"ALTER TABLE dock_allocation_requests ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
             except Exception: pass
 
+        for col in [
+            ("material_name", "VARCHAR(256)"),
+            ("source_location", "VARCHAR(64) DEFAULT 'RECEIVING_AREA'"),
+            ("warehouse_id", "VARCHAR(64) DEFAULT 'Main Warehouse'"),
+            ("destination_store_id", "UUID"),
+            ("destination_zone_id", "UUID"),
+            ("destination_bin_id", "UUID"),
+        ]:
+            try:
+                await run_ddl(f"ALTER TABLE putaway_task ADD COLUMN IF NOT EXISTS {col[0]} {col[1]}")
+            except Exception: pass
+
         # Receiving/damage-claim compatibility for local databases created
         # before the damaged-goods workflow was introduced. SQLAlchemy's
         # create_all creates missing tables but intentionally does not add
@@ -1256,6 +1268,11 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.start()
+
+    try:
+        _consumer_task = asyncio.create_task(start_notification_consumer())
+    except Exception as exc:
+        logger.debug(f"Notification consumer task failed to start: {exc}")
 
     try:
         _consumer_task = asyncio.create_task(start_notification_consumer())

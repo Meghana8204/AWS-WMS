@@ -31,6 +31,17 @@ import {
   Grid,
   ChevronDown,
   ChevronRight,
+  Truck,
+  Warehouse,
+  LogOut,
+  ExternalLink,
+  Calendar,
+  BadgeCheck,
+  History,
+  Send,
+  ArrowUpRight,
+  FileText,
+  Scan,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
@@ -47,6 +58,16 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Select,
   SelectContent,
@@ -189,8 +210,42 @@ interface InventoryBalance {
   updated_at: string;
 }
 
+interface StoreDock {
+  id: string;
+  dock_code: string;
+  dock_name: string;
+  dock_type: string;
+  status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE" | "RESERVED";
+  location?: string | null;
+  description?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  store_id?: string | null;
+  store_code?: string | null;
+  store_name?: string | null;
+  assigned_store_id?: string | null;
+  assigned_store_code?: string | null;
+  assigned_store_name?: string | null;
+  current_allocation?: {
+    id: string;
+    vehicle_number: string;
+    existing_gate_pass_id: string;
+    vendor_reference?: string | null;
+    material_reference?: string | null;
+    quantity?: number | null;
+    priority: string;
+    status: string;
+    assigned_dock_id?: string | null;
+    assigned_at?: string | null;
+    assigned_store_id?: string | null;
+    assigned_store_code?: string | null;
+    assigned_store_name?: string | null;
+  } | null;
+}
+
 function MyStorePage() {
-  const [activeTab, setActiveTab] = useState<"putaway" | "pickup" | "zones" | "inventory">(
+  const [activeTab, setActiveTab] = useState<"putaway" | "pickup" | "takeaway" | "history" | "zones" | "inventory" | "docks">(
     "putaway",
   );
   const [store, setStore] = useState<Store | null>(null);
@@ -198,11 +253,35 @@ function MyStorePage() {
   const [putawayTasks, setPutawayTasks] = useState<PutawayTask[]>([]);
   const [pickupTasks, setPickupTasks] = useState<PickupTask[]>([]);
   const [inventoryBalances, setInventoryBalances] = useState<InventoryBalance[]>([]);
+  const [docks, setDocks] = useState<StoreDock[]>([]);
+  const [docksLoading, setDocksLoading] = useState(false);
+  const [dockSearch, setDockSearch] = useState("");
+  const [dockStatusFilter, setDockStatusFilter] = useState("ALL");
+  const [selectedDockForDetails, setSelectedDockForDetails] = useState<StoreDock | null>(null);
+  const [releaseConfirmDock, setReleaseConfirmDock] = useState<StoreDock | null>(null);
+  const [releasingDockBusy, setReleasingDockBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [zonesLoading, setZonesLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [pickupTasksLoading, setPickupTasksLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Takeaway Operation State
+  const [takeawayBinInput, setTakeawayBinInput] = useState("");
+  const [takeawayScannedBinCode, setTakeawayScannedBinCode] = useState("");
+  const [takeawayBinMaterials, setTakeawayBinMaterials] = useState<any[]>([]);
+  const [takeawayLoadingMaterials, setTakeawayLoadingMaterials] = useState(false);
+  const [takeawaySelectedMaterial, setTakeawaySelectedMaterial] = useState<any | null>(null);
+  const [takeawayQuantity, setTakeawayQuantity] = useState("");
+  const [takeawayRemarks, setTakeawayRemarks] = useState("");
+  const [takeawayRefDoc, setTakeawayRefDoc] = useState("");
+  const [takeawayExecuting, setTakeawayExecuting] = useState(false);
+
+  // Movement History State
+  const [movementHistory, setMovementHistory] = useState<any[]>([]);
+  const [movementHistoryLoading, setMovementHistoryLoading] = useState(false);
+  const [movementHistoryTypeFilter, setMovementHistoryTypeFilter] = useState("ALL");
+  const [movementHistorySearch, setMovementHistorySearch] = useState("");
 
   // Expanded Zones in accordion
   const [expandedZoneIds, setExpandedZoneIds] = useState<Set<string>>(new Set());
@@ -286,11 +365,13 @@ function MyStorePage() {
         setZonesLoading(true);
         setTasksLoading(true);
         setPickupTasksLoading(true);
-        const [hierarchyData, tasksData, pickupData, balancesData] = await Promise.all([
+        setDocksLoading(true);
+        const [hierarchyData, tasksData, pickupData, balancesData, docksData] = await Promise.all([
           api.getStoreHierarchy().catch(() => []),
           api.getPutawayTasks().catch(() => []),
           api.getPickupTasks().catch(() => []),
           api.getInventoryLocationBalances().catch(() => []),
+          api.getDocks().catch(() => []),
         ]);
 
         const myHierarchy = (hierarchyData || []).find(
@@ -305,6 +386,7 @@ function MyStorePage() {
 
         setPutawayTasks(tasksData || []);
         setPickupTasks(pickupData || []);
+        setDocks(docksData || []);
         // Filter balances for this store
         const storeBals = (balancesData || []).filter(
           (b: InventoryBalance) =>
@@ -320,12 +402,25 @@ function MyStorePage() {
       setZonesLoading(false);
       setTasksLoading(false);
       setPickupTasksLoading(false);
+      setDocksLoading(false);
     }
   };
 
   useEffect(() => {
     fetchStoreData();
   }, []);
+
+  const refreshDocks = async () => {
+    setDocksLoading(true);
+    try {
+      const data = await api.getDocks();
+      setDocks(data || []);
+    } catch {
+      toast.error("Failed to refresh docks");
+    } finally {
+      setDocksLoading(false);
+    }
+  };
 
   const refreshZones = async () => {
     if (!store?.id) return;
@@ -352,11 +447,13 @@ function MyStorePage() {
     if (!store?.id) return;
     setTasksLoading(true);
     try {
-      const [tasksData, balancesData] = await Promise.all([
+      const [tasksData, balancesData, docksData] = await Promise.all([
         api.getPutawayTasks(),
         api.getInventoryLocationBalances(),
+        api.getDocks().catch(() => []),
       ]);
       setPutawayTasks(tasksData || []);
+      setDocks(docksData || []);
       const storeBals = (balancesData || []).filter(
         (b: InventoryBalance) => b.store_id === store.id || b.store_code === store.store_code,
       );
@@ -365,6 +462,91 @@ function MyStorePage() {
       toast.error("Failed to refresh tasks and balances");
     } finally {
       setTasksLoading(false);
+    }
+  };
+
+  // Compute docks assigned to this store or with active allocations for this store
+  const assignedStoreDocks = useMemo(() => {
+    if (!store) return [];
+    const sId = store.id;
+    const sCode = (store.store_code || "").toUpperCase();
+
+    return docks.filter((d) => {
+      const dStoreId = d.assigned_store_id || d.store_id || d.current_allocation?.assigned_store_id;
+      const dStoreCode = (d.assigned_store_code || d.store_code || d.current_allocation?.assigned_store_code || "").toUpperCase();
+
+      if (sId && dStoreId && sId === dStoreId) return true;
+      if (sCode && dStoreCode && sCode === dStoreCode) return true;
+
+      // Fallback for Chemical Store STR-001 predefined dock types
+      if (sCode === "STR-001") {
+        const chemTypes = [
+          "CHEMICAL_HAZARDOUS",
+          "CHEMICAL",
+          "HAZARDOUS_ITEMS",
+          "ELECTRONICS",
+          "ELECTRONIC",
+          "ELECTRICAL",
+          "RAW_MATERIAL",
+          "MAIN_RECEIVING",
+        ];
+        if (chemTypes.includes(d.dock_type)) return true;
+      }
+
+      return false;
+    });
+  }, [docks, store]);
+
+  // Occupied or At Dock docks for this store
+  const occupiedDocks = useMemo(() => {
+    return assignedStoreDocks.filter((d) => d.status === "OCCUPIED" || d.status === "RESERVED");
+  }, [assignedStoreDocks]);
+
+  // Filtered assigned docks
+  const filteredAssignedDocks = useMemo(() => {
+    return assignedStoreDocks.filter((d) => {
+      const matchesStatus =
+        dockStatusFilter === "ALL" ||
+        (dockStatusFilter === "OCCUPIED" && (d.status === "OCCUPIED" || d.status === "RESERVED")) ||
+        d.status?.toUpperCase() === dockStatusFilter.toUpperCase();
+
+      const q = dockSearch.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        d.dock_code.toLowerCase().includes(q) ||
+        d.dock_name.toLowerCase().includes(q) ||
+        (d.location && d.location.toLowerCase().includes(q)) ||
+        (d.current_allocation?.vehicle_number &&
+          d.current_allocation.vehicle_number.toLowerCase().includes(q)) ||
+        (d.current_allocation?.existing_gate_pass_id &&
+          d.current_allocation.existing_gate_pass_id.toLowerCase().includes(q)) ||
+        (d.current_allocation?.material_reference &&
+          d.current_allocation.material_reference.toLowerCase().includes(q)) ||
+        (d.current_allocation?.vendor_reference &&
+          d.current_allocation.vendor_reference.toLowerCase().includes(q));
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [assignedStoreDocks, dockStatusFilter, dockSearch]);
+
+  const handleReleaseDockSubmit = async () => {
+    if (!releaseConfirmDock) return;
+    const targetId = releaseConfirmDock.current_allocation?.id || releaseConfirmDock.id;
+    setReleasingDockBusy(true);
+    try {
+      await api.releaseDock(targetId);
+      toast.success(`Dock ${releaseConfirmDock.dock_code} released successfully!`, {
+        description: "Dock status returned to AVAILABLE. Inbound logistics may now reassign it.",
+      });
+      setReleaseConfirmDock(null);
+      setSelectedDockForDetails(null);
+      await Promise.all([refreshDocks(), refreshTasksAndBalances()]);
+    } catch (err: any) {
+      toast.error("Failed to release dock", {
+        description: err.message || "Ensure you are the authorized Store Manager for this dock.",
+      });
+    } finally {
+      setReleasingDockBusy(false);
     }
   };
 
@@ -866,6 +1048,124 @@ function MyStorePage() {
     }
   };
 
+  // Takeaway Handlers
+  const handleFetchBinMaterials = async (binTarget: string) => {
+    const clean = binTarget.trim();
+    if (!clean) {
+      toast.error("Please scan or enter a Bin Code / Bin ID");
+      return;
+    }
+    setTakeawayLoadingMaterials(true);
+    try {
+      const res = await api.getBinMaterials(clean);
+      setTakeawayScannedBinCode(res.bin_code);
+      setTakeawayBinMaterials(res.materials || []);
+      setTakeawaySelectedMaterial(null);
+      setTakeawayQuantity("");
+      if (!res.materials || res.materials.length === 0) {
+        toast.info(`Bin ${res.bin_code} is currently empty.`);
+      } else {
+        toast.success(`Found ${res.materials.length} material(s) in Bin ${res.bin_code}`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to load materials in this bin");
+      setTakeawayBinMaterials([]);
+    } finally {
+      setTakeawayLoadingMaterials(false);
+    }
+  };
+
+  const handleTakeawaySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!takeawayScannedBinCode && !takeawayBinInput) {
+      toast.error("Please scan or select a Bin first");
+      return;
+    }
+    if (!takeawaySelectedMaterial) {
+      toast.error("Please select a material to take away");
+      return;
+    }
+    const qty = parseFloat(takeawayQuantity);
+    if (isNaN(qty) || qty <= 0) {
+      toast.error("Please enter a valid positive quantity");
+      return;
+    }
+    if (qty > takeawaySelectedMaterial.available_quantity) {
+      toast.error(`Quantity cannot exceed available stock (${takeawaySelectedMaterial.available_quantity} ${takeawaySelectedMaterial.uom})`);
+      return;
+    }
+
+    setTakeawayExecuting(true);
+    try {
+      const res = await api.performTakeaway({
+        bin_scan: takeawayScannedBinCode || takeawayBinInput.trim(),
+        material_scan: takeawaySelectedMaterial.material_qr || takeawaySelectedMaterial.material_code,
+        quantity: qty,
+        remarks: takeawayRemarks.trim() || undefined,
+        reference_document: takeawayRefDoc.trim() || undefined,
+      });
+      toast.success("Takeaway Completed Successfully!", {
+        description: `Dispatched ${qty} ${takeawaySelectedMaterial.uom} of ${takeawaySelectedMaterial.material_name}. Remaining in Bin: ${res.remaining_bin_quantity}.`,
+      });
+      setTakeawayQuantity("");
+      setTakeawayRemarks("");
+      setTakeawayRefDoc("");
+      // Refresh bin materials and inventory balances
+      await Promise.all([
+        handleFetchBinMaterials(takeawayScannedBinCode || takeawayBinInput.trim()),
+        refreshTasksAndBalances(),
+      ]);
+    } catch (err: any) {
+      toast.error("Takeaway failed", {
+        description: err.message || "Could not process takeaway.",
+      });
+    } finally {
+      setTakeawayExecuting(false);
+    }
+  };
+
+  // Movement History Handlers
+  const fetchMovementHistory = async () => {
+    setMovementHistoryLoading(true);
+    try {
+      const mType = movementHistoryTypeFilter === "ALL" ? undefined : movementHistoryTypeFilter;
+      const data = await api.getMovementHistory({
+        movement_type: mType,
+        limit: 100,
+      });
+      setMovementHistory(data || []);
+    } catch (err: any) {
+      toast.error("Failed to load movement history", {
+        description: err.message || undefined,
+      });
+    } finally {
+      setMovementHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "history") {
+      void fetchMovementHistory();
+    }
+  }, [activeTab, movementHistoryTypeFilter]);
+
+  const filteredMovementHistory = useMemo(() => {
+    return movementHistory.filter((m) => {
+      const q = movementHistorySearch.toLowerCase().trim();
+      if (!q) return true;
+      return (
+        m.material_code?.toLowerCase().includes(q) ||
+        m.material_name?.toLowerCase().includes(q) ||
+        m.material_qr?.toLowerCase().includes(q) ||
+        m.from_location?.toLowerCase().includes(q) ||
+        m.to_location?.toLowerCase().includes(q) ||
+        m.movement_type?.toLowerCase().includes(q) ||
+        m.created_by?.toLowerCase().includes(q) ||
+        m.reference_document?.toLowerCase().includes(q)
+      );
+    });
+  }, [movementHistory, movementHistorySearch]);
+
   return (
     <AppShell
       title="Store Management & Putaway Portal"
@@ -961,6 +1261,61 @@ function MyStorePage() {
             </CardContent>
           </Card>
 
+          {/* Active At-Dock Inbound Delivery Notification Banner */}
+          {occupiedDocks.length > 0 && (
+            <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-gradient-to-r from-rose-50/80 via-card to-card dark:from-rose-950/30 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
+              <div className="flex items-start gap-3.5">
+                <div className="size-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                  <Truck className="size-5 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-rose-950 dark:text-rose-200 text-sm">
+                      {occupiedDocks.length === 1
+                        ? `Vehicle At Dock: ${occupiedDocks[0].dock_code} (${occupiedDocks[0].dock_name})`
+                        : `${occupiedDocks.length} Docks Currently Occupied for Offloading`}
+                    </span>
+                    <span className="rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[10px] font-black px-2 py-0.5 uppercase tracking-wider">
+                      AT DOCK
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {occupiedDocks.length === 1 ? (
+                      <>
+                        Vehicle <strong className="font-mono text-foreground">{occupiedDocks[0].current_allocation?.vehicle_number || "Incoming"}</strong> (Pass: <strong className="font-mono text-foreground">{occupiedDocks[0].current_allocation?.existing_gate_pass_id || "N/A"}</strong>) is currently docked with {occupiedDocks[0].current_allocation?.material_reference || "materials"} for {store.store_name}. Once offloaded, release the dock to free it for incoming shipments.
+                      </>
+                    ) : (
+                      <>
+                        Docks {occupiedDocks.map((d) => d.dock_code).join(", ")} are currently offloading goods for {store.store_name}. Release docks once receiving is complete.
+                      </>
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-end md:self-center shrink-0">
+                {occupiedDocks.length === 1 ? (
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs shadow-sm"
+                    onClick={() => setReleaseConfirmDock(occupiedDocks[0])}
+                  >
+                    <LogOut className="size-3.5 mr-1.5" /> Release Dock {occupiedDocks[0].dock_code}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl border-rose-300 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:text-rose-300 text-xs font-semibold"
+                    onClick={() => setActiveTab("docks")}
+                  >
+                    View All Assigned Docks ({occupiedDocks.length})
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-2 border-b border-border/40 pb-3">
             <Button
@@ -990,6 +1345,26 @@ function MyStorePage() {
             </Button>
 
             <Button
+              variant={activeTab === "takeaway" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("takeaway")}
+              className="rounded-xl text-xs font-semibold gap-2"
+            >
+              <Send className="size-4" />
+              Takeaway (Outbound Dispatch)
+            </Button>
+
+            <Button
+              variant={activeTab === "history" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("history")}
+              className="rounded-xl text-xs font-semibold gap-2"
+            >
+              <History className="size-4" />
+              Movement History
+            </Button>
+
+            <Button
               variant={activeTab === "zones" ? "default" : "outline"}
               size="sm"
               onClick={() => setActiveTab("zones")}
@@ -1007,6 +1382,28 @@ function MyStorePage() {
             >
               <Boxes className="size-4" />
               Store Inventory Balances ({inventoryBalances.length})
+            </Button>
+
+            <Button
+              variant={activeTab === "docks" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("docks")}
+              className={cn(
+                "rounded-xl text-xs font-semibold gap-2",
+                occupiedDocks.length > 0 && activeTab !== "docks" && "border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400"
+              )}
+            >
+              <Truck className="size-4" />
+              Assigned Docks & Release
+              {occupiedDocks.length > 0 ? (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-[#ef4444] text-white font-black shadow-2xs animate-pulse">
+                  {occupiedDocks.length} AT DOCK
+                </span>
+              ) : (
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-primary/20 text-primary font-bold">
+                  {assignedStoreDocks.length}
+                </span>
+              )}
             </Button>
           </div>
 
@@ -1523,6 +1920,608 @@ function MyStorePage() {
                 )}
               </CardContent>
             </Card>
+          )}
+
+          {/* TAB 5: ASSIGNED DOCKS & DOCK RELEASE */}
+          {activeTab === "docks" && (
+            <div className="space-y-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="relative w-72">
+                  <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by dock, vehicle, pass, material..."
+                    value={dockSearch}
+                    onChange={(e) => setDockSearch(e.target.value)}
+                    className="pl-8 h-8 text-xs rounded-xl bg-background/50 border-border/40"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Select value={dockStatusFilter} onValueChange={setDockStatusFilter}>
+                    <SelectTrigger className="w-40 h-8 text-xs rounded-xl border-border/40">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">All Statuses</SelectItem>
+                      <SelectItem value="OCCUPIED">At Dock (Occupied)</SelectItem>
+                      <SelectItem value="AVAILABLE">Available</SelectItem>
+                      <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refreshDocks}
+                    disabled={docksLoading}
+                    className="h-8 rounded-xl text-xs"
+                    title="Refresh Docks"
+                  >
+                    <RefreshCw className={cn("size-3.5", docksLoading && "animate-spin")} />
+                  </Button>
+                </div>
+              </div>
+
+              {docksLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+                  <Loader2 className="size-6 animate-spin text-primary" />
+                  <p className="text-xs">Loading docks assigned to your store...</p>
+                </div>
+              ) : filteredAssignedDocks.length === 0 ? (
+                <Card className="rounded-2xl p-12 text-center text-muted-foreground border-dashed">
+                  <Truck className="size-10 mx-auto text-muted-foreground/40 mb-3" />
+                  <p className="font-semibold text-sm text-foreground">No Docks Found</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
+                    {dockSearch || dockStatusFilter !== "ALL"
+                      ? "No docks match your current filter criteria."
+                      : `No physical docks are currently configured for ${store?.store_name} (${store?.store_code}).`}
+                  </p>
+                </Card>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredAssignedDocks.map((dock) => {
+                    const isOccupied = dock.status === "OCCUPIED" || dock.status === "RESERVED";
+                    const isAvailable = dock.status === "AVAILABLE";
+                    const isMaint = dock.status === "MAINTENANCE";
+                    const alloc = dock.current_allocation;
+
+                    return (
+                      <Card
+                        key={dock.id}
+                        className={cn(
+                          "rounded-2xl p-5 shadow-sm border transition-all duration-200 bg-card flex flex-col justify-between",
+                          isOccupied
+                            ? "border-rose-300/80 dark:border-rose-900/60 ring-1 ring-rose-400/20"
+                            : isAvailable
+                              ? "border-emerald-300/60 dark:border-emerald-900/40"
+                              : "border-border/60",
+                        )}
+                      >
+                        <div className="space-y-4">
+                          {/* Card Header */}
+                          <div className="flex items-start justify-between gap-2 border-b border-border/40 pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xl font-black tracking-tight text-foreground">
+                                  {dock.dock_code}
+                                </span>
+                                <span className="font-mono text-[9px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-muted-foreground uppercase">
+                                  {dock.dock_type.replace(/_/g, " ")}
+                                </span>
+                              </div>
+                              <p className="text-xs font-semibold text-foreground/90 mt-0.5">
+                                {dock.dock_name}
+                              </p>
+                              {dock.location && (
+                                <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                                  <MapPin className="size-3 shrink-0" />
+                                  <span>{dock.location}</span>
+                                </p>
+                              )}
+                            </div>
+
+                            <span
+                              className={cn(
+                                "rounded-full px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider border shrink-0 flex items-center gap-1.5",
+                                isAvailable
+                                  ? "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]"
+                                  : isMaint
+                                    ? "bg-slate-100 text-slate-700 border-slate-200"
+                                    : "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]",
+                              )}
+                            >
+                              {isOccupied && (
+                                <span className="size-1.5 rounded-full bg-[#e11d48] animate-ping" />
+                              )}
+                              {isOccupied ? "AT DOCK" : dock.status}
+                            </span>
+                          </div>
+
+                          {/* Allocation Details / Vehicle Box */}
+                          {isOccupied && alloc ? (
+                            <div className="rounded-xl border border-rose-200/60 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 p-3 space-y-2 text-xs">
+                              <div className="flex items-center justify-between font-mono">
+                                <span className="text-[10px] uppercase font-bold text-rose-800/80 dark:text-rose-300">
+                                  Vehicle Docked
+                                </span>
+                                <span className="font-black text-rose-700 dark:text-rose-400">
+                                  {alloc.vehicle_number}
+                                </span>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-rose-200/50 dark:border-rose-900/30 pt-2">
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px]">Gate Pass</span>
+                                  <span className="font-mono font-bold text-foreground truncate block">
+                                    {alloc.existing_gate_pass_id || "—"}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px]">Vendor</span>
+                                  <span className="font-semibold text-foreground truncate block" title={alloc.vendor_reference || ""}>
+                                    {alloc.vendor_reference || "—"}
+                                  </span>
+                                </div>
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground block text-[10px]">Material</span>
+                                  <span className="font-semibold text-foreground truncate block" title={alloc.material_reference || ""}>
+                                    {alloc.material_reference || "Material Shipment"} {alloc.quantity ? `(${alloc.quantity} units)` : ""}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-border/40 bg-muted/10 p-3 text-xs text-muted-foreground flex items-center gap-2">
+                              <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
+                              <span>Dock is clear and available for vehicle assignment.</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Card Actions */}
+                        <div className="pt-4 mt-2 border-t border-border/40 flex items-center gap-2">
+                          {isOccupied ? (
+                            <Button
+                              className="flex-1 rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs h-9 shadow-sm flex items-center justify-center gap-1.5"
+                              onClick={() => setReleaseConfirmDock(dock)}
+                            >
+                              <LogOut className="size-3.5" /> Release Dock
+                            </Button>
+                          ) : (
+                            <div className="flex-1 text-[11px] text-muted-foreground italic flex items-center gap-1">
+                              <ShieldCheck className="size-3.5 text-emerald-600" /> Ready
+                            </div>
+                          )}
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl text-xs h-9"
+                            onClick={() => setSelectedDockForDetails(dock)}
+                          >
+                            Details
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: TAKEAWAY (OUTBOUND MATERIAL DISPATCH) */}
+          {activeTab === "takeaway" && (
+            <div className="space-y-6">
+              <Card className="border-border/40 shadow-soft bg-gradient-to-r from-blue-500/10 via-card to-card">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-2 text-primary font-black">
+                    <Send className="size-5 text-blue-600" />
+                    <CardTitle className="text-base font-extrabold text-foreground">
+                      Store Takeaway & Material Dispatch
+                    </CardTitle>
+                  </div>
+                  <CardDescription className="text-xs">
+                    Scan or select a storage Bin QR to inspect available materials, then scan/select a Material QR to record takeaway quantities with immediate atomic inventory decrement.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Step 1: Bin Scan Input */}
+                  <div className="rounded-2xl border bg-card p-4 space-y-3 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                        <Scan className="size-3.5" /> 1. Scan or Select Bin Location
+                      </Label>
+                      {takeawayScannedBinCode && (
+                        <span className="font-mono text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-600 font-bold border border-emerald-500/20">
+                          Active Bin: {takeawayScannedBinCode}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <div className="relative flex-1 w-full">
+                        <ScanLine className="size-4 absolute left-3 top-2.5 text-muted-foreground" />
+                        <Input
+                          placeholder="Scan Bin QR or enter Bin Code (e.g. BIN-MET-001)..."
+                          value={takeawayBinInput}
+                          onChange={(e) => setTakeawayBinInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              void handleFetchBinMaterials(takeawayBinInput);
+                            }
+                          }}
+                          className="pl-9 h-9 text-xs rounded-xl font-mono"
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => void handleFetchBinMaterials(takeawayBinInput)}
+                        disabled={takeawayLoadingMaterials || !takeawayBinInput.trim()}
+                        className="w-full sm:w-auto rounded-xl text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold h-9 shadow-sm"
+                      >
+                        {takeawayLoadingMaterials ? (
+                          <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                        ) : (
+                          <Search className="size-3.5 mr-1.5" />
+                        )}
+                        Load Bin Materials
+                      </Button>
+                    </div>
+
+                    {/* Quick Select from Store Bins */}
+                    {zones.length > 0 && (
+                      <div className="pt-2 border-t border-border/40">
+                        <p className="text-[11px] text-muted-foreground mb-1.5">Quick select from active bins in {store?.store_name}:</p>
+                        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                          {zones.flatMap((z) => (z.bins || []).filter((b) => b.status === "ACTIVE")).map((b) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => {
+                                setTakeawayBinInput(b.bin_code);
+                                void handleFetchBinMaterials(b.bin_code);
+                              }}
+                              className={cn(
+                                "font-mono text-[10px] px-2.5 py-1 rounded-lg border transition-all font-semibold",
+                                takeawayScannedBinCode === b.bin_code
+                                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                                  : "bg-muted/40 hover:bg-muted text-foreground border-border/60",
+                              )}
+                            >
+                              {b.bin_code} ({b.bin_name})
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 2: Bin Content & Material Selection */}
+                  {takeawayScannedBinCode && (
+                    <div className="rounded-2xl border bg-card p-4 space-y-3 shadow-2xs animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                          <Boxes className="size-3.5" /> 2. Materials Stored in Bin {takeawayScannedBinCode}
+                        </Label>
+                        <span className="text-xs text-muted-foreground">
+                          {takeawayBinMaterials.length} item(s) found
+                        </span>
+                      </div>
+
+                      {takeawayBinMaterials.length === 0 ? (
+                        <div className="py-8 text-center text-xs text-muted-foreground border border-dashed rounded-xl">
+                          <Boxes className="size-8 mx-auto text-muted-foreground/40 mb-1.5" />
+                          No materials currently stored in this bin. Complete Putaway to populate stock.
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border rounded-xl">
+                          <table className="w-full text-left text-xs">
+                            <thead className="border-b bg-muted/40 text-[10px] uppercase font-bold text-muted-foreground">
+                              <tr>
+                                <th className="px-3 py-2.5">Material Code</th>
+                                <th className="px-3 py-2.5">Material Name</th>
+                                <th className="px-3 py-2.5">Material QR</th>
+                                <th className="px-3 py-2.5 text-right">Available Qty</th>
+                                <th className="px-3 py-2.5 text-right">Action</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/50">
+                              {takeawayBinMaterials.map((mat) => {
+                                const isSelected = takeawaySelectedMaterial?.material_code === mat.material_code;
+                                return (
+                                  <tr
+                                    key={mat.material_code}
+                                    className={cn(
+                                      "hover:bg-muted/30 transition-colors",
+                                      isSelected && "bg-blue-50/60 dark:bg-blue-950/40",
+                                    )}
+                                  >
+                                    <td className="px-3 py-2.5 font-mono font-bold text-primary">
+                                      {mat.material_code}
+                                    </td>
+                                    <td className="px-3 py-2.5 font-semibold text-foreground">
+                                      {mat.material_name}
+                                    </td>
+                                    <td className="px-3 py-2.5 font-mono text-[11px] text-muted-foreground">
+                                      <span className="px-2 py-0.5 rounded-md bg-muted font-bold text-foreground">
+                                        {mat.material_qr || `QR-MAT-${mat.material_code}`}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                      {mat.available_quantity} {mat.uom}
+                                    </td>
+                                    <td className="px-3 py-2.5 text-right">
+                                      <Button
+                                        type="button"
+                                        size="sm"
+                                        variant={isSelected ? "default" : "outline"}
+                                        onClick={() => {
+                                          setTakeawaySelectedMaterial(mat);
+                                          setTakeawayQuantity(String(mat.available_quantity));
+                                        }}
+                                        className={cn(
+                                          "rounded-lg text-xs h-7 px-3 font-semibold",
+                                          isSelected ? "bg-blue-600 text-white" : "",
+                                        )}
+                                      >
+                                        {isSelected ? "Selected" : "Select Material"}
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Step 3: Takeaway Confirmation Form */}
+                  {takeawaySelectedMaterial && (
+                    <form onSubmit={handleTakeawaySubmit} className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-4 space-y-4 shadow-sm animate-in fade-in">
+                      <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                        <Label className="text-xs font-bold uppercase tracking-wider text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                          <Send className="size-3.5" /> 3. Confirm Takeaway Quantity & Dispatch
+                        </Label>
+                        <span className="text-xs font-mono font-bold text-foreground">
+                          {takeawaySelectedMaterial.material_name} ({takeawaySelectedMaterial.material_code})
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <Label className="text-xs font-semibold">
+                            Takeaway Quantity ({takeawaySelectedMaterial.uom}) <span className="text-destructive">*</span>
+                          </Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            min="0.0001"
+                            max={takeawaySelectedMaterial.available_quantity}
+                            value={takeawayQuantity}
+                            onChange={(e) => setTakeawayQuantity(e.target.value)}
+                            required
+                            className="mt-1 h-9 rounded-xl font-mono font-bold text-base"
+                          />
+                          <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                            Max Available: <strong>{takeawaySelectedMaterial.available_quantity} {takeawaySelectedMaterial.uom}</strong>
+                          </span>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-semibold">Reference Document / Requisition</Label>
+                          <Input
+                            placeholder="e.g. REQ-PROD-2026-09"
+                            value={takeawayRefDoc}
+                            onChange={(e) => setTakeawayRefDoc(e.target.value)}
+                            className="mt-1 h-9 rounded-xl font-mono text-xs"
+                          />
+                          <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                            Production issue slip, job order, or transfer ref.
+                          </span>
+                        </div>
+
+                        <div>
+                          <Label className="text-xs font-semibold">Remarks / Purpose</Label>
+                          <Input
+                            placeholder="e.g. Dispatch to Assembly Line A"
+                            value={takeawayRemarks}
+                            onChange={(e) => setTakeawayRemarks(e.target.value)}
+                            className="mt-1 h-9 rounded-xl text-xs"
+                          />
+                          <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                            Audit note for movement history log.
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border/40">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setTakeawaySelectedMaterial(null)}
+                          className="rounded-xl text-xs h-9"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="submit"
+                          disabled={takeawayExecuting || !takeawayQuantity || Number(takeawayQuantity) <= 0}
+                          className="rounded-xl text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 shadow-glow"
+                        >
+                          {takeawayExecuting && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                          <CheckCircle2 className="size-4 mr-1.5" /> Confirm & Dispatch Takeaway
+                        </Button>
+                      </div>
+                    </form>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* TAB: MOVEMENT HISTORY (FULL AUDIT TRAIL) */}
+          {activeTab === "history" && (
+            <div className="space-y-4">
+              <Card className="border-border/40 shadow-soft">
+                <CardHeader className="pb-3">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 font-black text-foreground">
+                        <History className="size-5 text-primary" />
+                        <CardTitle className="text-base font-extrabold">
+                          Inventory Movement Audit Trail
+                        </CardTitle>
+                      </div>
+                      <CardDescription className="text-xs mt-0.5">
+                        Comprehensive ledger of all PUTAWAY and TAKEAWAY actions with scanned QR tags, location transitions, and operator attribution.
+                      </CardDescription>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={fetchMovementHistory}
+                        disabled={movementHistoryLoading}
+                        className="rounded-xl text-xs h-8"
+                      >
+                        <RefreshCw className={cn("size-3.5 mr-1.5", movementHistoryLoading && "animate-spin")} /> Refresh
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {/* Filters */}
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <div className="relative flex-1 w-full">
+                      <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search by material code, name, QR, location, or operator..."
+                        value={movementHistorySearch}
+                        onChange={(e) => setMovementHistorySearch(e.target.value)}
+                        className="pl-8 h-8 text-xs rounded-xl bg-background/50 border-border/40"
+                      />
+                    </div>
+                    <Select
+                      value={movementHistoryTypeFilter}
+                      onValueChange={setMovementHistoryTypeFilter}
+                    >
+                      <SelectTrigger className="w-40 h-8 text-xs rounded-xl border-border/40">
+                        <SelectValue placeholder="Movement Type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ALL">All Types</SelectItem>
+                        <SelectItem value="PUTAWAY">PUTAWAY (Inbound)</SelectItem>
+                        <SelectItem value="TAKEAWAY">TAKEAWAY (Outbound)</SelectItem>
+                        <SelectItem value="TRANSFER">TRANSFER</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Table */}
+                  <div className="overflow-x-auto border rounded-2xl">
+                    <table className="w-full text-left text-xs">
+                      <thead className="border-b bg-muted/40 text-[10px] uppercase font-bold text-muted-foreground">
+                        <tr>
+                          <th className="px-3.5 py-3">Timestamp</th>
+                          <th className="px-3.5 py-3">Type</th>
+                          <th className="px-3.5 py-3">Material</th>
+                          <th className="px-3.5 py-3">Scanned Material QR</th>
+                          <th className="px-3.5 py-3">Movement Route</th>
+                          <th className="px-3.5 py-3 text-right">Quantity</th>
+                          <th className="px-3.5 py-3 text-center">Stock Level</th>
+                          <th className="px-3.5 py-3">Operator</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/50">
+                        {movementHistoryLoading ? (
+                          <tr>
+                            <td colSpan={8} className="py-12 text-center text-xs text-muted-foreground">
+                              <Loader2 className="size-6 animate-spin mx-auto text-primary mb-2" />
+                              Loading movement records...
+                            </td>
+                          </tr>
+                        ) : filteredMovementHistory.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-12 text-center text-xs text-muted-foreground">
+                              <History className="size-6 mx-auto text-muted-foreground/40 mb-1.5" />
+                              No movement records found matching the filter.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredMovementHistory.map((m) => (
+                            <tr key={m.id} className="hover:bg-muted/30 transition-colors">
+                              <td className="px-3.5 py-3 font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                                {m.created_at ? new Date(m.created_at).toLocaleString() : "—"}
+                              </td>
+                              <td className="px-3.5 py-3">
+                                <span
+                                  className={cn(
+                                    "px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border",
+                                    m.movement_type === "PUTAWAY"
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                      : m.movement_type === "TAKEAWAY"
+                                        ? "bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                        : "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30",
+                                  )}
+                                >
+                                  {m.movement_type}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-3">
+                                <div className="font-mono font-bold text-foreground">
+                                  {m.material_code}
+                                </div>
+                                <div className="text-[11px] text-muted-foreground truncate max-w-44">
+                                  {m.material_name}
+                                </div>
+                              </td>
+                              <td className="px-3.5 py-3 font-mono text-[11px]">
+                                <span className="px-1.5 py-0.5 rounded bg-muted/60 font-semibold text-foreground">
+                                  {m.material_qr || "—"}
+                                </span>
+                              </td>
+                              <td className="px-3.5 py-3 text-[11px]">
+                                <div className="flex items-center gap-1 font-mono">
+                                  <span className="text-muted-foreground">{m.from_location || "—"}</span>
+                                  <ArrowRight className="size-3 text-primary shrink-0" />
+                                  <span className="font-bold text-foreground">{m.to_location || "—"}</span>
+                                </div>
+                              </td>
+                              <td className="px-3.5 py-3 text-right font-mono font-black text-foreground whitespace-nowrap">
+                                {m.movement_type === "TAKEAWAY" ? "-" : "+"}
+                                {m.quantity} {m.uom || "PCS"}
+                              </td>
+                              <td className="px-3.5 py-3 text-center font-mono text-[11px]">
+                                {m.stock_before !== null && m.stock_after !== null ? (
+                                  <span className="text-muted-foreground">
+                                    {m.stock_before} → <strong className="text-foreground">{m.stock_after}</strong>
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="px-3.5 py-3 text-[11px]">
+                                <div className="font-semibold text-foreground">{m.created_by || "System"}</div>
+                                {m.reference_document && (
+                                  <div className="font-mono text-[10px] text-muted-foreground">
+                                    Ref: {m.reference_document}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {/* CREATE ZONE MODAL */}
@@ -2292,6 +3291,216 @@ function MyStorePage() {
               )}
             </DialogContent>
           </Dialog>
+
+          {/* RELEASE DOCK CONFIRMATION MODAL */}
+          <AlertDialog
+            open={Boolean(releaseConfirmDock)}
+            onOpenChange={() => setReleaseConfirmDock(null)}
+          >
+            <AlertDialogContent className="rounded-2xl">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-destructive flex items-center gap-2">
+                  <LogOut className="size-5" /> Release Dock {releaseConfirmDock?.dock_code}?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="space-y-2 text-xs">
+                  <p>
+                    You are authorizing the release of dock <strong>{releaseConfirmDock?.dock_code}</strong> ({releaseConfirmDock?.dock_name}).
+                  </p>
+                  {releaseConfirmDock?.current_allocation?.vehicle_number && (
+                    <div className="p-3 bg-muted/30 border border-border/50 rounded-xl space-y-1 font-mono text-[11px]">
+                      <p>Vehicle: <strong>{releaseConfirmDock.current_allocation.vehicle_number}</strong></p>
+                      <p>Gate Pass: <strong>{releaseConfirmDock.current_allocation.existing_gate_pass_id || "N/A"}</strong></p>
+                      {releaseConfirmDock.current_allocation.material_reference && (
+                        <p>Material: {releaseConfirmDock.current_allocation.material_reference}</p>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-foreground font-semibold">
+                    This action will mark the dock status as AVAILABLE for new inbound deliveries.
+                  </p>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="rounded-xl text-xs">Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs"
+                  disabled={releasingDockBusy}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    void handleReleaseDockSubmit();
+                  }}
+                >
+                  {releasingDockBusy && <Loader2 className="size-3.5 animate-spin mr-1.5" />}
+                  Confirm Release Dock
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          {/* DOCK DETAILS MODAL */}
+          {selectedDockForDetails && (
+            <Dialog
+              open={Boolean(selectedDockForDetails)}
+              onOpenChange={() => setSelectedDockForDetails(null)}
+            >
+              <DialogContent className="max-w-lg rounded-2xl max-h-[85vh] overflow-y-auto">
+                <DialogHeader>
+                  <div className="flex items-center justify-between">
+                    <DialogTitle className="font-mono text-xl font-black text-primary flex items-center gap-2">
+                      <Warehouse className="size-5" /> {selectedDockForDetails.dock_code}
+                    </DialogTitle>
+                    <span
+                      className={cn(
+                        "rounded-full px-3 py-0.5 text-xs font-extrabold tracking-wider border",
+                        selectedDockForDetails.status === "AVAILABLE"
+                          ? "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]"
+                          : selectedDockForDetails.status === "MAINTENANCE"
+                            ? "bg-slate-100 text-slate-700 border-slate-200"
+                            : "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]",
+                      )}
+                    >
+                      {selectedDockForDetails.status === "OCCUPIED" ? "AT DOCK" : selectedDockForDetails.status}
+                    </span>
+                  </div>
+                  <DialogDescription className="text-xs">
+                    {selectedDockForDetails.dock_name}
+                    {selectedDockForDetails.location ? ` · ${selectedDockForDetails.location}` : ""}
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2 text-xs">
+                  <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
+                    <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
+                      <Warehouse className="size-3.5" /> Dock Information
+                    </h4>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Dock Code & Name</span>
+                        <span className="font-mono font-bold text-foreground">
+                          {selectedDockForDetails.dock_code} ({selectedDockForDetails.dock_name})
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Dock Category</span>
+                        <span className="font-mono font-bold text-foreground">
+                          {selectedDockForDetails.dock_type}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Current Status</span>
+                        <span className="font-bold text-[#ef4444]">
+                          {selectedDockForDetails.status === "OCCUPIED" ? "AT DOCK" : selectedDockForDetails.status}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block text-[11px]">Assigned Store</span>
+                        <span className="font-semibold text-foreground">
+                          {selectedDockForDetails.assigned_store_name || store?.store_name} ({selectedDockForDetails.assigned_store_code || store?.store_code})
+                        </span>
+                      </div>
+                      <div className="col-span-2">
+                        <span className="text-muted-foreground block text-[11px]">Location</span>
+                        <span className="font-medium text-foreground">
+                          {selectedDockForDetails.location || "Central Receiving"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectedDockForDetails.current_allocation && (
+                    <>
+                      <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
+                        <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
+                          <Truck className="size-3.5" /> Allocated Vehicle & Gate Entry Details
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Vehicle Number</span>
+                            <span className="font-mono font-black text-sm text-[#2563eb]">
+                              {selectedDockForDetails.current_allocation.vehicle_number || "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Gate Entry / Pass No</span>
+                            <span className="font-mono font-bold text-foreground">
+                              {selectedDockForDetails.current_allocation.existing_gate_pass_id || "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Allocation Status</span>
+                            <span className="font-mono font-bold text-emerald-600">
+                              {selectedDockForDetails.current_allocation.status || "DOCK_ASSIGNED"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Priority</span>
+                            <span className="font-bold text-foreground">
+                              {selectedDockForDetails.current_allocation.priority || "NORMAL"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border bg-card p-3 space-y-2 shadow-sm">
+                        <h4 className="font-extrabold uppercase tracking-wider text-[11px] text-primary flex items-center gap-1.5 border-b pb-1.5">
+                          <Boxes className="size-3.5" /> Material & Supplier Details
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Material Code / Name</span>
+                            <span className="font-bold text-foreground">
+                              {selectedDockForDetails.current_allocation.material_reference || "Materials"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Vendor / Supplier</span>
+                            <span className="font-medium text-foreground">
+                              {selectedDockForDetails.current_allocation.vendor_reference || "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Quantity</span>
+                            <span className="font-mono font-bold text-foreground">
+                              {selectedDockForDetails.current_allocation.quantity || "—"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground block text-[11px]">Gate Pass Ref</span>
+                            <span className="font-mono text-muted-foreground">
+                              {selectedDockForDetails.current_allocation.existing_gate_pass_id || "—"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="rounded-xl text-xs"
+                    onClick={() => setSelectedDockForDetails(null)}
+                  >
+                    Close
+                  </Button>
+
+                  {(selectedDockForDetails.status === "OCCUPIED" || selectedDockForDetails.status === "RESERVED") && (
+                    <Button
+                      className="rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs"
+                      onClick={() => {
+                        const target = selectedDockForDetails;
+                        setSelectedDockForDetails(null);
+                        setReleaseConfirmDock(target);
+                      }}
+                    >
+                      <LogOut className="size-3.5 mr-1" /> Release Dock
+                    </Button>
+                  )}
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       )}
     </AppShell>

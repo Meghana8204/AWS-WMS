@@ -48,6 +48,10 @@ from app.modules.store.infrastructure.api.schemas import (
     ZoneUpdate,
     ZoneWithBinsResponse,
 )
+from app.modules.storage.infrastructure.persistence.models import (
+    InventoryLocationBalanceModel,
+    StorageLocationModel,
+)
 from app.modules.store.infrastructure.persistence.models import (
     StoreBinModel,
     StoreManagerUserModel,
@@ -1475,6 +1479,89 @@ async def lookup_bin_by_scan(
         )
 
     return _build_bin_qr_response(bin_obj, zone, store)
+
+
+@bin_router.get("/{bin_id}/materials")
+async def get_bin_materials(
+    bin_id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> dict:
+    bin_obj = await _resolve_bin(uow.session, bin_id)
+    if not bin_obj:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Bin '{bin_id}' not found")
+
+    zone = await uow.session.get(StoreZoneModel, bin_obj.zone_id)
+    store = await uow.session.get(StoreModel, bin_obj.store_id)
+    if not zone or not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent Zone/Store for Bin not found")
+
+    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to view bins in your assigned store.",
+        )
+
+    # Find storage locations linked to this bin
+    loc_stmt = select(StorageLocationModel).where(
+        or_(
+            StorageLocationModel.bin_id == bin_obj.id,
+            (
+                (StorageLocationModel.store_id == bin_obj.store_id)
+                & (StorageLocationModel.zone_id == bin_obj.zone_id)
+                & (StorageLocationModel.bin == bin_obj.bin_code)
+            ),
+        )
+    )
+    loc_res = await uow.session.execute(loc_stmt)
+    storage_locs = loc_res.scalars().all()
+    loc_ids = [loc.id for loc in storage_locs]
+
+    materials = []
+    if loc_ids:
+        bal_stmt = (
+            select(InventoryLocationBalanceModel)
+            .where(
+                InventoryLocationBalanceModel.storage_location_id.in_(loc_ids),
+                InventoryLocationBalanceModel.available_quantity > 0,
+            )
+            .order_by(InventoryLocationBalanceModel.material_code.asc())
+        )
+        bal_res = await uow.session.execute(bal_stmt)
+        balances = bal_res.scalars().all()
+
+        for b in balances:
+            materials.append({
+                "id": str(b.id),
+                "material_code": b.material_code,
+                "material_name": b.material_name,
+                "material_qr": f"QR-MAT-{b.material_code}",
+                "quantity": float(b.quantity),
+                "available_quantity": float(b.available_quantity),
+                "uom": b.uom,
+                "last_grn_number": b.last_grn_number,
+                "storage_location_id": str(b.storage_location_id),
+                "updated_at": b.updated_at.isoformat() if b.updated_at else None,
+            })
+
+    return {
+        "bin_id": str(bin_obj.id),
+        "bin_code": bin_obj.bin_code,
+        "bin_name": bin_obj.bin_name,
+        "store_id": str(store.id),
+        "store_code": store.store_code,
+        "store_name": store.store_name,
+        "zone_id": str(zone.id),
+        "zone_code": zone.zone_code,
+        "zone_name": zone.zone_name,
+        "rack": bin_obj.rack,
+        "shelf": bin_obj.shelf,
+        "capacity": float(bin_obj.capacity),
+        "occupied_quantity": float(bin_obj.occupied_quantity),
+        "available_capacity": float(max(Decimal("0.0"), bin_obj.capacity - bin_obj.occupied_quantity)),
+        "status": bin_obj.status,
+        "materials": materials,
+    }
 
 
 # ==========================================

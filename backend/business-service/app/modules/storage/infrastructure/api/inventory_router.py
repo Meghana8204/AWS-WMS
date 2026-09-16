@@ -29,12 +29,15 @@ from app.modules.quarantine.infrastructure.persistence.models import (
     QuarantineRecordModel,
 )
 from app.modules.receiving.infrastructure.persistence.models import (
+    GrnBatchQrModel,
     InventoryReceiptPostingModel,
 )
 from app.modules.storage.infrastructure.persistence.models import (
     AssemblyRequisitionModel,
+    HandlingUnitModel,
     InventoryIssueTransactionModel,
     InventoryLocationBalanceModel,
+    InventoryMovementHistoryModel,
     PickupTaskModel,
     PutawayMovementModel,
     PutawayTaskModel,
@@ -833,3 +836,332 @@ async def get_warehouse_dashboard_metrics(
         },
         "recent_activity": activity,
     }
+
+
+class TakeawayRequest(BaseModel):
+    bin_scan: str
+    material_scan: str
+    quantity: Decimal
+    remarks: Optional[str] = None
+    reference_document: Optional[str] = None
+
+
+@inventory_router.post("/takeaway")
+async def perform_takeaway(
+    req: TakeawayRequest,
+    user: CurrentUser = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+) -> Dict[str, Any]:
+    """
+    Perform authorized material takeaway from a Store Bin.
+    Validates Store Manager / Store Keeper RBAC and Store isolation.
+    Scans Bin QR & Material QR, decrements bin inventory, updates Material Stock,
+    and creates an audit trail entry in InventoryMovementHistoryModel.
+    """
+    roles_upper = {r.upper() for r in (user.roles or [])}
+    is_store_user = ("STORE_MANAGER" in roles_upper or "STORE_KEEPER" in roles_upper)
+    is_admin = bool(roles_upper.intersection({"ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER"}))
+
+    if not is_store_user and not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Only Store Managers or Store Keepers can perform takeaway operations.",
+        )
+
+    if req.quantity <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Takeaway quantity must be greater than zero.",
+        )
+
+    # 1. Resolve Bin
+    bin_raw = req.bin_scan.strip()
+    bin_identifier = bin_raw
+    if bin_raw.startswith("{") and bin_raw.endswith("}"):
+        try:
+            import json as _json
+            parsed = _json.loads(bin_raw)
+            bin_identifier = parsed.get("bin_id") or parsed.get("bin_code") or parsed.get("location_code") or bin_raw
+        except Exception:
+            bin_identifier = bin_raw
+
+    bin_obj = None
+    try:
+        b_uuid = uuid.UUID(str(bin_identifier))
+        bin_obj = await uow.session.get(StoreBinModel, b_uuid)
+    except (ValueError, TypeError):
+        pass
+
+    if bin_obj is None:
+        bq = await uow.session.execute(
+            select(StoreBinModel).where(func.upper(StoreBinModel.bin_code) == str(bin_identifier).strip().upper())
+        )
+        bin_obj = bq.scalar_one_or_none()
+
+    if bin_obj is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scanned Bin '{bin_raw}' not found in any store.",
+        )
+
+    # 2. Store isolation & RBAC check
+    target_store = await uow.session.get(StoreModel, bin_obj.store_id)
+    if not target_store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent Store for Bin not found.")
+
+    if is_store_user and not is_admin:
+        user_store_id, user_store_code = await _resolve_user_store_context(uow, user)
+        # Check against user_store_id or store_code or username
+        store_match = False
+        if user_store_id and user_store_id == target_store.id:
+            store_match = True
+        elif user_store_code and user_store_code.strip().upper() == target_store.store_code.strip().upper():
+            store_match = True
+        elif target_store.store_manager_id and (
+            target_store.store_manager_id.lower() == (user.username or "").lower()
+            or target_store.store_manager_id.lower() == (user.subject or "").lower()
+        ):
+            store_match = True
+
+        if not store_match:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access forbidden: You can only perform takeaway operations for your assigned Store ('{target_store.store_code}').",
+            )
+
+    # 3. Resolve Material
+    mat_raw = req.material_scan.strip()
+    cleaned_mat_code = mat_raw
+    if mat_raw.startswith("{") and mat_raw.endswith("}"):
+        try:
+            import json as _json
+            parsed = _json.loads(mat_raw)
+            cleaned_mat_code = parsed.get("item_code") or parsed.get("material_code") or parsed.get("barcode_value") or mat_raw
+        except Exception:
+            cleaned_mat_code = mat_raw
+
+    if cleaned_mat_code.upper().startswith("QR-MAT-"):
+        cleaned_mat_code = cleaned_mat_code[7:]
+    elif cleaned_mat_code.upper().startswith("QR-"):
+        cleaned_mat_code = cleaned_mat_code[3:]
+
+    # If cleaned_mat_code is not directly matched, check GrnBatchQr, HandlingUnit, or PutawayTask
+    qr_batch = await uow.session.scalar(select(GrnBatchQrModel).where(GrnBatchQrModel.qr_code == mat_raw))
+    if qr_batch and qr_batch.item_code:
+        cleaned_mat_code = qr_batch.item_code
+    else:
+        hu_match = await uow.session.scalar(
+            select(HandlingUnitModel).where(
+                or_(
+                    HandlingUnitModel.barcode_value == mat_raw,
+                    HandlingUnitModel.hu_number == mat_raw,
+                )
+            )
+        )
+        if hu_match and hu_match.item_code:
+            cleaned_mat_code = hu_match.item_code
+
+    # 4. Find Storage Location for this Bin
+    loc_res = await uow.session.execute(
+        select(StorageLocationModel).where(
+            or_(
+                StorageLocationModel.bin_id == bin_obj.id,
+                (
+                    (StorageLocationModel.store_id == bin_obj.store_id)
+                    & (StorageLocationModel.bin == bin_obj.bin_code)
+                ),
+            )
+        ).with_for_update()
+    )
+    storage_locs = loc_res.scalars().all()
+    loc_ids = [loc.id for loc in storage_locs]
+
+    # 5. Find Inventory Location Balance
+    bal_query = select(InventoryLocationBalanceModel).where(
+        func.lower(InventoryLocationBalanceModel.material_code) == cleaned_mat_code.lower()
+    )
+    if loc_ids:
+        bal_query = bal_query.where(InventoryLocationBalanceModel.storage_location_id.in_(loc_ids))
+    bal_res = await uow.session.execute(bal_query.with_for_update())
+    balance = bal_res.scalar_one_or_none()
+
+    if balance is None or balance.available_quantity <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Material '{cleaned_mat_code}' has no available stock in Bin '{bin_obj.bin_code}'.",
+        )
+
+    if balance.available_quantity < req.quantity:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Insufficient quantity available in Bin '{bin_obj.bin_code}'. Available: {balance.available_quantity} {balance.uom}, Requested: {req.quantity}.",
+        )
+
+    # 6. Fetch MaterialStockModel
+    stock_res = await uow.session.execute(
+        select(MaterialStockModel).where(MaterialStockModel.material_code == balance.material_code).with_for_update()
+    )
+    stock = stock_res.scalar_one_or_none()
+    stock_before = stock.available if stock else balance.available_quantity
+
+    # 7. Apply Stock Decrements
+    balance.quantity = balance.quantity - req.quantity
+    balance.available_quantity = balance.available_quantity - req.quantity
+    now_utc = datetime.now(timezone.utc)
+    balance.updated_at = now_utc
+
+    bin_obj.occupied_quantity = max(Decimal("0.0"), (bin_obj.occupied_quantity or Decimal("0.0")) - req.quantity)
+    bin_obj.updated_at = now_utc
+
+    for sloc in storage_locs:
+        if sloc.id == balance.storage_location_id:
+            sloc.occupied_quantity = max(Decimal("0.0"), (sloc.occupied_quantity or Decimal("0.0")) - req.quantity)
+
+    if stock:
+        stock.available = max(Decimal("0.0"), stock.available - req.quantity)
+        stock.on_hand = max(Decimal("0.0"), stock.on_hand - req.quantity)
+        stock.updated_at = now_utc.replace(tzinfo=None)
+
+    stock_after = stock.available if stock else balance.available_quantity
+
+    # 8. Record Inventory Movement History
+    movement_rec = InventoryMovementHistoryModel(
+        movement_type="TAKEAWAY",
+        material_code=balance.material_code,
+        material_name=balance.material_name,
+        material_qr=req.material_scan.strip(),
+        grn_number=balance.last_grn_number,
+        batch_lot=None,
+        from_location=f"{target_store.store_code} / {bin_obj.bin_code}",
+        to_location="OUTBOUND / TAKEAWAY",
+        from_bin_id=bin_obj.id,
+        to_bin_id=None,
+        quantity=req.quantity,
+        uom=balance.uom,
+        stock_before=stock_before,
+        stock_after=stock_after,
+        performed_by=user.username,
+        user_role=",".join(user.roles or []),
+        warehouse_id=target_store.warehouse_id or "MAIN",
+        store_id=target_store.id,
+        store_code=target_store.store_code,
+        reference_document=req.reference_document or "TAKEAWAY",
+        remarks=req.remarks or f"Takeaway {req.quantity} {balance.uom} from Bin {bin_obj.bin_code}",
+        performed_at=now_utc,
+    )
+    uow.session.add(movement_rec)
+    await uow.session.flush()
+
+    return {
+        "success": True,
+        "message": f"Successfully executed takeaway of {float(req.quantity)} {balance.uom} for {balance.material_name} ({balance.material_code})",
+        "movement_id": str(movement_rec.id),
+        "material_code": balance.material_code,
+        "material_name": balance.material_name,
+        "bin_code": bin_obj.bin_code,
+        "store_code": target_store.store_code,
+        "takeaway_quantity": float(req.quantity),
+        "uom": balance.uom,
+        "remaining_bin_quantity": float(balance.available_quantity),
+        "total_stock_available": float(stock_after),
+        "performed_by": user.username,
+        "performed_at": now_utc.isoformat(),
+    }
+
+
+@inventory_router.get("/movement-history")
+async def get_inventory_movement_history(
+    movement_type: Optional[str] = None,
+    material_code: Optional[str] = None,
+    store_id: Optional[str] = None,
+    bin_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    user: CurrentUser = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+) -> List[Dict[str, Any]]:
+    """
+    Query the complete inventory movement history audit trail (PUTAWAY, TAKEAWAY, TRANSFER, etc.).
+    Enforces store-level isolation for Store Managers/Keepers.
+    """
+    user_store_id, _ = await _resolve_user_store_context(uow, user)
+    if _is_store_scoped_role(user):
+        if not user_store_id:
+            raise HTTPException(status_code=403, detail="Store user context not assigned.")
+        if store_id and str(user_store_id) != store_id:
+            raise HTTPException(status_code=403, detail="Access forbidden: You cannot view movement history of another Store.")
+        target_store_id = user_store_id
+    else:
+        target_store_id = uuid.UUID(store_id) if store_id else None
+
+    stmt = select(InventoryMovementHistoryModel).order_by(InventoryMovementHistoryModel.performed_at.desc())
+    if target_store_id:
+        stmt = stmt.where(InventoryMovementHistoryModel.store_id == target_store_id)
+    if movement_type and movement_type.upper() != "ALL":
+        stmt = stmt.where(func.upper(InventoryMovementHistoryModel.movement_type) == movement_type.strip().upper())
+    if material_code:
+        stmt = stmt.where(func.lower(InventoryMovementHistoryModel.material_code) == material_code.strip().lower())
+    if bin_id:
+        try:
+            b_uuid = uuid.UUID(bin_id)
+            stmt = stmt.where(
+                or_(
+                    InventoryMovementHistoryModel.from_bin_id == b_uuid,
+                    InventoryMovementHistoryModel.to_bin_id == b_uuid,
+                )
+            )
+        except ValueError:
+            pass
+
+    res = await uow.session.execute(stmt.limit(300))
+    records = res.scalars().all()
+
+    output = []
+    for r in records:
+        ts = r.performed_at.isoformat() if r.performed_at else datetime.now(timezone.utc).isoformat()
+        if start_date and ts[:10] < start_date.strip()[:10]:
+            continue
+        if end_date and ts[:10] > end_date.strip()[:10]:
+            continue
+        if search:
+            st = search.strip().lower()
+            if (
+                st not in r.material_code.lower()
+                and st not in r.material_name.lower()
+                and st not in (r.material_qr or "").lower()
+                and st not in (r.grn_number or "").lower()
+                and st not in r.from_location.lower()
+                and st not in r.to_location.lower()
+                and st not in r.performed_by.lower()
+                and st not in (r.store_code or "").lower()
+            ):
+                continue
+
+        output.append({
+            "id": str(r.id),
+            "movement_type": r.movement_type,
+            "material_code": r.material_code,
+            "material_name": r.material_name,
+            "material_qr": r.material_qr,
+            "grn_number": r.grn_number,
+            "batch_lot": r.batch_lot,
+            "from_location": r.from_location,
+            "to_location": r.to_location,
+            "from_bin_id": str(r.from_bin_id) if r.from_bin_id else None,
+            "to_bin_id": str(r.to_bin_id) if r.to_bin_id else None,
+            "quantity": float(r.quantity),
+            "uom": r.uom,
+            "stock_before": float(r.stock_before) if r.stock_before is not None else None,
+            "stock_after": float(r.stock_after) if r.stock_after is not None else None,
+            "performed_by": r.performed_by,
+            "user_role": r.user_role,
+            "warehouse_id": r.warehouse_id,
+            "store_id": str(r.store_id) if r.store_id else None,
+            "store_code": r.store_code,
+            "reference_document": r.reference_document,
+            "remarks": r.remarks,
+            "performed_at": ts,
+        })
+
+    return output

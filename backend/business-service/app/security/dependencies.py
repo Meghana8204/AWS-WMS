@@ -34,11 +34,11 @@ async def get_current_user(
     roles_hdr = request.headers.get("X-User-Roles") or request.headers.get("x-user-roles")
     if roles_hdr:
         roles = [r.strip() for r in roles_hdr.split(",") if r.strip()]
-        user_name = request.headers.get("X-User-Name") or request.headers.get("x-user-name") or "test_user"
-        user_id = request.headers.get("X-User-Id") or request.headers.get("x-user-id") or user_name
-        store_code = request.headers.get("X-Store-Code") or request.headers.get("x-store-code")
-        store_id = request.headers.get("X-Store-Id") or request.headers.get("x-store-id")
-        emp_id = request.headers.get("X-Employee-Id") or request.headers.get("x-employee-id")
+        user_name = request.headers.get("X-User-Name") or request.headers.get("x-user-name") or request.headers.get("X-User-Username") or request.headers.get("x-user-username") or "test_user"
+        user_id = request.headers.get("X-User-Id") or request.headers.get("x-user-id") or request.headers.get("X-User-Subject") or request.headers.get("x-user-subject") or user_name
+        store_code = request.headers.get("X-Store-Code") or request.headers.get("x-store-code") or request.headers.get("X-User-Store-Code") or request.headers.get("x-user-store-code")
+        store_id = request.headers.get("X-Store-Id") or request.headers.get("x-store-id") or request.headers.get("X-User-Store-Id") or request.headers.get("x-user-store-id")
+        emp_id = request.headers.get("X-Employee-Id") or request.headers.get("x-employee-id") or request.headers.get("X-User-Employee-Id") or request.headers.get("x-user-employee-id") or user_id
         claims = {}
         if store_code:
             claims["store_code"] = store_code
