@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID
+from app.modules.store.infrastructure.persistence.models import StoreModel
 
 
 class DockMasterModel(Base):

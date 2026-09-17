@@ -243,6 +243,22 @@ class DockAllocationService:
             pass
 
     @staticmethod
+    async def _sync_warehouse_dock_status(
+        session: AsyncSession,
+        dock_code: str,
+        status_value: str,
+    ) -> None:
+        """Safely sync status to legacy warehouse_dock table if it exists."""
+        try:
+            from sqlalchemy import text
+            await session.execute(
+                text("UPDATE warehouse_dock SET status = :st, updated_at = NOW() WHERE dock_number = :dc"),
+                {"st": status_value, "dc": dock_code},
+            )
+        except Exception:
+            pass
+
+    @staticmethod
     async def allocate_dock(
         session: AsyncSession,
         allocation_request_id: uuid.UUID,
