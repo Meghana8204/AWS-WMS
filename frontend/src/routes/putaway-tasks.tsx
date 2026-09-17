@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import jsQR from "jsqr";
 import {
@@ -708,6 +708,26 @@ function WarehousePutawayTasksPage() {
         </div>
       }
     >
+      {/* Store Manager Putaway Portal Banner */}
+      <div className="rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/20 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="size-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0">
+            <Warehouse className="size-5" />
+          </div>
+          <div>
+            <h4 className="text-xs font-bold text-foreground">Store Manager Inbound Putaway Execution</h4>
+            <p className="text-[11px] text-muted-foreground">
+              Putaway execution is performed by Store Managers and Keepers directly inside their dedicated Store Portal.
+            </p>
+          </div>
+        </div>
+        <Button size="sm" className="rounded-xl text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white shrink-0" asChild>
+          <Link to="/my-store">
+            Open My Store Putaways <ArrowRight className="size-3.5 ml-1" />
+          </Link>
+        </Button>
+      </div>
+
       {/* KPI Metrics Banner */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         <Card className="rounded-xl p-3.5 shadow-sm border bg-card">

@@ -808,19 +808,20 @@ async def release_dock(
     # Fallback to predefined dock type mapping if no assignment store found
     if not dock_store_ids and not dock_store_codes and dock:
         dock_type_map = {
-            "CHEMICAL_HAZARDOUS": "STR-001",
-            "CHEMICAL": "STR-001",
-            "HAZARDOUS_ITEMS": "STR-001",
-            "ELECTRICAL": "STR-001",
-            "RAW_MATERIAL": "STR-001",
-            "ELECTRONICS": "STR-001",
-            "ELECTRONIC": "STR-001",
-            "MAIN_RECEIVING": "STR-001",
+            "CHEMICAL_HAZARDOUS": "STR-CH",
+            "CHEMICAL": "STR-CH",
+            "HAZARDOUS_ITEMS": "STR-CH",
+            "ELECTRICAL": "STR-EL",
+            "RAW_MATERIAL": "STR-RM",
+            "ELECTRONICS": "STR-EL",
+            "ELECTRONIC": "STR-EL",
+            "MAIN_RECEIVING": "STR-MR",
         }
-        mapped_code = dock_type_map.get(dock.dock_type)
+        mapped_code = dock_type_map.get(dock.dock_type, "STR-001")
         if mapped_code:
             dock_store_codes.add(mapped_code)
-            s_res = await uow.session.execute(select(StoreModel).where(func.upper(StoreModel.store_code) == mapped_code))
+            dock_store_codes.add("STR-001")
+            s_res = await uow.session.execute(select(StoreModel).where(func.upper(StoreModel.store_code).in_([mapped_code, "STR-001"])))
             for s in s_res.scalars().all():
                 dock_store_ids.add(s.id)
 
