@@ -129,13 +129,6 @@ def _send_sync(
     host_user = (settings.email_host_user or "").strip()
     host_password = normalize_smtp_password(settings.email_host_password)
 
-<<<<<<< HEAD
-    # Absolute path for debugging
-    log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
-    os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as lf:
-        lf.write(f"SMTP Start: {to_email} via user={host_user}, host={settings.email_host}:{settings.email_port}, auth={bool(host_password)}, pw_len={len(host_password)}\n")
-=======
     logger.info(
         f"SMTP SEND START: Sender={host_user} | Recipient={to_email} | Subject='{subject}' | Host={settings.email_host}"
     )
@@ -145,7 +138,6 @@ def _send_sync(
         lf.write(f"\n[SMTP DISPATCH] Sender: {host_user} | Recipient: {to_email} | Subject: '{subject}' | Host: {settings.email_host}\n")
 
     msg_id = make_msgid(domain=host_user.split('@')[-1] if '@' in host_user else 'gmail.com')
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
 
     # Let Gmail, Outlook, and mobile clients prefer the premium HTML while
     # retaining the plain-text version as an accessibility fallback.
@@ -173,10 +165,7 @@ def _send_sync(
     for port, use_ssl in _smtp_transports(settings):
         server = None
         try:
-<<<<<<< HEAD
-=======
             logger.info(f"SMTP CONNECT: Host={settings.email_host}:{port} (SSL={use_ssl}) | Recipient={to_email}")
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
             if use_ssl:
                 server = smtplib.SMTP_SSL(settings.email_host, port, timeout=settings.email_timeout_seconds)
             else:
@@ -184,29 +173,16 @@ def _send_sync(
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-<<<<<<< HEAD
             server.login(host_user, host_password)
-            server.send_message(msg)
-            # Delivery has completed once send_message returns. A timeout while
-            # closing must not trigger another attempt and duplicate the email.
-=======
-            server.login(host_user, host_pass)
             logger.info(f"SMTP AUTH SUCCESS: Host={settings.email_host}:{port} | Authenticated as={host_user}")
-            send_started = True
-            logger.info(f"SMTP SENDMAIL CALLED: Dispatching message ID {msg_id} to {to_email}")
             refused = server.send_message(msg)
             logger.info(f"SMTP SENDMAIL RESULT: Refused={refused}")
             if refused:
                 raise smtplib.SMTPRecipientsRefused(refused)
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
             try:
                 server.quit()
             except (OSError, smtplib.SMTPException, socket.error):
                 server.close()
-<<<<<<< HEAD
-            with open(log_path, "a", encoding="utf-8") as lf:
-                lf.write(f"SMTP Success: {to_email} via port {port}\n")
-=======
             logger.info(
                 f"SMTP SEND SUCCESS: Host={settings.email_host}:{port} accepted message for {to_email}. Message-ID={msg_id}"
             )
@@ -218,7 +194,6 @@ def _send_sync(
                     )
             except OSError:
                 pass
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
             return True
         except (OSError, smtplib.SMTPException, socket.error) as smtp_err:
             # Enhanced error logging for diagnostics
@@ -229,14 +204,10 @@ def _send_sync(
                 errno = getattr(smtp_err, 'errno', getattr(smtp_err, 'winerror', None))
                 if errno in WINSOCK_ERRORS:
                     error_msg += f" [{WINSOCK_ERRORS[errno]}]"
-<<<<<<< HEAD
-
-=======
             logger.warning(
                 f"[SMTP ATTEMPT FAILED] Host: {settings.email_host}:{port} | Sender: {host_user} | "
                 f"Recipient: {to_email} | Subject: '{subject}' | Error: {error_msg}"
             )
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
             errors.append(f"port {port}: {error_msg}")
             if server is not None:
                 try:
@@ -244,11 +215,6 @@ def _send_sync(
                 except Exception:
                     pass
     error_message = "; ".join(errors)
-<<<<<<< HEAD
-    with open(log_path, "a", encoding="utf-8") as lf:
-        lf.write(f"SMTP Error: {error_message}\n")
-        lf.write(f"System: {platform.system()} | Host: {settings.email_host}:{settings.email_port}\n")
-=======
     logger.error(
         f"[SMTP ALL ATTEMPTS FAILED] Host: {settings.email_host} | Sender: {host_user} | "
         f"Recipient: {to_email} | Subject: '{subject}' | Response/Result: {error_message}"
@@ -258,7 +224,6 @@ def _send_sync(
             f"[SMTP ERROR] Host: {settings.email_host} | Sender: {host_user} | "
             f"Recipient: {to_email} | Subject: '{subject}' | Response/Result: {error_message}\n"
         )
->>>>>>> 2a306b2 (Implement QR based putaway workflow)
     raise RuntimeError(error_message)
 
 async def send_email(
