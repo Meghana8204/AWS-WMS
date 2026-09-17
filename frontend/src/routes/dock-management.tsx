@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   CheckCircle2,
+  Info,
   Loader2,
   Package,
   RefreshCw,
