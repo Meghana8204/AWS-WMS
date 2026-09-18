@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.dock.domain.enums import (
@@ -32,6 +32,14 @@ class DockAllocationService:
         """Helper to seed initial 9 docks when explicitly invoked (e.g. by test fixtures or setup scripts)."""
         result = await session.execute(select(func.count(DockMasterModel.id)))
         if result.scalar() == 0:
+            default_store_id = None
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreModel
+                store_res = await session.execute(select(StoreModel.id).order_by(StoreModel.created_at.asc()).limit(1))
+                default_store_id = store_res.scalars().first()
+            except Exception:
+                default_store_id = None
+
             initial_docks = [
                 {"code": "RM-01", "name": "Raw Material Dock 01", "type": DockType.RAW_MATERIAL.value, "location": "North Warehouse"},
                 {"code": "RM-02", "name": "Raw Material Dock 02", "type": DockType.RAW_MATERIAL.value, "location": "East Warehouse"},
@@ -246,15 +254,22 @@ class DockAllocationService:
     async def _sync_warehouse_dock_status(
         session: AsyncSession,
         dock_code: str,
-        status_value: str,
+        new_status: str,
     ) -> None:
-        """Safely sync status to legacy warehouse_dock table if it exists."""
+        """Safely sync status to DockModel (warehouse_dock)."""
         try:
-            from sqlalchemy import text
-            await session.execute(
-                text("UPDATE warehouse_dock SET status = :st, updated_at = NOW() WHERE dock_number = :dc"),
-                {"st": status_value, "dc": dock_code},
+            from app.modules.gate.infrastructure.persistence.models import DockModel
+            stmt = select(DockModel).where(
+                or_(
+                    DockModel.dock_number == dock_code,
+                    func.upper(DockModel.dock_number) == dock_code.upper(),
+                )
             )
+            res = await session.execute(stmt)
+            wh_dock = res.scalars().first()
+            if wh_dock:
+                wh_dock.status = new_status
+                wh_dock.updated_at = datetime.now(timezone.utc)
         except Exception:
             pass
 
@@ -897,6 +912,7 @@ class DockAllocationService:
                         changed_at=datetime.now(timezone.utc),
                     )
                 )
+                await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "AVAILABLE")
 
         previous_status = req.status
         req.status = AllocationStatus.RELEASED.value

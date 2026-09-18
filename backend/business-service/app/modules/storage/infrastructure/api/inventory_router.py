@@ -628,9 +628,9 @@ async def get_warehouse_dashboard_metrics(
         select(PutawayTaskModel).order_by(PutawayTaskModel.created_at.desc())
     )
     all_putaways = pt_res.scalars().all()
-    pending_putaway_list = [p for p in all_putaways if (p.status or "").upper() in ("PUTAWAY_PENDING", "PENDING", "LOCATION_ASSIGNED")]
-    in_progress_putaway_list = [p for p in all_putaways if (p.status or "").upper() == "IN_PROGRESS"]
-    completed_putaway_list = [p for p in all_putaways if (p.status or "").upper() == "PUTAWAY_COMPLETED"]
+    pending_putaway_list = [p for p in all_putaways if (p.status or "").upper() in ("PUTAWAY_PENDING", "PENDING", "LOCATION_ASSIGNED", "OPEN", "READY_FOR_PUTAWAY", "ASSIGNED_TO_STORE")]
+    in_progress_putaway_list = [p for p in all_putaways if (p.status or "").upper() in ("IN_PROGRESS", "PUTAWAY_IN_PROGRESS")]
+    completed_putaway_list = [p for p in all_putaways if (p.status or "").upper() in ("PUTAWAY_COMPLETED", "COMPLETED")]
     unassigned_putaway_count = sum(1 for p in pending_putaway_list if not p.destination_bin_id and not p.destination_location_id)
 
     # 2. Store pickup tasks (from Assembly Requisitions)
@@ -684,6 +684,21 @@ async def get_warehouse_dashboard_metrics(
     total_bins = len(all_bins)
     occupied_bins = sum(1 for b in all_bins if float(b.occupied_quantity or 0) > 0)
     available_bins = sum(1 for b in all_bins if float(b.occupied_quantity or 0) == 0 and (b.status or "").upper() == "ACTIVE")
+
+    # 7b. Docks & Gate Overview
+    from app.modules.dock.infrastructure.persistence.models import DockMasterModel, DockAllocationRequestModel
+    from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+
+    docks_res = await uow.session.execute(select(DockMasterModel).where(DockMasterModel.is_active.is_(True)))
+    all_docks = docks_res.scalars().all()
+    total_docks = len(all_docks)
+    occupied_docks = sum(1 for d in all_docks if (d.status or "").upper() in ("OCCUPIED", "IN_USE"))
+    available_docks = sum(1 for d in all_docks if (d.status or "").upper() in ("AVAILABLE", "ACTIVE"))
+
+    ge_res = await uow.session.execute(select(GateEntryModel).order_by(GateEntryModel.created_at.desc()))
+    all_ges = ge_res.scalars().all()
+    total_gate_entries = len(all_ges)
+    awaiting_dock_count = sum(1 for ge in all_ges if (ge.status or "").upper() in ("AWAITING_DOCK", "REGISTERED", "APPROVED", "PO_VERIFIED"))
 
     # 8. Unified Warehouse Activity Feed
     activity: List[Dict[str, Any]] = []
@@ -833,6 +848,13 @@ async def get_warehouse_dashboard_metrics(
             "total_bins": total_bins,
             "occupied_bins": occupied_bins,
             "available_bins": available_bins,
+        },
+        "dock_overview": {
+            "total_docks": total_docks,
+            "occupied_docks": occupied_docks,
+            "available_docks": available_docks,
+            "total_gate_entries": total_gate_entries,
+            "awaiting_dock_count": awaiting_dock_count,
         },
         "recent_activity": activity,
     }

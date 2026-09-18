@@ -132,10 +132,17 @@ def _send_sync(
     logger.info(
         f"SMTP SEND START: Sender={host_user} | Recipient={to_email} | Subject='{subject}' | Host={settings.email_host}"
     )
+    # Absolute path for debugging
     log_path = os.path.abspath(os.path.join("media_uploads", "smtp_debug.txt"))
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
-    with open(log_path, "a", encoding="utf-8") as lf:
-        lf.write(f"\n[SMTP DISPATCH] Sender: {host_user} | Recipient: {to_email} | Subject: '{subject}' | Host: {settings.email_host}\n")
+    try:
+        with open(log_path, "a", encoding="utf-8") as lf:
+            lf.write(
+                f"\n[SMTP DISPATCH] Sender: {host_user} | Recipient: {to_email} | Subject: '{subject}' | "
+                f"Host: {settings.email_host}:{settings.email_port} | auth={bool(host_password)} | pw_len={len(host_password)}\n"
+            )
+    except OSError:
+        pass
 
     msg_id = make_msgid(domain=host_user.split('@')[-1] if '@' in host_user else 'gmail.com')
 
@@ -147,7 +154,7 @@ def _send_sync(
     msg['Reply-To'] = host_user
     msg['Subject'] = subject
     msg['Date'] = formatdate(localtime=True)
-    msg['Message-ID'] = make_msgid()
+    msg['Message-ID'] = msg_id
     alternatives = MIMEMultipart('alternative')
     alternatives.attach(MIMEText(body, 'plain', 'utf-8'))
     if html_body:
@@ -175,7 +182,10 @@ def _send_sync(
                 server.ehlo()
             server.login(host_user, host_password)
             logger.info(f"SMTP AUTH SUCCESS: Host={settings.email_host}:{port} | Authenticated as={host_user}")
+            logger.info(f"SMTP SENDMAIL CALLED: Dispatching message ID {msg_id} to {to_email}")
             refused = server.send_message(msg)
+            # Delivery has completed once send_message returns. A timeout while
+            # closing must not trigger another attempt and duplicate the email.
             logger.info(f"SMTP SENDMAIL RESULT: Refused={refused}")
             if refused:
                 raise smtplib.SMTPRecipientsRefused(refused)
@@ -219,11 +229,15 @@ def _send_sync(
         f"[SMTP ALL ATTEMPTS FAILED] Host: {settings.email_host} | Sender: {host_user} | "
         f"Recipient: {to_email} | Subject: '{subject}' | Response/Result: {error_message}"
     )
-    with open(log_path, "a", encoding="utf-8") as lf:
-        lf.write(
-            f"[SMTP ERROR] Host: {settings.email_host} | Sender: {host_user} | "
-            f"Recipient: {to_email} | Subject: '{subject}' | Response/Result: {error_message}\n"
-        )
+    try:
+        with open(log_path, "a", encoding="utf-8") as lf:
+            lf.write(
+                f"[SMTP ERROR] Host: {settings.email_host} | Sender: {host_user} | "
+                f"Recipient: {to_email} | Subject: '{subject}' | Response/Result: {error_message}\n"
+            )
+            lf.write(f"System: {platform.system()} | Host: {settings.email_host}:{settings.email_port}\n")
+    except OSError:
+        pass
     raise RuntimeError(error_message)
 
 async def send_email(

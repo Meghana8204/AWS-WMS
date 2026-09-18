@@ -65,6 +65,7 @@ class ResolveGrnQrRequest(BaseModel):
 class ResolveBinQrRequest(BaseModel):
     bin_scan: str | None = None
     bin_qr_code: str | None = None
+    qr_code: str | None = None
     store_id: uuid.UUID | None = None
 
 
@@ -118,24 +119,34 @@ async def get_user_store_context(user: CurrentUser, uow: UnitOfWork) -> tuple[se
     store_ids: set[uuid.UUID] = set()
     store_codes: set[str] = set()
 
-    raw_id = getattr(user, "store_id", None) or user.raw_claims.get("store_id")
+    raw_id = getattr(user, "store_id", None) or (user.raw_claims.get("store_id") if user.raw_claims else None)
     if raw_id:
         try:
             store_ids.add(uuid.UUID(str(raw_id)))
         except (ValueError, TypeError):
             pass
 
-    raw_code = getattr(user, "store_code", None) or user.raw_claims.get("store_code")
+    raw_code = getattr(user, "store_code", None) or (user.raw_claims.get("store_code") if user.raw_claims else None)
     if raw_code:
         store_codes.add(str(raw_code).strip().upper())
 
-    emp_id = user.raw_claims.get("employee_id") or user.subject or user.username
-    if emp_id:
+    identifiers = {
+        str(user.username).strip().lower() if user.username else "",
+        str(user.subject).strip().lower() if user.subject else "",
+        str(user.raw_claims.get("employee_id") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("username") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("sub") or "").strip().lower() if user.raw_claims else "",
+    }
+    identifiers.discard("")
+
+    for emp_id in identifiers:
         st = await uow.session.execute(
             select(StoreManagerUserModel).where(
                 or_(
-                    func.lower(StoreManagerUserModel.employee_id) == str(emp_id).strip().lower(),
-                    func.lower(StoreManagerUserModel.username) == str(emp_id).strip().lower(),
+                    func.lower(StoreManagerUserModel.employee_id) == emp_id,
+                    func.lower(StoreManagerUserModel.username) == emp_id,
+                    func.lower(StoreManagerUserModel.full_name) == emp_id,
+                    func.lower(StoreManagerUserModel.email) == emp_id,
                 )
             )
         )
@@ -144,6 +155,19 @@ async def get_user_store_context(user: CurrentUser, uow: UnitOfWork) -> tuple[se
                 store_ids.add(sm.store_id)
             if getattr(sm, "store_code", None):
                 store_codes.add(str(sm.store_code).strip().upper())
+
+        st_res2 = await uow.session.execute(
+            select(StoreModel).where(
+                or_(
+                    func.lower(StoreModel.store_manager_id) == emp_id,
+                    func.lower(StoreModel.store_manager_name) == emp_id,
+                )
+            )
+        )
+        for sm_store in st_res2.scalars().all():
+            store_ids.add(sm_store.id)
+            if sm_store.store_code:
+                store_codes.add(sm_store.store_code.strip().upper())
 
     if store_ids:
         s_res = await uow.session.execute(select(StoreModel).where(StoreModel.id.in_(store_ids)))
@@ -258,25 +282,7 @@ async def enrich_putaway_tasks(tasks: list[PutawayTaskModel], session) -> list[d
         grn_id_keys = [g.id for g in grns.values() if g and g.id]
         vehicles = {g.vehicle_number for g in grns.values() if g and g.vehicle_number}
 
-        dock_allocs: list[DockAllocationRequestModel] = []
-        if gate_passes or vehicles:
-            clauses = []
-            if gate_passes:
-                clauses.append(DockAllocationRequestModel.existing_gate_pass_id.in_(gate_passes))
-            if vehicles:
-                clauses.append(DockAllocationRequestModel.vehicle_number.in_(vehicles))
-            if clauses:
-                try:
-                    da_res = await session.execute(
-                        select(DockAllocationRequestModel)
-                        .options(selectinload(DockAllocationRequestModel.assigned_dock))
-                        .where(or_(*clauses))
-                        .order_by(DockAllocationRequestModel.created_at.desc())
-                    )
-                    dock_allocs = list(da_res.scalars().all())
-                except Exception:
-                    pass
-
+        dock_allocs: list = []
         dock_assigns: list[DockAssignmentModel] = []
         if gate_entry_ids or grn_id_keys or vehicles:
             clauses = []
@@ -424,7 +430,7 @@ async def enrich_putaway_tasks(tasks: list[PutawayTaskModel], session) -> list[d
         return results
     except Exception:
         # Fallback to basic task representation if any unexpected error occurs
-        return [putaway_task_response(t) for t in tasks]
+        return [task_response(t) for t in tasks]
 
 
 def normalize_hu_scan(value: str) -> str:
@@ -526,9 +532,16 @@ async def list_putaway_tasks(
     # Store Keepers / Store Managers are strictly scoped to their assigned Store
     if "STORE_KEEPER" in roles_upper or "STORE_MANAGER" in roles_upper:
         if "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper and "WAREHOUSE" not in roles_upper and "WAREHOUSE_MANAGER" not in roles_upper:
-            user_store_id = await get_user_store_id(user, uow)
-            if user_store_id:
-                query = query.where(PutawayTaskModel.destination_store_id == user_store_id)
+            user_store_ids, user_store_codes = await get_user_store_context(user, uow)
+            if user_store_ids:
+                query = query.where(PutawayTaskModel.destination_store_id.in_(user_store_ids))
+            elif user_store_codes:
+                s_res = await uow.session.execute(select(StoreModel.id).where(func.upper(StoreModel.store_code).in_(user_store_codes)))
+                s_ids = list(s_res.scalars().all())
+                if s_ids:
+                    query = query.where(PutawayTaskModel.destination_store_id.in_(s_ids))
+                else:
+                    return []
             else:
                 return []
     elif store_id:
@@ -543,14 +556,32 @@ async def list_putaway_tasks(
 async def list_storage_locations(
     warehouse_id: str | None = None,
     include_inactive: bool = False,
-    _user=Depends(require_permission("gate:read")),
+    user: CurrentUser = Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
 ):
+    roles_upper = {r.upper() for r in (user.roles or [])}
     query = select(StorageLocationModel)
     if not include_inactive:
         query = query.where(StorageLocationModel.active.is_(True))
     if warehouse_id:
         query = query.where(StorageLocationModel.warehouse_id == warehouse_id)
+
+    # Store Keepers / Store Managers see only their store's storage locations
+    if "STORE_KEEPER" in roles_upper or "STORE_MANAGER" in roles_upper:
+        if "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper and "WAREHOUSE" not in roles_upper and "WAREHOUSE_MANAGER" not in roles_upper:
+            user_store_ids, user_store_codes = await get_user_store_context(user, uow)
+            if user_store_ids:
+                query = query.where(StorageLocationModel.store_id.in_(user_store_ids))
+            elif user_store_codes:
+                s_res = await uow.session.execute(select(StoreModel.id).where(func.upper(StoreModel.store_code).in_(user_store_codes)))
+                s_ids = list(s_res.scalars().all())
+                if s_ids:
+                    query = query.where(StorageLocationModel.store_id.in_(s_ids))
+                else:
+                    return []
+            else:
+                return []
+
     result = await uow.session.execute(query.order_by(StorageLocationModel.warehouse_id, StorageLocationModel.zone, StorageLocationModel.rack, StorageLocationModel.bin))
     return [storage_location_response(location) for location in result.scalars().all()]
 
@@ -558,14 +589,46 @@ async def list_storage_locations(
 @router.post("/locations", status_code=201)
 async def create_storage_location(
     request: StorageLocationCreateRequest,
-    _user=Depends(require_permission("gate:approve")),
+    user: CurrentUser = Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
 ):
+    roles_upper = {r.upper() for r in (user.roles or [])}
+    is_store_user = "STORE_KEEPER" in roles_upper or "STORE_MANAGER" in roles_upper
+    is_admin_or_wh = bool(roles_upper.intersection({"ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER"}))
+
+    if not is_store_user and not is_admin_or_wh and "gate:approve" not in (user.permissions or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Insufficient permissions to create storage locations.",
+        )
+
+    store_id = request.store_id
+    zone_id = request.zone_id
+
+    # If Store Manager, validate store ownership
+    if is_store_user and not is_admin_or_wh:
+        user_store_ids, user_store_codes = await get_user_store_context(user, uow)
+        if store_id and store_id not in user_store_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You cannot create storage locations for another store.",
+            )
+        if not store_id and user_store_ids:
+            store_id = next(iter(user_store_ids))
+
+        if zone_id:
+            zone_obj = await uow.session.get(StoreZoneModel, zone_id)
+            if zone_obj and zone_obj.store_id not in user_store_ids:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Access denied: The specified zone belongs to another store.",
+                )
+
     values = {
         "location_code": request.location_code.strip().upper(),
         "warehouse_id": request.warehouse_id.strip().upper(),
-        "store_id": request.store_id,
-        "zone_id": request.zone_id,
+        "store_id": store_id,
+        "zone_id": zone_id,
         "zone": request.zone.strip(),
         "rack": request.rack.strip(),
         "bin": request.bin.strip(),
@@ -605,12 +668,31 @@ async def create_storage_location(
 async def update_storage_location(
     location_id: uuid.UUID,
     request: StorageLocationUpdateRequest,
-    _user=Depends(require_permission("gate:approve")),
+    user: CurrentUser = Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
 ):
     location = await uow.session.get(StorageLocationModel, location_id)
     if location is None:
         raise HTTPException(status_code=404, detail="Storage location not found")
+
+    roles_upper = {r.upper() for r in (user.roles or [])}
+    is_store_user = "STORE_KEEPER" in roles_upper or "STORE_MANAGER" in roles_upper
+    is_admin_or_wh = bool(roles_upper.intersection({"ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER"}))
+
+    if not is_store_user and not is_admin_or_wh and "gate:approve" not in (user.permissions or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Insufficient permissions to modify storage locations.",
+        )
+
+    if is_store_user and not is_admin_or_wh:
+        user_store_ids, _ = await get_user_store_context(user, uow)
+        if location.store_id and location.store_id not in user_store_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You cannot modify storage locations belonging to another store.",
+            )
+
     if not request.active and location.occupied_quantity > 0:
         raise HTTPException(status_code=409, detail="Occupied storage locations cannot be deactivated")
     location.active = request.active
@@ -803,7 +885,7 @@ async def assign_storage_location(
         bin_obj = None
         if request.bin_id:
             bin_obj = await uow.session.get(StoreBinModel, request.bin_id)
-            if bin_obj is None or bin_obj.status.upper() != "ACTIVE":
+            if bin_obj is None or bin_obj.status.upper() not in ("ACTIVE", "AVAILABLE"):
                 raise HTTPException(status_code=422, detail="Selected destination bin is inactive or not found")
             if zone and bin_obj.zone_id != zone.id:
                 raise HTTPException(status_code=422, detail=f"Bin '{bin_obj.bin_code}' does not belong to Zone '{zone.zone_code}'")
@@ -976,16 +1058,34 @@ async def complete_putaway(
         raise HTTPException(status_code=409, detail="Putaway task is already completed")
 
     roles_upper = {r.upper() for r in user.roles}
-    # Store isolation & Separation of Duties: Physical Putaway confirmation into a Store is performed by Store Keeper/Manager
-    if task.destination_store_id:
-        if "STORE_KEEPER" not in roles_upper and "STORE_MANAGER" not in roles_upper and "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: Only Store Keepers assigned to this Store can complete physical putaway",
-            )
-        if "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
-            user_store_id = await get_user_store_id(user, uow)
-            if user_store_id and task.destination_store_id != user_store_id:
+    is_store_user = bool(roles_upper.intersection({"STORE_MANAGER", "STORE_KEEPER"})) or ("putaway:execute" in (user.permissions or []))
+
+    # Reject Warehouse Manager explicitly
+    if ("WAREHOUSE_MANAGER" in roles_upper or "WAREHOUSE" in roles_upper) and not is_store_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Warehouse Manager is not authorized to execute Putaway. Physical putaway must be performed by the assigned Store Manager.",
+        )
+
+    if not is_store_user and "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: Only Store Keepers or Store Managers assigned to this Store can complete physical putaway",
+        )
+
+    # Store isolation: Physical Putaway confirmation into a Store is performed by assigned Store Keeper/Manager
+    if task.destination_store_id and "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
+        user_store_ids, user_store_codes = await get_user_store_context(user, uow)
+        if user_store_ids or user_store_codes:
+            store_match = False
+            if task.destination_store_id in user_store_ids:
+                store_match = True
+            elif task.destination_store_id:
+                # check if destination store's code matches
+                st_obj = await uow.session.get(StoreModel, task.destination_store_id)
+                if st_obj and st_obj.store_code and st_obj.store_code.strip().upper() in user_store_codes:
+                    store_match = True
+            if not store_match:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Cannot complete Putaway tasks belonging to another Store",
@@ -1166,7 +1266,7 @@ async def complete_putaway(
         await uow.session.flush()
 
     # STRICT BIN VALIDATION
-    if target_bin.status.upper() != "ACTIVE":
+    if target_bin.status.upper() not in ("ACTIVE", "AVAILABLE"):
         raise HTTPException(status_code=409, detail=f"Target Bin '{target_bin.bin_code}' is inactive")
     if target_bin.zone_id != target_zone.id:
         raise HTTPException(status_code=422, detail=f"Target Bin '{target_bin.bin_code}' does not belong to Zone '{target_zone.zone_code}'")
@@ -1499,11 +1599,38 @@ async def resolve_grn_qr(
         grn_line = res_line.scalars().first()
 
     if grn_line is None:
+        # First check if there is an active/pending Putaway Task for this material in user's store context
+        user_store_ids, user_store_codes = await get_user_store_context(user, uow)
+        pt_query = select(PutawayTaskModel).where(
+            func.upper(PutawayTaskModel.item_code) == item_code.upper(),
+            PutawayTaskModel.status.in_(["PENDING", "IN_PROGRESS", "ASSIGNED", "DRAFT"])
+        )
+        if user_store_ids:
+            pt_query = pt_query.where(PutawayTaskModel.destination_store_id.in_(user_store_ids))
+        pt_query = pt_query.order_by(PutawayTaskModel.created_at.desc())
+        
+        pt_res = await uow.session.execute(pt_query)
+        active_task = pt_res.scalars().first()
+        if active_task:
+            task_obj = active_task
+            grn_number = active_task.grn_number
+            if active_task.grn_id:
+                grn = await uow.session.get(GrnModel, active_task.grn_id)
+            elif grn_number:
+                res_grn = await uow.session.execute(select(GrnModel).where(func.upper(GrnModel.grn_number) == grn_number.upper()))
+                grn = res_grn.scalar_one_or_none()
+            if grn:
+                res_line = await uow.session.execute(
+                    select(GrnLineModel).where(GrnLineModel.grn_id == grn.id, func.upper(GrnLineModel.item_code) == item_code.upper())
+                )
+                grn_line = res_line.scalars().first()
+
+    if grn_line is None:
         res_line = await uow.session.execute(
             select(GrnLineModel)
             .join(GrnModel, GrnLineModel.grn_id == GrnModel.id)
             .where(func.upper(GrnLineModel.item_code) == item_code.upper())
-            .order_by(GrnLineModel.id.desc())
+            .order_by(GrnModel.created_at.desc())
         )
         grn_line = res_line.scalars().first()
         if grn_line:
@@ -1594,25 +1721,25 @@ async def resolve_grn_qr(
     store_name = None
     store_code = None
 
-    # Match dock allocation for this gate entry / vehicle
+    # Match dock assignment for this gate entry / vehicle
     clauses = []
     if gate_entry_no:
-        clauses.append(DockAllocationRequestModel.existing_gate_pass_id == gate_entry_no)
+        clauses.append(DockAssignmentModel.gate_entry_id == gate_entry_no if isinstance(gate_entry_no, uuid.UUID) else None)
     if truck_no:
-        clauses.append(DockAllocationRequestModel.vehicle_number == truck_no)
-    if clauses:
+        clauses.append(DockAssignmentModel.vehicle_number == truck_no)
+    valid_clauses = [c for c in clauses if c is not None]
+    if valid_clauses:
         da_res = await uow.session.execute(
-            select(DockAllocationRequestModel)
-            .options(selectinload(DockAllocationRequestModel.assigned_dock))
-            .where(or_(*clauses))
-            .order_by(DockAllocationRequestModel.created_at.desc())
+            select(DockAssignmentModel)
+            .where(or_(*valid_clauses))
+            .order_by(DockAssignmentModel.assigned_at.desc())
         )
         da = da_res.scalars().first()
         if da:
             if da.assigned_store_manager_name or da.assigned_store_manager_username:
                 assigned_sm = da.assigned_store_manager_name or da.assigned_store_manager_username
-            if da.assigned_dock and getattr(da.assigned_dock, "dock_code", None):
-                dock_code = da.assigned_dock.dock_code
+            if da.dock_number:
+                dock_code = da.dock_number
 
     if task_obj and task_obj.destination_store_id:
         store_obj = await uow.session.get(StoreModel, task_obj.destination_store_id)
@@ -1669,7 +1796,7 @@ async def resolve_bin_qr(
     user: CurrentUser = Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
 ):
-    raw_scan = (request.bin_scan or request.bin_qr_code or "").strip()
+    raw_scan = (request.bin_scan or request.bin_qr_code or request.qr_code or "").strip()
     if not raw_scan:
         raise HTTPException(status_code=422, detail="Bin scan value is required")
 
@@ -1738,7 +1865,7 @@ async def resolve_bin_qr(
         )
 
     # Validate active
-    if (bin_obj.status or "").upper() != "ACTIVE":
+    if (bin_obj.status or "").upper() not in ("ACTIVE", "AVAILABLE"):
         raise HTTPException(
             status_code=409,
             detail=f"Destination Bin '{bin_obj.bin_code}' is {bin_obj.status} and cannot receive materials.",
@@ -1799,13 +1926,20 @@ async def execute_putaway(
     uow: UnitOfWork = Depends(get_uow),
 ):
     roles_upper = {r.upper() for r in (user.roles or [])}
-    is_store_user = bool(roles_upper.intersection({"STORE_MANAGER", "STORE_KEEPER"}))
-    is_admin = bool(roles_upper.intersection({"ADMIN", "SUPERUSER", "WAREHOUSE", "WAREHOUSE_MANAGER"}))
+    is_admin = bool(roles_upper.intersection({"ADMIN", "SUPERUSER"}))
+    is_store_user = bool(roles_upper.intersection({"STORE_MANAGER", "STORE_KEEPER"})) or ("putaway:execute" in (user.permissions or []))
+
+    # Reject Warehouse Manager explicitly
+    if ("WAREHOUSE_MANAGER" in roles_upper or "WAREHOUSE" in roles_upper) and not is_store_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Warehouse Manager is not authorized to execute Putaway. Physical putaway must be performed by the assigned Store Manager.",
+        )
 
     if not is_store_user and not is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: Only Store Managers, Store Keepers, or Warehouse Managers can execute Putaway.",
+            detail="Access denied: Only Store Managers or Store Keepers assigned to this Store can execute Putaway.",
         )
 
     if request.quantity <= 0:
@@ -1835,7 +1969,7 @@ async def execute_putaway(
     )
     bin_id = uuid.UUID(bin_info["bin_id"])
     target_bin = await uow.session.get(StoreBinModel, bin_id)
-    if not target_bin or (target_bin.status or "").upper() != "ACTIVE":
+    if not target_bin or (target_bin.status or "").upper() not in ("ACTIVE", "AVAILABLE"):
         raise HTTPException(status_code=409, detail="Destination Bin is inactive or not found")
 
     target_zone = await uow.session.get(StoreZoneModel, target_bin.zone_id) if target_bin.zone_id else None

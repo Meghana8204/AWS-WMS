@@ -64,6 +64,7 @@ const warehouseNav: NavItem[] = [
   { label: "Material Requests", to: "/warehouse/material-requests", icon: ClipboardList },
   { label: "Stores", to: "/warehouse/stores", icon: Building2 },
   { label: "Dock Management", to: "/dock-management", icon: Warehouse },
+  { label: "Putaway Tracking", to: "/putaway-tasks", icon: PackageCheck },
   { label: "Vehicle Queue", to: "/vehicle-queue", icon: ListOrdered },
   { label: "Quarantine", to: "/warehouse/quarantine", icon: ShieldAlert },
   { label: "Assembly Requests", to: "/warehouse/assembly-requisitions", icon: ClipboardCheck },
@@ -73,7 +74,8 @@ const warehouseNav: NavItem[] = [
 
 const storeManagerNav: NavItem[] = [
   { label: "My Store", to: "/my-store", icon: Warehouse },
-  { label: "Dock Management", to: "/dock-management", icon: Truck },
+  { label: "Assigned Docks", to: "/my-store", search: { tab: "docks" }, icon: Truck },
+  { label: "Putaway Execution", to: "/putaway-tasks", icon: PackageCheck },
 ];
 
 const procurementNav: NavItem[] = [

@@ -1,4 +1,4 @@
-﻿"""
+"""
 SQLAlchemy ORM models for the Goods Receiving / GRN module.
 
 Workflow:
@@ -844,11 +844,6 @@ class GrnBatchQrModel(Base):
     qr_payload: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-    )
-
-    generated_by: Mapped[Optional[str]] = mapped_column(
-        String(128),
-        nullable=True,
     )
 
     generated_at: Mapped[datetime] = mapped_column(

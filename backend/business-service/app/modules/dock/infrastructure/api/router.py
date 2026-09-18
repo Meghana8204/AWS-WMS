@@ -53,13 +53,24 @@ async def _get_store_user_context(user: CurrentUser, uow: UnitOfWork) -> Tuple[S
     if raw_code:
         store_codes.add(str(raw_code).strip().upper())
 
-    emp_id = (user.raw_claims.get("employee_id") if user.raw_claims else None) or user.subject or user.username
-    if emp_id:
+    # Collect all possible identifier strings for this user
+    identifiers = {
+        str(user.username).strip().lower() if user.username else "",
+        str(user.subject).strip().lower() if user.subject else "",
+        str(user.raw_claims.get("employee_id") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("username") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("sub") or "").strip().lower() if user.raw_claims else "",
+    }
+    identifiers.discard("")
+
+    for emp_id in identifiers:
         st_res = await uow.session.execute(
             select(StoreManagerUserModel).where(
                 or_(
-                    func.lower(StoreManagerUserModel.employee_id) == str(emp_id).strip().lower(),
-                    func.lower(StoreManagerUserModel.username) == str(emp_id).strip().lower(),
+                    func.lower(StoreManagerUserModel.employee_id) == emp_id,
+                    func.lower(StoreManagerUserModel.username) == emp_id,
+                    func.lower(StoreManagerUserModel.full_name) == emp_id,
+                    func.lower(StoreManagerUserModel.email) == emp_id,
                 )
             )
         )
@@ -73,8 +84,8 @@ async def _get_store_user_context(user: CurrentUser, uow: UnitOfWork) -> Tuple[S
         st_res2 = await uow.session.execute(
             select(StoreModel).where(
                 or_(
-                    func.lower(StoreModel.store_manager_id) == str(emp_id).strip().lower(),
-                    func.lower(StoreModel.store_manager_name) == str(emp_id).strip().lower(),
+                    func.lower(StoreModel.store_manager_id) == emp_id,
+                    func.lower(StoreModel.store_manager_name) == emp_id,
                 )
             )
         )
@@ -113,6 +124,7 @@ async def list_docks(
     dock_type: Optional[str] = None,
     status: Optional[str] = None,
     status_filter: Optional[str] = None,
+    user: CurrentUser = Depends(get_current_user),
     uow: UnitOfWork = Depends(get_uow),
 ):
     actual_status = status if status is not None else status_filter
@@ -144,22 +156,9 @@ async def list_docks(
     store_by_id = {s.id: s for s in stores_list}
     store_by_code = {s.store_code.strip().upper(): s for s in stores_list if s.store_code}
 
-    dock_type_map = {
-        "CHEMICAL_HAZARDOUS": "STR-001",
-        "CHEMICAL": "STR-001",
-        "HAZARDOUS_ITEMS": "STR-001",
-        "ELECTRICAL": "STR-001",
-        "RAW_MATERIAL": "STR-001",
-        "ELECTRONICS": "STR-001",
-        "ELECTRONIC": "STR-001",
-        "MAIN_RECEIVING": "STR-001",
-    }
-
     res = []
     for d in docks:
         dock_store = store_by_id.get(d.store_id) if getattr(d, "store_id", None) else None
-        if not dock_store and d.dock_type in dock_type_map:
-            dock_store = store_by_code.get(dock_type_map[d.dock_type])
 
         d_store_id = dock_store.id if dock_store else getattr(d, "store_id", None)
         d_store_code = dock_store.store_code if dock_store else None
@@ -167,9 +166,9 @@ async def list_docks(
 
         alloc_req = alloc_map.get(d.id)
         current_alloc = None
-        assigned_sid = d_store_id
-        assigned_scode = d_store_code
-        assigned_sname = d_store_name
+        assigned_sid = None
+        assigned_scode = None
+        assigned_sname = None
 
         if alloc_req:
             ge = ge_map_by_pass.get(alloc_req.existing_gate_pass_id) or ge_map_by_id.get(alloc_req.existing_gate_pass_id) or ge_map_by_veh.get(alloc_req.vehicle_number)
@@ -252,6 +251,29 @@ async def list_docks(
                 current_allocation=current_alloc,
             )
         )
+    user_roles = [r.upper() for r in getattr(user, "roles", [])]
+    is_warehouse_or_admin = any(
+        r in user_roles
+        for r in ("ADMIN", "SUPERUSER", "WAREHOUSE_MANAGER", "WAREHOUSE", "GATE_SECURITY", "PROCUREMENT", "FINANCE")
+    )
+    is_store_user = any(r in user_roles for r in ("STORE_MANAGER", "STORE_KEEPER", "STORE"))
+
+    if is_store_user and not is_warehouse_or_admin:
+        user_store_ids, user_store_codes = await _get_store_user_context(user, uow)
+        user_store_str_ids = {str(sid).lower() for sid in user_store_ids}
+        user_store_codes_upper = {str(sc).strip().upper() for sc in user_store_codes}
+
+        filtered_res = []
+        for d_resp in res:
+            # Store Manager must ONLY see docks that have an active allocation assigned to their store
+            alloc = d_resp.current_allocation
+            if alloc and alloc.status in ("OCCUPIED", "RESERVED", "ALLOCATED", "DOCK_ASSIGNED"):
+                alloc_sid = str(alloc.assigned_store_id).lower() if alloc.assigned_store_id else ""
+                alloc_scode = str(alloc.assigned_store_code or "").strip().upper()
+                if (alloc_sid and alloc_sid in user_store_str_ids) or (alloc_scode and alloc_scode in user_store_codes_upper):
+                    filtered_res.append(d_resp)
+        return filtered_res
+
     return res
 
 
@@ -276,7 +298,11 @@ async def create_dock(
 
 
 @router.get("/docks/{dock_id}", response_model=DockMasterResponse)
-async def get_dock_by_id(dock_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow)):
+async def get_dock_by_id(
+    dock_id: uuid.UUID,
+    user: CurrentUser = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+):
     result = await uow.session.execute(
         select(DockMasterModel).where(DockMasterModel.id == dock_id)
     )
@@ -286,6 +312,31 @@ async def get_dock_by_id(dock_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow))
 
     alloc_map = await DockAllocationService.get_active_allocations_for_docks(uow.session, [dock.id])
     alloc_req = alloc_map.get(dock.id)
+
+    user_roles = [r.upper() for r in getattr(user, "roles", [])]
+    is_warehouse_or_admin = any(
+        r in user_roles
+        for r in ("ADMIN", "SUPERUSER", "WAREHOUSE_MANAGER", "WAREHOUSE", "GATE_SECURITY", "PROCUREMENT", "FINANCE")
+    )
+    is_store_user = any(r in user_roles for r in ("STORE_MANAGER", "STORE_KEEPER", "STORE"))
+
+    if is_store_user and not is_warehouse_or_admin:
+        user_store_ids, user_store_codes = await _get_store_user_context(user, uow)
+        match = False
+        if alloc_req:
+            if alloc_req.assigned_store_id and alloc_req.assigned_store_id in user_store_ids:
+                match = True
+            elif alloc_req.assigned_store_code and alloc_req.assigned_store_code.strip().upper() in user_store_codes:
+                match = True
+        elif dock.store_id and dock.store_id in user_store_ids and dock.status in ("OCCUPIED", "RESERVED"):
+            match = True
+
+        if not match:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: You are only authorized to access docks allocated to your store.",
+            )
+
     current_alloc = None
     if alloc_req:
         from app.modules.gate.infrastructure.persistence.models import GateEntryModel
@@ -318,6 +369,9 @@ async def get_dock_by_id(dock_id: uuid.UUID, uow: UnitOfWork = Depends(get_uow))
             status=alloc_req.status,
             assigned_dock_id=alloc_req.assigned_dock_id,
             assigned_dock_code=dock.dock_code,
+            assigned_store_id=alloc_req.assigned_store_id,
+            assigned_store_code=alloc_req.assigned_store_code,
+            assigned_store_name=alloc_req.assigned_store_name,
             assigned_by=alloc_req.assigned_by,
             assigned_at=alloc_req.assigned_at,
             arrived_at=alloc_req.arrived_at,
@@ -805,26 +859,6 @@ async def release_dock(
             if s.store_code:
                 dock_store_codes.add(s.store_code.strip().upper())
 
-    # Fallback to predefined dock type mapping if no assignment store found
-    if not dock_store_ids and not dock_store_codes and dock:
-        dock_type_map = {
-            "CHEMICAL_HAZARDOUS": "STR-CH",
-            "CHEMICAL": "STR-CH",
-            "HAZARDOUS_ITEMS": "STR-CH",
-            "ELECTRICAL": "STR-EL",
-            "RAW_MATERIAL": "STR-RM",
-            "ELECTRONICS": "STR-EL",
-            "ELECTRONIC": "STR-EL",
-            "MAIN_RECEIVING": "STR-MR",
-        }
-        mapped_code = dock_type_map.get(dock.dock_type, "STR-001")
-        if mapped_code:
-            dock_store_codes.add(mapped_code)
-            dock_store_codes.add("STR-001")
-            s_res = await uow.session.execute(select(StoreModel).where(func.upper(StoreModel.store_code).in_([mapped_code, "STR-001"])))
-            for s in s_res.scalars().all():
-                dock_store_ids.add(s.id)
-
     # 7. Check authorization: logged_in_user matches assigned Store Manager or logged_in_user.store == dock.store
     user_identifiers = {
         str(user.username).strip().lower() if user.username else "",
@@ -841,9 +875,15 @@ async def release_dock(
     if req.assigned_store_manager_id and str(req.assigned_store_manager_id).strip().lower() in user_identifiers:
         sm_direct_match = True
 
+    user_store_str_ids = {str(sid).lower() for sid in user_store_ids}
+    user_store_codes_upper = {str(sc).strip().upper() for sc in user_store_codes}
+
+    dock_store_str_ids = {str(sid).lower() for sid in dock_store_ids}
+    dock_store_codes_upper = {str(sc).strip().upper() for sc in dock_store_codes}
+
     is_store_authorized = bool(
-        (dock_store_ids & user_store_ids) or
-        (dock_store_codes & user_store_codes)
+        (dock_store_str_ids & user_store_str_ids) or
+        (dock_store_codes_upper & user_store_codes_upper)
     )
 
     if not sm_direct_match and not is_store_authorized:

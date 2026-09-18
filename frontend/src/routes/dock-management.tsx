@@ -202,6 +202,7 @@ function DockManagement() {
   const userInfo = getUserInfo();
   const userRoles = userInfo?.roles || [];
   const isWarehouseManager = userRoles.includes("WAREHOUSE_MANAGER") || userRoles.includes("WAREHOUSE");
+  const isWarehouseOrAdmin = isWarehouseManager || userRoles.includes("ADMIN") || userRoles.includes("SUPERUSER");
   const isStoreUser =
     userRoles.includes("STORE_MANAGER") ||
     userRoles.includes("STORE_KEEPER") ||
@@ -242,28 +243,11 @@ function DockManagement() {
 
     if (!userStoreId && !userStoreCode) return false;
 
-    const dockStoreId = dock.assigned_store_id || dock.store_id || dock.current_allocation?.assigned_store_id;
-    const dockStoreCode = (dock.assigned_store_code || dock.store_code || dock.current_allocation?.assigned_store_code || "").toUpperCase();
-
-    let mappedCode = "";
-    if (
-      dock.dock_type === "CHEMICAL_HAZARDOUS" ||
-      dock.dock_type === "CHEMICAL" ||
-      dock.dock_type === "HAZARDOUS_ITEMS" ||
-      dock.dock_type === "ELECTRONICS" ||
-      dock.dock_type === "ELECTRONIC" ||
-      dock.dock_type === "ELECTRICAL" ||
-      dock.dock_type === "RAW_MATERIAL" ||
-      dock.dock_type === "MAIN_RECEIVING"
-    ) {
-      mappedCode = "STR-001";
-    }
+    const dockStoreId = dock.assigned_store_id || dock.store_id;
+    const dockStoreCode = (dock.assigned_store_code || dock.store_code || "").toUpperCase();
 
     const matchesId = Boolean(userStoreId && dockStoreId && userStoreId === dockStoreId);
-    const matchesCode = Boolean(userStoreCode && (
-      (dockStoreCode && userStoreCode === dockStoreCode) ||
-      (mappedCode && userStoreCode === mappedCode)
-    ));
+    const matchesCode = Boolean(userStoreCode && dockStoreCode && userStoreCode === dockStoreCode);
 
     return matchesId || matchesCode;
   }, [currentUserStore, isStoreUser, isWarehouseManager, userInfo]);
@@ -346,11 +330,11 @@ function DockManagement() {
 
   const isAnyModalOpen = Boolean(
     selectedDetailsDock ||
-      allocateModalDock ||
-      allocateModalPendingReq ||
-      releaseConfirmDock ||
-      editDockModalDock ||
-      maintenanceConfirmDock,
+    allocateModalDock ||
+    allocateModalPendingReq ||
+    releaseConfirmDock ||
+    editDockModalDock ||
+    maintenanceConfirmDock,
   );
 
   useEffect(() => {
@@ -535,6 +519,37 @@ function DockManagement() {
 
     return matchesTab && matchesCategory && matchesSearch;
   });
+
+  if (isStoreUser && !isWarehouseOrAdmin) {
+    return (
+      <AppShell
+        title="Dock Management"
+        subtitle="Global Dock Allocation & Management"
+      >
+        <div className="flex flex-col items-center justify-center min-h-[50vh] p-8 text-center">
+          <Card className="max-w-lg p-8 rounded-3xl border-border/60 shadow-soft space-y-4">
+            <div className="size-16 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mx-auto">
+              <ShieldAlert className="size-8" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-lg font-bold text-foreground">Global Dock Management Restricted</h2>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Global dock configuration, allocation, and store assignment are managed exclusively by the Warehouse Manager. Store Managers view and release docks assigned to their specific store from the Assigned Docks portal.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Button
+                className="rounded-xl font-bold text-xs h-10 px-5 shadow-glow gap-2"
+                onClick={() => { window.location.href = "/my-store?tab=docks"; }}
+              >
+                <Truck className="size-4" /> Go to My Assigned Docks
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell
@@ -916,8 +931,8 @@ function DockManagement() {
                     <span className="font-mono text-foreground font-medium">
                       {selectedDetailsDock.current_allocation?.assigned_at
                         ? new Date(
-                            selectedDetailsDock.current_allocation.assigned_at,
-                          ).toLocaleString()
+                          selectedDetailsDock.current_allocation.assigned_at,
+                        ).toLocaleString()
                         : "N/A"}
                     </span>
                   </div>
@@ -989,8 +1004,8 @@ function DockManagement() {
                         <span className="font-mono text-muted-foreground">
                           {selectedDetailsDock.current_allocation?.security_approved_at
                             ? new Date(
-                                selectedDetailsDock.current_allocation.security_approved_at,
-                              ).toLocaleString()
+                              selectedDetailsDock.current_allocation.security_approved_at,
+                            ).toLocaleString()
                             : "—"}
                         </span>
                       </div>

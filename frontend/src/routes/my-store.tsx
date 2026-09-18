@@ -42,6 +42,12 @@ import {
   ArrowUpRight,
   FileText,
   Scan,
+  LayoutDashboard,
+  Package,
+  ShieldAlert,
+  TrendingDown,
+  Activity,
+  Sparkles,
 } from "lucide-react";
 import QRCode from "qrcode";
 import { AppShell, StatusBadge } from "@/components/wms/app-shell";
@@ -80,7 +86,21 @@ import { getUserInfo } from "@/lib/auth-utils";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+type MyStoreSearch = {
+  tab?: "overview" | "dashboard" | "putaway" | "pickup" | "takeaway" | "history" | "zones" | "inventory" | "docks";
+};
+
 export const Route = createFileRoute("/my-store")({
+  validateSearch: (search: Record<string, unknown>): MyStoreSearch => {
+    const tab = search.tab;
+    if (
+      typeof tab === "string" &&
+      ["overview", "dashboard", "putaway", "pickup", "takeaway", "history", "zones", "inventory", "docks"].includes(tab)
+    ) {
+      return { tab: (tab === "dashboard" ? "overview" : tab) as MyStoreSearch["tab"] };
+    }
+    return {};
+  },
   head: () => ({
     meta: [
       { title: "My Store · NexusWMS" },
@@ -93,6 +113,54 @@ export const Route = createFileRoute("/my-store")({
   }),
   component: MyStorePage,
 });
+
+interface StoreDashboardKPIs {
+  total_skus: number;
+  total_quantity: number;
+  available_quantity: number;
+  quarantined_quantity: number;
+  damaged_quantity: number;
+  low_stock_count: number;
+  zones_count: number;
+  bins_count: number;
+  assigned_docks_count: number;
+}
+
+interface StoreInventoryItem {
+  material_code: string;
+  material_name: string;
+  category: string;
+  uom: string;
+  total_quantity: number;
+  available_quantity: number;
+  quarantined_quantity: number;
+  damaged_quantity: number;
+  locations_count: number;
+  last_activity_at?: string | null;
+}
+
+interface StoreMovementActivity {
+  id: string;
+  material_code: string;
+  material_name: string;
+  movement_type: string;
+  quantity: number;
+  uom: string;
+  source_location?: string | null;
+  destination_location?: string | null;
+  reference_document?: string | null;
+  performed_by_name?: string | null;
+  created_at: string;
+}
+
+interface StoreDashboardMetricsResponse {
+  store_id: string;
+  store_code: string;
+  store_name: string;
+  kpis: StoreDashboardKPIs;
+  inventory_items: StoreInventoryItem[];
+  recent_activity: StoreMovementActivity[];
+}
 
 interface Store {
   id: string;
@@ -118,9 +186,15 @@ interface Bin {
   shelf?: string | null;
   capacity: number;
   occupied_quantity: number;
+  available_capacity: number;
+  occupancy_percentage: number;
   status: string;
   created_at?: string;
   updated_at?: string;
+  zone_code?: string;
+  zone_name?: string;
+  store_code?: string;
+  store_name?: string;
 }
 
 interface Zone {
@@ -132,7 +206,10 @@ interface Zone {
   status: string;
   created_at?: string;
   updated_at?: string;
+  bins_count: number;
   bins?: Bin[];
+  store_code?: string;
+  store_name?: string;
 }
 
 interface PutawayTask {
@@ -143,60 +220,65 @@ interface PutawayTask {
   handling_unit_id?: string | null;
   item_code: string;
   material_name: string;
+  material_qr?: string | null;
   quantity: number;
   uom: string;
   warehouse_id: string;
-  source_location: string;
+  source_location?: string | null;
   destination_store_id?: string | null;
   destination_zone_id?: string | null;
   destination_bin_id?: string | null;
   destination_bin_code?: string | null;
-  destination_location_id?: string | null;
   destination_zone?: string | null;
   destination_rack?: string | null;
   destination_bin?: string | null;
-  location_assigned_by?: string | null;
-  location_assigned_at?: string | null;
-  started_by?: string | null;
-  started_at?: string | null;
+  assigned_to?: string | null;
+  assigned_store_manager_name?: string | null;
   completed_by?: string | null;
   completed_at?: string | null;
-  status: string;
-  created_by: string;
-  created_at?: string | null;
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "PUTAWAY_PENDING" | "PUTAWAY_IN_PROGRESS" | "PUTAWAY_COMPLETED" | "ASSIGNED_TO_STORE" | string;
+  created_at: string;
+  updated_at?: string;
 }
 
 interface PickupTask {
   id: string;
   task_number: string;
-  requisition_id: string;
-  requisition_item_id: string;
-  request_number: string;
-  store_id: string;
-  store_code: string;
-  store_name: string;
-  department: string;
-  material_code: string;
+  requisition_id?: string | null;
+  requisition_number?: string | null;
+  request_number?: string | null;
+  item_code: string;
+  material_code?: string;
   material_name: string;
-  requested_quantity: number;
-  picked_quantity: number;
+  quantity_requested?: number;
+  requested_quantity?: number;
+  quantity_picked?: number;
+  picked_quantity?: number;
   uom: string;
-  priority: string;
-  required_date: string;
-  status: string;
+  warehouse_id?: string;
+  source_store_id?: string | null;
+  source_zone_id?: string | null;
+  source_bin_id?: string | null;
+  source_zone?: string | null;
+  source_bin?: string | null;
+  assigned_to?: string | null;
   picked_by?: string | null;
-  picked_at?: string | null;
+  department?: string | null;
+  priority?: string | null;
+  required_date?: string | null;
+  status: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ASSIGNED_TO_STORE" | string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface InventoryBalance {
-  id?: string;
+  id: string;
+  material_id: string;
   material_code: string;
   material_name: string;
-  category: string;
   warehouse_id: string;
-  storage_location_id: string;
-  location_code: string;
+  category?: string | null;
+  location_code?: string | null;
   store_id?: string | null;
   store_code?: string | null;
   store_name?: string | null;
@@ -215,7 +297,7 @@ interface StoreDock {
   dock_code: string;
   dock_name: string;
   dock_type: string;
-  status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE" | "RESERVED";
+  status: "AVAILABLE" | "OCCUPIED" | "MAINTENANCE" | "RESERVED" | "RELEASED" | string;
   location?: string | null;
   description?: string | null;
   is_active: boolean;
@@ -245,10 +327,20 @@ interface StoreDock {
 }
 
 function MyStorePage() {
-  const [activeTab, setActiveTab] = useState<"putaway" | "pickup" | "takeaway" | "history" | "zones" | "inventory" | "docks">(
-    "putaway",
+  const searchParams = Route.useSearch();
+  const [activeTab, setActiveTab] = useState<"overview" | "putaway" | "pickup" | "takeaway" | "history" | "zones" | "inventory" | "docks">(
+    searchParams.tab === "dashboard" ? "overview" : searchParams.tab || "overview",
   );
+
+  useEffect(() => {
+    if (searchParams.tab) {
+      setActiveTab(searchParams.tab === "dashboard" ? "overview" : searchParams.tab);
+    }
+  }, [searchParams.tab]);
   const [store, setStore] = useState<Store | null>(null);
+  const [storeMetrics, setStoreMetrics] = useState<StoreDashboardMetricsResponse | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
+  const [overviewSearch, setOverviewSearch] = useState("");
   const [zones, setZones] = useState<Zone[]>([]);
   const [putawayTasks, setPutawayTasks] = useState<PutawayTask[]>([]);
   const [pickupTasks, setPickupTasks] = useState<PickupTask[]>([]);
@@ -366,13 +458,19 @@ function MyStorePage() {
         setTasksLoading(true);
         setPickupTasksLoading(true);
         setDocksLoading(true);
-        const [hierarchyData, tasksData, pickupData, balancesData, docksData] = await Promise.all([
+        setMetricsLoading(true);
+        const [hierarchyData, tasksData, pickupData, balancesData, docksData, metricsData] = await Promise.all([
           api.getStoreHierarchy().catch(() => []),
           api.getPutawayTasks().catch(() => []),
           api.getPickupTasks().catch(() => []),
           api.getInventoryLocationBalances().catch(() => []),
           api.getDocks().catch(() => []),
+          api.getStoreDashboardMetrics(storeData.id).catch(() => null),
         ]);
+
+        if (metricsData) {
+          setStoreMetrics(metricsData);
+        }
 
         const myHierarchy = (hierarchyData || []).find(
           (s: any) => s.id === storeData.id || s.store_code === storeData.store_code,
@@ -403,6 +501,7 @@ function MyStorePage() {
       setTasksLoading(false);
       setPickupTasksLoading(false);
       setDocksLoading(false);
+      setMetricsLoading(false);
     }
   };
 
@@ -447,13 +546,17 @@ function MyStorePage() {
     if (!store?.id) return;
     setTasksLoading(true);
     try {
-      const [tasksData, balancesData, docksData] = await Promise.all([
-        api.getPutawayTasks(),
-        api.getInventoryLocationBalances(),
+      const [tasksData, balancesData, docksData, metricsData] = await Promise.all([
+        api.getPutawayTasks().catch(() => []),
+        api.getInventoryLocationBalances().catch(() => []),
         api.getDocks().catch(() => []),
+        api.getStoreDashboardMetrics(store.id).catch(() => null),
       ]);
       setPutawayTasks(tasksData || []);
       setDocks(docksData || []);
+      if (metricsData) {
+        setStoreMetrics(metricsData);
+      }
       const storeBals = (balancesData || []).filter(
         (b: InventoryBalance) => b.store_id === store.id || b.store_code === store.store_code,
       );
@@ -465,34 +568,26 @@ function MyStorePage() {
     }
   };
 
-  // Compute docks assigned to this store or with active allocations for this store
+  // Compute docks with active allocations assigned to this store
   const assignedStoreDocks = useMemo(() => {
     if (!store) return [];
     const sId = store.id;
     const sCode = (store.store_code || "").toUpperCase();
 
     return docks.filter((d) => {
-      const dStoreId = d.assigned_store_id || d.store_id || d.current_allocation?.assigned_store_id;
-      const dStoreCode = (d.assigned_store_code || d.store_code || d.current_allocation?.assigned_store_code || "").toUpperCase();
-
-      if (sId && dStoreId && sId === dStoreId) return true;
-      if (sCode && dStoreCode && sCode === dStoreCode) return true;
-
-      // Fallback for Chemical Store STR-001 predefined dock types
-      if (sCode === "STR-001") {
-        const chemTypes = [
-          "CHEMICAL_HAZARDOUS",
-          "CHEMICAL",
-          "HAZARDOUS_ITEMS",
-          "ELECTRONICS",
-          "ELECTRONIC",
-          "ELECTRICAL",
-          "RAW_MATERIAL",
-          "MAIN_RECEIVING",
-        ];
-        if (chemTypes.includes(d.dock_type)) return true;
+      const alloc = d.current_allocation;
+      if (alloc) {
+        const aStoreId = alloc.assigned_store_id;
+        const aStoreCode = (alloc.assigned_store_code || "").toUpperCase();
+        if (sId && aStoreId && sId === aStoreId) return true;
+        if (sCode && aStoreCode && sCode === aStoreCode) return true;
       }
-
+      const dStoreId = d.assigned_store_id;
+      const dStoreCode = (d.assigned_store_code || "").toUpperCase();
+      if (d.status === "OCCUPIED" || d.status === "RESERVED") {
+        if (sId && dStoreId && sId === dStoreId) return true;
+        if (sCode && dStoreCode && sCode === dStoreCode) return true;
+      }
       return false;
     });
   }, [docks, store]);
@@ -604,10 +699,10 @@ function MyStorePage() {
       const matchesSearch =
         !q ||
         t.task_number.toLowerCase().includes(q) ||
-        t.request_number.toLowerCase().includes(q) ||
-        t.material_code.toLowerCase().includes(q) ||
+        (t.request_number || t.requisition_number || "").toLowerCase().includes(q) ||
+        (t.material_code || t.item_code || "").toLowerCase().includes(q) ||
         t.material_name.toLowerCase().includes(q) ||
-        t.department.toLowerCase().includes(q);
+        (t.department || "").toLowerCase().includes(q);
 
       return matchesStatus && matchesSearch;
     });
@@ -701,7 +796,12 @@ function MyStorePage() {
       });
       toast.success(`Bin ${created.bin_code} created under ${targetZoneForBin.zone_code}`);
       setCreateBinOpen(false);
-      refreshZones();
+      // Auto-expand zone accordion so the new bin is immediately visible
+      setExpandedZoneIds((prev) => new Set(prev).add(targetZoneForBin.id));
+      await refreshZones();
+      await refreshTasksAndBalances();
+      // Immediately open Bin QR modal for instant viewing, printing, and downloading!
+      void handleViewBinQR(created, targetZoneForBin);
     } catch (err: any) {
       toast.error(err.message || "Failed to create bin");
     } finally {
@@ -999,11 +1099,11 @@ function MyStorePage() {
 
   const handleOpenExecutePickup = (task: PickupTask) => {
     setExecutingPickupTask(task);
-    setPickupMatScan(task.material_code);
+    setPickupMatScan(task.material_code || task.item_code || "");
     const defaultZone = activeZonesList[0]?.id || "";
     setPickupZoneScan(defaultZone);
-    const remQty = Math.max(0, Number(task.requested_quantity) - Number(task.picked_quantity));
-    setPickupQty(String(remQty || task.requested_quantity));
+    const remQty = Math.max(0, Number(task.requested_quantity || task.quantity_requested || 0) - Number(task.picked_quantity || task.quantity_picked || 0));
+    setPickupQty(String(remQty || task.requested_quantity || task.quantity_requested || ""));
     setExecutePickupModalOpen(true);
   };
 
@@ -1262,7 +1362,7 @@ function MyStorePage() {
           </Card>
 
           {/* Active At-Dock Inbound Delivery Notification Banner */}
-          {occupiedDocks.length > 0 && (
+          {occupiedDocks.length > 0 && occupiedDocks[0] && (
             <div className="rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-gradient-to-r from-rose-50/80 via-card to-card dark:from-rose-950/30 p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in duration-200">
               <div className="flex items-start gap-3.5">
                 <div className="size-10 rounded-xl bg-rose-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
@@ -1294,11 +1394,11 @@ function MyStorePage() {
               </div>
 
               <div className="flex items-center gap-2 self-end md:self-center shrink-0">
-                {occupiedDocks.length === 1 ? (
+                {occupiedDocks.length === 1 && occupiedDocks[0] ? (
                   <Button
                     size="sm"
                     className="rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs shadow-sm"
-                    onClick={() => setReleaseConfirmDock(occupiedDocks[0])}
+                    onClick={() => setReleaseConfirmDock(occupiedDocks[0]!)}
                   >
                     <LogOut className="size-3.5 mr-1.5" /> Release Dock {occupiedDocks[0].dock_code}
                   </Button>
@@ -1318,6 +1418,16 @@ function MyStorePage() {
 
           {/* Navigation Tabs */}
           <div className="flex flex-wrap items-center gap-2 border-b border-border/40 pb-3">
+            <Button
+              variant={activeTab === "overview" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setActiveTab("overview")}
+              className="rounded-xl text-xs font-bold gap-2 shadow-xs"
+            >
+              <LayoutDashboard className="size-4" />
+              Store Dashboard
+            </Button>
+
             <Button
               variant={activeTab === "putaway" ? "default" : "outline"}
               size="sm"
@@ -1406,6 +1516,388 @@ function MyStorePage() {
               )}
             </Button>
           </div>
+
+          {/* TAB 0: STORE DASHBOARD & INVENTORY OVERVIEW */}
+          {activeTab === "overview" && (
+            <div className="space-y-6">
+              {/* 8 Store Inventory & Operations KPI Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-primary/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Total SKUs</span>
+                      <Package className="size-3.5 text-primary" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-foreground">
+                      {storeMetrics?.kpis?.total_skus ?? inventoryBalances.length}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Distinct items</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-primary/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider">Total Stored</span>
+                      <Boxes className="size-3.5 text-blue-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-foreground">
+                      {Number(storeMetrics?.kpis?.total_quantity ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Units in store</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-emerald-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Available</span>
+                      <CheckCircle2 className="size-3.5 text-emerald-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-emerald-600 dark:text-emerald-400">
+                      {Number(storeMetrics?.kpis?.available_quantity ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Ready for issue</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-amber-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">Quarantine</span>
+                      <ShieldAlert className="size-3.5 text-amber-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-amber-600 dark:text-amber-400">
+                      {Number(storeMetrics?.kpis?.quarantined_quantity ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">QC hold</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-rose-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">Damaged</span>
+                      <AlertTriangle className="size-3.5 text-rose-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-rose-600 dark:text-rose-400">
+                      {Number(storeMetrics?.kpis?.damaged_quantity ?? 0).toLocaleString()}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Vendor claim</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-orange-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">Low Stock</span>
+                      <TrendingDown className="size-3.5 text-orange-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-orange-600 dark:text-orange-400">
+                      {storeMetrics?.kpis?.low_stock_count ?? 0}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">SKUs alert</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-indigo-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Zones</span>
+                      <Layers className="size-3.5 text-indigo-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-indigo-600 dark:text-indigo-400">
+                      {storeMetrics?.kpis?.zones_count ?? zones.length}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">Storage zones</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-border/40 bg-card/70 shadow-2xs hover:border-cyan-500/40 transition-colors">
+                  <CardContent className="p-3.5 space-y-1">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Bins</span>
+                      <Grid className="size-3.5 text-cyan-500" />
+                    </div>
+                    <p className="text-xl font-black tracking-tight text-cyan-600 dark:text-cyan-400">
+                      {storeMetrics?.kpis?.bins_count ?? 0}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground">QR storage bins</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Quick Operation Shortcuts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("inventory")}
+                  className="flex items-center justify-between p-3.5 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 hover:border-primary/50 transition-all text-left group shadow-2xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold group-hover:scale-105 transition-transform">
+                      <Boxes className="size-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">View Full Inventory</p>
+                      <p className="text-[11px] text-muted-foreground">All stored stock & balances</p>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="size-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("zones")}
+                  className="flex items-center justify-between p-3.5 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 hover:border-indigo-500/50 transition-all text-left group shadow-2xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center font-bold group-hover:scale-105 transition-transform">
+                      <Layers className="size-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Manage Zones & Bins</p>
+                      <p className="text-[11px] text-muted-foreground">{zones.length} Zones · Create & QR</p>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="size-4 text-muted-foreground group-hover:text-indigo-500 transition-colors" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("docks")}
+                  className="flex items-center justify-between p-3.5 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 hover:border-rose-500/50 transition-all text-left group shadow-2xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold group-hover:scale-105 transition-transform">
+                      <Truck className="size-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-bold text-foreground">Assigned Docks</p>
+                        {occupiedDocks.length > 0 && (
+                          <span className="size-2 rounded-full bg-rose-500 animate-ping" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {occupiedDocks.length > 0
+                          ? `${occupiedDocks.length} Active At Dock`
+                          : `${assignedStoreDocks.length} Allocated Docks`}
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="size-4 text-muted-foreground group-hover:text-rose-500 transition-colors" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("putaway")}
+                  className="flex items-center justify-between p-3.5 rounded-2xl border border-border/60 bg-gradient-to-br from-card to-muted/20 hover:border-emerald-500/50 transition-all text-left group shadow-2xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="size-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center font-bold group-hover:scale-105 transition-transform">
+                      <PackageCheck className="size-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-foreground">Inbound Putaway</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {putawayTasks.filter((t) => t.status !== "PUTAWAY_COMPLETED").length} Pending Tasks
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowUpRight className="size-4 text-muted-foreground group-hover:text-emerald-500 transition-colors" />
+                </button>
+              </div>
+
+              {/* Store Inventory Summary & Recent Activity Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Store Inventory Summary (2 Cols) */}
+                <Card className="lg:col-span-2 border-border/40 shadow-soft overflow-hidden">
+                  <CardHeader className="p-4 border-b border-border/40 bg-card/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                        <Boxes className="size-4" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-bold">Store Inventory Summary</CardTitle>
+                        <CardDescription className="text-xs">
+                          Live stock levels in {store.store_name}
+                        </CardDescription>
+                      </div>
+                    </div>
+
+                    <div className="relative w-full sm:w-56">
+                      <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Filter materials..."
+                        value={overviewSearch}
+                        onChange={(e) => setOverviewSearch(e.target.value)}
+                        className="pl-8 h-8 text-xs rounded-xl bg-background/50 border-border/40"
+                      />
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-0">
+                    {metricsLoading ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                        <Loader2 className="size-6 animate-spin text-primary" />
+                        <p className="text-xs">Loading inventory summary...</p>
+                      </div>
+                    ) : (storeMetrics?.inventory_items || []).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                        <Boxes className="size-8 text-muted-foreground/40" />
+                        <p className="font-semibold text-sm text-foreground">No Stock In Store</p>
+                        <p className="text-xs text-muted-foreground">
+                          Complete putaway operations to receive stock into this store.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-muted/30 text-[11px] font-semibold uppercase text-muted-foreground border-b border-border/40">
+                            <tr>
+                              <th className="py-2.5 px-3">Material</th>
+                              <th className="py-2.5 px-3">Category</th>
+                              <th className="py-2.5 px-3 text-right">Available</th>
+                              <th className="py-2.5 px-3 text-right">Quarantined</th>
+                              <th className="py-2.5 px-3 text-right">Total</th>
+                              <th className="py-2.5 px-3 text-center">Locations</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/20">
+                            {(storeMetrics?.inventory_items || [])
+                              .filter((item) => {
+                                if (!overviewSearch.trim()) return true;
+                                const q = overviewSearch.toLowerCase().trim();
+                                return (
+                                  item.material_code.toLowerCase().includes(q) ||
+                                  item.material_name.toLowerCase().includes(q) ||
+                                  item.category?.toLowerCase().includes(q)
+                                );
+                              })
+                              .map((item) => (
+                                <tr
+                                  key={item.material_code}
+                                  className="hover:bg-muted/10 transition-colors"
+                                >
+                                  <td className="py-2.5 px-3">
+                                    <div className="font-mono font-bold text-primary">
+                                      {item.material_code}
+                                    </div>
+                                    <div className="text-[11px] font-medium text-foreground truncate max-w-[200px]">
+                                      {item.material_name}
+                                    </div>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-muted-foreground uppercase text-[10px] font-mono">
+                                    {item.category || "GENERAL"}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                    {Number(item.available_quantity).toLocaleString()} {item.uom}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono text-amber-600 dark:text-amber-400">
+                                    {Number(item.quarantined_quantity) > 0
+                                      ? `${Number(item.quarantined_quantity).toLocaleString()} ${item.uom}`
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-right font-mono font-extrabold text-foreground">
+                                    {Number(item.total_quantity).toLocaleString()} {item.uom}
+                                  </td>
+                                  <td className="py-2.5 px-3 text-center">
+                                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/40">
+                                      {item.locations_count} {item.locations_count === 1 ? "bin" : "bins"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Recent Store Activity (1 Col) */}
+                <Card className="border-border/40 shadow-soft overflow-hidden">
+                  <CardHeader className="p-4 border-b border-border/40 bg-card/40 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="size-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500">
+                        <Activity className="size-4" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-bold">Recent Store Activity</CardTitle>
+                        <CardDescription className="text-xs">
+                          Inbound & Outbound audit trail
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-3">
+                    {(storeMetrics?.recent_activity || []).length === 0 ? (
+                      <div className="py-8 text-center text-muted-foreground text-xs">
+                        <History className="size-6 mx-auto opacity-40 mb-1" />
+                        No recent store movements recorded yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+                        {(storeMetrics?.recent_activity || []).map((act) => {
+                          const isPutaway = act.movement_type === "PUTAWAY";
+                          const isTakeaway = act.movement_type === "TAKEAWAY" || act.movement_type === "OUTBOUND";
+                          const isPickup = act.movement_type === "PICKUP" || act.movement_type === "ISSUE";
+
+                          return (
+                            <div
+                              key={act.id}
+                              className="p-2.5 rounded-xl border border-border/40 bg-card text-xs space-y-1.5 shadow-2xs hover:border-primary/30 transition-colors"
+                            >
+                              <div className="flex items-center justify-between gap-1">
+                                <span
+                                  className={cn(
+                                    "font-mono text-[9px] font-extrabold px-2 py-0.5 rounded uppercase",
+                                    isPutaway
+                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                      : isTakeaway
+                                        ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/20"
+                                        : "bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20",
+                                  )}
+                                >
+                                  {act.movement_type}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {act.created_at ? new Date(act.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "—"}
+                                </span>
+                              </div>
+
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <p className="font-bold text-foreground truncate max-w-[150px]">
+                                    {act.material_name}
+                                  </p>
+                                  <p className="font-mono text-[10px] text-muted-foreground">
+                                    {act.material_code}
+                                  </p>
+                                </div>
+                                <span className="font-mono font-bold text-xs text-primary">
+                                  {Number(act.quantity).toLocaleString()} {act.uom}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/30">
+                                <span className="truncate max-w-[130px]">
+                                  {act.destination_location || act.source_location || "Store Location"}
+                                </span>
+                                <span>{act.performed_by_name || "Store Keeper"}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
 
           {/* TAB 1: INBOUND PUTAWAY TASKS */}
           {activeTab === "putaway" && (
@@ -1926,38 +2418,26 @@ function MyStorePage() {
           {activeTab === "docks" && (
             <div className="space-y-4">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-                <div className="relative w-72">
-                  <Search className="size-3.5 absolute left-3 top-2.5 text-muted-foreground" />
-                  <Input
-                    placeholder="Search by dock, vehicle, pass, material..."
-                    value={dockSearch}
-                    onChange={(e) => setDockSearch(e.target.value)}
-                    className="pl-8 h-8 text-xs rounded-xl bg-background/50 border-border/40"
-                  />
+                <div>
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
+                    <Truck className="size-4 text-primary" /> Incoming & Assigned Docks ({assignedStoreDocks.length})
+                  </h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Docks currently allocated for inbound shipments destined for {store?.store_name} ({store?.store_code}).
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Select value={dockStatusFilter} onValueChange={setDockStatusFilter}>
-                    <SelectTrigger className="w-40 h-8 text-xs rounded-xl border-border/40">
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="ALL">All Statuses</SelectItem>
-                      <SelectItem value="OCCUPIED">At Dock (Occupied)</SelectItem>
-                      <SelectItem value="AVAILABLE">Available</SelectItem>
-                      <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
-                    </SelectContent>
-                  </Select>
-
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={refreshDocks}
                     disabled={docksLoading}
-                    className="h-8 rounded-xl text-xs"
+                    className="h-8 rounded-xl text-xs gap-1.5"
                     title="Refresh Docks"
                   >
                     <RefreshCw className={cn("size-3.5", docksLoading && "animate-spin")} />
+                    Refresh
                   </Button>
                 </div>
               </div>
@@ -1965,24 +2445,21 @@ function MyStorePage() {
               {docksLoading ? (
                 <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
                   <Loader2 className="size-6 animate-spin text-primary" />
-                  <p className="text-xs">Loading docks assigned to your store...</p>
+                  <p className="text-xs">Loading dock allocations assigned to your store...</p>
                 </div>
               ) : filteredAssignedDocks.length === 0 ? (
                 <Card className="rounded-2xl p-12 text-center text-muted-foreground border-dashed">
                   <Truck className="size-10 mx-auto text-muted-foreground/40 mb-3" />
-                  <p className="font-semibold text-sm text-foreground">No Docks Found</p>
+                  <p className="font-semibold text-sm text-foreground">No Dock Currently Assigned</p>
                   <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                    {dockSearch || dockStatusFilter !== "ALL"
-                      ? "No docks match your current filter criteria."
-                      : `No physical docks are currently configured for ${store?.store_name} (${store?.store_code}).`}
+                    There are currently no inbound trucks or docks allocated to {store?.store_name} ({store?.store_code}). When the Warehouse Manager allocates a dock for incoming shipments to your store, it will appear here for unloading and dock release.
                   </p>
                 </Card>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {filteredAssignedDocks.map((dock) => {
                     const isOccupied = dock.status === "OCCUPIED" || dock.status === "RESERVED";
-                    const isAvailable = dock.status === "AVAILABLE";
-                    const isMaint = dock.status === "MAINTENANCE";
+                    const isReleased = dock.status === "RELEASED" || dock.current_allocation?.status === "RELEASED";
                     const alloc = dock.current_allocation;
 
                     return (
@@ -1992,9 +2469,9 @@ function MyStorePage() {
                           "rounded-2xl p-5 shadow-sm border transition-all duration-200 bg-card flex flex-col justify-between",
                           isOccupied
                             ? "border-rose-300/80 dark:border-rose-900/60 ring-1 ring-rose-400/20"
-                            : isAvailable
-                              ? "border-emerald-300/60 dark:border-emerald-900/40"
-                              : "border-border/60",
+                            : isReleased
+                              ? "border-slate-300 dark:border-slate-800"
+                              : "border-emerald-300/60 dark:border-emerald-900/40",
                         )}
                       >
                         <div className="space-y-4">
@@ -2023,26 +2500,26 @@ function MyStorePage() {
                             <span
                               className={cn(
                                 "rounded-full px-2.5 py-0.5 text-[10px] font-extrabold tracking-wider border shrink-0 flex items-center gap-1.5",
-                                isAvailable
-                                  ? "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]"
-                                  : isMaint
-                                    ? "bg-slate-100 text-slate-700 border-slate-200"
-                                    : "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]",
+                                isReleased
+                                  ? "bg-slate-100 text-slate-700 border-slate-200"
+                                  : isOccupied
+                                    ? "bg-[#ffe4e6] text-[#e11d48] border-[#fecdd3]"
+                                    : "bg-[#dcfce7] text-[#15803d] border-[#bbf7d0]",
                               )}
                             >
                               {isOccupied && (
                                 <span className="size-1.5 rounded-full bg-[#e11d48] animate-ping" />
                               )}
-                              {isOccupied ? "AT DOCK" : dock.status}
+                              {isReleased ? "RELEASED" : isOccupied ? "ALLOCATED" : dock.status}
                             </span>
                           </div>
 
                           {/* Allocation Details / Vehicle Box */}
-                          {isOccupied && alloc ? (
+                          {alloc ? (
                             <div className="rounded-xl border border-rose-200/60 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 p-3 space-y-2 text-xs">
                               <div className="flex items-center justify-between font-mono">
                                 <span className="text-[10px] uppercase font-bold text-rose-800/80 dark:text-rose-300">
-                                  Vehicle Docked
+                                  Inbound Vehicle
                                 </span>
                                 <span className="font-black text-rose-700 dark:text-rose-400">
                                   {alloc.vehicle_number}
@@ -2051,9 +2528,15 @@ function MyStorePage() {
 
                               <div className="grid grid-cols-2 gap-2 text-[11px] border-t border-rose-200/50 dark:border-rose-900/30 pt-2">
                                 <div>
-                                  <span className="text-muted-foreground block text-[10px]">Gate Pass</span>
+                                  <span className="text-muted-foreground block text-[10px]">Gate Entry</span>
                                   <span className="font-mono font-bold text-foreground truncate block">
                                     {alloc.existing_gate_pass_id || "—"}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground block text-[10px]">Destination Store</span>
+                                  <span className="font-semibold text-foreground truncate block">
+                                    {store?.store_name} ({store?.store_code})
                                   </span>
                                 </div>
                                 <div>
@@ -2062,7 +2545,7 @@ function MyStorePage() {
                                     {alloc.vendor_reference || "—"}
                                   </span>
                                 </div>
-                                <div className="col-span-2">
+                                <div>
                                   <span className="text-muted-foreground block text-[10px]">Material</span>
                                   <span className="font-semibold text-foreground truncate block" title={alloc.material_reference || ""}>
                                     {alloc.material_reference || "Material Shipment"} {alloc.quantity ? `(${alloc.quantity} units)` : ""}
@@ -2073,14 +2556,14 @@ function MyStorePage() {
                           ) : (
                             <div className="rounded-xl border border-border/40 bg-muted/10 p-3 text-xs text-muted-foreground flex items-center gap-2">
                               <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />
-                              <span>Dock is clear and available for vehicle assignment.</span>
+                              <span>Dock allocation active for this store.</span>
                             </div>
                           )}
                         </div>
 
                         {/* Card Actions */}
                         <div className="pt-4 mt-2 border-t border-border/40 flex items-center gap-2">
-                          {isOccupied ? (
+                          {isOccupied && !isReleased ? (
                             <Button
                               className="flex-1 rounded-xl bg-[#ef4444] hover:bg-red-600 text-white font-bold text-xs h-9 shadow-sm flex items-center justify-center gap-1.5"
                               onClick={() => setReleaseConfirmDock(dock)}
@@ -2088,8 +2571,8 @@ function MyStorePage() {
                               <LogOut className="size-3.5" /> Release Dock
                             </Button>
                           ) : (
-                            <div className="flex-1 text-[11px] text-muted-foreground italic flex items-center gap-1">
-                              <ShieldCheck className="size-3.5 text-emerald-600" /> Ready
+                            <div className="flex-1 text-[11px] text-muted-foreground font-semibold flex items-center gap-1">
+                              <ShieldCheck className="size-3.5 text-emerald-600" /> Released / Completed
                             </div>
                           )}
 
@@ -3166,11 +3649,11 @@ function MyStorePage() {
 
                           <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                             <span>
-                              Priority: <strong className="text-foreground">{pt.priority}</strong>
+                              Priority: <strong className="text-foreground">{pt.priority || "NORMAL"}</strong>
                             </span>
                             <span>
                               Required:{" "}
-                              <strong>{new Date(pt.required_date).toLocaleDateString()}</strong>
+                              <strong>{pt.required_date ? new Date(pt.required_date).toLocaleDateString() : "—"}</strong>
                             </span>
                           </div>
 

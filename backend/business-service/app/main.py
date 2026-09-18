@@ -1,7 +1,7 @@
 """
 FastAPI entrypoint for ams-wms-business-service.
 """
-# Reload triggered for Unexpected Delivery GRN Quality schema 2
+# Reload triggered for Store Manager Dock Isolation fix
 from __future__ import annotations
 
 import asyncio

@@ -48,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api-client";
+import { getUserInfo } from "@/lib/auth-utils";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/putaway-tasks")({
@@ -438,6 +439,12 @@ function QrScanWidget({
 }
 
 function WarehousePutawayTasksPage() {
+  const userInfo = getUserInfo();
+  const userRoles = useMemo(() => (userInfo?.roles || []).map((r) => r.toUpperCase()), [userInfo]);
+  const isStoreUser = userRoles.includes("STORE_MANAGER") || userRoles.includes("STORE_KEEPER");
+  const isWarehouseManager = userRoles.includes("WAREHOUSE_MANAGER") || userRoles.includes("WAREHOUSE");
+  const isTrackingOnly = isWarehouseManager && !isStoreUser;
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
@@ -493,6 +500,10 @@ function WarehousePutawayTasksPage() {
   };
 
   const handleOpenPutawayForTask = (task: Task) => {
+    if (isTrackingOnly) {
+      toast.info("Warehouse Managers track putaway tasks. Physical putaway is performed by assigned Store Managers.");
+      return;
+    }
     setIsPutawayModalOpen(true);
     setPutawayStep(1);
     setGrnData(null);
@@ -506,6 +517,10 @@ function WarehousePutawayTasksPage() {
   };
 
   const handleOpenPutawayModal = () => {
+    if (isTrackingOnly) {
+      toast.info("Warehouse Managers track putaway tasks. Physical putaway is performed by assigned Store Managers.");
+      return;
+    }
     setIsPutawayModalOpen(true);
     setPutawayStep(1);
     setGrnData(null);
@@ -666,17 +681,23 @@ function WarehousePutawayTasksPage() {
 
   return (
     <AppShell
-      title="Putaway Tasks Monitoring & Execution"
-      subtitle="QR-Driven Putaway Execution: Scan GRN Material QR and Destination Bin QR to store received inventory."
+      title={isTrackingOnly ? "Putaway Tasks Tracking & Monitoring" : "Putaway Execution & Live Monitoring"}
+      subtitle={
+        isTrackingOnly
+          ? "Live task monitoring and progress tracking across all stores and docks. Physical putaway is performed by assigned Store Managers."
+          : "QR-Driven Putaway Execution: Scan GRN Material QR and Destination Bin QR to store received inventory."
+      }
       actions={
         <div className="flex items-center gap-2">
-          {/* Main Action: Execute Putaway */}
-          <Button
-            onClick={handleOpenPutawayModal}
-            className="rounded-xl gap-1.5 shadow-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-9"
-          >
-            <QrCode className="size-4" /> Scan / Upload GRN Material QR
-          </Button>
+          {/* Actionable Putaway execution button only for Store Managers */}
+          {!isTrackingOnly && (
+            <Button
+              onClick={handleOpenPutawayModal}
+              className="rounded-xl gap-1.5 shadow-sm font-bold bg-primary text-primary-foreground hover:bg-primary/90 text-xs h-9"
+            >
+              <QrCode className="size-4" /> Scan / Upload GRN Material QR
+            </Button>
+          )}
 
           <div className="flex items-center rounded-xl border bg-muted/30 p-0.5">
             <button
@@ -762,35 +783,56 @@ function WarehousePutawayTasksPage() {
         </Card>
         <Card className="rounded-xl p-3.5 shadow-sm border bg-primary/5 border-primary/20 col-span-2 sm:col-span-1">
           <p className="text-[11px] font-semibold text-primary uppercase tracking-wider flex items-center gap-1.5">
-            <Sparkles className="size-3.5" /> QR Direct Flow
+            <Sparkles className="size-3.5" /> {isTrackingOnly ? "Store Scope" : "QR Direct Flow"}
           </p>
           <p className="text-xs font-medium text-foreground mt-1.5 leading-snug">
-            GRN QR <ArrowRight className="inline size-3 text-primary" /> Bin QR <ArrowRight className="inline size-3 text-primary" /> Store Stock
+            {isTrackingOnly
+              ? "Dock Store Allocation → Store Manager Execution"
+              : "GRN QR → Bin QR → Store Stock"}
           </p>
         </Card>
       </div>
 
       {/* Process Flow Banner */}
-      <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground">
-        <div className="flex items-center gap-3">
-          <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 font-bold">
-            <QrCode className="size-4" />
+      {isTrackingOnly ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3.5 text-xs text-foreground">
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0 font-bold">
+              <Boxes className="size-4" />
+            </div>
+            <div>
+              <span className="font-bold text-foreground">Warehouse Manager Tracking Mode:</span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Putaway tasks are automatically created upon GRN completion and routed to destination stores based on Dock Allocation. Assigned Store Managers perform physical bin placement and confirmation.
+              </p>
+            </div>
           </div>
-          <div>
-            <span className="font-bold text-primary">GRN Material QR as Source of Truth:</span>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Manual Material Master Code selection is eliminated. The Putaway process is initiated strictly by scanning or uploading the QR code generated during GRN. All material, vendor, lot, and quantity details are automatically autofilled.
-            </p>
-          </div>
+          <Badge variant="outline" className="border-blue-500/30 text-blue-700 dark:text-blue-400 font-semibold text-xs px-2.5 py-1">
+            Tracking Only
+          </Badge>
         </div>
-        <Button
-          size="sm"
-          onClick={handleOpenPutawayModal}
-          className="rounded-xl gap-1 shrink-0 text-xs font-bold"
-        >
-          <PackageCheck className="size-3.5" /> Execute Putaway Now
-        </Button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-xs text-foreground">
+          <div className="flex items-center gap-3">
+            <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0 font-bold">
+              <QrCode className="size-4" />
+            </div>
+            <div>
+              <span className="font-bold text-primary">GRN Material QR as Source of Truth:</span>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Manual Material Master Code selection is eliminated. The Putaway process is initiated strictly by scanning or uploading the QR code generated during GRN. All material, vendor, lot, and quantity details are automatically autofilled.
+              </p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleOpenPutawayModal}
+            className="rounded-xl gap-1 shrink-0 text-xs font-bold"
+          >
+            <PackageCheck className="size-3.5" /> Execute Putaway Now
+          </Button>
+        </div>
+      )}
 
       {/* Search and Filters Bar */}
       <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
@@ -1019,7 +1061,7 @@ function WarehousePutawayTasksPage() {
                       {/* Actions */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-right">
                         <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          {!isCompleted && (
+                          {!isTrackingOnly && !isCompleted && (
                             <Button
                               size="sm"
                               className="h-7 px-2.5 rounded-lg text-xs gap-1 font-bold bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1086,7 +1128,7 @@ function WarehousePutawayTasksPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <StatusBadge status={task.status} />
-                    {!isCompleted && (
+                    {!isTrackingOnly && !isCompleted && (
                       <Button
                         size="sm"
                         className="h-7 px-2.5 rounded-lg text-xs gap-1 font-bold bg-primary text-primary-foreground hover:bg-primary/90"
@@ -1820,7 +1862,7 @@ function WarehousePutawayTasksPage() {
               </div>
 
               <div className="flex justify-between pt-1">
-                {(selectedTaskDetails.status || "").toUpperCase() !== "PUTAWAY_COMPLETED" ? (
+                {!isTrackingOnly && (selectedTaskDetails.status || "").toUpperCase() !== "PUTAWAY_COMPLETED" ? (
                   <Button
                     className="rounded-xl text-xs font-bold gap-1"
                     onClick={() => {

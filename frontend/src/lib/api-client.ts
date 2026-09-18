@@ -312,6 +312,9 @@ export const api = {
   async getPendingAllocations(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/warehouse/dock-allocation-requests/pending`);
   },
+  async getDockAllocationRequests(): Promise<any[]> {
+    return this.getPendingAllocations();
+  },
   async allocateDock(
     allocationRequestId: string,
     dockId: string,
@@ -634,14 +637,6 @@ export const api = {
       method: "POST",
     });
   },
-  async getGrnDrafts(status?: string, search?: string): Promise<any[]> {
-    const params = new URLSearchParams();
-    if (status) params.set("status", status);
-    if (search) params.set("search", search);
-    const query = params.toString();
-    const url = `${BUSINESS_API_URL}/api/gate-entries/grn-drafts${query ? `?${query}` : ""}`;
-    return request<any[]>(url);
-  },
   async getDashboardStats(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/dashboard/stats`);
   },
@@ -774,39 +769,6 @@ export const api = {
         documentImageBase64: base64Image,
         poNumberOverride: poNumberOverride,
       }),
-    });
-  },
-
-  async getGrn(grnId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
-  },
-  async getGrnContext(input?: string | { poNumber?: string; poId?: string; gateEntryId?: string }, poId?: string, gateEntryId?: string): Promise<any> {
-    const params = new URLSearchParams();
-    if (typeof input === "object" && input !== null) {
-      if (input.poNumber) params.set("po_number", input.poNumber);
-      if (input.poId) params.set("po_id", input.poId);
-      if (input.gateEntryId) params.set("gate_entry_id", input.gateEntryId);
-    } else if (typeof input === "string") {
-      params.set("po_number", input);
-      if (poId) params.set("po_id", poId);
-      if (gateEntryId) params.set("gate_entry_id", gateEntryId);
-    }
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/context?${params.toString()}`);
-  },
-
-  async confirmGrn(
-    poId: string,
-    lines: {
-      itemCode: string;
-      quantity: number;
-    }[],
-  ): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ po_id: poId, lines }),
     });
   },
 
@@ -1699,97 +1661,6 @@ export const api = {
       `${BUSINESS_API_URL}/api/v1/materials/next-code${query}`,
     );
   },
-  async createGrnHeader(data: any): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/header`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-  },
-  async updateGrnLines(grnId: string, lines: any[]): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/lines`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines }),
-    });
-  },
-  async uploadDamageEvidence(grnLineId: string, formData: FormData): Promise<any> {
-    const token = localStorage.getItem("auth_token");
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BUSINESS_API_URL}/api/receiving/grn/lines/${grnLineId}/damage-evidence`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || "Failed to upload damage evidence");
-    }
-    return res.json();
-  },
-  async submitQualityInspection(grnId: string, lines: any[]): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/quality`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lines }),
-    });
-  },
-  async createGrnBatches(grnLineId: string, batches: { batch_quantity: number }[]): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/receiving/grn/lines/${grnLineId}/batches`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(batches),
-    });
-  },
-  async generateDamageQrs(grnId: string): Promise<any[]> {
-    return request<any[]>(`${BUSINESS_API_URL}/api/receiving/grn/${encodeURIComponent(grnId)}/damage-qrs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-  },
-  async uploadGrnDocument(grnId: string, formData: FormData): Promise<any> {
-    const token = localStorage.getItem("auth_token");
-    const headers: Record<string, string> = {};
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/documents`, {
-      method: "POST",
-      headers,
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || "Failed to upload GRN document");
-    }
-    return res.json();
-  },
-  async completeGrn(grnId: string, verification_notes?: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ verification_notes }),
-    });
-  },
-  async getGrnDetail(grnId: string): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}`);
-  },
-  async notifyVendorDamage(grnId: string, payload: { supplier_email?: string; custom_remarks?: string; notify_procurement?: boolean; damage_items?: any[]; photo_ids?: string[] }): Promise<any> {
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/${grnId}/notify-vendor-damage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-  },
-  async lookupQrCode(code: string): Promise<any> {
-    const encoded = encodeURIComponent(code.trim());
-    return request<any>(`${BUSINESS_API_URL}/api/receiving/grn/qr-lookup?code=${encoded}`);
-  },
-  async getNextVariantCode(materialId: string): Promise<{
-    material_code: string;
-    suggested_variant_code: string;
-  }> {
-    return request<any>(`${BUSINESS_API_URL}/api/v1/materials/${materialId}/next-variant-code`);
-  },
   async getStores(filters?: {
     search?: string;
     status?: string;
@@ -1814,6 +1685,10 @@ export const api = {
   },
   async getMyStore(): Promise<any> {
     return request<any>(`${BUSINESS_API_URL}/api/v1/stores/me`);
+  },
+  async getStoreDashboardMetrics(storeId?: string): Promise<any> {
+    const endpoint = storeId ? `${BUSINESS_API_URL}/api/v1/stores/${encodeURIComponent(storeId)}/dashboard-metrics` : `${BUSINESS_API_URL}/api/v1/stores/me/dashboard-metrics`;
+    return request<any>(endpoint);
   },
   async getStoreManagers(): Promise<any[]> {
     return request<any[]>(`${BUSINESS_API_URL}/api/v1/stores/managers`);
@@ -2074,6 +1949,8 @@ export const api = {
     start_date?: string;
     end_date?: string;
     search?: string;
+    limit?: number;
+    offset?: number;
   }): Promise<any[]> {
     const query = new URLSearchParams();
     if (params) {
@@ -2084,6 +1961,8 @@ export const api = {
       if (params.start_date) query.append("start_date", params.start_date);
       if (params.end_date) query.append("end_date", params.end_date);
       if (params.search) query.append("search", params.search);
+      if (params.limit !== undefined) query.append("limit", String(params.limit));
+      if (params.offset !== undefined) query.append("offset", String(params.offset));
     }
     const qStr = query.toString() ? `?${query.toString()}` : "";
     return request<any[]>(`${BUSINESS_API_URL}/api/storage/inventory/movement-history${qStr}`);

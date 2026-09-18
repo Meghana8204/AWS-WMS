@@ -13,14 +13,25 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("material", sa.Column("sub_category", sa.String(64), nullable=True))
-    op.add_column("material", sa.Column("material_type", sa.String(64), nullable=False, server_default="Raw Material"))
-    op.add_column("material", sa.Column("uom", sa.String(32), nullable=False, server_default="Nos"))
-    op.add_column("material", sa.Column("status", sa.String(16), nullable=False, server_default="Active"))
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    cols = {c["name"] for c in inspector.get_columns("material")}
+
+    for col_name, col_def in [
+        ("sub_category", sa.Column("sub_category", sa.String(64), nullable=True)),
+        ("material_type", sa.Column("material_type", sa.String(64), nullable=False, server_default="Raw Material")),
+        ("uom", sa.Column("uom", sa.String(32), nullable=False, server_default="Nos")),
+        ("status", sa.Column("status", sa.String(16), nullable=False, server_default="Active")),
+    ]:
+        if col_name not in cols:
+            op.add_column("material", col_def)
 
 
 def downgrade() -> None:
-    op.drop_column("material", "status")
-    op.drop_column("material", "uom")
-    op.drop_column("material", "material_type")
-    op.drop_column("material", "sub_category")
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    cols = {c["name"] for c in inspector.get_columns("material")}
+
+    for col_name in ["sub_category", "material_type", "uom"]:
+        if col_name in cols:
+            op.drop_column("material", col_name)

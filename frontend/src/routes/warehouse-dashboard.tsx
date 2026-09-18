@@ -253,8 +253,8 @@ function WarehouseDashboard() {
                   className="w-full rounded-xl text-xs font-semibold justify-between bg-background/80 hover:bg-background"
                   asChild
                 >
-                  <Link to="/my-store">
-                    Execute in Store Portal <ArrowRight className="size-3.5" />
+                  <Link to="/putaway-tasks">
+                    Track Putaways <ArrowRight className="size-3.5" />
                   </Link>
                 </Button>
               </div>

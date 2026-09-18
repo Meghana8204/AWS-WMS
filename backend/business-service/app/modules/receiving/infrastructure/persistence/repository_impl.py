@@ -38,9 +38,11 @@ from app.modules.procurement.infrastructure.persistence.models import (
 )
 
 from app.modules.gate.infrastructure.persistence.models import (
+    DockAssignmentModel,
     DockModel,
     GateEntryModel,
 )
+from app.modules.store.infrastructure.persistence.models import StoreModel
 
 from app.modules.receiving.application.repository import (
     AsnDocumentSnapshot,
@@ -1160,7 +1162,6 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 item_code=line.item_code,
                 qr_code=f"QR-MAT-{line.item_code}",
                 qr_payload=qr_payload,
-                generated_by=created_by,
                 generated_at=now,
             )
             self._session.add(qr)
@@ -1366,11 +1367,71 @@ class SqlAlchemyGrnRepository(GrnRepository):
             raise ValueError(f"GRN not found: {grn_id}")
 
         now = datetime.now(timezone.utc)
+        now_naive = now.replace(tzinfo=None)
         grn.status = "COMPLETED"
         grn.posted_by = posted_by
         grn.posted_at = now
         if verification_notes:
             grn.verification_notes = verification_notes
+
+        # Retrieve dock assignment for store routing & manager assignment
+        dock_assignment = None
+        da_conditions = []
+        if grn.id:
+            da_conditions.append(DockAssignmentModel.prepared_grn_id == grn.id)
+        if grn.gate_entry_id:
+            da_conditions.append(DockAssignmentModel.gate_entry_id == grn.gate_entry_id)
+        if grn.asn_id:
+            da_conditions.append(DockAssignmentModel.asn_id == grn.asn_id)
+        if grn.po_id:
+            da_conditions.append(DockAssignmentModel.po_id == grn.po_id)
+        if grn.vehicle_number:
+            da_conditions.append(DockAssignmentModel.vehicle_number == grn.vehicle_number)
+
+        if da_conditions:
+            da_res = await self._session.execute(
+                select(DockAssignmentModel)
+                .where(or_(*da_conditions))
+                .order_by(DockAssignmentModel.assigned_at.desc())
+            )
+            dock_assignment = da_res.scalars().first()
+
+        dest_store_id = dock_assignment.assigned_store_id if dock_assignment else None
+        assigned_to = (
+            (dock_assignment.assigned_store_manager_username or dock_assignment.assigned_store_manager_id or dock_assignment.assigned_store_manager_name)
+            if dock_assignment
+            else None
+        )
+        assigned_by = (dock_assignment.assigned_by if dock_assignment else None) or posted_by
+        assigned_at = (dock_assignment.assigned_at if dock_assignment else None) or now
+
+        # Fallback to dock definition or store master if not populated on dock assignment
+        if not dest_store_id and grn.dock_number:
+            dock_res = await self._session.execute(
+                select(DockModel).where(DockModel.dock_number == grn.dock_number)
+            )
+            dock_obj = dock_res.scalars().first()
+            if dock_obj and getattr(dock_obj, "assigned_store_id", None):
+                dest_store_id = dock_obj.assigned_store_id
+                assigned_to = assigned_to or getattr(dock_obj, "assigned_store_manager_username", None) or getattr(dock_obj, "assigned_store_manager_id", None)
+
+        if not dest_store_id:
+            store_res = await self._session.execute(
+                select(StoreModel).where(StoreModel.status == "ACTIVE").order_by(StoreModel.created_at.asc())
+            )
+            store_obj = store_res.scalars().first()
+            if store_obj:
+                dest_store_id = store_obj.id
+                if not assigned_to:
+                    assigned_to = store_obj.store_manager_name or store_obj.store_manager_id
+
+        if dest_store_id and not assigned_to:
+            store_res = await self._session.execute(
+                select(StoreModel).where(StoreModel.id == dest_store_id)
+            )
+            store_obj = store_res.scalars().first()
+            if store_obj:
+                assigned_to = store_obj.store_manager_name or store_obj.store_manager_id
 
         # Post inventory updates & putaway tasks
         for line in grn.lines:
@@ -1397,7 +1458,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                                 updated_at = :now
                             WHERE material_code = :code
                         """),
-                        {"qty": post_qty, "now": now, "code": line.item_code},
+                        {"qty": post_qty, "now": now_naive, "code": line.item_code},
                     )
                 else:
                     await self._session.execute(
@@ -1413,7 +1474,7 @@ class SqlAlchemyGrnRepository(GrnRepository):
                             "qty": post_qty,
                             "uom": line.uom or "PCS",
                             "wh": grn.warehouse_id or "WH-MAIN",
-                            "now": now,
+                            "now": now_naive,
                         },
                     )
 
@@ -1450,8 +1511,8 @@ class SqlAlchemyGrnRepository(GrnRepository):
                 await self._session.execute(
                     text("""
                         INSERT INTO putaway_task
-                        (id, task_number, grn_id, grn_number, item_code, material_name, quantity, uom, warehouse_id, source_location, status, created_by, created_at)
-                        VALUES (:id, :task_num, :grn_id, :grn_num, :code, :name, :qty, :uom, :wh, :source, 'PUTAWAY_PENDING', :user, :now)
+                        (id, task_number, grn_id, grn_number, item_code, material_name, quantity, uom, warehouse_id, source_location, destination_store_id, assigned_to, assigned_by, assigned_at, status, created_by, created_at)
+                        VALUES (:id, :task_num, :grn_id, :grn_num, :code, :name, :qty, :uom, :wh, :source, :dest_store_id, :assigned_to, :assigned_by, :assigned_at, 'PUTAWAY_PENDING', :user, :now)
                     """),
                     {
                         "id": uuid.uuid4(),
@@ -1464,6 +1525,10 @@ class SqlAlchemyGrnRepository(GrnRepository):
                         "uom": line.uom or "PCS",
                         "wh": grn.warehouse_id or "WH-MAIN",
                         "source": f"RECEIVING_DOCK_{grn.dock_number or '1'}",
+                        "dest_store_id": dest_store_id,
+                        "assigned_to": assigned_to,
+                        "assigned_by": assigned_by,
+                        "assigned_at": assigned_at,
                         "user": posted_by,
                         "now": now,
                     },

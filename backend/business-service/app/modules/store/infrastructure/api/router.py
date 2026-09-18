@@ -29,6 +29,10 @@ from app.modules.store.infrastructure.api.schemas import (
     BinStatusUpdate,
     BinUpdate,
     StoreCreate,
+    StoreDashboardKPIs,
+    StoreDashboardMetricsResponse,
+    StoreInventoryItem,
+    StoreMovementActivity,
     StoreManagerAssign,
     StoreManagerCreate,
     StoreManagerOption,
@@ -142,9 +146,10 @@ def _to_manager_response(mgr: StoreManagerUserModel, store: Optional[StoreModel]
 def _store_manager_matches(store: StoreModel, user: CurrentUser) -> bool:
     """Check if a store belongs to the authenticated store manager."""
     identifiers = {
-        user.subject.strip().lower(),
-        user.username.strip().lower(),
+        str(user.subject or "").strip().lower(),
+        str(user.username or "").strip().lower(),
     }
+    identifiers.discard("")
     if user.raw_claims:
         if "store_id" in user.raw_claims and user.raw_claims["store_id"]:
             if str(store.id).lower() == str(user.raw_claims["store_id"]).lower():
@@ -156,30 +161,46 @@ def _store_manager_matches(store: StoreModel, user: CurrentUser) -> bool:
             identifiers.add(str(user.raw_claims["employee_id"]).strip().lower())
         if "full_name" in user.raw_claims and user.raw_claims["full_name"]:
             identifiers.add(str(user.raw_claims["full_name"]).strip().lower())
+        if "username" in user.raw_claims and user.raw_claims["username"]:
+            identifiers.add(str(user.raw_claims["username"]).strip().lower())
 
     if store.store_manager_id and store.store_manager_id.strip().lower() in identifiers:
         return True
     if store.store_manager_name and store.store_manager_name.strip().lower() in identifiers:
         return True
 
-    # Fallback support for test manager username mappings
-    username_lower = user.username.lower()
-    if "001" in username_lower and "001" in store.store_code.lower():
+    return False
+
+
+async def _is_store_authorized(session: AsyncSession, store: StoreModel, user: CurrentUser) -> bool:
+    """Check if the user is authorized for the given store (Warehouse/Admin or assigned Store Manager)."""
+    if _is_warehouse_or_admin(user):
         return True
-    if "002" in username_lower and "002" in store.store_code.lower():
-        return True
-    if "003" in username_lower and "003" in store.store_code.lower():
-        return True
-    if "elec" in username_lower and ("elec" in store.store_code.lower() or "elec" in store.store_name.lower()):
-        return True
-    if "mech" in username_lower and ("mech" in store.store_code.lower() or "mech" in store.store_name.lower()):
-        return True
-    if "inst" in username_lower and ("inst" in store.store_code.lower() or "inst" in store.store_name.lower()):
-        return True
-    if "spare" in username_lower and ("spare" in store.store_code.lower() or "spare" in store.store_name.lower()):
+    if _store_manager_matches(store, user):
         return True
 
-    return False
+    identifiers = {
+        str(user.subject or "").strip().lower(),
+        str(user.username or "").strip().lower(),
+        str(user.raw_claims.get("employee_id") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("username") or "").strip().lower() if user.raw_claims else "",
+        str(user.raw_claims.get("sub") or "").strip().lower() if user.raw_claims else "",
+    }
+    identifiers.discard("")
+    if not identifiers:
+        return False
+
+    mgr_stmt = select(StoreManagerUserModel).where(
+        StoreManagerUserModel.store_id == store.id,
+        or_(
+            func.lower(StoreManagerUserModel.username).in_(identifiers),
+            func.lower(StoreManagerUserModel.employee_id).in_(identifiers),
+            func.lower(StoreManagerUserModel.full_name).in_(identifiers),
+            func.lower(StoreManagerUserModel.email).in_(identifiers),
+        )
+    )
+    res = await session.execute(mgr_stmt)
+    return res.scalars().first() is not None
 
 
 async def _resolve_store(session: AsyncSession, id_or_code: str) -> Optional[StoreModel]:
@@ -740,6 +761,253 @@ async def get_my_store(
     )
 
 
+async def _build_store_dashboard_metrics(uow: UnitOfWork, store: StoreModel) -> StoreDashboardMetricsResponse:
+    from app.modules.storage.infrastructure.persistence.models import (
+        InventoryLocationBalanceModel,
+        StorageLocationModel,
+        InventoryMovementHistoryModel,
+    )
+    from app.modules.quarantine.infrastructure.persistence.models import QuarantineRecordModel
+    from app.modules.procurement.infrastructure.persistence.models import MaterialModel, MaterialStockModel
+    from app.modules.dock.infrastructure.persistence.models import DockMasterModel, DockAllocationRequestModel
+
+    # 1. Zones & Bins in store
+    z_res = await uow.session.execute(select(StoreZoneModel).where(StoreZoneModel.store_id == store.id))
+    zones = z_res.scalars().all()
+    zones_map = {z.id: z for z in zones}
+    zones_count = len(zones)
+
+    b_res = await uow.session.execute(select(StoreBinModel).where(StoreBinModel.store_id == store.id))
+    bins = b_res.scalars().all()
+    bins_map = {b.id: b for b in bins}
+    bins_count = len(bins)
+    occupied_bins_count = sum(1 for b in bins if float(b.occupied_quantity or 0) > 0)
+    available_bins_count = sum(1 for b in bins if float(b.occupied_quantity or 0) == 0 and (b.status or "").upper() == "ACTIVE")
+
+    # 2. Location balances in this store
+    loc_stmt = (
+        select(InventoryLocationBalanceModel, StorageLocationModel)
+        .join(StorageLocationModel, StorageLocationModel.id == InventoryLocationBalanceModel.storage_location_id)
+        .where(StorageLocationModel.store_id == store.id)
+        .order_by(InventoryLocationBalanceModel.updated_at.desc())
+    )
+    loc_res = await uow.session.execute(loc_stmt)
+    balances = loc_res.all()
+
+    # Materials lookup
+    mat_res = await uow.session.execute(select(MaterialModel))
+    mat_map = {m.material_code: m for m in mat_res.scalars().all()}
+    stock_res = await uow.session.execute(select(MaterialStockModel))
+    stock_map = {s.material_code: s for s in stock_res.scalars().all()}
+
+    # Quarantined records
+    quar_res = await uow.session.execute(
+        select(QuarantineRecordModel).where(
+            QuarantineRecordModel.status.in_(["PENDING_REVIEW", "QUARANTINED"])
+        )
+    )
+    quarantine_records = quar_res.scalars().all()
+
+    inv_items: List[StoreInventoryItem] = []
+    seen_skus = set()
+    total_qty = 0.0
+    total_avail = 0.0
+
+    for bal, loc in balances:
+        m_code = bal.material_code
+        seen_skus.add(m_code)
+        mat_obj = mat_map.get(m_code)
+        stk_obj = stock_map.get(m_code)
+        z_obj = zones_map.get(loc.zone_id) if loc.zone_id else None
+        b_obj = bins_map.get(loc.bin_id) if loc.bin_id else None
+
+        avail_q = float(bal.available_quantity or 0)
+        tot_q = avail_q
+        total_qty += tot_q
+        total_avail += avail_q
+
+        stat = "HEALTHY"
+        reorder_pt = float(stk_obj.reorder_point) if stk_obj else 10.0
+        if tot_q == 0:
+            stat = "OUT_OF_STOCK"
+        elif avail_q < reorder_pt:
+            stat = "LOW_STOCK"
+
+        inv_items.append(
+            StoreInventoryItem(
+                id=str(bal.id),
+                material_code=m_code,
+                material_name=bal.material_name or (mat_obj.material_name if mat_obj else m_code),
+                category=mat_obj.category if mat_obj and getattr(mat_obj, "category", None) else (stk_obj.category if stk_obj else "GENERAL"),
+                quantity=tot_q,
+                available_quantity=avail_q,
+                uom=bal.uom or "PCS",
+                zone_code=z_obj.zone_code if z_obj else loc.zone,
+                zone_name=z_obj.zone_name if z_obj else loc.zone,
+                bin_code=b_obj.bin_code if b_obj else (loc.bin if loc.bin and loc.bin != "DEFAULT" else None),
+                bin_name=b_obj.bin_name if b_obj else (f"Bin {loc.bin}" if loc.bin and loc.bin != "DEFAULT" else None),
+                status=stat,
+                last_updated=bal.updated_at.isoformat() if bal.updated_at else datetime.now(timezone.utc).isoformat(),
+            )
+        )
+
+    # Check low stock across seen SKUs
+    low_stock_count = 0
+    for m_code in seen_skus:
+        stk_obj = stock_map.get(m_code)
+        reorder_pt = float(stk_obj.reorder_point) if stk_obj else 10.0
+        sku_avail = sum(item.available_quantity for item in inv_items if item.material_code == m_code)
+        if sku_avail < reorder_pt:
+            low_stock_count += 1
+
+    # Quarantined & Damaged quantity for store
+    store_quar_qty = sum(
+        float(q.damaged_quantity)
+        for q in quarantine_records
+        if (q.item_code in seen_skus) or (getattr(q, "store_id", None) and getattr(q, "store_id") == store.id)
+    )
+
+    # 3. Recent store activity from InventoryMovementHistoryModel
+    mov_stmt = (
+        select(InventoryMovementHistoryModel)
+        .where(
+            or_(
+                InventoryMovementHistoryModel.store_id == store.id,
+                InventoryMovementHistoryModel.material_code.in_(seen_skus) if seen_skus else False,
+            )
+        )
+        .order_by(InventoryMovementHistoryModel.created_at.desc())
+        .limit(10)
+    )
+    mov_res = await uow.session.execute(mov_stmt)
+    movements = mov_res.scalars().all()
+    recent_activity: List[StoreMovementActivity] = []
+    for m in movements:
+        recent_activity.append(
+            StoreMovementActivity(
+                id=str(m.id),
+                timestamp=m.created_at.isoformat() if m.created_at else datetime.now(timezone.utc).isoformat(),
+                movement_type=m.movement_type,
+                material_code=m.material_code,
+                material_name=m.material_name,
+                material_qr=m.material_qr,
+                from_location=m.from_location,
+                to_location=m.to_location,
+                quantity=float(m.quantity or 0),
+                uom=m.uom or "PCS",
+                stock_before=float(m.stock_before) if m.stock_before is not None else None,
+                stock_after=float(m.stock_after) if m.stock_after is not None else None,
+                operator=m.created_by or "System",
+                reference_document=m.reference_document,
+            )
+        )
+
+    # 4. Assigned docks count
+    docks_count_stmt = (
+        select(func.count(DockAllocationRequestModel.id))
+        .where(
+            DockAllocationRequestModel.assigned_store_id == store.id,
+            DockAllocationRequestModel.status.in_(["OCCUPIED", "RESERVED", "ALLOCATED", "DOCK_ASSIGNED"]),
+        )
+    )
+    assigned_docks_count = (await uow.session.execute(docks_count_stmt)).scalar() or 0
+
+    kpis = StoreDashboardKPIs(
+        total_skus=len(seen_skus),
+        total_quantity=total_qty,
+        available_quantity=total_avail,
+        quarantined_quantity=store_quar_qty,
+        damaged_quantity=store_quar_qty,
+        low_stock_items=low_stock_count,
+        zones_count=zones_count,
+        bins_count=bins_count,
+        occupied_bins_count=occupied_bins_count,
+        available_bins_count=available_bins_count,
+    )
+
+    store_resp = _to_store_response(store, zones_count=zones_count, bins_count=bins_count)
+
+    return StoreDashboardMetricsResponse(
+        store=store_resp,
+        kpis=kpis,
+        inventory_summary=inv_items,
+        recent_activity=recent_activity,
+        assigned_docks_count=assigned_docks_count,
+    )
+
+
+@router.get("/me/dashboard-metrics", response_model=StoreDashboardMetricsResponse)
+async def get_my_store_dashboard_metrics(
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> StoreDashboardMetricsResponse:
+    """
+    Returns store-level real-time dashboard KPIs, inventory summary, and recent movements
+    for the authenticated Store Manager's assigned store.
+    """
+    store = None
+    if user.raw_claims and user.raw_claims.get("store_id"):
+        try:
+            store_uuid = uuid.UUID(str(user.raw_claims["store_id"]))
+            store = await uow.session.get(StoreModel, store_uuid)
+        except (ValueError, TypeError):
+            pass
+
+    if not store:
+        mgr_stmt = select(StoreManagerUserModel).where(
+            or_(
+                StoreManagerUserModel.username == user.username,
+                StoreManagerUserModel.employee_id == user.subject,
+                StoreManagerUserModel.employee_id == user.username,
+            )
+        )
+        mgr = (await uow.session.execute(mgr_stmt)).scalar_one_or_none()
+        if mgr:
+            store = await uow.session.get(StoreModel, mgr.store_id)
+
+    if not store:
+        stmt = select(StoreModel)
+        result = await uow.session.execute(stmt)
+        for s in result.scalars().all():
+            if _store_manager_matches(s, user):
+                store = s
+                break
+
+    if not store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No assigned store found for user '{user.username}'",
+        )
+
+    return await _build_store_dashboard_metrics(uow, store)
+
+
+@router.get("/{store_id}/dashboard-metrics", response_model=StoreDashboardMetricsResponse)
+async def get_store_dashboard_metrics_by_id(
+    store_id: str,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> StoreDashboardMetricsResponse:
+    """
+    Returns store dashboard KPIs for a specific store.
+    Strictly verifies that the caller is authorized for the target store.
+    """
+    store = await _resolve_store(uow.session, store_id)
+    if not store:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Store '{store_id}' not found",
+        )
+
+    if not await _is_store_authorized(uow.session, store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to view dashboard metrics for your assigned store.",
+        )
+
+    return await _build_store_dashboard_metrics(uow, store)
+
+
 @router.get("", response_model=List[StoreResponse])
 async def list_stores(
     search: Optional[str] = Query(None, description="Search by store code or store name"),
@@ -991,7 +1259,7 @@ async def get_next_zone_code(
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Store '{id_or_code}' not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access your assigned store.",
@@ -1012,7 +1280,7 @@ async def list_store_zones(
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Store '{id_or_code}' not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access your assigned store.",
@@ -1047,7 +1315,7 @@ async def create_store_zone(
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Store '{id_or_code}' not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to manage zones in your assigned store.",
@@ -1096,7 +1364,7 @@ async def list_store_bins(
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Store '{id_or_code}' not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access bins in your assigned store.",
@@ -1109,6 +1377,74 @@ async def list_store_bins(
     res = await uow.session.execute(stmt)
     bins = res.scalars().all()
     return [_to_bin_response(b) for b in bins]
+
+
+@router.post("/{id_or_code}/bins", response_model=BinResponse, status_code=status.HTTP_201_CREATED)
+async def create_store_bin(
+    id_or_code: str,
+    payload: BinCreate,
+    uow: UnitOfWork = Depends(get_uow),
+    user: CurrentUser = Depends(get_current_user),
+) -> BinResponse:
+    """Create a new Bin under a Store (and its specified Zone)."""
+    store = await _resolve_store(uow.session, id_or_code)
+    if not store:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Store '{id_or_code}' not found")
+
+    if not await _is_store_authorized(uow.session, store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to manage bins in your assigned store.",
+        )
+
+    if not payload.zone_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="zone_id is required to create a bin.",
+        )
+
+    zone = await _resolve_zone(uow.session, str(payload.zone_id))
+    if not zone:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{payload.zone_id}' not found")
+
+    if zone.store_id != store.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Zone '{zone.zone_code}' does not belong to Store '{store.store_code}'. Cross-store bin assignment is prohibited.",
+        )
+
+    clean_code = payload.bin_code.strip().upper() if payload.bin_code else None
+    if not clean_code:
+        clean_code = await generate_next_bin_code(uow.session, zone.id, zone.zone_code)
+
+    now = datetime.now(timezone.utc)
+    new_bin = StoreBinModel(
+        id=uuid.uuid4(),
+        store_id=store.id,
+        zone_id=zone.id,
+        bin_code=clean_code,
+        bin_name=payload.bin_name.strip(),
+        rack=payload.rack.strip() if payload.rack else None,
+        shelf=payload.shelf.strip() if payload.shelf else None,
+        capacity=payload.capacity,
+        occupied_quantity=Decimal("0.0"),
+        status=payload.status.strip().upper() if payload.status else "ACTIVE",
+        created_at=now,
+        updated_at=now,
+    )
+
+    uow.session.add(new_bin)
+    try:
+        await uow.session.flush()
+        await uow.commit()
+        logger.info(f"Bin '{new_bin.bin_code}' created under Zone '{zone.zone_code}' (Store: '{store.store_code}') by '{user.username}'")
+        return _to_bin_response(new_bin)
+    except IntegrityError:
+        await uow.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Bin with code '{clean_code}' already exists in Store '{store.store_code}'.",
+        )
 
 
 # ==========================================
@@ -1131,12 +1467,11 @@ async def get_zone(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{zone_id}' not found")
 
     store = await uow.session.get(StoreModel, zone.store_id)
-    if not _is_warehouse_or_admin(user):
-        if not store or not _store_manager_matches(store, user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You are only authorized to access zones in your assigned store.",
-            )
+    if not store or not await _is_store_authorized(uow.session, store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to access zones in your assigned store.",
+        )
 
     bin_count_stmt = select(func.count(StoreBinModel.id)).where(StoreBinModel.zone_id == zone.id)
     b_count = (await uow.session.execute(bin_count_stmt)).scalar() or 0
@@ -1161,12 +1496,11 @@ async def update_zone(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{zone_id}' not found")
 
     store = await uow.session.get(StoreModel, zone.store_id)
-    if not _is_warehouse_or_admin(user):
-        if not store or not _store_manager_matches(store, user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You are only authorized to modify zones in your assigned store.",
-            )
+    if not store or not await _is_store_authorized(uow.session, store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to modify zones in your assigned store.",
+        )
 
     if payload.zone_name is not None:
         zone.zone_name = payload.zone_name.strip()
@@ -1202,12 +1536,11 @@ async def update_zone_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{zone_id}' not found")
 
     store = await uow.session.get(StoreModel, zone.store_id)
-    if not _is_warehouse_or_admin(user):
-        if not store or not _store_manager_matches(store, user):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: You are only authorized to change zone status in your assigned store.",
-            )
+    if not store or not await _is_store_authorized(uow.session, store, user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied: You are only authorized to change zone status in your assigned store.",
+        )
 
     zone.status = payload.status.strip().upper()
     zone.updated_at = datetime.now(timezone.utc)
@@ -1231,7 +1564,7 @@ async def get_next_bin_code_for_zone(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{zone_id}' not found")
 
     store = await uow.session.get(StoreModel, zone.store_id)
-    if not _is_warehouse_or_admin(user) and (not store or not _store_manager_matches(store, user)):
+    if not store or not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access zones in your assigned store.",
@@ -1253,7 +1586,7 @@ async def list_zone_bins(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Zone '{zone_id}' not found")
 
     store = await uow.session.get(StoreModel, zone.store_id)
-    if not _is_warehouse_or_admin(user) and (not store or not _store_manager_matches(store, user)):
+    if not store or not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access zones in your assigned store.",
@@ -1283,7 +1616,7 @@ async def create_zone_bin(
     if not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent Store not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to manage bins in your assigned store.",
@@ -1338,7 +1671,7 @@ async def get_bin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Bin '{bin_id}' not found")
 
     store = await uow.session.get(StoreModel, bin_obj.store_id)
-    if not _is_warehouse_or_admin(user) and (not store or not _store_manager_matches(store, user)):
+    if not store or not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to access bins in your assigned store.",
@@ -1360,7 +1693,7 @@ async def update_bin(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Bin '{bin_id}' not found")
 
     store = await uow.session.get(StoreModel, bin_obj.store_id)
-    if not _is_warehouse_or_admin(user) and (not store or not _store_manager_matches(store, user)):
+    if not store or not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to modify bins in your assigned store.",
@@ -1397,7 +1730,7 @@ async def update_bin_status(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Bin '{bin_id}' not found")
 
     store = await uow.session.get(StoreModel, bin_obj.store_id)
-    if not _is_warehouse_or_admin(user) and (not store or not _store_manager_matches(store, user)):
+    if not store or not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to change bin status in your assigned store.",
@@ -1427,7 +1760,7 @@ async def get_bin_qr(
     if not zone or not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent Zone/Store for Bin not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to generate QR codes for bins in your assigned store.",
@@ -1472,7 +1805,7 @@ async def lookup_bin_by_scan(
             detail=f"Parent Zone/Store for scanned Bin '{scan_raw}' not found",
         )
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are not authorized to access this Bin/Store.",
@@ -1496,7 +1829,7 @@ async def get_bin_materials(
     if not zone or not store:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent Zone/Store for Bin not found")
 
-    if not _is_warehouse_or_admin(user) and not _store_manager_matches(store, user):
+    if not await _is_store_authorized(uow.session, store, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied: You are only authorized to view bins in your assigned store.",

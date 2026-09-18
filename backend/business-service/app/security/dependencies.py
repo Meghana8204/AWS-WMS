@@ -215,12 +215,41 @@ async def get_current_user(
                 raw_claims={"store_code": "STR-002", "employee_id": "EMP-KEEPER-001"},
             )
         elif token == "mock-jwt-store-manager-token":
+            claims = {"store_code": "STR-001", "employee_id": "EMP-STORE-001", "username": "store_manager_elec"}
+            try:
+                from sqlalchemy import select, or_, func
+                from sqlalchemy.orm import selectinload
+                from app.database.session import AsyncSessionFactory
+                from app.modules.store.infrastructure.persistence.models import StoreManagerUserModel
+
+                async with AsyncSessionFactory() as session:
+                    stmt = (
+                        select(StoreManagerUserModel)
+                        .options(selectinload(StoreManagerUserModel.store))
+                        .where(
+                            or_(
+                                StoreManagerUserModel.employee_id == "EMP-STORE-001",
+                                StoreManagerUserModel.username == "store_manager_elec",
+                            )
+                        )
+                    )
+                    res = await session.execute(stmt)
+                    mgr = res.scalars().first()
+                    if mgr:
+                        claims["store_id"] = str(mgr.store_id)
+                        claims["employee_id"] = mgr.employee_id
+                        claims["full_name"] = mgr.full_name
+                        if mgr.store:
+                            claims["store_code"] = mgr.store.store_code
+            except Exception:
+                pass
+
             return CurrentUser(
-                subject="EMP-STORE-001",
+                subject=claims.get("employee_id", "EMP-STORE-001"),
                 username="store_manager_elec",
                 roles=["STORE_MANAGER"],
                 permissions=["store:read", "store:write", "storage:read", "putaway:execute", "pickup:execute"],
-                raw_claims={"store_code": "STR-001", "employee_id": "EMP-STORE-001"},
+                raw_claims=claims,
             )
         elif token.startswith("mock-jwt-store-keeper-") or token.startswith("mock-jwt-store-manager-"):
             is_keeper = token.startswith("mock-jwt-store-keeper-")
