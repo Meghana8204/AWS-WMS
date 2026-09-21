@@ -55,10 +55,26 @@ function Rfqs() {
     try {
       setSendingRfq(true);
       const result = await api.sendRfq(rfqId);
-      const sent = result.delivery?.sent;
-      toast.success(result.message || "RFQ published and sent to suppliers successfully!", {
-        description: typeof sent === "number" ? `${sent} email(s) delivered` : undefined,
-      });
+      const delivery = result.delivery || {};
+      const sent = typeof delivery.sent === "number" ? delivery.sent : (result.sent ?? 0);
+      const failed = typeof delivery.failed === "number" ? delivery.failed : (result.failed ?? 0);
+      const total = typeof delivery.total === "number" ? delivery.total : (result.total ?? (sent + failed));
+
+      if (failed === 0 && sent > 0) {
+        toast.success("RFQ Published", {
+          description: `Supplier Email: SENT (${sent} of ${total} accepted by mail server)`,
+        });
+      } else if (sent > 0 && failed > 0) {
+        toast.warning("RFQ Published", {
+          description: `Supplier Email: PARTIALLY SENT (${sent} sent, ${failed} failed)`,
+        });
+      } else if (failed > 0 && sent === 0) {
+        toast.error("RFQ Published with Email Delivery Failure", {
+          description: `Supplier Email: FAILED (0 of ${total} delivered)`,
+        });
+      } else {
+        toast.success(result.message || "RFQ published successfully.");
+      }
       setSelectedRfq(null);
       await fetchData();
     } catch (error: any) {

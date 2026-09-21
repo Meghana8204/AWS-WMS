@@ -36,6 +36,9 @@ def _index_exists(table_name: str, index_name: str) -> bool:
 
 
 def upgrade() -> None:
+    # 0. Expand alembic_version.version_num to support revisions > 32 characters
+    op.execute("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(128)")
+
     # 1. storage_location
     if _table_exists("storage_location"):
         if not _column_exists("storage_location", "location_code"):

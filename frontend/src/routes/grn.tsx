@@ -66,7 +66,14 @@ import {
 } from "@/components/wms/qr-scan-result-modal";
 
 export const Route = createFileRoute("/grn")({
-  validateSearch: (search: Record<string, unknown>) => ({
+  validateSearch: (search: Record<string, unknown>): {
+    tab: string;
+    page: number;
+    grn_id?: string;
+    gatePassId?: string;
+    dock?: string;
+    po?: string;
+  } => ({
     tab: (search.tab as string) || "dashboard",
     page: Number(search.page) || 1,
     grn_id: (search.grn_id as string) || undefined,
@@ -85,6 +92,7 @@ type GrnLineItem = {
   received_quantity: number;
   good_quantity: number;
   damaged_quantity: number;
+  rejected_quantity?: number;
   balance_quantity: number;
   uom: string;
   material_category?: string;
@@ -172,11 +180,11 @@ const PAGES = [
 const GRN_LOCAL_DRAFT_KEY = "grn_wizard_local_draft";
 
 function formatCardDate(dateVal?: string | null): string {
-  if (!dateVal) return new Date().toISOString().split("T")[0];
+  if (!dateVal) return new Date().toISOString().slice(0, 10);
   try {
     const d = new Date(dateVal);
     if (isNaN(d.getTime())) return String(dateVal);
-    return d.toISOString().split("T")[0];
+    return d.toISOString().slice(0, 10);
   } catch {
     return String(dateVal);
   }
@@ -756,7 +764,7 @@ function GrnPageWorkflow() {
   useEffect(() => {
     async function loadPos() {
       try {
-        const pos = await api.getPurchaseOrders(undefined, true);
+        const pos = await api.getPurchaseOrders();
         const formalPos = (Array.isArray(pos) ? pos : []).filter((p: any) => {
           const num = (p.poNumber || p.po_number || "").trim().toUpperCase();
           return num.startsWith("PO-") && !num.startsWith("PROP-");
@@ -1189,7 +1197,8 @@ function GrnPageWorkflow() {
         const pMap: Record<string, any> = {};
 
         detail.lines.forEach((l: any, idx: number) => {
-          const rowKey = grnMaterialKey(rehydratedLines[idx], idx);
+          const itemTarget = rehydratedLines[idx] || (l as GrnLineItem);
+          const rowKey = grnMaterialKey(itemTarget, idx);
           qApp[rowKey] = Number(l.quality_approved_quantity ?? l.good_quantity ?? 0);
           if (Array.isArray(l.batches) && l.batches.length > 0) {
             bMap[rowKey] = l.batches.map((b: any) => ({
@@ -1750,11 +1759,7 @@ function GrnPageWorkflow() {
                   const uploadRes = await api.uploadDamageEvidence(lineIdToUse, data);
                   if (uploadRes?.evidence_id || uploadRes?.evidenceId) {
                     photo.evidenceId = uploadRes.evidence_id || uploadRes.evidenceId;
-                    photo.previewUrl = uploadRes.file_path
-                      ? uploadRes.file_path.startsWith("http")
-                        ? uploadRes.file_path
-                        : `${api.BUSINESS_API_URL}${uploadRes.file_path}`
-                      : photo.previewUrl;
+                    photo.previewUrl = resolveMediaUrl(uploadRes.file_path) || photo.previewUrl;
                   }
                 } catch (uploadErr) {
                   console.warn(`Could not upload photo file for ${m.item_code}:`, uploadErr);
@@ -4522,16 +4527,13 @@ function GrnPageWorkflow() {
                                 lineId={m.grn_line_id}
                                 damagedQuantity={m.damaged_quantity}
                                 reason={m.damage_reason}
-                                existingPhotos={
-                                  (damagePhotos[rowKey] || damagePhotos[m.item_code])?.photos || []
-                                }
                                 onSuccess={(ev) => {
                                   setDamagePhotos((prev) => ({
                                     ...prev,
                                     [rowKey]: {
                                       evidenceId: ev.evidenceId,
-                                      evidenceIds: ev.evidenceIds,
-                                      photos: ev.photos,
+                                      evidenceIds: [ev.evidenceId],
+                                      photos: ev.filePath ? [{ id: ev.evidenceId, file_path: ev.filePath }] : [],
                                       reason: m.damage_reason,
                                       previewUrl: ev.filePath,
                                       file: ev.file,
@@ -5531,15 +5533,11 @@ function GrnPageWorkflow() {
                         materials: processedMaterials,
                       };
 
-                      try {
-                        if (grnId || grnNumber) {
-                          await api.postGrn(
-                            grnId || grnNumber,
-                            `Status: ${computedStatus} - Posted from GRN Console`,
-                          );
-                        }
-                      } catch (apiErr) {
-                        console.log("postGrn API fallback to local state:", apiErr);
+                      if (grnId || grnNumber) {
+                        await api.postGrn(
+                          grnId || grnNumber,
+                          `Status: ${computedStatus} - Posted from GRN Console`,
+                        );
                       }
 
                       // Auto-dispatch damage notification to vendor and procurement if damaged materials exist
@@ -5616,19 +5614,20 @@ function GrnPageWorkflow() {
                       toast.success(`GOODS RECEIVING PROCESS COMPLETED!`, {
                         description: `GRN ${grnNumber} saved with status: ${computedStatus} (${computedStatus === "COMPLETED" ? "100% PO Quantity Reconciled (Good + Damaged Qty matches PO)" : "Partial Delivery (Good + Damaged Qty < PO Qty)"}).`,
                       });
-                    } catch (e: any) {
-                      console.error("GRN Posting error:", e);
-                      toast.error("Failed to post GRN", { description: e.message });
-                    } finally {
+
                       localStorage.removeItem("active_grn_id");
                       localStorage.removeItem(GRN_LOCAL_DRAFT_KEY);
                       setGrnId(null);
                       setMaxCompletedStep(1);
-                      setSaveStatus("idle");
-                      setBusyAction(false);
                       setActiveTab("records");
                       navigate({ to: "/grn", search: { tab: "records", page: 1 } });
                       setSearchTerm("");
+                    } catch (e: any) {
+                      console.error("GRN Posting error:", e);
+                      toast.error("Failed to post GRN", { description: e?.message || "An unexpected error occurred during GRN posting." });
+                    } finally {
+                      setSaveStatus("idle");
+                      setBusyAction(false);
                     }
                   }}
                   className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-8 text-sm shadow-md flex items-center gap-2"
@@ -6108,7 +6107,7 @@ function GrnPageWorkflow() {
                           (photo?.evidenceIds && photo.evidenceIds[photo.evidenceIds.length - 1])
                         );
                       })
-                      .filter((id): id is string => Boolean(id && id.trim()));
+                      .filter((id: any): id is string => Boolean(id && typeof id === "string" && id.trim()));
 
                     const damagePayloadItems = activeDamageList.map((m: any, idx: number) => {
                       const code = m.item_code || m.itemCode || `ITEM-${idx + 1}`;

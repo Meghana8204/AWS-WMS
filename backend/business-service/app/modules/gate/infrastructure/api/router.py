@@ -2037,7 +2037,11 @@ async def complete_receiving(
                     grn_number=grn.grn_number, handling_unit_id=unit.id, item_code=grn_line.item_code,
                     material_name=grn_line.material_name or grn_line.item_code, quantity=accepted,
                     uom=grn_line.uom or "PCS", warehouse_id=grn.warehouse_id,
-                    source_location=f"Receiving / {assignment.dock_number}",
+                    source_location=f"Receiving / {assignment.dock_number}" if assignment else "Receiving Area",
+                    destination_store_id=getattr(assignment, "assigned_store_id", None),
+                    assigned_to=getattr(assignment, "assigned_store_manager_username", None) or getattr(assignment, "assigned_store_manager_name", None) or getattr(assignment, "assigned_store_manager_id", None),
+                    assigned_by=getattr(assignment, "assigned_by", None) or user.username,
+                    assigned_at=getattr(assignment, "assigned_at", None) or completed_at,
                     destination_location_id=suggested_location.id if suggested_location else None,
                     destination_zone=suggested_location.zone if suggested_location else None,
                     destination_rack=suggested_location.rack if suggested_location else None,
@@ -2047,7 +2051,8 @@ async def complete_receiving(
                     material_category=placement["category"],
                     handling_requirement=placement["handling_requirement"],
                     rotation_policy=placement["rotation_policy"], placement_metadata=placement,
-                    status="OPEN", created_by=user.username, created_at=completed_at,
+                    status="PUTAWAY_PENDING" if getattr(assignment, "assigned_store_manager_id", None) or getattr(assignment, "assigned_store_manager_username", None) else "OPEN",
+                    created_by=user.username, created_at=completed_at,
                 ))
                 next_task_sequence += 1
                 unit.status = "PUTAWAY_PENDING"
@@ -2342,7 +2347,10 @@ async def approve_vehicle_exit(
             grn_number=grn.grn_number, handling_unit_id=handling_unit.id, item_code=line.item_code,
             material_name=line.material_name or line.item_code, quantity=accepted, uom=line.uom or "PCS",
             warehouse_id=grn.warehouse_id, source_location="RECEIVING_AREA",
-            destination_store_id=assignment.assigned_store_id,
+            destination_store_id=getattr(assignment, "assigned_store_id", None),
+            assigned_to=getattr(assignment, "assigned_store_manager_username", None) or getattr(assignment, "assigned_store_manager_name", None) or getattr(assignment, "assigned_store_manager_id", None),
+            assigned_by=getattr(assignment, "assigned_by", None) or user.username,
+            assigned_at=getattr(assignment, "assigned_at", None) or approved_at,
             destination_location_id=suggested_location.id if suggested_location else None,
             destination_zone=suggested_location.zone if suggested_location else None,
             destination_rack=suggested_location.rack if suggested_location else None,
@@ -2663,7 +2671,11 @@ async def post_grn(
                     handling_unit_id=handling_unit.id, item_code=line.item_code,
                     material_name=line.material_name or line.item_code, quantity=accepted,
                     uom=line.uom or "PCS", warehouse_id=grn.warehouse_id,
-                    source_location=f"Receiving / {assignment.dock_number}",
+                    source_location=f"Receiving / {assignment.dock_number}" if assignment else "RECEIVING_AREA",
+                    destination_store_id=getattr(assignment, "assigned_store_id", None),
+                    assigned_to=getattr(assignment, "assigned_store_manager_username", None) or getattr(assignment, "assigned_store_manager_name", None) or getattr(assignment, "assigned_store_manager_id", None),
+                    assigned_by=getattr(assignment, "assigned_by", None) or user.username,
+                    assigned_at=getattr(assignment, "assigned_at", None) or posted_at,
                     destination_location_id=suggested_location.id if suggested_location else None,
                     destination_zone=suggested_location.zone if suggested_location else None,
                     destination_rack=suggested_location.rack if suggested_location else None,
@@ -2673,7 +2685,8 @@ async def post_grn(
                     material_category=placement["category"],
                     handling_requirement=placement["handling_requirement"],
                     rotation_policy=placement["rotation_policy"], placement_metadata=placement,
-                    status="OPEN", created_by=user.username, created_at=posted_at,
+                    status="PUTAWAY_PENDING" if getattr(assignment, "assigned_store_manager_id", None) or getattr(assignment, "assigned_store_manager_username", None) else "OPEN",
+                    created_by=user.username, created_at=posted_at,
                 ))
                 putaway_task_created = True
             if not putaway_task_created:
@@ -2695,7 +2708,11 @@ async def post_grn(
                         handling_unit_id=handling_unit.id, item_code=line.item_code,
                         material_name=line.material_name or line.item_code, quantity=accepted,
                         uom=line.uom or "PCS", warehouse_id=grn.warehouse_id,
-                        source_location=f"Receiving / {assignment.dock_number}",
+                        source_location=f"Receiving / {assignment.dock_number}" if assignment else "RECEIVING_AREA",
+                        destination_store_id=getattr(assignment, "assigned_store_id", None),
+                        assigned_to=getattr(assignment, "assigned_store_manager_username", None) or getattr(assignment, "assigned_store_manager_name", None) or getattr(assignment, "assigned_store_manager_id", None),
+                        assigned_by=getattr(assignment, "assigned_by", None) or user.username,
+                        assigned_at=getattr(assignment, "assigned_at", None) or posted_at,
                         destination_location_id=suggested_location.id if suggested_location else None,
                         destination_zone=suggested_location.zone if suggested_location else None,
                         destination_rack=suggested_location.rack if suggested_location else None,
@@ -2705,7 +2722,8 @@ async def post_grn(
                         material_category=placement["category"],
                         handling_requirement=placement["handling_requirement"],
                         rotation_policy=placement["rotation_policy"], placement_metadata=placement,
-                        status="OPEN", created_by=user.username, created_at=posted_at,
+                        status="PUTAWAY_PENDING" if getattr(assignment, "assigned_store_manager_id", None) or getattr(assignment, "assigned_store_manager_username", None) else "OPEN",
+                        created_by=user.username, created_at=posted_at,
                     ))
             # Posting makes the receipt official, but the physical material
             # remains in the receiving area until its putaway task is completed.

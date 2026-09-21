@@ -34,11 +34,11 @@ async def get_current_user(
     roles_hdr = request.headers.get("X-User-Roles") or request.headers.get("x-user-roles")
     if roles_hdr:
         roles = [r.strip() for r in roles_hdr.split(",") if r.strip()]
-        user_name = request.headers.get("X-User-Name") or request.headers.get("x-user-name") or "test_user"
-        user_id = request.headers.get("X-User-Id") or request.headers.get("x-user-id") or user_name
-        store_code = request.headers.get("X-Store-Code") or request.headers.get("x-store-code")
-        store_id = request.headers.get("X-Store-Id") or request.headers.get("x-store-id")
-        emp_id = request.headers.get("X-Employee-Id") or request.headers.get("x-employee-id")
+        user_name = request.headers.get("X-User-Name") or request.headers.get("x-user-name") or request.headers.get("X-User-Username") or request.headers.get("x-user-username") or "test_user"
+        user_id = request.headers.get("X-User-Id") or request.headers.get("x-user-id") or request.headers.get("X-User-Subject") or request.headers.get("x-user-subject") or user_name
+        store_code = request.headers.get("X-Store-Code") or request.headers.get("x-store-code") or request.headers.get("X-User-Store-Code") or request.headers.get("x-user-store-code")
+        store_id = request.headers.get("X-Store-Id") or request.headers.get("x-store-id") or request.headers.get("X-User-Store-Id") or request.headers.get("x-user-store-id")
+        emp_id = request.headers.get("X-Employee-Id") or request.headers.get("x-employee-id") or request.headers.get("X-User-Employee-Id") or request.headers.get("x-user-employee-id") or user_id
         claims = {}
         if store_code:
             claims["store_code"] = store_code
@@ -215,12 +215,41 @@ async def get_current_user(
                 raw_claims={"store_code": "STR-002", "employee_id": "EMP-KEEPER-001"},
             )
         elif token == "mock-jwt-store-manager-token":
+            claims = {"store_code": "STR-001", "employee_id": "EMP-STORE-001", "username": "store_manager_elec"}
+            try:
+                from sqlalchemy import select, or_, func
+                from sqlalchemy.orm import selectinload
+                from app.database.session import AsyncSessionFactory
+                from app.modules.store.infrastructure.persistence.models import StoreManagerUserModel
+
+                async with AsyncSessionFactory() as session:
+                    stmt = (
+                        select(StoreManagerUserModel)
+                        .options(selectinload(StoreManagerUserModel.store))
+                        .where(
+                            or_(
+                                StoreManagerUserModel.employee_id == "EMP-STORE-001",
+                                StoreManagerUserModel.username == "store_manager_elec",
+                            )
+                        )
+                    )
+                    res = await session.execute(stmt)
+                    mgr = res.scalars().first()
+                    if mgr:
+                        claims["store_id"] = str(mgr.store_id)
+                        claims["employee_id"] = mgr.employee_id
+                        claims["full_name"] = mgr.full_name
+                        if mgr.store:
+                            claims["store_code"] = mgr.store.store_code
+            except Exception:
+                pass
+
             return CurrentUser(
-                subject="EMP-STORE-001",
+                subject=claims.get("employee_id", "EMP-STORE-001"),
                 username="store_manager_elec",
                 roles=["STORE_MANAGER"],
                 permissions=["store:read", "store:write", "storage:read", "putaway:execute", "pickup:execute"],
-                raw_claims={"store_code": "STR-001", "employee_id": "EMP-STORE-001"},
+                raw_claims=claims,
             )
         elif token.startswith("mock-jwt-store-keeper-") or token.startswith("mock-jwt-store-manager-"):
             is_keeper = token.startswith("mock-jwt-store-keeper-")
