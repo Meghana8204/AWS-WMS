@@ -1351,6 +1351,12 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         rfq_uuid = uuid.UUID(rfq_id)
         supplier_id = request.supplier_id
         supplier_uuid = supplier_id
+        selected_quotation_uuid = None
+        if request.quotation_id:
+            try:
+                selected_quotation_uuid = uuid.UUID(str(request.quotation_id))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="Invalid quotation ID") from exc
 
         stmt = select(RfqModel).options(selectinload(RfqModel.items)).where(RfqModel.id == rfq_uuid)
         res = await uow.session.execute(stmt)
@@ -1370,6 +1376,31 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         )
         existing_po = existing_po_result.scalar_one_or_none()
         if existing_po:
+            if selected_quotation_uuid and str(getattr(existing_po, "quotation_id", "")) != str(selected_quotation_uuid):
+                quote_res = await uow.session.execute(
+                    select(QuotationModel)
+                    .options(selectinload(QuotationModel.lines))
+                    .where(
+                        QuotationModel.id == selected_quotation_uuid,
+                        QuotationModel.rfq_id == rfq_uuid,
+                        QuotationModel.supplier_id == supplier_uuid,
+                    )
+                    .limit(1)
+                )
+                selected_quote = quote_res.scalar_one_or_none()
+                if not selected_quote:
+                    raise HTTPException(status_code=404, detail="Selected quotation was not found for this supplier and RFQ")
+
+                subtotal, discount_amount, _tax_rate, tax_amount, freight_charges, total_amount = _calculate_quotation_financials(selected_quote)
+                existing_po.quotation_id = selected_quote.id
+                existing_po.subtotal = subtotal
+                existing_po.discount_amount = discount_amount
+                existing_po.tax_amount = tax_amount
+                existing_po.freight_charges = freight_charges
+                existing_po.total_amount = total_amount
+                existing_po.payment_terms = selected_quote.payment_terms
+                await uow.commit()
+
             return {
                 "status": "already_saved",
                 "po_number": existing_po.po_number,
@@ -1390,9 +1421,15 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         supplier = s_res.scalar_one_or_none()
 
 
-        quo_stmt = select(QuotationModel).options(selectinload(QuotationModel.lines)).where(
+        quo_filters = [
             QuotationModel.rfq_id == rfq_uuid,
-            QuotationModel.supplier_id == supplier_uuid
+            QuotationModel.supplier_id == supplier_uuid,
+        ]
+        if selected_quotation_uuid:
+            quo_filters.append(QuotationModel.id == selected_quotation_uuid)
+
+        quo_stmt = select(QuotationModel).options(selectinload(QuotationModel.lines)).where(
+            *quo_filters
         ).order_by(QuotationModel.created_at.desc()).limit(1)
         q_res = await uow.session.execute(quo_stmt)
         quotation = q_res.scalars().first()
@@ -1410,19 +1447,10 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
             if mr_obj:
                 mr_dept = mr_obj.department
 
-        subtotal = Decimal("0.0")
-        if quotation:
-            quoted_prices = {line.item_code: line.unit_price for line in quotation.lines}
-            subtotal = sum(
-                (item.quantity * quoted_prices.get(item.material_code, Decimal("0.0")) for item in rfq.items),
-                Decimal("0.0"),
-            )
-        discount_amount = Decimal(str(quotation.discount or 0)) if quotation else Decimal("0.0")
-        tax_rate = Decimal(str(quotation.tax or 0)) if quotation else Decimal("0.0")
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_amount = taxable_amount * tax_rate / Decimal("100")
-        freight_charges = Decimal(str(quotation.freight_charges or 0)) if quotation else Decimal("0.0")
-        total_amount = taxable_amount + tax_amount + freight_charges
+        if selected_quotation_uuid and not quotation:
+            raise HTTPException(status_code=404, detail="Selected quotation was not found for this supplier and RFQ")
+
+        subtotal, discount_amount, tax_rate, tax_amount, freight_charges, total_amount = _calculate_quotation_financials(quotation)
 
         new_po = PurchaseOrderModel(
             id=uuid.uuid4(),
@@ -1515,6 +1543,23 @@ async def select_supplier(rfq_id: str, request: SupplierSelectionRequest, uow: U
         logger.error(f"Selection finalization failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+
+def _calculate_quotation_financials(
+    quotation: Optional[QuotationModel],
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal]:
+    if not quotation:
+        zero = Decimal("0.0")
+        return zero, zero, zero, zero, zero, zero
+
+    subtotal = sum((line.quantity * line.unit_price for line in quotation.lines), Decimal("0.0"))
+    discount_percentage = Decimal(str(quotation.discount or 0))
+    discount_amount = subtotal * discount_percentage / Decimal("100")
+    tax_percentage = Decimal(str(quotation.tax or 0))
+    taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
+    tax_amount = taxable_amount * tax_percentage / Decimal("100")
+    freight_charges = Decimal(str(quotation.freight_charges or 0))
+    total_amount = taxable_amount + tax_amount + freight_charges
+    return subtotal, discount_amount, tax_percentage, tax_amount, freight_charges, total_amount
 
 async def _get_purchase_order_quotation(
     session,
@@ -2170,13 +2215,7 @@ def _to_po_response(
         logger.warning(f"Could not load rfq_number for PO {po.id}: {e}")
 
     if response_quotation:
-        subtotal = sum((line.quantity * line.unit_price for line in response_quotation.lines), Decimal("0.0"))
-        discount_amount = Decimal(str(response_quotation.discount or 0))
-        tax_percentage = Decimal(str(response_quotation.tax or 0))
-        taxable_amount = max(subtotal - discount_amount, Decimal("0.0"))
-        tax_amount = taxable_amount * tax_percentage / Decimal("100")
-        freight_charges = Decimal(str(response_quotation.freight_charges or 0))
-        total_amount = Decimal(str(response_quotation.total_amount or 0))
+        subtotal, discount_amount, tax_percentage, tax_amount, freight_charges, total_amount = _calculate_quotation_financials(response_quotation)
     else:
         subtotal = sum((item.quantity * item.unit_price for item in po.items), Decimal("0.0"))
         discount_amount = Decimal(str(getattr(po, "discount_amount", 0) or 0))
@@ -3649,3 +3688,6 @@ async def check_upcoming_arrivals():
 
     except Exception as e:
         logger.error(f"Background arrival check failed: {e}")
+
+
+

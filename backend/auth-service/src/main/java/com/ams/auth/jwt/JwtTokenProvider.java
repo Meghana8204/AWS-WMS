@@ -40,34 +40,34 @@ public class JwtTokenProvider {
 
         List<String> roleNames = user.getRoles().stream().map(Role::getName).collect(Collectors.toList());
         List<String> permissionNames = user.getRoles().stream()
-            .flatMap(r -> r.getPermissions().stream())
-            .map(Permission::getName)
-            .distinct()
-            .collect(Collectors.toList());
+                .flatMap(r -> r.getPermissions().stream())
+                .map(Permission::getName)
+                .distinct()
+                .collect(Collectors.toList());
 
         return Jwts.builder()
-            .setHeaderParam("kid", keyProvider.keyId())
-            .setIssuer(properties.issuer())
-            .setAudience(properties.audience())
-            .setSubject(user.getId().toString())
-            .claim("username", user.getUsername())
-            .claim("roles", roleNames)
-            .claim("permissions", permissionNames)
-            .setIssuedAt(java.util.Date.from(now))
-            .setExpiration(java.util.Date.from(expiry))
-            .signWith(keyProvider.privateKey(), SignatureAlgorithm.RS256)
-            .compact();
+                .setHeaderParam("kid", keyProvider.keyId())
+                .setIssuer(properties.issuer())
+                .setAudience(properties.audience())
+                .setSubject(user.getId().toString())
+                .claim("username", user.getUsername())
+                .claim("roles", roleNames)
+                .claim("permissions", permissionNames)
+                .setIssuedAt(java.util.Date.from(now))
+                .setExpiration(java.util.Date.from(expiry))
+                .signWith(keyProvider.privateKey(), SignatureAlgorithm.RS256)
+                .compact();
     }
 
     public Claims parseAndValidate(String token) {
         try {
             return Jwts.parserBuilder()
-                .setSigningKey(keyProvider.publicKey())
-                .requireIssuer(properties.issuer())
-                .requireAudience(properties.audience())
-                .build()
-                .parseClaimsJws(token)
-                .getBody();
+                    .setSigningKey(keyProvider.publicKey())
+                    .requireIssuer(properties.issuer())
+                    .requireAudience(properties.audience())
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
         } catch (JwtException e) {
             throw new InvalidTokenException("Invalid or expired access token", e);
         }
@@ -75,10 +75,10 @@ public class JwtTokenProvider {
 
     public Map<String, Object> jwksDocument() {
         com.nimbusds.jose.jwk.RSAKey rsaKey = new com.nimbusds.jose.jwk.RSAKey.Builder(keyProvider.publicKey())
-            .keyID(keyProvider.keyId())
-            .algorithm(com.nimbusds.jose.JWSAlgorithm.RS256)
-            .keyUse(com.nimbusds.jose.jwk.KeyUse.SIGNATURE)
-            .build();
+                .keyID(keyProvider.keyId())
+                .algorithm(com.nimbusds.jose.JWSAlgorithm.RS256)
+                .keyUse(com.nimbusds.jose.jwk.KeyUse.SIGNATURE)
+                .build();
         return Map.of("keys", List.of(rsaKey.toJSONObject()));
     }
 }

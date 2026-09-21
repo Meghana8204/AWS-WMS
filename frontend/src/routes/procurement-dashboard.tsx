@@ -169,7 +169,7 @@ function ProcurementDashboard() {
         </Button>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-4 xl:grid-cols-4">
         <StatCard
           label="Active suppliers"
           value={loading ? "..." : String(stats.activeSuppliers)}
@@ -269,7 +269,8 @@ function ProcurementDashboard() {
                   {supplierResults.slice(0, 5).map((s) => {
                     const sid = s.supplier_id || s.supplierId || s.id;
                     const sname = s.supplier_name || s.supplierName || "Unknown Vendor";
-                    const scode = s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
+                    const scode =
+                      s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
                     return (
                       <Link
                         key={sid}
@@ -280,9 +281,7 @@ function ProcurementDashboard() {
                         <Building2 className="size-4 text-primary" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-medium">{sname}</p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {scode}
-                          </p>
+                          <p className="text-[10px] text-muted-foreground">{scode}</p>
                         </div>
                       </Link>
                     );
@@ -382,8 +381,11 @@ function ProcurementDashboard() {
                   {suppliers.slice(0, 5).map((s) => {
                     const sid = s.supplier_id || s.supplierId || s.id;
                     const sname = s.supplier_name || s.supplierName || "Unknown Vendor";
-                    const scode = s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
-                    const cat = Array.isArray(s.category) ? s.category.join(", ") : (s.category || "General");
+                    const scode =
+                      s.supplier_code || s.supplierCode || (sid ? String(sid).substring(0, 8) : "");
+                    const cat = Array.isArray(s.category)
+                      ? s.category.join(", ")
+                      : s.category || "General";
                     return (
                       <tr key={sid} className="border-b border-border/60 last:border-0">
                         <td className="py-3">
@@ -394,9 +396,7 @@ function ProcurementDashboard() {
                           >
                             {sname}
                           </Link>
-                          <p className="text-[11px] text-muted-foreground">
-                            {scode}
-                          </p>
+                          <p className="text-[11px] text-muted-foreground">{scode}</p>
                         </td>
                         <td className="py-3 text-muted-foreground">{cat}</td>
                         <td className="py-3 font-mono text-xs">{s.gstin || "—"}</td>

@@ -219,6 +219,7 @@ function Quotations() {
 
         const result = await api.selectSupplier(effectiveRfqId, {
           supplier_id: targetSupplierId,
+          quotation_id: targetQuotationId,
           selection_reason: reason,
           selection_comments: procurementComments,
         });
@@ -951,3 +952,4 @@ function Quotations() {
     </AppShell>
   );
 }
+

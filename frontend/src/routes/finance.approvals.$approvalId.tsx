@@ -105,7 +105,7 @@ function ApprovalDetail() {
   const taxAmount = Number(po.taxAmount) || 0;
   const taxableAmount = subtotal - discountAmount;
   const discountPercentage = subtotal > 0 ? (discountAmount / subtotal) * 100 : 0;
-  const taxPercentage = taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0;
+  const taxPercentage = Number(po.taxPercentage ?? po.tax_percentage) || (taxableAmount > 0 ? (taxAmount / taxableAmount) * 100 : 0);
 
   return (
     <AppShell
@@ -211,7 +211,7 @@ function ApprovalDetail() {
               </CardHeader>
               <CardContent className="p-6 space-y-4">
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <InfoField label="Quotation ID" value={po.quotationId || po.quotation.id} mono />
+                  <InfoField label="Quotation ID" value={po.quotation?.id || po.quotationId || po.quotation_id} mono />
                   <InfoField label="Status" value={po.quotation.status || "Submitted"} />
                   <InfoField
                     label="Validity"
@@ -512,3 +512,4 @@ function SummaryRow({ label, value, isNegative = false }: any) {
     </div>
   );
 }
+

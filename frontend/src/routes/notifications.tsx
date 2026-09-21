@@ -242,14 +242,24 @@ function Notifications() {
 
   useEffect(() => {
     const info = localStorage.getItem("user_info");
-    const roles = info ? JSON.parse(info).roles || [] : [];
+    const parsedUser = info ? JSON.parse(info) : null;
+    const roles = parsedUser?.roles || [];
+    const username = String(parsedUser?.username || "").toLowerCase();
     const role = roles.includes("SUPPLIER")
       ? "SUPPLIER"
       : roles.includes("FINANCE")
         ? "FINANCE"
         : roles.includes("PROCUREMENT")
           ? "PROCUREMENT"
-          : "WAREHOUSE";
+          : roles.includes("GRN") ||
+              roles.includes("GRN_MANAGER") ||
+              roles.includes("OPERATIONS_MANAGER") ||
+              roles.includes("OPERATIONS") ||
+              roles.includes("RECEIVING") ||
+              username === "grn" ||
+              username.includes("grn")
+            ? "GRN"
+            : "WAREHOUSE";
     setUserRole(role);
     void fetchData(role, false);
     const timer = window.setInterval(() => void fetchData(role, true), 2000);
@@ -357,9 +367,12 @@ function Notifications() {
   };
 
   const handleOpenNotificationDetails = (n: any) => {
+    const isGrnLinked = String(n.link || "").startsWith("/grn");
     const isDockAllocation =
-      n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
-      n.title?.toUpperCase().includes("DOCK CONFIRMED");
+      userRole !== "GRN" &&
+      !isGrnLinked &&
+      (n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
+        n.title?.toUpperCase().includes("DOCK CONFIRMED"));
 
     const isDamage =
       n.title?.toLowerCase().includes("damage") ||
@@ -373,7 +386,9 @@ function Notifications() {
       n.message?.toLowerCase().includes("grn") ||
       n.message?.toLowerCase().includes("inspection");
 
-    if (isDamage) {
+    if (isGrnLinked) {
+      window.location.href = n.link;
+    } else if (isDamage) {
       setSelectedDamageNotif(n);
       setShowDamageModal(true);
     } else if (isGrnOrQuality) {
@@ -493,9 +508,12 @@ function Notifications() {
       ) : (
         <div className="grid gap-4">
           {notifications.map((n) => {
+            const isGrnLinked = String(n.link || "").startsWith("/grn");
             const isDockAllocation =
-              n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
-              n.title?.toUpperCase().includes("DOCK CONFIRMED");
+              userRole !== "GRN" &&
+              !isGrnLinked &&
+              (n.title?.toUpperCase().includes("DOCK ALLOCAT") ||
+                n.title?.toUpperCase().includes("DOCK CONFIRMED"));
 
             if (isDockAllocation) {
               return <DockAllocationNotificationCard key={n.id} notification={n} />;
@@ -1158,3 +1176,7 @@ function Notifications() {
     </AppShell>
   );
 }
+
+
+
+

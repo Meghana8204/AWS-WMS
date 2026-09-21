@@ -466,6 +466,7 @@ class CreateMaterialRequest(ApiModel):
 
 class SupplierSelectionRequest(ApiModel):
     supplier_id: str
+    quotation_id: Optional[str] = None
     selection_reason: str
     selection_comments: Optional[str] = None
 
@@ -648,4 +649,5 @@ class PoDamagedGoodsResponse(ApiModel):
     procurement_notification_status: str = "Sent"
     materials: List[DamagedMaterialItemSchema] = []
     notification_history: List[NotificationHistoryItemSchema] = []
+
 

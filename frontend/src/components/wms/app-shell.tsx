@@ -147,7 +147,15 @@ export function AppShell({
             ? "FINANCE"
             : u.roles?.includes("PROCUREMENT")
               ? "PROCUREMENT"
-              : "WAREHOUSE";
+              : u.roles?.includes("GRN") ||
+                  u.roles?.includes("GRN_MANAGER") ||
+                  u.roles?.includes("OPERATIONS_MANAGER") ||
+                  u.roles?.includes("OPERATIONS") ||
+                  u.roles?.includes("RECEIVING") ||
+                  u.username?.toLowerCase() === "grn" ||
+                  u.username?.toLowerCase()?.includes("grn")
+                ? "GRN"
+                : "WAREHOUSE";
         const fetchNotifications = async () => {
           try {
             if (role === "WAREHOUSE" || role === "GRN" || isGrnUser) {
@@ -192,15 +200,27 @@ export function AppShell({
     };
   }, [dark]);
   const currentQueryModule = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("module") : null;
-  const isGrnUser =
-    mounted &&
-    (user?.roles?.includes("GRN") ||
-      user?.roles?.includes("GRN_MANAGER") ||
-      user?.roles?.includes("OPERATIONS_MANAGER") ||
-      user?.roles?.includes("OPERATIONS") ||
-      user?.roles?.includes("RECEIVING") ||
-      user?.username?.toLowerCase() === "grn" ||
-      user?.username?.toLowerCase()?.includes("grn"));
+  const storedUser = (() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem("user_info");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const activeUser = user || storedUser;
+  const activeRoles = activeUser?.roles || [];
+  const activeUsername = String(activeUser?.username || "").toLowerCase();
+  const isGrnUser = Boolean(
+    activeRoles.includes("GRN") ||
+      activeRoles.includes("GRN_MANAGER") ||
+      activeRoles.includes("OPERATIONS_MANAGER") ||
+      activeRoles.includes("OPERATIONS") ||
+      activeRoles.includes("RECEIVING") ||
+      activeUsername === "grn" ||
+      activeUsername.includes("grn"),
+  );
   const isGrnRoute = path === "/grn" || path.startsWith("/grn") || (path === "/vehicle-queue" && currentQueryModule === "grn");
   const isProcurementRoute =
     path === "/procurement-dashboard" ||
@@ -209,13 +229,13 @@ export function AppShell({
     path === "/new-supplier" ||
     (path.startsWith("/supplier/") && !path.startsWith("/supplier/asns/"));
   const isSupplierRoute = path === "/supplier-dashboard" || path === "/submit-quotation";
-  const isFinanceUser = mounted && user?.roles?.includes("FINANCE");
+  const isFinanceUser = mounted && activeRoles.includes("FINANCE");
   const isSharedFinanceRoute = path.startsWith("/reports");
   const isFinanceRoute =
     path === "/finance-dashboard" ||
     path.startsWith("/finance/") ||
     (isFinanceUser && isSharedFinanceRoute);
-  const isGateSecurityUser = mounted && user?.roles?.includes("GATE_SECURITY");
+  const isGateSecurityUser = mounted && activeRoles.includes("GATE_SECURITY");
   const isNotificationsRoute = path.startsWith("/notifications");
   const isSharedOperationsRoute = ["/warehouse-dashboard", "/vehicle-queue", "/vehicle-exit"].some(
     (route) => path.startsWith(route),
@@ -241,7 +261,7 @@ export function AppShell({
       "/arrival-success",
     ].some((route) => path.startsWith(route)) ||
     (isGateSecurityUser && (isSharedOperationsRoute || isNotificationsRoute));
-  const resolvedNav = (isGrnUser || isGrnRoute)
+  const resolvedNav = isGrnUser || isGrnRoute
     ? grnNav
     : isSupplierRoute
       ? supplierNav
@@ -253,17 +273,21 @@ export function AppShell({
             ? gateSecurityNav
             : isWarehouseRoute
               ? warehouseNav
-              : mounted && user?.roles?.includes("SUPPLIER")
+              : mounted && activeRoles.includes("SUPPLIER")
                 ? supplierNav
-                : mounted && user?.roles?.includes("FINANCE")
+                : mounted && activeRoles.includes("FINANCE")
                   ? financeNav
-                  : mounted && user?.roles?.includes("PROCUREMENT")
+                  : mounted && activeRoles.includes("PROCUREMENT")
                     ? procurementNav
                     : isGateSecurityUser
                       ? gateSecurityNav
                       : warehouseNav;
   const navigationPending = !mounted && (isSharedOperationsRoute || isSharedFinanceRoute);
-  const nav = navigationPending ? [] : resolvedNav;
+  const nav = navigationPending
+    ? []
+    : isGrnUser
+      ? resolvedNav.filter((item) => !item.to.startsWith("/dock-management"))
+      : resolvedNav;
   useEffect(() => {
     setMobileSidebarOpen(false);
   }, [fullHref]);
@@ -900,3 +924,8 @@ export function DockAllocationNotificationCard({ notification }: { notification:
     </div>
   );
 }
+
+
+
+
+
