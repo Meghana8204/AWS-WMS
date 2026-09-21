@@ -3689,6 +3689,161 @@ async def global_search(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/user/navigation")
+async def get_user_navigation(
+    user: CurrentUser = Depends(get_current_user),
+    uow: UnitOfWork = Depends(get_uow),
+) -> dict:
+    """
+    Returns complete backend-driven module navigation and user profile configuration.
+    """
+    roles = user.roles or []
+    role_str = roles[0] if roles else "WAREHOUSE"
+    if "GRN" in roles or user.username.lower() in ("grn", "grn_manager", "operations_manager", "grn_officer"):
+        role_str = "GRN"
+
+    modules = {
+        "GRN": {
+            "module_label": "GRN Operations",
+            "items": [
+                {"label": "GRN Operations Dashboard", "to": "/grn", "search": {"tab": "dashboard"}, "icon": "LayoutDashboard"},
+                {"label": "GRN Records History", "to": "/grn", "search": {"tab": "records"}, "icon": "ClipboardList"},
+                {"label": "Material Receiving", "to": "/grn", "search": {"tab": "wizard", "page": 2}, "icon": "PackageCheck"},
+                {"label": "Quality & Photos", "to": "/grn", "search": {"tab": "wizard", "page": 3}, "icon": "AlertTriangle"},
+                {"label": "Batch Allocation", "to": "/grn", "search": {"tab": "wizard", "page": 4}, "icon": "Boxes"},
+                {"label": "Documents & Posting", "to": "/grn", "search": {"tab": "wizard", "page": 5}, "icon": "FileText"},
+                {"label": "Batch QR Code Labels", "to": "/grn", "search": {"tab": "wizard", "page": 6}, "icon": "QrCode"},
+                {"label": "Inbound Arrivals", "to": "/vehicle-queue", "icon": "ListOrdered"},
+            ]
+        },
+        "STORE_MANAGER": {
+            "module_label": "Store Management",
+            "items": [
+                {"label": "My Store Control", "to": "/my-store", "icon": "Store"},
+                {"label": "Stores Master", "to": "/warehouse/stores", "icon": "Building2"},
+                {"label": "Material Master", "to": "/warehouse/materials", "icon": "Database"},
+                {"label": "Inventory", "to": "/inventory", "icon": "Boxes"},
+                {"label": "Putaway Tasks", "to": "/putaway-tasks", "icon": "PackageCheck"},
+                {"label": "Assembly Requisitions", "to": "/warehouse/assembly-requisitions", "icon": "ClipboardList"},
+                {"label": "Damage & Quarantine", "to": "/warehouse/quarantine", "icon": "ShieldAlert"},
+            ]
+        },
+        "WAREHOUSE": {
+            "module_label": "Warehouse Operations",
+            "items": [
+                {"label": "Dashboard", "to": "/warehouse-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Store Management", "to": "/my-store", "icon": "Store"},
+                {"label": "Stores Master", "to": "/warehouse/stores", "icon": "Building2"},
+                {"label": "Material Master", "to": "/warehouse/materials", "icon": "Database"},
+                {"label": "Inventory", "to": "/inventory", "icon": "Boxes"},
+                {"label": "Warehouses & Locations", "to": "/warehouse-storage", "icon": "Warehouse"},
+                {"label": "Putaway Tasks", "to": "/putaway-tasks", "icon": "PackageCheck"},
+                {"label": "Pick Tasks", "to": "/pick-tasks", "icon": "PackageCheck"},
+                {"label": "Material Requests", "to": "/warehouse/material-requests", "icon": "ClipboardList"},
+                {"label": "Assembly Requisitions", "to": "/warehouse/assembly-requisitions", "icon": "ClipboardList"},
+                {"label": "Vehicle Exit", "to": "/vehicle-exit", "icon": "LogOut"},
+                {"label": "Dock Management", "to": "/dock-management", "icon": "Warehouse"},
+                {"label": "Dock / Receiving", "to": "/receiving", "icon": "PackageCheck"},
+                {"label": "GRN", "to": "/grn", "icon": "FileCheck2"},
+                {"label": "Damage & Quarantine", "to": "/warehouse/quarantine", "icon": "ShieldAlert"},
+            ]
+        },
+        "PROCUREMENT": {
+            "module_label": "Procurement Portal",
+            "items": [
+                {"label": "Dashboard", "to": "/procurement-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Suppliers", "to": "/master-data", "icon": "Building2"},
+                {"label": "Material Requests", "to": "/procurement/material-requests", "icon": "ClipboardList"},
+                {"label": "RFQs", "to": "/procurement/rfqs", "icon": "FileQuestion"},
+                {"label": "Quotations", "to": "/procurement/quotations", "icon": "FileBadge"},
+                {"label": "Purchase Orders", "to": "/procurement/purchase-orders", "icon": "FileText"},
+                {"label": "ASNs", "to": "/procurement/asns", "icon": "Truck"},
+                {"label": "Quality Issues", "to": "/procurement/quality-issues", "icon": "AlertTriangle"},
+                {"label": "Damage Claims", "to": "/damage-claims", "icon": "FileCheck2"},
+            ]
+        },
+        "SUPPLIER": {
+            "module_label": "Supplier Portal",
+            "items": [
+                {"label": "Dashboard", "to": "/supplier-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Quotation Portal", "to": "/submit-quotation", "icon": "FileBadge"},
+                {"label": "ASNs", "to": "/supplier/asns/new", "icon": "Truck"},
+                {"label": "Quality Issues", "to": "/supplier/quality-issues", "icon": "AlertTriangle"},
+                {"label": "Damage Claims", "to": "/damage-claims", "icon": "FileCheck2"},
+            ]
+        },
+        "FINANCE": {
+            "module_label": "Finance Portal",
+            "items": [
+                {"label": "Dashboard", "to": "/finance-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Pending Approvals", "to": "/finance/approvals", "icon": "FileCheck2"},
+            ]
+        },
+        "GATE_SECURITY": {
+            "module_label": "Gate Security Portal",
+            "items": [
+                {"label": "Dashboard", "to": "/gate-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Gate Entry", "to": "/gate-entry", "icon": "DoorOpen"},
+                {"label": "Vehicle Exit", "to": "/vehicle-exit", "icon": "LogOut"},
+                {"label": "Inbound Arrivals", "to": "/vehicle-queue", "icon": "ListOrdered"},
+                {"label": "Unscheduled Arrivals", "to": "/unscheduled-arrivals", "icon": "FileQuestion"},
+                {"label": "Replacement Claims", "to": "/damage-claims", "icon": "AlertTriangle"},
+            ]
+        },
+        "ASSEMBLY_MANAGER": {
+            "module_label": "Assembly Portal",
+            "items": [
+                {"label": "Dashboard", "to": "/assembly-dashboard", "icon": "LayoutDashboard"},
+                {"label": "Assembly Orders", "to": "/assembly-orders", "icon": "Factory"},
+                {"label": "Material Requirements", "to": "/assembly-material-requirements", "icon": "ClipboardList"},
+                {"label": "Material Reservations", "to": "/assembly-material-reservations", "icon": "Boxes"},
+                {"label": "Material Issues", "to": "/assembly-material-issues", "icon": "PackageCheck"},
+                {"label": "Work Orders", "to": "/assembly-work-orders", "icon": "Factory"},
+                {"label": "Assembly Teams", "to": "/assembly-workforce", "icon": "Users"},
+                {"label": "Assembly Progress", "to": "/assembly-progress", "icon": "BarChart3"},
+                {"label": "Material Consumption", "to": "/assembly-material-consumption", "icon": "Boxes"},
+                {"label": "Scrap / Wastage", "to": "/assembly-scrap-wastage", "icon": "FileText"},
+                {"label": "Quality Inspection", "to": "/assembly-quality-inspection", "icon": "FileCheck2"},
+                {"label": "Rework", "to": "/assembly-rework", "icon": "Settings"},
+                {"label": "Finished Goods", "to": "/assembly-finished-goods", "icon": "Warehouse"},
+                {"label": "Reports", "to": "/assembly-reports", "icon": "BarChart3"},
+                {"label": "Notifications", "to": "/notifications", "icon": "Bell"},
+            ]
+        }
+    }
+
+    unread_count = 0
+    try:
+        if "WAREHOUSE" in roles:
+            from app.modules.gate.infrastructure.persistence.models import GateEntryModel
+            res = await uow.session.execute(
+                select(func.count()).select_from(GateEntryModel).where(GateEntryModel.status == "AWAITING_DOCK")
+            )
+            unread_count += res.scalar() or 0
+        else:
+            n_res = await uow.session.execute(
+                select(func.count()).select_from(NotificationModel).where(
+                    NotificationModel.user_role == role_str,
+                    NotificationModel.is_read == False
+                )
+            )
+            unread_count += n_res.scalar() or 0
+    except Exception:
+        pass
+
+    active_module = modules.get(role_str, modules["WAREHOUSE"])
+
+    return {
+        "username": user.username,
+        "roles": roles,
+        "active_role": role_str,
+        "module_label": active_module["module_label"],
+        "navigation": active_module["items"],
+        "all_modules": modules,
+        "unread_notifications": unread_count,
+    }
+
+
 async def check_upcoming_arrivals():
     """Background task to notify warehouse manager of arrivals in 5 days."""
     from datetime import timedelta
