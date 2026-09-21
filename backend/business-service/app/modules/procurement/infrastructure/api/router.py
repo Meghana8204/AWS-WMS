@@ -1140,7 +1140,6 @@ async def create_rfq(
 @router.post("/rfqs/{id}/send")
 async def send_rfq_endpoint(
     id: str,
-    background_tasks: BackgroundTasks,
     uow: UnitOfWork = Depends(get_uow)
 ):
     repo = SqlAlchemyRfqRepository(uow.session)
@@ -1156,11 +1155,31 @@ async def send_rfq_endpoint(
         elif rfq.status != "OPEN":
             raise HTTPException(status_code=409, detail=f"Cannot send RFQ in status: {rfq.status}")
 
-        background_tasks.add_task(_notify_suppliers_rfq, id)
+        delivery_result = await _notify_suppliers_rfq(id)
+        sent = delivery_result.get("sent", 0)
+        failed = delivery_result.get("failed", 0)
+        total = delivery_result.get("total", 0)
+
+        if failed == 0 and sent > 0:
+            status_str = "sent"
+            msg = f"RFQ published. Supplier email sent successfully to {sent} supplier(s)."
+        elif sent > 0 and failed > 0:
+            status_str = "partially_sent"
+            msg = f"RFQ published. Supplier email partially sent: {sent} succeeded, {failed} failed."
+        elif total > 0 and sent == 0:
+            status_str = "failed"
+            msg = f"RFQ published, but email delivery failed for all {total} supplier(s)."
+        else:
+            status_str = "sent"
+            msg = "RFQ published."
+
         return {
-            "status": "queued",
-            "message": "RFQ published. Supplier emails are being delivered in the background.",
-            "delivery": {"status": "queued"},
+            "status": status_str,
+            "message": msg,
+            "delivery": delivery_result,
+            "sent": sent,
+            "failed": failed,
+            "total": total,
         }
     except HTTPException:
         raise
@@ -1172,13 +1191,18 @@ async def send_rfq_endpoint(
 
 
 async def _notify_suppliers_rfq(rfq_id: str):
-    """Persist supplier access, then deliver all supplier emails concurrently."""
+    """Persist supplier access, then deliver all supplier emails with full logging and tracking."""
     from app.database.session import session_scope
     import random
     import string
     import hashlib
     import os
+    import re
     from sqlalchemy import or_
+    from app.config.settings import get_settings
+
+    settings = get_settings()
+    sender_email = settings.email_host_user or ""
 
     sent = 0
     failed = 0
@@ -1204,7 +1228,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
         rfq = res.scalar_one_or_none()
 
         if not rfq:
-            logger.error(f"Background notify failed: RFQ {rfq_id} not found")
+            logger.error(f"RFQ notify failed: RFQ {rfq_id} not found in database")
             return {"total": 0, "sent": 0, "failed": 1}
 
         for supplier in rfq.suppliers:
@@ -1239,32 +1263,47 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 sup_user.password_hash = password_hash
                 sup_user.must_change_password = False
 
-            email = None
+            raw_email = None
             if supplier.contact and supplier.contact.primary_email:
-                email = supplier.contact.primary_email.strip()
+                raw_email = str(supplier.contact.primary_email).strip()
 
-            if not email:
+            if not raw_email:
                 sc_stmt = select(SupplierContactModel).where(SupplierContactModel.supplier_id == supplier.id)
                 sc_res = await session.execute(sc_stmt)
                 sup_contact = sc_res.scalar_one_or_none()
                 if sup_contact:
-                    email = (sup_contact.primary_email or sup_contact.secondary_email or "").strip()
+                    raw_email = (sup_contact.primary_email or sup_contact.secondary_email or "").strip()
+
+            email_pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+            email_valid = bool(raw_email and re.match(email_pattern, raw_email))
+            email = raw_email if email_valid else None
+            subject = f"Request for Quotation - {rfq.rfq_number}"
+
+            logger.info(
+                f"\n--- RFQ SUPPLIER DISPATCH EVALUATION ---\n"
+                f"RFQ ID: {rfq.id}\n"
+                f"Supplier ID: {supplier.id}\n"
+                f"Supplier name: {supplier.supplier_name}\n"
+                f"Supplier email: {email or '<INVALID/MISSING>'}\n"
+                f"Sender email: {sender_email}\n"
+                f"Subject: {subject}\n"
+                f"-----------------------------------------"
+            )
 
             if email:
-                subject = f"Request for Quotation - {rfq.rfq_number}"
-
                 materials_str = ""
                 items_payload = []
                 for idx, item in enumerate(rfq.items):
-                    deliv_date = str(item.required_delivery_date) if item.required_delivery_date else (str(rfq.required_delivery_date) if rfq.required_delivery_date else "Standard")
-                    wh = str(item.warehouse) if item.warehouse else (str(rfq.warehouse) if rfq.warehouse else "Main")
-                    qty_str = f"{item.quantity} {item.uom}"
-                    materials_str += f"\nMaterial: {item.material_name}\nQuantity: {qty_str}\nRequired Delivery: {deliv_date}\nWarehouse: {wh}\n"
+                    m_name = getattr(item, "material_name", "Material") or getattr(item, "material_code", "Material")
+                    m_qty = f"{item.quantity} {item.uom}"
+                    m_del = str(item.required_delivery_date) if item.required_delivery_date else (str(rfq.required_delivery_date) if rfq.required_delivery_date else "Standard")
+                    m_wh = str(item.warehouse) if item.warehouse else (str(rfq.warehouse) if rfq.warehouse else "Main")
+                    materials_str += f"\nMaterial: {m_name}\nQuantity: {m_qty}\nRequired Delivery: {m_del}\nWarehouse: {m_wh}\n"
                     items_payload.append({
-                        "material": item.material_name or item.material_code,
-                        "quantity": qty_str,
-                        "delivery": deliv_date,
-                        "warehouse": wh,
+                        "material": m_name,
+                        "quantity": m_qty,
+                        "delivery": m_del,
+                        "warehouse": m_wh,
                     })
 
                 login_link = f"http://localhost:8080/login?redirect=/submit-quotation?rfqId={rfq.id}"
@@ -1313,7 +1352,10 @@ async def _notify_suppliers_rfq(rfq_id: str):
 
                 deliveries.append((email, subject, body, html_body))
             else:
-                logger.warning(f"No primary email configured for supplier {supplier.id} ({supplier.supplier_name})")
+                logger.warning(
+                    f"Cannot send RFQ notification: Supplier {supplier.id} ({supplier.supplier_name}) "
+                    f"has no valid primary email configured (raw='{raw_email}')"
+                )
                 failed += 1
 
         await session.commit()
@@ -1327,7 +1369,7 @@ async def _notify_suppliers_rfq(rfq_id: str):
                 logger.error(f"Failed to send RFQ notification to {email}: {result}")
                 failed += 1
             else:
-                logger.info(f"Sent RFQ notification to {email}")
+                logger.info(f"Successfully sent RFQ notification to {email}")
                 sent += 1
 
     return {"total": total, "sent": sent, "failed": failed}
@@ -1867,6 +1909,9 @@ async def list_finance_approvals(uow: UnitOfWork = Depends(get_uow)):
 
 @router.post("/purchase-orders/{id}/approve")
 async def approve_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
+    roles_upper = {r.upper() for r in (_user.roles or [])}
+    if "FINANCE" not in roles_upper and "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Finance role is authorized to approve purchase orders")
     try:
         logger.info(f"Attempting to approve PO ID: {id}")
         stmt = (
@@ -1922,6 +1967,9 @@ async def approve_purchase_order(id: str, uow: UnitOfWork = Depends(get_uow), _u
 
 @router.post("/purchase-orders/{id}/reject")
 async def reject_purchase_order(id: str, request: dict, uow: UnitOfWork = Depends(get_uow), _user: CurrentUser = Depends(get_current_user)):
+    roles_upper = {r.upper() for r in (_user.roles or [])}
+    if "FINANCE" not in roles_upper and "ADMIN" not in roles_upper and "SUPERUSER" not in roles_upper:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only Finance role is authorized to reject purchase orders")
     try:
         stmt = (
             select(PurchaseOrderModel)

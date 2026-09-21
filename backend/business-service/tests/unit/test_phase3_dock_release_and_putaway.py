@@ -69,7 +69,7 @@ async def test_phase3_dock_release_authorization_and_validation():
 
         async with session_scope() as session:
             # 1. Seed Docks
-            dock_num_1 = "DOCK-P3-01"
+            dock_num_1 = f"DOCK-P3-{uuid.uuid4().hex[:6].upper()}"
             dock1 = DockModel(
                 id=uuid.uuid4(),
                 dock_number=dock_num_1,

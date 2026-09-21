@@ -55,6 +55,7 @@ class ZoneStatusUpdate(BaseModel):
 
 
 class BinCreate(BaseModel):
+    zone_id: Optional[str] = Field(None, description="Optional zone ID if posting directly to store bins endpoint")
     bin_name: str = Field(..., min_length=2, max_length=128, description="Bin name or description (e.g. Cable Reel Bin A1)")
     bin_code: Optional[str] = Field(None, max_length=64, description="Optional custom code or auto-generated BIN-E01-001")
     rack: Optional[str] = Field(None, max_length=64, description="Rack identifier e.g. R01")
@@ -247,3 +248,57 @@ class ZoneQRResponse(BaseModel):
 
 class ZoneScanLookupRequest(BaseModel):
     scan_value: str = Field(..., min_length=1, description="Scanned QR payload, Zone UUID, or Zone Code")
+
+
+class StoreDashboardKPIs(BaseModel):
+    total_skus: int = 0
+    total_quantity: float = 0.0
+    available_quantity: float = 0.0
+    quarantined_quantity: float = 0.0
+    damaged_quantity: float = 0.0
+    low_stock_items: int = 0
+    zones_count: int = 0
+    bins_count: int = 0
+    occupied_bins_count: int = 0
+    available_bins_count: int = 0
+
+
+class StoreInventoryItem(BaseModel):
+    id: str
+    material_code: str
+    material_name: str
+    category: str = "GENERAL"
+    quantity: float = 0.0
+    available_quantity: float = 0.0
+    uom: str = "PCS"
+    zone_code: Optional[str] = None
+    zone_name: Optional[str] = None
+    bin_code: Optional[str] = None
+    bin_name: Optional[str] = None
+    status: str = "HEALTHY"
+    last_updated: Optional[str] = None
+
+
+class StoreMovementActivity(BaseModel):
+    id: str
+    timestamp: str
+    movement_type: str
+    material_code: str
+    material_name: str
+    material_qr: Optional[str] = None
+    from_location: Optional[str] = None
+    to_location: Optional[str] = None
+    quantity: float = 0.0
+    uom: str = "PCS"
+    stock_before: Optional[float] = None
+    stock_after: Optional[float] = None
+    operator: str = "System"
+    reference_document: Optional[str] = None
+
+
+class StoreDashboardMetricsResponse(BaseModel):
+    store: StoreResponse
+    kpis: StoreDashboardKPIs
+    inventory_summary: List[StoreInventoryItem] = []
+    recent_activity: List[StoreMovementActivity] = []
+    assigned_docks_count: int = 0

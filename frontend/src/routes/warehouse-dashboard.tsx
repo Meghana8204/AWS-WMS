@@ -145,8 +145,8 @@ function WarehouseDashboard() {
             Refresh
           </Button>
           <Button variant="outline" size="sm" className="rounded-xl text-xs" asChild>
-            <Link to="/putaway-tasks">
-              <PackageCheck className="size-3.5 mr-1.5 text-primary" /> Putaway Tasks
+            <Link to="/my-store">
+              <PackageCheck className="size-3.5 mr-1.5 text-primary" /> Store Putaways
             </Link>
           </Button>
           <Button variant="outline" size="sm" className="rounded-xl text-xs" asChild>
@@ -254,7 +254,7 @@ function WarehouseDashboard() {
                   asChild
                 >
                   <Link to="/putaway-tasks">
-                    Execute Putaways <ArrowRight className="size-3.5" />
+                    Track Putaways <ArrowRight className="size-3.5" />
                   </Link>
                 </Button>
               </div>
@@ -507,8 +507,8 @@ function WarehouseDashboard() {
                   </p>
                 </div>
                 <Button variant="ghost" size="sm" className="h-7 text-xs text-primary" asChild>
-                  <Link to="/putaway-tasks">
-                    View All <ArrowRight className="size-3 ml-1" />
+                  <Link to="/my-store">
+                    View in Store Portal <ArrowRight className="size-3.5 ml-1" />
                   </Link>
                 </Button>
               </div>

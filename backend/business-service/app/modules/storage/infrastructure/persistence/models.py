@@ -102,7 +102,7 @@ class PutawayMovementModel(Base):
     __tablename__ = "putaway_movement"
 
     id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
-    putaway_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("putaway_task.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True)
+    putaway_task_id: Mapped[uuid.UUID] = mapped_column(GUID, ForeignKey("putaway_task.id", ondelete="RESTRICT"), nullable=False, index=True)
     material_scan: Mapped[str] = mapped_column(String(64), nullable=False)
     location_scan: Mapped[str] = mapped_column(String(64), nullable=False)
     material_code: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -233,5 +233,39 @@ class InventoryIssueTransactionModel(Base):
     stock_after: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     issued_by: Mapped[str] = mapped_column(String(128), nullable=False)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class InventoryMovementHistoryModel(Base):
+    """
+    Authoritative audit history for all physical and systemic inventory movements:
+    PUTAWAY, TAKEAWAY, TRANSFER, RETURN, DISPOSITION.
+    Captures Material QR, source & destination locations/bins, quantities, performing user & role.
+    """
+    __tablename__ = "inventory_movement_history"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=uuid.uuid4)
+    movement_type: Mapped[str] = mapped_column(String(32), index=True, nullable=False)  # PUTAWAY, TAKEAWAY, TRANSFER
+    material_code: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    material_name: Mapped[str] = mapped_column(String(256), nullable=False)
+    material_qr: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
+    grn_number: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
+    batch_lot: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    from_location: Mapped[str] = mapped_column(String(128), nullable=False)
+    to_location: Mapped[str] = mapped_column(String(128), nullable=False)
+    from_bin_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_bin.id", ondelete="SET NULL"), nullable=True)
+    to_bin_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store_bin.id", ondelete="SET NULL"), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    uom: Mapped[str] = mapped_column(String(32), nullable=False, default="PCS")
+    stock_before: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    stock_after: Mapped[Decimal | None] = mapped_column(Numeric(18, 4), nullable=True)
+    performed_by: Mapped[str] = mapped_column(String(128), index=True, nullable=False)
+    user_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    warehouse_id: Mapped[str] = mapped_column(String(64), nullable=False, default="MAIN")
+    store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
+    store_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    reference_document: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    performed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
 
 

@@ -8,6 +8,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base, GUID
+from app.modules.store.infrastructure.persistence.models import StoreModel
 
 
 class DockMasterModel(Base):
@@ -43,6 +44,9 @@ class DockAllocationRequestModel(Base):
     assigned_store_id: Mapped[uuid.UUID | None] = mapped_column(GUID, ForeignKey("store.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_store_code: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     assigned_store_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    assigned_store_manager_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    assigned_store_manager_username: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    assigned_store_manager_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     assigned_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     arrived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

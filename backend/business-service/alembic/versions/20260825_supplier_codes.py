@@ -16,6 +16,11 @@ depends_on = None
 
 def upgrade() -> None:
     connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    cols = {c["name"] for c in inspector.get_columns("supplier")}
+    if "supplier_code" not in cols:
+        op.add_column("supplier", sa.Column("supplier_code", sa.String(length=64), nullable=True))
+
     rows = connection.execute(
         sa.text(
             "SELECT id, supplier_code FROM supplier "

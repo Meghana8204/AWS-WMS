@@ -56,24 +56,59 @@ async def get_dashboard_stats(
         elif "COMPLET" not in status_upper:
             vehicles_waiting += 1
 
-    # Dock Occupancy (Mock list for UI mapping)
-    docks = [
-        { "id": "D-01", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
-        { "id": "D-02", "zone": "Zone A — Bulk", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Bulk / Crane" },
-        { "id": "D-03", "zone": "Zone B — Palletised", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Forklift" },
-        { "id": "D-04", "zone": "Zone B — Palletised", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Forklift" },
-        { "id": "D-05", "zone": "Zone B — Palletised", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Forklift" },
-        { "id": "D-06", "zone": "Zone C — Cold Chain", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Reefer" },
-        { "id": "D-07", "zone": "Zone C — Cold Chain", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Reefer" },
-        { "id": "D-08", "zone": "Zone D — Hazmat", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Hazmat certified" },
-    ]
+    # Fetch real docks and active allocations from PostgreSQL
+    from app.modules.dock.infrastructure.persistence.models import DockMasterModel, DockAllocationRequestModel
+
+    dock_result = await uow.session.execute(
+        select(DockMasterModel).where(DockMasterModel.is_active.is_(True)).order_by(DockMasterModel.dock_code.asc())
+    )
+    db_docks = dock_result.scalars().all()
+
+    alloc_result = await uow.session.execute(
+        select(DockAllocationRequestModel).where(
+            DockAllocationRequestModel.status.in_(["OCCUPIED", "ALLOCATED", "IN_PROGRESS", "ARRIVED", "RESERVED"])
+        )
+    )
+    active_allocs = {str(a.assigned_dock_id): a for a in alloc_result.scalars().all() if a.assigned_dock_id}
+
+    docks = []
+    for d in db_docks:
+        alloc = active_allocs.get(str(d.id))
+        d_status = "Available"
+        v_num = None
+        eta = "Ready now"
+        if alloc:
+            d_status = "Occupied" if (d.status or "").upper() == "OCCUPIED" else "Reserved"
+            v_num = alloc.vehicle_number
+            eta = f"Store: {alloc.assigned_store_code or 'Assigned'}"
+        elif (d.status or "").upper() == "OCCUPIED":
+            d_status = "Occupied"
+            eta = "In use"
+        elif (d.status or "").upper() in ("MAINTENANCE", "INACTIVE"):
+            d_status = "Maintenance"
+            eta = "Unavailable"
+
+        docks.append({
+            "id": d.dock_code,
+            "zone": f"Dock {d.dock_code} — {d.dock_name}",
+            "status": d_status,
+            "vehicle": v_num,
+            "eta": eta,
+            "type": d.dock_type or "General",
+        })
+
+    if not docks:
+        # Fallback if no docks exist yet
+        docks = [
+            {"id": "DCK-001", "zone": "Dock DCK-001", "status": "Available", "vehicle": None, "eta": "Ready now", "type": "Raw Material"},
+        ]
 
     # Dynamically map gate entries to docks
     for m in models:
         status_upper = (m.status or "").upper()
         if "DOCK" in status_upper or "RECEIV" in status_upper:
             for dock in docks:
-                if dock["status"] == "Available":
+                if dock["status"] == "Available" and not dock["vehicle"]:
                     dock["status"] = "Occupied" if "RECEIV" in status_upper else "Reserved"
                     dock["vehicle"] = m.vehicle_number
                     dock["eta"] = "Free in 30 min" if "RECEIV" in status_upper else "Docking soon"
@@ -165,13 +200,14 @@ async def get_dashboard_stats(
         })
 
     occupied_count = len([d for d in docks if d["status"] in ("Occupied", "Reserved")])
+    total_docks_count = len(docks)
 
     return {
         "stats": {
             "totalArrivals": total_arrivals,
             "verifiedArrivals": verified_arrivals,
             "unscheduledArrivals": unscheduled_arrivals,
-            "occupiedDocks": f"{occupied_count}/8",
+            "occupiedDocks": f"{occupied_count}/{total_docks_count}" if total_docks_count > 0 else "0/0",
             "vehiclesWaiting": vehicles_waiting,
             "receivingInProgress": receiving_in_progress
         },

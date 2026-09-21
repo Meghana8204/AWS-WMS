@@ -6,7 +6,7 @@ from typing import List, Optional
 import uuid
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.dock.domain.enums import (
@@ -32,6 +32,14 @@ class DockAllocationService:
         """Helper to seed initial 9 docks when explicitly invoked (e.g. by test fixtures or setup scripts)."""
         result = await session.execute(select(func.count(DockMasterModel.id)))
         if result.scalar() == 0:
+            default_store_id = None
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreModel
+                store_res = await session.execute(select(StoreModel.id).order_by(StoreModel.created_at.asc()).limit(1))
+                default_store_id = store_res.scalars().first()
+            except Exception:
+                default_store_id = None
+
             initial_docks = [
                 {"code": "RM-01", "name": "Raw Material Dock 01", "type": DockType.RAW_MATERIAL.value, "location": "North Warehouse"},
                 {"code": "RM-02", "name": "Raw Material Dock 02", "type": DockType.RAW_MATERIAL.value, "location": "East Warehouse"},
@@ -243,11 +251,37 @@ class DockAllocationService:
             pass
 
     @staticmethod
+    async def _sync_warehouse_dock_status(
+        session: AsyncSession,
+        dock_code: str,
+        new_status: str,
+    ) -> None:
+        """Safely sync status to DockModel (warehouse_dock)."""
+        try:
+            from app.modules.gate.infrastructure.persistence.models import DockModel
+            stmt = select(DockModel).where(
+                or_(
+                    DockModel.dock_number == dock_code,
+                    func.upper(DockModel.dock_number) == dock_code.upper(),
+                )
+            )
+            res = await session.execute(stmt)
+            wh_dock = res.scalars().first()
+            if wh_dock:
+                wh_dock.status = new_status
+                wh_dock.updated_at = datetime.now(timezone.utc)
+        except Exception:
+            pass
+
+    @staticmethod
     async def allocate_dock(
         session: AsyncSession,
         allocation_request_id: uuid.UUID,
         dock_id: uuid.UUID,
         allocated_by: str,
+        store_manager_id: Optional[str] = None,
+        store_manager_username: Optional[str] = None,
+        store_manager_name: Optional[str] = None,
     ) -> DockAllocationRequestModel:
         """Allocate dock with strict backend pessimistic concurrency lock (AVAILABLE -> RESERVED / DOCK_ASSIGNED)."""
         # 1. Lock Dock with pessimistic FOR UPDATE
@@ -295,9 +329,68 @@ class DockAllocationService:
         req.assigned_at = datetime.now(timezone.utc)
         req.status = "DOCK_ASSIGNED"
 
-        dock.status = DockStatus.RESERVED.value
+        if not req.assigned_store_id and dock.store_id:
+            req.assigned_store_id = dock.store_id
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreModel
+                st_obj = await session.get(StoreModel, dock.store_id)
+                if st_obj:
+                    req.assigned_store_code = st_obj.store_code
+                    req.assigned_store_name = st_obj.store_name
+            except Exception:
+                pass
 
-        # Update GateEntryModel if present
+        # Resolve and assign Store Manager
+        if store_manager_id or store_manager_username or store_manager_name:
+            req.assigned_store_manager_id = str(store_manager_id) if store_manager_id else None
+            req.assigned_store_manager_username = str(store_manager_username) if store_manager_username else None
+            req.assigned_store_manager_name = str(store_manager_name) if store_manager_name else str(store_manager_username or store_manager_id)
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreManagerUserModel, StoreModel
+                filter_conds = []
+                if store_manager_id:
+                    filter_conds.append(StoreManagerUserModel.employee_id == str(store_manager_id))
+                if store_manager_username:
+                    filter_conds.append(StoreManagerUserModel.username == str(store_manager_username))
+                if store_manager_name:
+                    filter_conds.append(func.lower(StoreManagerUserModel.full_name) == str(store_manager_name).lower())
+
+                if filter_conds:
+                    sm_stmt = select(StoreManagerUserModel).where(or_(*filter_conds))
+                    sm_res = await session.execute(sm_stmt)
+                    sm_user = sm_res.scalars().first()
+                    if sm_user:
+                        req.assigned_store_manager_id = sm_user.employee_id
+                        req.assigned_store_manager_username = sm_user.username
+                        req.assigned_store_manager_name = sm_user.full_name
+                        if sm_user.store_id and not req.assigned_store_id:
+                            req.assigned_store_id = sm_user.store_id
+                            st_obj = await session.get(StoreModel, sm_user.store_id)
+                            if st_obj:
+                                req.assigned_store_code = st_obj.store_code
+                                req.assigned_store_name = st_obj.store_name
+            except Exception:
+                pass
+        elif not req.assigned_store_manager_id and req.assigned_store_id:
+            try:
+                from app.modules.store.infrastructure.persistence.models import StoreModel, StoreManagerUserModel
+                st_obj = await session.get(StoreModel, req.assigned_store_id)
+                if st_obj and st_obj.store_manager_id:
+                    req.assigned_store_manager_id = st_obj.store_manager_id
+                    req.assigned_store_manager_name = st_obj.store_manager_name
+                    sm_res = await session.execute(
+                        select(StoreManagerUserModel.username).where(StoreManagerUserModel.employee_id == st_obj.store_manager_id)
+                    )
+                    sm_u = sm_res.scalar_one_or_none()
+                    if sm_u:
+                        req.assigned_store_manager_username = sm_u
+            except Exception:
+                pass
+
+        dock.status = DockStatus.OCCUPIED.value
+        await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "OCCUPIED")
+
+        # Update GateEntryModel and DockAssignmentModel
         await DockAllocationService._sync_gate_entry_status(
             session, req.existing_gate_pass_id, req.vehicle_number, "DOCK_ASSIGNED", dock.dock_code
         )
@@ -819,6 +912,7 @@ class DockAllocationService:
                         changed_at=datetime.now(timezone.utc),
                     )
                 )
+                await DockAllocationService._sync_warehouse_dock_status(session, dock.dock_code, "AVAILABLE")
 
         previous_status = req.status
         req.status = AllocationStatus.RELEASED.value
